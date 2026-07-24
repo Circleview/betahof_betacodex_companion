@@ -9,3 +9,6 @@ pydantic
 pytest
 httpx
 trafilatura
+youtube-transcript-api
+pypdf
+python-multipart

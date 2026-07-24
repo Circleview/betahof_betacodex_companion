@@ -34,3 +34,19 @@ def test_query_returns_fewer_results_than_top_k_if_not_enough_data(tmp_path, mon
 
     result = vectorstore.query([1.0, 0.0, 0.0], top_k=5)
     assert len(result["ids"][0]) == 1
+
+
+def test_delete_source_chunks_removes_only_matching_source(tmp_path, monkeypatch):
+    _reset_vectorstore(tmp_path, monkeypatch)
+
+    vectorstore.add_chunks(
+        ["a::0", "b::0"],
+        ["Quelle A", "Quelle B"],
+        [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
+        [{"source_id": "a", "position": 0}, {"source_id": "b", "position": 0}],
+    )
+
+    vectorstore.delete_source_chunks("a")
+
+    result = vectorstore.query([1.0, 0.0, 0.0], top_k=5)
+    assert result["ids"][0] == ["b::0"]

@@ -7,26 +7,33 @@
 </head>
 <body>
 <header>
-  <h1>BetaCodex Wissensassistent</h1>
-  <a href="/import.html" id="import-link" title="Quellen verwalten" aria-label="Quellen verwalten">
-    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-      <line x1="12" y1="5" x2="12" y2="19"></line>
-      <line x1="5" y1="12" x2="19" y2="12"></line>
-    </svg>
-  </a>
+  <h1><span class="brand-dot" aria-hidden="true"></span><span data-i18n="index.brandName"></span></h1>
+  <div class="header-actions">
+    <span id="lang-switcher" class="lang-switcher"></span>
+    <a href="/import.html" id="import-link" data-i18n-title="index.viewSources">
+      <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <line x1="8" y1="6" x2="21" y2="6"></line>
+        <line x1="8" y1="12" x2="21" y2="12"></line>
+        <line x1="8" y1="18" x2="21" y2="18"></line>
+        <line x1="3" y1="6" x2="3.01" y2="6"></line>
+        <line x1="3" y1="12" x2="3.01" y2="12"></line>
+        <line x1="3" y1="18" x2="3.01" y2="18"></line>
+      </svg>
+    </a>
+  </div>
 </header>
-<p><em>Durchstich-Version &ndash; bewusst schmucklos.</em></p>
+<p class="tagline" data-i18n="index.tagline"></p>
 
 <section id="frage-bereich">
   <form id="question-form">
-    <input type="text" id="question" placeholder="Deine Frage zum BetaCodex" required>
-    <button type="submit">Fragen</button>
+    <input type="text" id="question" data-i18n-placeholder="index.questionPlaceholder" required>
+    <button type="submit" data-i18n="index.askButton"></button>
   </form>
   <div id="answer"></div>
-  <h3>Verwendete Quellen</h3>
+  <h3 data-i18n="index.usedSourcesHeading"></h3>
   <ol id="answer-sources"></ol>
 </section>
 
-<script src="/question.js"></script>
+<script type="module" src="/question.js"></script>
 </body>
 </html>

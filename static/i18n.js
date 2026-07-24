@@ -1,0 +1,76 @@
+const SUPPORTED_LANGS = ['de', 'en'];
+const DEFAULT_LANG = 'en';
+
+function detectLang() {
+  const stored = localStorage.getItem('lang');
+  if (stored && SUPPORTED_LANGS.includes(stored)) {
+    return stored;
+  }
+  const nav = (navigator.language || navigator.userLanguage || DEFAULT_LANG).toLowerCase();
+  return nav.startsWith('de') ? 'de' : DEFAULT_LANG;
+}
+
+let currentLang = detectLang();
+let dict = {};
+
+async function loadDict(lang) {
+  const res = await fetch(`/i18n/${lang}.json`);
+  return res.json();
+}
+
+export function t(key, vars = {}) {
+  let str = dict[key] || key;
+  for (const [k, v] of Object.entries(vars)) {
+    str = str.replaceAll(`{${k}}`, v);
+  }
+  return str;
+}
+
+export function getLang() {
+  return currentLang;
+}
+
+function applyStaticTranslations() {
+  document.documentElement.lang = currentLang;
+  document.querySelectorAll('[data-i18n]').forEach((el) => {
+    el.textContent = t(el.getAttribute('data-i18n'));
+  });
+  document.querySelectorAll('[data-i18n-placeholder]').forEach((el) => {
+    el.setAttribute('placeholder', t(el.getAttribute('data-i18n-placeholder')));
+  });
+  document.querySelectorAll('[data-i18n-title]').forEach((el) => {
+    const value = t(el.getAttribute('data-i18n-title'));
+    el.setAttribute('title', value);
+    el.setAttribute('aria-label', value);
+  });
+}
+
+function renderLangSwitcher() {
+  const el = document.getElementById('lang-switcher');
+  if (!el) return;
+  el.innerHTML = '';
+  SUPPORTED_LANGS.forEach((lang, i) => {
+    if (i > 0) el.append(' · ');
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'lang-button' + (lang === currentLang ? ' active' : '');
+    btn.textContent = lang.toUpperCase();
+    btn.addEventListener('click', async () => {
+      if (lang === currentLang) return;
+      localStorage.setItem('lang', lang);
+      currentLang = lang;
+      dict = await loadDict(currentLang);
+      applyStaticTranslations();
+      renderLangSwitcher();
+      document.dispatchEvent(new CustomEvent('i18n:changed'));
+    });
+    el.appendChild(btn);
+  });
+}
+
+export async function initI18n() {
+  dict = await loadDict(currentLang);
+  applyStaticTranslations();
+  renderLangSwitcher();
+  return dict;
+}

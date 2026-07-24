@@ -31,3 +31,8 @@ def add_chunks(
 def query(embedding: list[float], top_k: int = 5) -> dict:
     collection = _get_collection()
     return collection.query(query_embeddings=[embedding], n_results=top_k)
+
+
+def delete_source_chunks(source_id: str) -> None:
+    collection = _get_collection()
+    collection.delete(where={"source_id": source_id})
