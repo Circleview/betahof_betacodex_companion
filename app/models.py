@@ -40,3 +40,15 @@ class ChunkRef(BaseModel):
 class AnswerOut(BaseModel):
     answer: str
     sources: list[ChunkRef]
+
+
+class UrlIn(BaseModel):
+    url: str
+
+
+class ExtractedSource(BaseModel):
+    title: str
+    author: str
+    date: str
+    text: str
+    extracted: bool

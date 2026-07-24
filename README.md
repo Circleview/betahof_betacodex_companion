@@ -137,8 +137,9 @@ Der vertikale Durchstich läuft. Umgesetzt wurde:
 - **Vektordatenbank**: Chroma, persistent unter `data/chroma/` (`app/vectorstore.py`)
 - **Retrieval**: Top-k-Suche zur Nutzerfrage (Standard k=5)
 - **Antwortgenerierung**: Anthropic API, Modell `claude-haiku-4-5-20251001`, mit striktem System-Prompt – antwortet ausschließlich aus den gelieferten Chunks, referenziert sie als `[1]`, `[2]` usw. und sagt explizit, wenn die Quellenlage eine Frage nicht hergibt (`app/llm.py`)
-- **Frontend**: Erfassen und Abrufen sind bewusst getrennt. Startseite (`static/index.html` + `question.js`) zeigt nur die Frage-Antwort-Maske; ein runder Plus-Button oben rechts führt zur Inhaltspflege (`static/import.html` + `import.js`) mit Importformular und Liste der vorhandenen Quellen. Quellenangaben bei der Antwort werden als aufklappbare, im Fall einer URL klickbare Einträge unter der Antwort aufgelöst
-- **Tests**: `pytest`-Suite (`tests/`) für Chunking, Vectorstore-Roundtrip und die API-Endpunkte (Embeddings/LLM dabei gemockt, damit Tests schnell und ohne API-Key laufen)
+- **Frontend**: Erfassen und Abrufen sind bewusst getrennt. Startseite (`static/index.html` + `question.js`) zeigt nur die Frage-Antwort-Maske; ein runder Plus-Button oben rechts führt zur Inhaltspflege (`static/import.html` + `import.js`). Dort erst die Quelltyp-Auswahl (zwei Kreis-Buttons: Text / URL), dann das jeweilige Formular. Quellenangaben bei der Antwort werden als aufklappbare, im Fall einer URL klickbare Einträge unter der Antwort aufgelöst
+- **URL-Import (Meilenstein 1.2, Blogposts/Artikel)**: Klick auf den URL-Button öffnet ein an den Button angedocktes Popover für die URL-Eingabe (`POST /api/extract-url`, `app/extraction.py`, `trafilatura`). Titel, Autor, Erscheinungsdatum und Text werden automatisch extrahiert und in das bestehende Formular übernommen; von dort läuft der Import wie beim Text-Einfügen weiter (`POST /api/sources`). Erscheinungsdatum (`date`) und Speicherdatum (`imported_at`) werden als getrennte Felder abgelegt. Fehlt Autor/Datum nach der Extraktion (z. B. bei Wikipedia ohne Autorenangabe), bleiben die Felder leer und lassen sich vor dem Import manuell nachtragen. Schlägt die Extraktion ganz fehl, wird das im Popover angezeigt und auf manuelle Texteingabe verwiesen (Fallback)
+- **Tests**: `pytest`-Suite (`tests/`) für Chunking, Vectorstore-Roundtrip, URL-Extraktion (gemocktes `trafilatura`) und die API-Endpunkte (Embeddings/LLM dabei ebenfalls gemockt, damit Tests schnell und ohne API-Key laufen)
 
 **Abweichung von Abschnitt 4:** Lokal war nur Python 3.9.6 installiert (keine 3.11+-Variante verfügbar), das Projekt läuft damit einwandfrei – bei Bedarf später auf 3.11+ umziehen.
 
@@ -172,6 +173,6 @@ git config core.hooksPath scripts/git-hooks
 
 ### Noch offen / nicht Teil dieses Schritts
 
-- Weitere Importarten (URL, PDF, YouTube) – laut Vorgabe bewusst nicht in dieser Session
-- Manuelle Verifikation von `/api/ask` mit echtem `ANTHROPIC_API_KEY` (lokal nicht vorhanden, Nutzer muss eigenen Key eintragen)
+- Weitere Importarten (PDF, YouTube) – Text und URL (Blogposts/Artikel) sind umgesetzt
 - Design/UI-Politur (laut Backlog erst nach dem funktionierenden Kern)
+- Nutzer-/Rechtemanagement (siehe Backlog, Abschnitt 7)

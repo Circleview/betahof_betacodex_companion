@@ -1,3 +1,61 @@
+const importBereich = document.getElementById('import-bereich');
+const urlPopover = document.getElementById('url-popover');
+
+function showForm() {
+  importBereich.classList.remove('hidden');
+  urlPopover.classList.add('hidden');
+}
+
+function fillForm({ title = '', author = '', date = '', url = '', text = '' }) {
+  document.getElementById('title').value = title;
+  document.getElementById('author').value = author;
+  document.getElementById('date').value = date;
+  document.getElementById('url').value = url;
+  document.getElementById('text').value = text;
+}
+
+document.getElementById('typ-text').addEventListener('click', () => {
+  fillForm({});
+  showForm();
+});
+
+document.getElementById('typ-url').addEventListener('click', () => {
+  importBereich.classList.add('hidden');
+  urlPopover.classList.toggle('hidden');
+  document.getElementById('popover-status').textContent = '';
+});
+
+document.getElementById('popover-load').addEventListener('click', async () => {
+  const url = document.getElementById('popover-url').value.trim();
+  const status = document.getElementById('popover-status');
+  if (!url) {
+    status.textContent = 'Bitte eine URL eintragen.';
+    return;
+  }
+  status.textContent = 'Lade und extrahiere...';
+  try {
+    const res = await fetch('/api/extract-url', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url }),
+    });
+    if (!res.ok) {
+      throw new Error('Fehler bei der Extraktion');
+    }
+    const data = await res.json();
+    if (!data.extracted) {
+      status.textContent = 'Automatische Extraktion fehlgeschlagen. Bitte Text manuell einfügen.';
+      fillForm({ url });
+      showForm();
+      return;
+    }
+    fillForm({ title: data.title, author: data.author, date: data.date, url, text: data.text });
+    showForm();
+  } catch (err) {
+    status.textContent = 'Fehler: ' + err.message;
+  }
+});
+
 async function loadSources() {
   const res = await fetch('/api/sources');
   const sources = await res.json();
@@ -34,6 +92,7 @@ document.getElementById('source-form').addEventListener('submit', async (e) => {
     const data = await res.json();
     status.textContent = `Importiert: "${data.title}" (${data.chunk_count} Chunks)`;
     document.getElementById('source-form').reset();
+    importBereich.classList.add('hidden');
     loadSources();
   } catch (err) {
     status.textContent = 'Fehler: ' + err.message;

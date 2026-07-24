@@ -9,8 +9,16 @@ from fastapi.staticfiles import StaticFiles
 
 load_dotenv()
 
-from app import chunking, embeddings, llm, vectorstore
-from app.models import AnswerOut, ChunkRef, QuestionIn, SourceIn, SourceOut
+from app import chunking, embeddings, extraction, llm, vectorstore
+from app.models import (
+    AnswerOut,
+    ChunkRef,
+    ExtractedSource,
+    QuestionIn,
+    SourceIn,
+    SourceOut,
+    UrlIn,
+)
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 DATA_DIR = BASE_DIR / "data"
@@ -79,6 +87,12 @@ def add_source(source: SourceIn):
 def list_sources():
     sources = _load_sources()
     return list(sources.values())
+
+
+@app.post("/api/extract-url", response_model=ExtractedSource)
+def extract_url(payload: UrlIn):
+    result = extraction.extract_from_url(payload.url)
+    return ExtractedSource(**result)
 
 
 @app.post("/api/ask", response_model=AnswerOut)

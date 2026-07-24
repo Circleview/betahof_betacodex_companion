@@ -11,7 +11,43 @@
   <a href="/" id="back-link">&larr; Zur&uuml;ck zur Frage</a>
 </header>
 
-<section id="import-bereich">
+<section id="quelltyp-bereich">
+  <p>Neue Quelle hinzuf&uuml;gen:</p>
+  <div class="quelltyp-buttons">
+    <div class="quelltyp-item">
+      <button type="button" id="typ-text" class="circle-button" title="Text einf&uuml;gen" aria-label="Text einf&uuml;gen">
+        <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="4" y="3" width="16" height="18" rx="1"></rect>
+          <line x1="7" y1="8" x2="17" y2="8"></line>
+          <line x1="7" y1="12" x2="17" y2="12"></line>
+          <line x1="7" y1="16" x2="13" y2="16"></line>
+        </svg>
+      </button>
+      <span class="quelltyp-label">Text</span>
+    </div>
+    <div class="quelltyp-item quelltyp-item--anchor">
+      <button type="button" id="typ-url" class="circle-button" title="URL" aria-label="URL">
+        <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="3" y="9" width="10" height="6" rx="3"></rect>
+          <rect x="11" y="9" width="10" height="6" rx="3"></rect>
+          <line x1="9" y1="12" x2="15" y2="12"></line>
+        </svg>
+      </button>
+      <span class="quelltyp-label">URL</span>
+
+      <div id="url-popover" class="popover hidden">
+        <div class="popover-arrow"></div>
+        <label>URL (Blogpost/Artikel)
+          <input type="url" id="popover-url" placeholder="https://...">
+        </label>
+        <button type="button" id="popover-load">Laden</button>
+        <p id="popover-status"></p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="import-bereich" class="hidden">
   <form id="source-form">
     <label>Titel*
       <input type="text" id="title" required>
@@ -19,7 +55,7 @@
     <label>Autor
       <input type="text" id="author">
     </label>
-    <label>Datum
+    <label>Erscheinungsdatum
       <input type="text" id="date" placeholder="z. B. 2024-01-15">
     </label>
     <label>URL
@@ -31,7 +67,9 @@
     <button type="submit">Importieren</button>
   </form>
   <p id="import-status"></p>
+</section>
 
+<section id="quellen-liste-bereich">
   <h3>Importierte Quellen</h3>
   <ul id="source-list"></ul>
 </section>

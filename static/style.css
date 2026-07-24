@@ -69,3 +69,70 @@ section {
 details {
   margin-bottom: 0.5rem;
 }
+
+.hidden {
+  display: none;
+}
+
+.quelltyp-buttons {
+  display: flex;
+  gap: 2rem;
+}
+
+.quelltyp-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.quelltyp-item--anchor {
+  position: relative;
+}
+
+.circle-button {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  border: 1px solid currentColor;
+  background: none;
+  color: inherit;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0;
+}
+
+.circle-button:hover {
+  background: rgba(128, 128, 128, 0.15);
+}
+
+.quelltyp-label {
+  font-size: 0.85rem;
+}
+
+.popover {
+  position: absolute;
+  top: calc(100% + 14px);
+  left: 50%;
+  transform: translateX(-50%);
+  width: 260px;
+  border: 1px solid #ccc;
+  background: #fff;
+  padding: 0.75rem;
+  z-index: 10;
+  text-align: left;
+}
+
+.popover-arrow {
+  position: absolute;
+  top: -7px;
+  left: 50%;
+  width: 12px;
+  height: 12px;
+  transform: translateX(-50%) rotate(45deg);
+  border-left: 1px solid #ccc;
+  border-top: 1px solid #ccc;
+  background: #fff;
+}

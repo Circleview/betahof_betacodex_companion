@@ -1,7 +1,7 @@
 import pytest
 from fastapi.testclient import TestClient
 
-from app import embeddings, llm, vectorstore
+from app import embeddings, extraction, llm, vectorstore
 from app import main as main_module
 
 
@@ -75,3 +75,38 @@ def test_ask_returns_answer_with_sources(client):
     assert data["answer"] == "Testantwort [1]."
     assert len(data["sources"]) == 1
     assert data["sources"][0]["title"] == "BetaCodex Quelle"
+
+
+def test_extract_url_endpoint_returns_extracted_fields(client, monkeypatch):
+    monkeypatch.setattr(
+        extraction,
+        "extract_from_url",
+        lambda url: {
+            "title": "Extrahierter Titel",
+            "author": "Autor Z",
+            "date": "2024-02-02",
+            "text": "Extrahierter Text.",
+            "extracted": True,
+        },
+    )
+
+    response = client.post("/api/extract-url", json={"url": "https://example.org/blogpost"})
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["title"] == "Extrahierter Titel"
+    assert data["date"] == "2024-02-02"
+    assert data["extracted"] is True
+
+
+def test_extract_url_endpoint_reports_failed_extraction(client, monkeypatch):
+    monkeypatch.setattr(
+        extraction,
+        "extract_from_url",
+        lambda url: {"title": "", "author": "", "date": "", "text": "", "extracted": False},
+    )
+
+    response = client.post("/api/extract-url", json={"url": "https://example.org/nicht-lesbar"})
+
+    assert response.status_code == 200
+    assert response.json()["extracted"] is False
