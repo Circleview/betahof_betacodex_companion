@@ -110,7 +110,7 @@ Begründung: Es kommt auf Sprachqualität und einen schlanken Start an. Die Embe
 |---|---|
 | Podcasts als Quelle | Audio über URL ziehen, per Whisper transkribieren – ein Zwischenschritt mehr |
 | Wissensgraph / Landkarte | Automatische Vernetzung der Inhalte aus den vorhandenen Embedding-Ähnlichkeiten; Darstellung per D3 oder Cytoscape. **Wichtig:** Schwellenwert für Kanten einbauen (Regler), sonst wird das Netz zum Wollknäuel |
-| Nutzer- & Rechtemanagement | Quellen anlegen, kuratieren, pflegen; ggf. bewerten und gewichten (Konzept noch offen) |
+| Nutzer- & Rechtemanagement | Quellen anlegen, kuratieren, pflegen nur mit freigeschaltetem Nutzerkonto. Der Autor eines Chunks/einer Quelle wird mit dem Benutzerkonto verknüpft (statt freiem Textfeld). Freischaltung ist zeitlich begrenzt (z. B. 1 Jahr, Frist wird bei Freischaltung festgelegt) und darf nur durch Nutzer:innen mit einer besonderen technischen Rolle erfolgen. Bewertung/Gewichtung von Quellen: Konzept noch offen |
 | Sprachdialog | STT für die Frage, TTS für die Antwort (z. B. ElevenLabs). Der Kern bleibt unverändert – Sprache ist nur eine Hülle. **Erst ganz zum Schluss**, sonst debuggt man zwei Dinge gleichzeitig |
 | Kuratierte Aufbereitung | Interessante Takes, Zitate und Impulse ansprechend im Frontend darstellen |
 | Design / UI-Politur | Nach dem funktionierenden Kern |
@@ -137,7 +137,7 @@ Der vertikale Durchstich läuft. Umgesetzt wurde:
 - **Vektordatenbank**: Chroma, persistent unter `data/chroma/` (`app/vectorstore.py`)
 - **Retrieval**: Top-k-Suche zur Nutzerfrage (Standard k=5)
 - **Antwortgenerierung**: Anthropic API, Modell `claude-haiku-4-5-20251001`, mit striktem System-Prompt – antwortet ausschließlich aus den gelieferten Chunks, referenziert sie als `[1]`, `[2]` usw. und sagt explizit, wenn die Quellenlage eine Frage nicht hergibt (`app/llm.py`)
-- **Frontend**: eine schmucklose HTML-Seite (`static/index.html` + `app.js`) mit Import-Bereich und Frage-Antwort-Bereich; Quellenangaben werden als aufklappbare, im Fall einer URL klickbare Einträge unter der Antwort aufgelöst
+- **Frontend**: Erfassen und Abrufen sind bewusst getrennt. Startseite (`static/index.html` + `question.js`) zeigt nur die Frage-Antwort-Maske; ein runder Plus-Button oben rechts führt zur Inhaltspflege (`static/import.html` + `import.js`) mit Importformular und Liste der vorhandenen Quellen. Quellenangaben bei der Antwort werden als aufklappbare, im Fall einer URL klickbare Einträge unter der Antwort aufgelöst
 - **Tests**: `pytest`-Suite (`tests/`) für Chunking, Vectorstore-Roundtrip und die API-Endpunkte (Embeddings/LLM dabei gemockt, damit Tests schnell und ohne API-Key laufen)
 
 **Abweichung von Abschnitt 4:** Lokal war nur Python 3.9.6 installiert (keine 3.11+-Variante verfügbar), das Projekt läuft damit einwandfrei – bei Bedarf später auf 3.11+ umziehen.

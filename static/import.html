@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<title>Quellen verwalten &ndash; BetaCodex Wissensassistent</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<header>
+  <h1>Quellen verwalten</h1>
+  <a href="/" id="back-link">&larr; Zur&uuml;ck zur Frage</a>
+</header>
+
+<section id="import-bereich">
+  <form id="source-form">
+    <label>Titel*
+      <input type="text" id="title" required>
+    </label>
+    <label>Autor
+      <input type="text" id="author">
+    </label>
+    <label>Datum
+      <input type="text" id="date" placeholder="z. B. 2024-01-15">
+    </label>
+    <label>URL
+      <input type="url" id="url">
+    </label>
+    <label>Text*
+      <textarea id="text" rows="10" required></textarea>
+    </label>
+    <button type="submit">Importieren</button>
+  </form>
+  <p id="import-status"></p>
+
+  <h3>Importierte Quellen</h3>
+  <ul id="source-list"></ul>
+</section>
+
+<script src="/import.js"></script>
+</body>
+</html>

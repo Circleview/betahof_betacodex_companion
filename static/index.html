@@ -6,39 +6,18 @@
 <link rel="stylesheet" href="/style.css">
 </head>
 <body>
-<h1>BetaCodex Wissensassistent</h1>
+<header>
+  <h1>BetaCodex Wissensassistent</h1>
+  <a href="/import.html" id="import-link" title="Quellen verwalten" aria-label="Quellen verwalten">
+    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <line x1="12" y1="5" x2="12" y2="19"></line>
+      <line x1="5" y1="12" x2="19" y2="12"></line>
+    </svg>
+  </a>
+</header>
 <p><em>Durchstich-Version &ndash; bewusst schmucklos.</em></p>
 
-<section id="import-bereich">
-  <h2>Quelle importieren</h2>
-  <form id="source-form">
-    <label>Titel*
-      <input type="text" id="title" required>
-    </label>
-    <label>Autor
-      <input type="text" id="author">
-    </label>
-    <label>Datum
-      <input type="text" id="date" placeholder="z. B. 2024-01-15">
-    </label>
-    <label>URL
-      <input type="url" id="url">
-    </label>
-    <label>Text*
-      <textarea id="text" rows="10" required></textarea>
-    </label>
-    <button type="submit">Importieren</button>
-  </form>
-  <p id="import-status"></p>
-
-  <h3>Importierte Quellen</h3>
-  <ul id="source-list"></ul>
-</section>
-
-<hr>
-
 <section id="frage-bereich">
-  <h2>Frage stellen</h2>
   <form id="question-form">
     <input type="text" id="question" placeholder="Deine Frage zum BetaCodex" required>
     <button type="submit">Fragen</button>
@@ -48,6 +27,6 @@
   <ol id="answer-sources"></ol>
 </section>
 
-<script src="/app.js"></script>
+<script src="/question.js"></script>
 </body>
 </html>
