@@ -63,6 +63,7 @@
   "import.showAll": "Show all",
   "import.authorsHeading": "Authors",
   "import.summaryLabel": "Summary",
+  "import.aiSummaryTooltip": "AI-generated summary",
   "import.fieldSummary": "Summary",
   "import.fieldKeyTerms": "Terms (comma-separated)",
   "import.generateSummaryTitle": "Generate summary and terms with AI",

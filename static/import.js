@@ -101,6 +101,7 @@ let pendingUploadId = null;
 let currentSortMode = 'author';
 const pendingDeletions = new Map();
 const unreachableSourceIds = new Set();
+const expandedSourceIds = new Set();
 
 function hasPflegerRole() {
   return currentUserRoles.includes('quellen_pfleger') || currentUserRoles.includes('system_admin');
@@ -665,54 +666,50 @@ function formatMonthYear(dateStr) {
   return `${monthName} ${year}`;
 }
 
-function truncateWords(text, maxWords) {
-  const words = text.trim().split(/\s+/);
-  if (words.length <= maxWords) {
-    return text.trim();
-  }
-  return words.slice(0, maxWords).join(' ') + '…';
+function appendOpenLink(container, citationUrl) {
+  const link = document.createElement('a');
+  link.href = citationUrl;
+  link.target = '_blank';
+  link.rel = 'noopener noreferrer';
+  link.className = 'source-open-link';
+  const openLabel = t('common.openSource');
+  link.title = openLabel;
+  link.setAttribute('aria-label', openLabel);
+  link.innerHTML = EXTERNAL_LINK_ICON;
+  const target = container.querySelector('p:last-of-type') || container;
+  target.appendChild(document.createTextNode(' '));
+  target.appendChild(link);
 }
 
-function buildSourceDetails(s, citationUrl, openByDefault) {
-  const details = document.createElement('details');
-  details.className = 'source-summary';
-  if (openByDefault) details.open = true;
+function prependAiIcon(container) {
+  const icon = document.createElement('span');
+  icon.className = 'source-summary-icon';
+  icon.innerHTML = MAGIC_ICON;
+  const tooltip = t('import.aiSummaryTooltip');
+  icon.title = tooltip;
+  icon.setAttribute('aria-label', tooltip);
+  const target = container.querySelector('p:first-of-type') || container;
+  target.insertBefore(icon, target.firstChild);
+  icon.after(document.createTextNode(' '));
+}
 
-  const toggle = document.createElement('summary');
-  const toggleIcon = document.createElement('span');
-  toggleIcon.className = 'source-summary-icon';
-  toggleIcon.innerHTML = MAGIC_ICON;
-  toggle.appendChild(toggleIcon);
-  toggle.appendChild(document.createTextNode(t('import.summaryLabel')));
-  details.appendChild(toggle);
+function buildSourceDetails(s, citationUrl) {
+  const container = document.createElement('div');
+  container.className = 'source-summary';
 
   if (s.summary) {
-    details.appendChild(renderSummaryWithTerms(s.summary, s.key_terms));
+    const summaryEl = renderSummaryWithTerms(s.summary, s.key_terms);
+    prependAiIcon(summaryEl);
+    container.appendChild(summaryEl);
+    if (citationUrl) appendOpenLink(summaryEl, citationUrl);
+  } else if (citationUrl) {
+    const linkOnly = document.createElement('p');
+    linkOnly.className = 'source-summary-text';
+    appendOpenLink(linkOnly, citationUrl);
+    container.appendChild(linkOnly);
   }
 
-  if (s.text || citationUrl) {
-    const excerpt = document.createElement('p');
-    excerpt.className = 'source-summary-text source-excerpt';
-    if (s.text) {
-      excerpt.append(truncateWords(s.text, 200));
-    }
-    if (citationUrl) {
-      if (s.text) excerpt.append(' ');
-      const link = document.createElement('a');
-      link.href = citationUrl;
-      link.target = '_blank';
-      link.rel = 'noopener noreferrer';
-      link.className = 'source-open-link';
-      const openLabel = t('common.openSource');
-      link.title = openLabel;
-      link.setAttribute('aria-label', openLabel);
-      link.innerHTML = EXTERNAL_LINK_ICON;
-      excerpt.appendChild(link);
-    }
-    details.appendChild(excerpt);
-  }
-
-  return details;
+  return container;
 }
 
 function buildTimelineMarker(label) {
@@ -748,13 +745,36 @@ function renderSourceList(sources, options = {}) {
 
     const li = document.createElement('li');
     li.className = 'source-row';
+    if (unreachableSourceIds.has(s.id)) {
+      li.classList.add('source-row--unreachable');
+    }
     li.dataset.sourceId = s.id;
 
     const header = document.createElement('div');
     header.className = 'source-row-header';
 
+    const citationUrl = s.listen_url || s.url;
+    const hasDetails = !!(s.summary || citationUrl);
+
     const textSpan = document.createElement('span');
-    textSpan.append(`${s.title} – `);
+    if (hasDetails) {
+      const titleBtn = document.createElement('button');
+      titleBtn.type = 'button';
+      titleBtn.className = 'link-button source-title-toggle';
+      titleBtn.textContent = s.title;
+      titleBtn.addEventListener('click', () => {
+        if (expandedSourceIds.has(s.id)) {
+          expandedSourceIds.delete(s.id);
+        } else {
+          expandedSourceIds.add(s.id);
+        }
+        renderSourceList(currentDisplayedSources, options);
+      });
+      textSpan.appendChild(titleBtn);
+      textSpan.append(' – ');
+    } else {
+      textSpan.append(`${s.title} – `);
+    }
     if (s.author) {
       const authorBtn = document.createElement('button');
       authorBtn.type = 'button';
@@ -780,7 +800,7 @@ function renderSourceList(sources, options = {}) {
 
     if (unreachableSourceIds.has(s.id)) {
       const warning = document.createElement('span');
-      warning.className = 'icon-button';
+      warning.className = 'icon-button warning-icon';
       const warnLabel = t('common.urlUnreachable');
       warning.title = warnLabel;
       warning.setAttribute('aria-label', warnLabel);
@@ -788,7 +808,6 @@ function renderSourceList(sources, options = {}) {
       actions.appendChild(warning);
     }
 
-    const citationUrl = s.listen_url || s.url;
     if (citationUrl) {
       const linkBtn = document.createElement('a');
       linkBtn.href = citationUrl;
@@ -820,8 +839,8 @@ function renderSourceList(sources, options = {}) {
     header.appendChild(actions);
     li.appendChild(header);
 
-    if (s.summary || s.text || citationUrl) {
-      li.appendChild(buildSourceDetails(s, citationUrl, options.openSummaries));
+    if (hasDetails && expandedSourceIds.has(s.id)) {
+      li.appendChild(buildSourceDetails(s, citationUrl));
     }
 
     list.appendChild(li);
@@ -875,10 +894,8 @@ async function filterByTerm(term) {
   const termEntries = await res.json();
   const match = termEntries.find((t2) => normalizeTerm(t2.term) === normalizeTerm(term));
   const ids = match ? match.source_ids : [];
-  renderSourceList(
-    allSources.filter((s) => ids.includes(s.id)),
-    { openSummaries: true }
-  );
+  ids.forEach((id) => expandedSourceIds.add(id));
+  renderSourceList(allSources.filter((s) => ids.includes(s.id)));
 
   document.getElementById('source-filter-label').textContent = t('import.filteredByTerm');
   document.getElementById('source-filter-name').textContent = match ? match.term : term;

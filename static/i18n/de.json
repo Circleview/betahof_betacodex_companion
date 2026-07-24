@@ -63,6 +63,7 @@
   "import.showAll": "Alle anzeigen",
   "import.authorsHeading": "Autor:innen",
   "import.summaryLabel": "Kurzfassung",
+  "import.aiSummaryTooltip": "KI-generierte Zusammenfassung",
   "import.fieldSummary": "Zusammenfassung",
   "import.fieldKeyTerms": "Begriffe (kommagetrennt)",
   "import.generateSummaryTitle": "Zusammenfassung und Begriffe mit KI generieren",

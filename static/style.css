@@ -7,6 +7,8 @@
   --color-accent: #b22f1c;
   --color-accent-hover: #8f2716;
   --color-accent-tint: rgba(178, 47, 28, 0.08);
+  --color-warning: #9a6400;
+  --color-warning-tint: rgba(154, 100, 0, 0.1);
   --radius: 6px;
   --font-sans: "Inter", -apple-system, "system-ui", "Segoe UI", Roboto,
     "Helvetica Neue", Arial, sans-serif;
@@ -22,6 +24,8 @@
     --color-accent: #e2593f;
     --color-accent-hover: #ef6c52;
     --color-accent-tint: rgba(226, 89, 63, 0.14);
+    --color-warning: #e0a530;
+    --color-warning-tint: rgba(224, 165, 48, 0.14);
   }
 }
 
@@ -465,23 +469,21 @@ section {
   margin-top: 0.5rem;
 }
 
-.source-summary summary {
-  font-size: 0.85rem;
-  color: var(--color-text-muted);
-  cursor: pointer;
-  list-style: none;
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-}
-
-.source-summary summary::-webkit-details-marker {
-  display: none;
-}
-
 .source-summary-icon {
   display: inline-flex;
   color: var(--color-accent);
+  vertical-align: middle;
+}
+
+.source-title-toggle {
+  text-align: left;
+  color: var(--color-text);
+  font-weight: inherit;
+  text-decoration: none;
+}
+
+.source-title-toggle:hover {
+  color: var(--color-text);
 }
 
 .source-summary-text {
@@ -512,10 +514,6 @@ section {
 .term-link:hover {
   color: var(--color-accent-hover);
   text-decoration: underline;
-}
-
-.source-excerpt {
-  color: var(--color-text-muted);
 }
 
 .source-open-link {
@@ -579,6 +577,17 @@ section {
   height: 8px;
   border-radius: 50%;
   background: var(--color-accent);
+}
+
+.timeline-marker {
+  margin-left: -1.75rem;
+  padding-left: 0;
+  border-bottom: none;
+  font-weight: 700;
+  font-size: 0.8rem;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
 }
 
 .icon-button {
