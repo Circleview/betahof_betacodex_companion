@@ -1,4 +1,5 @@
 import { initI18n, t, getLang } from '/i18n.js';
+import { renderMarkdown } from '/markdown.js';
 
 const importBereich = document.getElementById('import-bereich');
 const urlPopover = document.getElementById('url-popover');
@@ -38,6 +39,52 @@ const WARNING_ICON =
   "</svg>";
 
 const UNDO_DURATION_MS = 30000;
+
+function wrapSelection(textarea, marker) {
+  const start = textarea.selectionStart;
+  const end = textarea.selectionEnd;
+  const before = textarea.value.slice(0, start);
+  const selected = textarea.value.slice(start, end) || t('import.markupPlaceholder');
+  const after = textarea.value.slice(end);
+  textarea.value = `${before}${marker}${selected}${marker}${after}`;
+  textarea.focus();
+  textarea.selectionStart = start + marker.length;
+  textarea.selectionEnd = start + marker.length + selected.length;
+}
+
+function insertHeading(textarea) {
+  const start = textarea.selectionStart;
+  const end = textarea.selectionEnd;
+  const before = textarea.value.slice(0, start);
+  const selected = textarea.value.slice(start, end) || t('import.markupPlaceholder');
+  const after = textarea.value.slice(end);
+  const lineStart = before.lastIndexOf('\n') + 1;
+  textarea.value = `${before.slice(0, lineStart)}## ${before.slice(lineStart)}${selected}${after}`;
+  textarea.focus();
+}
+
+function buildMarkupToolbar(textarea) {
+  const toolbar = document.createElement('div');
+  toolbar.className = 'markup-toolbar';
+
+  const buttons = [
+    { text: 'B', className: 'markup-bold', titleKey: 'import.markupBold', action: () => wrapSelection(textarea, '**') },
+    { text: 'I', className: 'markup-italic', titleKey: 'import.markupItalic', action: () => wrapSelection(textarea, '*') },
+    { text: 'H', className: 'markup-heading', titleKey: 'import.markupHeading', action: () => insertHeading(textarea) },
+  ];
+
+  buttons.forEach((cfg) => {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = `markup-button ${cfg.className}`;
+    btn.textContent = cfg.text;
+    btn.title = t(cfg.titleKey);
+    btn.addEventListener('click', cfg.action);
+    toolbar.appendChild(btn);
+  });
+
+  return toolbar;
+}
 
 let allSources = [];
 let currentDisplayedSources = [];
@@ -95,7 +142,7 @@ async function initRoleSwitcher() {
   select.addEventListener('change', () => {
     localStorage.setItem('devUser', select.value);
     updateCurrentUserRoles();
-    renderSourceList(currentDisplayedSources);
+    loadSources();
   });
 }
 
@@ -251,6 +298,7 @@ function buildEditPanel(s) {
   } else {
     textInput.required = true;
   }
+  textInput.parentNode.insertBefore(buildMarkupToolbar(textInput), textInput);
 
   const restrictedLabel = document.createElement('label');
   restrictedLabel.className = 'checkbox-label';
@@ -457,12 +505,95 @@ function sortSources(sources) {
   return copy;
 }
 
+const MONTH_NAMES = {
+  de: [
+    'Januar', 'Februar', 'März', 'April', 'Mai', 'Juni',
+    'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember',
+  ],
+  en: [
+    'January', 'February', 'March', 'April', 'May', 'June',
+    'July', 'August', 'September', 'October', 'November', 'December',
+  ],
+};
+
+function monthYearKey(dateStr) {
+  if (!dateStr) return '';
+  const [year, month] = dateStr.split('-');
+  return `${year}-${month}`;
+}
+
+function formatMonthYear(dateStr) {
+  if (!dateStr) return t('common.noDate');
+  const [year, month] = dateStr.split('-');
+  const monthNames = MONTH_NAMES[getLang()] || MONTH_NAMES.en;
+  const monthIndex = parseInt(month, 10) - 1;
+  const monthName = monthNames[monthIndex] || month;
+  return `${monthName} ${year}`;
+}
+
+function truncateWords(text, maxWords) {
+  const words = text.trim().split(/\s+/);
+  if (words.length <= maxWords) {
+    return text.trim();
+  }
+  return words.slice(0, maxWords).join(' ') + '…';
+}
+
+function buildSourceDetails(s, citationUrl, openByDefault) {
+  const details = document.createElement('details');
+  details.className = 'source-summary';
+  if (openByDefault) details.open = true;
+
+  const toggle = document.createElement('summary');
+  toggle.textContent = t('import.summaryLabel');
+  details.appendChild(toggle);
+
+  if (s.summary) {
+    details.appendChild(renderSummaryWithTerms(s.summary, s.key_terms));
+  }
+
+  if (s.text) {
+    const excerpt = document.createElement('p');
+    excerpt.className = 'source-summary-text source-excerpt';
+    excerpt.textContent = truncateWords(s.text, 200);
+    details.appendChild(excerpt);
+  }
+
+  if (citationUrl) {
+    const link = document.createElement('a');
+    link.href = citationUrl;
+    link.target = '_blank';
+    link.rel = 'noopener noreferrer';
+    link.className = 'source-open-link';
+    link.textContent = t('common.openSource');
+    details.appendChild(link);
+  }
+
+  return details;
+}
+
+function buildTimelineMarker(label) {
+  const li = document.createElement('li');
+  li.className = 'timeline-marker';
+  li.textContent = label;
+  return li;
+}
+
 function renderSourceList(sources, options = {}) {
   const sorted = sortSources(sources);
   currentDisplayedSources = sorted;
   const list = document.getElementById('source-list');
   list.innerHTML = '';
+  let lastMonthYear = null;
   sorted.forEach((s) => {
+    if (currentSortMode === 'date' && !pendingDeletions.has(s.id)) {
+      const key = monthYearKey(s.date);
+      if (key !== lastMonthYear) {
+        list.appendChild(buildTimelineMarker(formatMonthYear(s.date)));
+        lastMonthYear = key;
+      }
+    }
+
     if (pendingDeletions.has(s.id)) {
       list.appendChild(buildUndoRow(s));
       return;
@@ -487,7 +618,7 @@ function renderSourceList(sources, options = {}) {
     } else {
       textSpan.append(t('common.unknownAuthor'));
     }
-    textSpan.append(` (${s.date || t('common.noDate')}) [${t('common.chunkCount', { count: s.chunk_count })}]`);
+    textSpan.append(` (${s.date || t('common.noDate')})`);
     if (s.restricted) {
       const badge = document.createElement('span');
       badge.className = 'restricted-badge';
@@ -542,15 +673,8 @@ function renderSourceList(sources, options = {}) {
     header.appendChild(actions);
     li.appendChild(header);
 
-    if (s.summary) {
-      const details = document.createElement('details');
-      details.className = 'source-summary';
-      if (options.openSummaries) details.open = true;
-      const summaryToggle = document.createElement('summary');
-      summaryToggle.textContent = t('import.summaryLabel');
-      details.appendChild(summaryToggle);
-      details.appendChild(renderSummaryWithTerms(s.summary, s.key_terms));
-      li.appendChild(details);
+    if (s.summary || s.text || citationUrl) {
+      li.appendChild(buildSourceDetails(s, citationUrl, options.openSummaries));
     }
 
     list.appendChild(li);
@@ -631,7 +755,7 @@ function setSortMode(mode) {
 }
 
 async function loadSources() {
-  const res = await fetch('/api/sources');
+  const res = await fetch('/api/sources', { headers: { 'X-Dev-User': getCurrentDevUser() } });
   allSources = await res.json();
   renderSourceList(allSources);
   checkUrlHealth(allSources);
@@ -705,6 +829,9 @@ document.addEventListener('i18n:changed', () => {
   loadSources();
   loadAuthors();
 });
+
+const createTextInput = document.getElementById('text');
+createTextInput.parentNode.insertBefore(buildMarkupToolbar(createTextInput), createTextInput);
 
 await initI18n();
 await initRoleSwitcher();

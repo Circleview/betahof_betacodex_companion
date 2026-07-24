@@ -13,6 +13,7 @@ def client(tmp_path, monkeypatch):
     monkeypatch.setattr(main_module, "SOURCES_FILE", tmp_path / "sources.json")
     monkeypatch.setattr(main_module, "PDF_DIR", tmp_path / "pdfs")
     monkeypatch.setattr(main_module, "PDF_UPLOAD_STAGING_DIR", tmp_path / "pdf_uploads")
+    monkeypatch.setattr(main_module, "AUDIO_DIR", tmp_path / "audio")
 
     monkeypatch.setattr(vectorstore, "DB_PATH", tmp_path / "chroma")
     monkeypatch.setattr(vectorstore, "_client", None)
@@ -385,7 +386,19 @@ def test_delete_source_without_role_is_forbidden(client):
     assert "Bleibt" in titles
 
 
-def test_restricted_source_hides_text_in_list(client):
+def test_restricted_source_hides_text_from_anon(client):
+    client.post(
+        "/api/sources",
+        json={"title": "Geschützt", "text": "Urheberrechtlich geschützter Inhalt.", "restricted": True},
+    )
+
+    sources = client.get("/api/sources", headers={"X-Dev-User": "anon"}).json()
+
+    assert sources[0]["restricted"] is True
+    assert sources[0]["text"] == ""
+
+
+def test_restricted_source_shows_full_text_to_pfleger(client):
     client.post(
         "/api/sources",
         json={"title": "Geschützt", "text": "Urheberrechtlich geschützter Inhalt.", "restricted": True},
@@ -394,7 +407,7 @@ def test_restricted_source_hides_text_in_list(client):
     sources = client.get("/api/sources").json()
 
     assert sources[0]["restricted"] is True
-    assert sources[0]["text"] == ""
+    assert sources[0]["text"] == "Urheberrechtlich geschützter Inhalt."
 
 
 def test_restricted_source_still_used_for_answers(client):
@@ -423,7 +436,7 @@ def test_update_restricted_source_with_empty_text_keeps_stored_text(client):
 
     assert update_res.status_code == 200
     assert update_res.json()["title"] == "Neu"
-    assert update_res.json()["text"] == ""
+    assert update_res.json()["text"] == "Geheimer Originaltext."
 
     result = vectorstore.query([1.0, 0.0], top_k=5)
     assert result["documents"][0][0] == "Geheimer Originaltext."
@@ -634,3 +647,71 @@ def test_delete_source_removes_terms(client, monkeypatch):
     client.delete(f"/api/sources/{source_id}")
 
     assert client.get("/api/terms").json() == []
+
+
+def test_listen_url_persists_and_appears_in_ask_citation(client, monkeypatch):
+    captured = {}
+
+    def fake_answer(question, chunks, lang="de"):
+        captured["lang"] = lang
+        return "Testantwort [1]."
+
+    monkeypatch.setattr(llm, "answer_question", fake_answer)
+
+    create_res = client.post(
+        "/api/sources",
+        json={
+            "title": "Podcast-Folge",
+            "url": "https://cdn.example.org/episode.mp3",
+            "listen_url": "https://podcasts.example.org/episode-1",
+            "text": "Inhalt der Folge.",
+        },
+    )
+    assert create_res.json()["listen_url"] == "https://podcasts.example.org/episode-1"
+
+    response = client.post("/api/ask", json={"question": "Worum geht es?"})
+    assert response.status_code == 200
+    source = response.json()["sources"][0]
+    assert source["listen_url"] == "https://podcasts.example.org/episode-1"
+    assert source["url"] == "https://cdn.example.org/episode.mp3"
+
+
+def test_add_source_with_audio_url_stores_audio_file(client, monkeypatch, tmp_path):
+    monkeypatch.setattr(extraction, "looks_like_audio", lambda url: True)
+    monkeypatch.setattr(extraction, "looks_like_pdf", lambda url: False)
+    monkeypatch.setattr(extraction, "download_audio_bytes", lambda url: b"ID3-fake-audio-data")
+
+    create_res = client.post(
+        "/api/sources",
+        json={
+            "title": "Podcast-Folge",
+            "url": "https://cdn.example.org/episode.mp3",
+            "text": "Inhalt der Folge.",
+        },
+    )
+    source_id = create_res.json()["id"]
+
+    stored = list((main_module.AUDIO_DIR).glob(f"{source_id}.*"))
+    assert len(stored) == 1
+    assert stored[0].read_bytes() == b"ID3-fake-audio-data"
+
+
+def test_delete_source_removes_audio_file(client, monkeypatch):
+    monkeypatch.setattr(extraction, "looks_like_audio", lambda url: True)
+    monkeypatch.setattr(extraction, "looks_like_pdf", lambda url: False)
+    monkeypatch.setattr(extraction, "download_audio_bytes", lambda url: b"ID3-fake-audio-data")
+
+    create_res = client.post(
+        "/api/sources",
+        json={
+            "title": "Podcast-Folge",
+            "url": "https://cdn.example.org/episode.mp3",
+            "text": "Inhalt der Folge.",
+        },
+    )
+    source_id = create_res.json()["id"]
+    assert list(main_module.AUDIO_DIR.glob(f"{source_id}.*"))
+
+    client.delete(f"/api/sources/{source_id}")
+
+    assert not list(main_module.AUDIO_DIR.glob(f"{source_id}.*"))

@@ -8,6 +8,7 @@ class SourceIn(BaseModel):
     author: Optional[str] = None
     date: Optional[str] = None
     url: Optional[str] = None
+    listen_url: Optional[str] = None
     text: str
     pdf_upload_id: Optional[str] = None
     restricted: bool = False
@@ -21,6 +22,7 @@ class SourceOut(BaseModel):
     author: Optional[str] = None
     date: Optional[str] = None
     url: Optional[str] = None
+    listen_url: Optional[str] = None
     imported_at: str
     chunk_count: int
     text: str
@@ -41,6 +43,7 @@ class ChunkRef(BaseModel):
     author: Optional[str] = None
     date: Optional[str] = None
     url: Optional[str] = None
+    listen_url: Optional[str] = None
     position: int
     text: str
 

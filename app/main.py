@@ -2,6 +2,7 @@ import json
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, File, Header, HTTPException, UploadFile
@@ -59,6 +60,7 @@ SOURCES_FILE = DATA_DIR / "sources.json"
 STATIC_DIR = BASE_DIR / "static"
 PDF_DIR = DATA_DIR / "pdfs"
 PDF_UPLOAD_STAGING_DIR = DATA_DIR / "pdf_uploads"
+AUDIO_DIR = DATA_DIR / "audio"
 
 DATA_DIR.mkdir(exist_ok=True)
 
@@ -114,6 +116,36 @@ def _delete_pdf_file(source_id: str) -> None:
         pdf_path.unlink()
 
 
+def _audio_extension(url: str) -> str:
+    suffix = Path(urlsplit(url).path).suffix.lower()
+    return suffix if suffix in extraction.AUDIO_EXTENSIONS else ".mp3"
+
+
+def _existing_audio_file(source_id: str) -> Path | None:
+    matches = list(AUDIO_DIR.glob(f"{source_id}.*"))
+    return matches[0] if matches else None
+
+
+def _sync_audio_file_from_url(source_id: str, url: str | None) -> None:
+    existing = _existing_audio_file(source_id)
+    if url and extraction.looks_like_audio(url):
+        data = extraction.download_audio_bytes(url)
+        if data:
+            AUDIO_DIR.mkdir(parents=True, exist_ok=True)
+            if existing:
+                existing.unlink()
+            (AUDIO_DIR / f"{source_id}{_audio_extension(url)}").write_bytes(data)
+            return
+    if existing:
+        existing.unlink()
+
+
+def _delete_audio_file(source_id: str) -> None:
+    existing = _existing_audio_file(source_id)
+    if existing:
+        existing.unlink()
+
+
 def _store_chunks(
     source_id: str, source: SourceIn, chunks: list[str], chunk_embeddings: list[list[float]]
 ) -> int:
@@ -125,6 +157,7 @@ def _store_chunks(
             "author": source.author or "",
             "date": source.date or "",
             "url": source.url or "",
+            "listen_url": source.listen_url or "",
             "position": i,
         }
         for i in range(len(chunks))
@@ -133,9 +166,9 @@ def _store_chunks(
     return len(chunks)
 
 
-def _to_source_out(entry: dict) -> SourceOut:
+def _to_source_out(entry: dict, can_view_full_text: bool = False) -> SourceOut:
     data = dict(entry)
-    if data.get("restricted"):
+    if data.get("restricted") and not can_view_full_text:
         data["text"] = ""
     return SourceOut(**data)
 
@@ -161,6 +194,7 @@ def add_source(
         "author": source.author,
         "date": source.date,
         "url": source.url,
+        "listen_url": source.listen_url,
         "imported_at": imported_at,
         "chunk_count": chunk_count,
         "text": source.text.strip(),
@@ -177,8 +211,9 @@ def add_source(
         _consume_pdf_upload(source_id, source.pdf_upload_id)
     else:
         _sync_pdf_file_from_url(source_id, source.url)
+        _sync_audio_file_from_url(source_id, source.url)
 
-    return _to_source_out(sources[source_id])
+    return _to_source_out(sources[source_id], can_view_full_text=True)
 
 
 @app.put("/api/sources/{source_id}", response_model=SourceOut)
@@ -207,6 +242,7 @@ def update_source(
             "author": source.author,
             "date": source.date,
             "url": source.url,
+            "listen_url": source.listen_url,
             "restricted": source.restricted,
         }
     )
@@ -228,8 +264,9 @@ def update_source(
         _consume_pdf_upload(source_id, source.pdf_upload_id)
     elif not metadata_only:
         _sync_pdf_file_from_url(source_id, source.url)
+        _sync_audio_file_from_url(source_id, source.url)
 
-    return _to_source_out(sources[source_id])
+    return _to_source_out(sources[source_id], can_view_full_text=True)
 
 
 @app.delete("/api/sources/{source_id}", status_code=204)
@@ -248,12 +285,14 @@ def delete_source(
     authors.unregister_source(source_id)
     terms.unregister_source(source_id)
     _delete_pdf_file(source_id)
+    _delete_audio_file(source_id)
 
 
 @app.get("/api/sources", response_model=list[SourceOut])
-def list_sources():
+def list_sources(x_dev_user: str = Header(default="anon")):
+    can_view_full_text = users.has_role(x_dev_user, users.QUELLEN_PFLEGER)
     sources = _load_sources()
-    return [_to_source_out(entry) for entry in sources.values()]
+    return [_to_source_out(entry, can_view_full_text) for entry in sources.values()]
 
 
 @app.get("/api/authors", response_model=list[AuthorOut])
@@ -339,6 +378,7 @@ def ask(question: QuestionIn, x_lang: str = Header(default=i18n.DEFAULT_LANG)):
                 author=meta["author"] or None,
                 date=meta["date"] or None,
                 url=meta["url"] or None,
+                listen_url=meta.get("listen_url") or None,
                 position=meta["position"],
                 text=doc,
             )

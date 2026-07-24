@@ -1,4 +1,5 @@
 import { initI18n, t, getLang } from '/i18n.js';
+import { renderMarkdown } from '/markdown.js';
 
 const EXTERNAL_LINK_ICON =
   '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" ' +
@@ -14,6 +15,117 @@ function truncateWords(text, maxWords) {
     return text.trim();
   }
   return words.slice(0, maxWords).join(' ') + '…';
+}
+
+function buildSourceInfo(s) {
+  const wrapper = document.createElement('div');
+  wrapper.className = 'citation-card-content';
+
+  const heading = document.createElement('p');
+  heading.className = 'citation-card-heading';
+  heading.textContent = `${s.title} – ${s.author || t('common.unknownAuthor')} (${s.date || t('common.noDate')})`;
+  wrapper.appendChild(heading);
+
+  const excerpt = document.createElement('p');
+  excerpt.className = 'citation-card-text';
+  excerpt.textContent = truncateWords(s.text, 100);
+  wrapper.appendChild(excerpt);
+
+  const citationUrl = s.listen_url || s.url;
+  if (citationUrl) {
+    const a = document.createElement('a');
+    a.href = citationUrl;
+    a.target = '_blank';
+    a.rel = 'noopener noreferrer';
+    a.className = 'external-link';
+    const label = t('common.openSource');
+    a.title = label;
+    a.setAttribute('aria-label', label);
+    a.innerHTML = EXTERNAL_LINK_ICON;
+    wrapper.appendChild(a);
+  }
+
+  return wrapper;
+}
+
+function renderSourcesList(sourcesList, sources) {
+  sourcesList.innerHTML = '';
+  sources.forEach((s) => {
+    const li = document.createElement('li');
+    const details = document.createElement('details');
+    const summary = document.createElement('summary');
+    summary.textContent = `${s.title} – ${s.author || t('common.unknownAuthor')} (${s.date || t('common.noDate')})`;
+    details.appendChild(summary);
+    const p = document.createElement('p');
+    p.textContent = truncateWords(s.text, 100);
+    details.appendChild(p);
+    const citationUrl = s.listen_url || s.url;
+    if (citationUrl) {
+      const a = document.createElement('a');
+      a.href = citationUrl;
+      a.target = '_blank';
+      a.rel = 'noopener noreferrer';
+      a.className = 'external-link';
+      const label = t('common.openSource');
+      a.title = label;
+      a.setAttribute('aria-label', label);
+      a.innerHTML = EXTERNAL_LINK_ICON;
+      details.appendChild(a);
+    }
+    li.appendChild(details);
+    sourcesList.appendChild(li);
+  });
+}
+
+function makeCitationsClickable(container, sources) {
+  const openCards = new Map();
+  const textNodes = [];
+  const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
+  let node = walker.nextNode();
+  while (node) {
+    if (/\[\d+\]/.test(node.textContent)) {
+      textNodes.push(node);
+    }
+    node = walker.nextNode();
+  }
+
+  textNodes.forEach((textNode) => {
+    const parts = textNode.textContent.split(/(\[\d+\])/g);
+    if (parts.length === 1) return;
+    const frag = document.createDocumentFragment();
+    parts.forEach((part) => {
+      const match = part.match(/^\[(\d+)\]$/);
+      if (match) {
+        const index = parseInt(match[1], 10) - 1;
+        const source = sources[index];
+        if (!source) {
+          frag.appendChild(document.createTextNode(part));
+          return;
+        }
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'citation-ref';
+        btn.textContent = part;
+        btn.addEventListener('click', () => {
+          const paragraph = btn.closest('p') || container;
+          if (openCards.has(index)) {
+            openCards.get(index).remove();
+            openCards.delete(index);
+            return;
+          }
+          const card = document.createElement('div');
+          card.className = 'citation-card';
+          card.appendChild(buildSourceInfo(source));
+          paragraph.insertAdjacentElement('afterend', card);
+          openCards.set(index, card);
+        });
+        frag.appendChild(btn);
+      } else if (part) {
+        frag.appendChild(document.createTextNode(part));
+      }
+    });
+    textNode.parentNode.replaceChild(frag, textNode);
+  });
 }
 
 await initI18n();
@@ -36,31 +148,9 @@ document.getElementById('question-form').addEventListener('submit', async (e) =>
       throw new Error(err.detail || t('index.askError'));
     }
     const data = await res.json();
-    answerDiv.textContent = data.answer;
-    data.sources.forEach((s) => {
-      const li = document.createElement('li');
-      const details = document.createElement('details');
-      const summary = document.createElement('summary');
-      summary.textContent = `${s.title} – ${s.author || t('common.unknownAuthor')} (${s.date || t('common.noDate')})`;
-      details.appendChild(summary);
-      const p = document.createElement('p');
-      p.textContent = truncateWords(s.text, 100);
-      details.appendChild(p);
-      if (s.url) {
-        const a = document.createElement('a');
-        a.href = s.url;
-        a.target = '_blank';
-        a.rel = 'noopener noreferrer';
-        a.className = 'external-link';
-        const label = t('common.openSource');
-        a.title = label;
-        a.setAttribute('aria-label', label);
-        a.innerHTML = EXTERNAL_LINK_ICON;
-        details.appendChild(a);
-      }
-      li.appendChild(details);
-      sourcesList.appendChild(li);
-    });
+    answerDiv.innerHTML = renderMarkdown(data.answer);
+    makeCitationsClickable(answerDiv, data.sources);
+    renderSourcesList(sourcesList, data.sources);
   } catch (err) {
     answerDiv.textContent = t('common.errorPrefix') + err.message;
   }

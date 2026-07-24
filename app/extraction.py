@@ -80,6 +80,48 @@ def _extract_youtube(url: str) -> dict:
     }
 
 
+AUDIO_EXTENSIONS = (".mp3", ".wav", ".m4a", ".ogg", ".flac", ".aac")
+
+
+def looks_like_audio(url: str) -> bool:
+    path = url.lower().split("?")[0]
+    if path.endswith(AUDIO_EXTENSIONS):
+        return True
+    try:
+        req = urllib.request.Request(url, method="HEAD", headers={"User-Agent": "Mozilla/5.0"})
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            return resp.headers.get("Content-Type", "").lower().startswith("audio/")
+    except Exception:
+        return False
+
+
+def download_audio_bytes(url: str) -> bytes | None:
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+        with urllib.request.urlopen(req, timeout=60) as resp:
+            return resp.read()
+    except Exception:
+        return None
+
+
+def _guess_title_from_url(url: str) -> str:
+    path = urlparse(url).path
+    stem = path.rsplit("/", 1)[-1]
+    stem = re.sub(r"\.[a-zA-Z0-9]+$", "", stem)
+    stem = re.sub(r"[-_]+", " ", stem).strip()
+    return stem.capitalize() if stem else ""
+
+
+def _extract_audio(url: str) -> dict:
+    return {
+        "title": _guess_title_from_url(url),
+        "author": "",
+        "date": "",
+        "text": "",
+        "extracted": False,
+    }
+
+
 def looks_like_pdf(url: str) -> bool:
     if url.lower().split("?")[0].endswith(".pdf"):
         return True
@@ -140,6 +182,9 @@ def extract_pdf(data: bytes) -> dict:
 def extract_from_url(url: str) -> dict:
     if _is_youtube_url(url):
         return _extract_youtube(url)
+
+    if looks_like_audio(url):
+        return _extract_audio(url)
 
     if looks_like_pdf(url):
         data = download_pdf_bytes(url)

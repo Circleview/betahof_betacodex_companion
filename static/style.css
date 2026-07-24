@@ -228,6 +228,36 @@ textarea {
   accent-color: var(--color-accent);
 }
 
+.markup-toolbar {
+  display: flex;
+  gap: 0.4rem;
+  margin: 0.35rem 0 0.5rem;
+}
+
+.markup-button {
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.markup-button:hover {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+}
+
+.markup-button.markup-bold {
+  font-weight: 800;
+}
+
+.markup-button.markup-italic {
+  font-style: italic;
+}
+
 button {
   font-family: inherit;
 }
@@ -296,7 +326,6 @@ section {
 }
 
 #answer {
-  white-space: pre-wrap;
   background: var(--color-surface);
   border-radius: var(--radius);
   padding: 1.1rem 1.25rem;
@@ -307,6 +336,56 @@ section {
 #answer:empty {
   padding: 0;
   margin-top: 0;
+}
+
+#answer p {
+  margin: 0 0 0.9rem;
+}
+
+#answer p:last-child {
+  margin-bottom: 0;
+}
+
+.md-heading {
+  display: block;
+  margin-top: 0.6rem;
+}
+
+.citation-ref {
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0 0.05em;
+  color: var(--color-accent);
+  font: inherit;
+  font-weight: 700;
+  font-size: 0.85em;
+  vertical-align: super;
+  cursor: pointer;
+}
+
+.citation-ref:hover {
+  color: var(--color-accent-hover);
+  text-decoration: underline;
+}
+
+.citation-card {
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-left: 3px solid var(--color-accent);
+  border-radius: var(--radius);
+  padding: 0.9rem 1rem;
+  margin: 0.6rem 0 1rem;
+}
+
+.citation-card-heading {
+  font-weight: 600;
+  margin: 0 0 0.5rem;
+}
+
+.citation-card-text {
+  color: var(--color-text-muted);
+  margin: 0 0 0.5rem;
 }
 
 #answer-sources, #source-list, #author-list {
@@ -374,6 +453,21 @@ section {
 .term-link:hover {
   color: var(--color-accent-hover);
   text-decoration: underline;
+}
+
+.source-excerpt {
+  color: var(--color-text-muted);
+}
+
+.source-open-link {
+  display: inline-block;
+  margin-top: 0.6rem;
+  color: var(--color-accent);
+  font-weight: 600;
+}
+
+.source-open-link:hover {
+  color: var(--color-accent-hover);
 }
 
 .sort-toolbar {

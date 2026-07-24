@@ -10,7 +10,6 @@
   "common.cancel": "Cancel",
   "common.sourceCountOne": "{count} source",
   "common.sourceCountMany": "{count} sources",
-  "common.chunkCount": "{count} chunks",
   "common.restrictedBadge": "Protected",
   "common.urlUnreachable": "Original URL unreachable",
 
@@ -67,5 +66,8 @@
   "import.fieldSummary": "Summary",
   "import.fieldKeyTerms": "Terms (comma-separated)",
   "import.sortByAuthor": "Sort by author",
-  "import.sortByDate": "Sort by date (newest first)"
+  "import.sortByDate": "Sort by date (newest first)",
+  "import.markupBold": "Bold",
+  "import.markupItalic": "Italic",
+  "import.markupHeading": "Heading"
 }

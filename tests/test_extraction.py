@@ -1,7 +1,14 @@
 import json
 from unittest.mock import MagicMock, patch
 
-from app.extraction import download_pdf_bytes, extract_from_url, extract_pdf, looks_like_pdf
+from app.extraction import (
+    download_audio_bytes,
+    download_pdf_bytes,
+    extract_from_url,
+    extract_pdf,
+    looks_like_audio,
+    looks_like_pdf,
+)
 
 
 def test_extract_from_url_returns_fields_on_success():
@@ -188,3 +195,45 @@ def test_extract_from_url_reports_failure_when_pdf_download_fails():
         result = extract_from_url("https://example.org/paper.pdf")
 
     assert result["extracted"] is False
+
+
+def test_looks_like_audio_detects_extension():
+    assert looks_like_audio("https://example.org/episode.mp3") is True
+    assert looks_like_audio("https://example.org/episode.mp3?x=1") is True
+
+
+def test_looks_like_audio_checks_content_type_when_no_extension():
+    resp = MagicMock()
+    resp.headers = {"Content-Type": "audio/mpeg"}
+    resp.__enter__.return_value = resp
+    with patch("app.extraction.urllib.request.urlopen", return_value=resp):
+        assert looks_like_audio("https://example.org/download?id=42") is True
+
+
+def test_looks_like_audio_false_for_html_content_type():
+    resp = MagicMock()
+    resp.headers = {"Content-Type": "text/html"}
+    resp.__enter__.return_value = resp
+    with patch("app.extraction.urllib.request.urlopen", return_value=resp):
+        assert looks_like_audio("https://example.org/artikel") is False
+
+
+def test_download_audio_bytes_returns_content():
+    resp = MagicMock()
+    resp.read.return_value = b"ID3-fake-mp3-data"
+    resp.__enter__.return_value = resp
+    with patch("app.extraction.urllib.request.urlopen", return_value=resp):
+        assert download_audio_bytes("https://example.org/episode.mp3") == b"ID3-fake-mp3-data"
+
+
+def test_download_audio_bytes_returns_none_on_error():
+    with patch("app.extraction.urllib.request.urlopen", side_effect=RuntimeError("boom")):
+        assert download_audio_bytes("https://example.org/episode.mp3") is None
+
+
+def test_extract_from_url_routes_audio_to_manual_fallback():
+    result = extract_from_url("https://example.org/podcast/folge-42-ueber-dezentralisierung.mp3")
+
+    assert result["extracted"] is False
+    assert result["text"] == ""
+    assert result["title"] == "Folge 42 ueber dezentralisierung"

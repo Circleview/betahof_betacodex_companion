@@ -10,7 +10,6 @@
   "common.cancel": "Abbrechen",
   "common.sourceCountOne": "{count} Quelle",
   "common.sourceCountMany": "{count} Quellen",
-  "common.chunkCount": "{count} Chunks",
   "common.restrictedBadge": "Geschützt",
   "common.urlUnreachable": "Original-URL nicht erreichbar",
 
@@ -67,5 +66,8 @@
   "import.fieldSummary": "Zusammenfassung",
   "import.fieldKeyTerms": "Begriffe (kommagetrennt)",
   "import.sortByAuthor": "Nach Autor:in sortieren",
-  "import.sortByDate": "Nach Datum sortieren (neueste zuerst)"
+  "import.sortByDate": "Nach Datum sortieren (neueste zuerst)",
+  "import.markupBold": "Fett",
+  "import.markupItalic": "Kursiv",
+  "import.markupHeading": "Überschrift"
 }
