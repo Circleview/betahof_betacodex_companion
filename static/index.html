@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<title>BetaCodex Wissensassistent</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<h1>BetaCodex Wissensassistent</h1>
+<p><em>Durchstich-Version &ndash; bewusst schmucklos.</em></p>
+
+<section id="import-bereich">
+  <h2>Quelle importieren</h2>
+  <form id="source-form">
+    <label>Titel*
+      <input type="text" id="title" required>
+    </label>
+    <label>Autor
+      <input type="text" id="author">
+    </label>
+    <label>Datum
+      <input type="text" id="date" placeholder="z. B. 2024-01-15">
+    </label>
+    <label>URL
+      <input type="url" id="url">
+    </label>
+    <label>Text*
+      <textarea id="text" rows="10" required></textarea>
+    </label>
+    <button type="submit">Importieren</button>
+  </form>
+  <p id="import-status"></p>
+
+  <h3>Importierte Quellen</h3>
+  <ul id="source-list"></ul>
+</section>
+
+<hr>
+
+<section id="frage-bereich">
+  <h2>Frage stellen</h2>
+  <form id="question-form">
+    <input type="text" id="question" placeholder="Deine Frage zum BetaCodex" required>
+    <button type="submit">Fragen</button>
+  </form>
+  <div id="answer"></div>
+  <h3>Verwendete Quellen</h3>
+  <ol id="answer-sources"></ol>
+</section>
+
+<script src="/app.js"></script>
+</body>
+</html>
