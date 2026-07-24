@@ -91,3 +91,8 @@ class UrlCheckOut(BaseModel):
     has_url: bool
     reachable: Optional[bool] = None
     status_code: Optional[int] = None
+
+
+class SummaryOut(BaseModel):
+    summary: str
+    key_terms: list[str]

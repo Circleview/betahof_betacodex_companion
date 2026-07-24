@@ -32,6 +32,7 @@ from app.models import (
     QuestionIn,
     SourceIn,
     SourceOut,
+    SummaryOut,
     TermOut,
     UrlCheckOut,
     UrlIn,
@@ -326,6 +327,21 @@ def check_source_url(
 
     result = monitoring.check_url(url)
     return UrlCheckOut(has_url=True, **result)
+
+
+@app.post("/api/sources/{source_id}/generate-summary", response_model=SummaryOut)
+def generate_source_summary(
+    source_id: str,
+    _user: str = Depends(require_role(users.QUELLEN_PFLEGER)),
+    x_lang: str = Header(default=i18n.DEFAULT_LANG),
+):
+    sources = _load_sources()
+    if source_id not in sources:
+        raise HTTPException(404, i18n.get_message("source_not_found", x_lang))
+
+    text = sources[source_id].get("text", "")
+    result = summarization.generate_summary(text, lang=x_lang)
+    return SummaryOut(**result)
 
 
 @app.post("/api/extract-pdf-upload", response_model=ExtractedUpload)

@@ -30,6 +30,12 @@ const TRASH_ICON =
   '<path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"></path>' +
   "</svg>";
 
+const MAGIC_ICON =
+  '<svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor" stroke="none">' +
+  '<path d="M12 2l1.8 5.2L19 9l-5.2 1.8L12 16l-1.8-5.2L5 9l5.2-1.8L12 2z"></path>' +
+  '<path d="M19 13l.9 2.1L22 16l-2.1.9L19 19l-.9-2.1L16 16l2.1-.9L19 13z"></path>' +
+  "</svg>";
+
 const WARNING_ICON =
   '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" ' +
   'stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
@@ -325,6 +331,14 @@ function buildEditPanel(s, options = {}) {
     'text'
   );
 
+  if (!pendingDeletion) {
+    const magicButtons = [];
+    const triggerGenerate = () =>
+      generateSummaryFields(s.id, summaryInput, keyTermsInput, status, magicButtons);
+    magicButtons.push(addMagicButton(summaryInput, triggerGenerate));
+    magicButtons.push(addMagicButton(keyTermsInput, triggerGenerate));
+  }
+
   if (pendingDeletion) {
     [
       titleInput,
@@ -444,6 +458,51 @@ function buildEditPanel(s, options = {}) {
 
   li.appendChild(form);
   return li;
+}
+
+function addMagicButton(input, onClick) {
+  const wrapper = document.createElement('div');
+  wrapper.className = 'field-with-magic';
+  input.parentNode.insertBefore(wrapper, input);
+  wrapper.appendChild(input);
+
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'magic-button';
+  const title = t('import.generateSummaryTitle');
+  btn.title = title;
+  btn.setAttribute('aria-label', title);
+  btn.innerHTML = MAGIC_ICON;
+  btn.addEventListener('click', onClick);
+  wrapper.appendChild(btn);
+  return btn;
+}
+
+async function generateSummaryFields(sourceId, summaryInput, keyTermsInput, statusEl, buttons) {
+  buttons.forEach((b) => {
+    b.disabled = true;
+  });
+  statusEl.textContent = t('import.generatingSummary');
+  try {
+    const res = await fetch(`/api/sources/${sourceId}/generate-summary`, {
+      method: 'POST',
+      headers: devUserHeaders(),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || t('import.generateSummaryFailed'));
+    }
+    const data = await res.json();
+    if (!summaryInput.value.trim()) summaryInput.value = data.summary;
+    if (!keyTermsInput.value.trim()) keyTermsInput.value = data.key_terms.join(', ');
+    statusEl.textContent = '';
+  } catch (err) {
+    statusEl.textContent = t('common.errorPrefix') + err.message;
+  } finally {
+    buttons.forEach((b) => {
+      b.disabled = false;
+    });
+  }
 }
 
 function scheduleDeletion(s) {

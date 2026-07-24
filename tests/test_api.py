@@ -458,6 +458,47 @@ def test_update_restricted_source_with_new_text_replaces_it(client):
     assert result["documents"][0][0] == "Ersetzter Text."
 
 
+def test_generate_source_summary_returns_ai_result(client, monkeypatch):
+    create_res = client.post(
+        "/api/sources",
+        json={"title": "Ohne Zusammenfassung", "text": "Ein längerer Quelltext."},
+    )
+    source_id = create_res.json()["id"]
+
+    monkeypatch.setattr(
+        summarization,
+        "generate_summary",
+        lambda text, lang="de": {"summary": "KI-Zusammenfassung.", "key_terms": ["Begriff A", "Begriff B"]},
+    )
+
+    response = client.post(f"/api/sources/{source_id}/generate-summary")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["summary"] == "KI-Zusammenfassung."
+    assert data["key_terms"] == ["Begriff A", "Begriff B"]
+
+
+def test_generate_source_summary_requires_pfleger_role(client):
+    create_res = client.post(
+        "/api/sources",
+        json={"title": "Quelle", "text": "Text."},
+    )
+    source_id = create_res.json()["id"]
+
+    response = client.post(
+        f"/api/sources/{source_id}/generate-summary",
+        headers={"X-Dev-User": "anon"},
+    )
+
+    assert response.status_code == 403
+
+
+def test_generate_source_summary_unknown_source_returns_404(client):
+    response = client.post("/api/sources/does-not-exist/generate-summary")
+    assert response.status_code == 404
+
+
 def test_extract_pdf_upload_returns_extracted_fields(client, monkeypatch):
     monkeypatch.setattr(
         extraction,

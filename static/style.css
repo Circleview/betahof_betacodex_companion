@@ -203,6 +203,42 @@ input, textarea {
   box-sizing: border-box;
 }
 
+.field-with-magic {
+  position: relative;
+}
+
+.field-with-magic > textarea,
+.field-with-magic > input {
+  padding-right: 2.5rem;
+}
+
+.magic-button {
+  position: absolute;
+  top: 0.65rem;
+  right: 0.4rem;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-text-muted);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  cursor: pointer;
+}
+
+.magic-button:hover {
+  color: var(--color-accent);
+  border-color: var(--color-accent);
+}
+
+.magic-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 input:focus, textarea:focus {
   outline: none;
   border-color: var(--color-accent);
@@ -559,8 +595,9 @@ section {
   border-bottom: none;
 }
 
-#source-list li.source-edit-panel--pending-deletion {
-  opacity: 0.65;
+#source-list li.source-edit-panel--pending-deletion label,
+#source-list li.source-edit-panel--pending-deletion .checkbox-label {
+  opacity: 0.6;
 }
 
 .source-edit-panel input:disabled,
