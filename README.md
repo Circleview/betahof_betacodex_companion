@@ -164,6 +164,22 @@ uvicorn app.main:app --reload
 
 Danach `http://127.0.0.1:8000/` im Browser öffnen. Ohne gültigen `ANTHROPIC_API_KEY` in `.env` funktioniert der Import (Chunking/Embedding/Ablage in Chroma), aber `/api/ask` schlägt beim eigentlichen LLM-Aufruf fehl.
 
+### Zwei parallele Instanzen: Dev und Stabil
+
+Damit während laufender Weiterentwicklung immer eine funktionierende Version zum Testen bereitsteht, gibt es zwei Instanzen nebeneinander:
+
+- **Dev** (`Beta-Kodex - Wissenspartner/`, Port 8000): der aktive Arbeitsstand, kann jederzeit kurzzeitig instabil sein (Server-Neustarts während der Entwicklung).
+- **Stabil** (`Beta-Kodex - Wissenspartner (stabil)/`, Port 8001): ein separates [Git Worktree](https://git-scm.com/docs/git-worktree), das auf dem jeweils letzten getaggten Stand steht (aktuell `v0.2`), mit eigenem venv und eigener `.env`-Kopie. Wird nur bei erreichten, getesteten Meilensteinen aktualisiert:
+  ```bash
+  cd "Beta-Kodex - Wissenspartner (stabil)"
+  git fetch origin --tags
+  git checkout v0.3          # jeweils aktueller Tag
+  ./venv/bin/pip install -r requirements.txt   # falls sich Abhängigkeiten geändert haben
+  # Server neu starten
+  ```
+
+`http://127.0.0.1:8001/` ist damit die Adresse zum Testen, unabhängig davon, woran gerade auf Port 8000 gearbeitet wird.
+
 ### Schutz vor versehentlichem Secret-Commit
 
 `.env` ist in `.gitignore` und wird dadurch nicht getrackt. Zusätzlich blockt ein Pre-Commit-Hook (`scripts/git-hooks/pre-commit`) jeden Commit, der eine `.env`-artige Datei enthält (z. B. bei `git add -f` aus Versehen). Der Hook ist Teil des Repos, muss aber **nach jedem frischen Clone einmalig aktiviert werden**:
