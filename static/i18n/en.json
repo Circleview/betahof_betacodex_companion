@@ -5,7 +5,7 @@
   "common.openSource": "Open source",
   "common.editSource": "Edit source",
   "common.deleteSource": "Delete source",
-  "common.undo": "Undo",
+  "common.undo": "Revoke deletion",
   "common.deletingStatus": "{title} – being deleted",
   "common.cancel": "Cancel",
   "common.sourceCountOne": "{count} source",

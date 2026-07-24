@@ -263,9 +263,14 @@ function normalizeAuthor(name) {
   return name.trim().split(/\s+/).join(' ').toLowerCase();
 }
 
-function buildEditPanel(s) {
+function buildEditPanel(s, options = {}) {
+  const pendingDeletion = !!options.pendingDeletion;
+
   const li = document.createElement('li');
   li.className = 'source-edit-panel';
+  if (pendingDeletion) {
+    li.classList.add('source-edit-panel--pending-deletion');
+  }
 
   const form = document.createElement('form');
   const status = document.createElement('p');
@@ -320,84 +325,133 @@ function buildEditPanel(s) {
     'text'
   );
 
+  if (pendingDeletion) {
+    [
+      titleInput,
+      authorInput,
+      dateInput,
+      urlInput,
+      listenUrlInput,
+      textInput,
+      restrictedInput,
+      summaryInput,
+      keyTermsInput,
+    ].forEach((input) => {
+      input.disabled = true;
+    });
+  }
+
   const actionsRow = document.createElement('div');
   actionsRow.className = 'edit-panel-actions';
 
-  const primaryActions = document.createElement('div');
+  if (pendingDeletion) {
+    const noticeRow = document.createElement('div');
+    noticeRow.className = 'source-row-top';
 
-  const submitBtn = document.createElement('button');
-  submitBtn.type = 'submit';
-  submitBtn.textContent = t('import.updateButton');
-  primaryActions.appendChild(submitBtn);
+    const noticeText = document.createElement('span');
+    noticeText.textContent = t('common.deletingStatus', { title: s.title });
+    noticeRow.appendChild(noticeText);
 
-  const cancelBtn = document.createElement('button');
-  cancelBtn.type = 'button';
-  cancelBtn.className = 'link-button';
-  cancelBtn.textContent = t('common.cancel');
-  cancelBtn.addEventListener('click', () => {
-    activeEditId = null;
-    renderSourceList(currentDisplayedSources);
-  });
-  primaryActions.appendChild(cancelBtn);
+    const undoBtn = document.createElement('button');
+    undoBtn.type = 'button';
+    undoBtn.className = 'link-button';
+    undoBtn.textContent = t('common.undo');
+    undoBtn.addEventListener('click', () => cancelDeletion(s.id));
+    noticeRow.appendChild(undoBtn);
 
-  actionsRow.appendChild(primaryActions);
+    form.appendChild(noticeRow);
 
-  const deleteBtn = document.createElement('button');
-  deleteBtn.type = 'button';
-  deleteBtn.className = 'icon-button delete-button';
-  const deleteLabel = t('common.deleteSource');
-  deleteBtn.title = deleteLabel;
-  deleteBtn.setAttribute('aria-label', deleteLabel);
-  deleteBtn.innerHTML = TRASH_ICON;
-  deleteBtn.addEventListener('click', () => {
-    activeEditId = null;
-    scheduleDeletion(s);
-  });
-  actionsRow.appendChild(deleteBtn);
+    const bar = document.createElement('div');
+    bar.className = 'undo-bar';
+    const fill = document.createElement('div');
+    fill.className = 'undo-bar-fill';
+    bar.appendChild(fill);
+    form.appendChild(bar);
+
+    requestAnimationFrame(() => {
+      fill.style.transitionDuration = `${UNDO_DURATION_MS}ms`;
+      fill.style.width = '0%';
+    });
+  } else {
+    const primaryActions = document.createElement('div');
+
+    const submitBtn = document.createElement('button');
+    submitBtn.type = 'submit';
+    submitBtn.textContent = t('import.updateButton');
+    primaryActions.appendChild(submitBtn);
+
+    const cancelBtn = document.createElement('button');
+    cancelBtn.type = 'button';
+    cancelBtn.className = 'link-button';
+    cancelBtn.textContent = t('common.cancel');
+    cancelBtn.addEventListener('click', () => {
+      activeEditId = null;
+      renderSourceList(currentDisplayedSources);
+    });
+    primaryActions.appendChild(cancelBtn);
+
+    actionsRow.appendChild(primaryActions);
+
+    const deleteBtn = document.createElement('button');
+    deleteBtn.type = 'button';
+    deleteBtn.className = 'icon-button delete-button';
+    const deleteLabel = t('common.deleteSource');
+    deleteBtn.title = deleteLabel;
+    deleteBtn.setAttribute('aria-label', deleteLabel);
+    deleteBtn.innerHTML = TRASH_ICON;
+    deleteBtn.addEventListener('click', () => scheduleDeletion(s));
+    actionsRow.appendChild(deleteBtn);
+  }
 
   form.appendChild(actionsRow);
   form.appendChild(status);
 
-  form.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    status.textContent = t('import.updating');
-    try {
-      const res = await fetch(`/api/sources/${s.id}`, {
-        method: 'PUT',
-        headers: devUserHeaders(),
-        body: JSON.stringify({
-          title: titleInput.value,
-          author: authorInput.value || null,
-          date: dateInput.value || null,
-          url: urlInput.value || null,
-          listen_url: listenUrlInput.value || null,
-          text: textInput.value,
-          restricted: restrictedInput.checked,
-          summary: summaryInput.value,
-          key_terms: keyTermsInput.value
-            .split(',')
-            .map((term) => term.trim())
-            .filter((term) => term),
-        }),
-      });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err.detail || t('import.updateFailed'));
+  if (!pendingDeletion) {
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      status.textContent = t('import.updating');
+      try {
+        const res = await fetch(`/api/sources/${s.id}`, {
+          method: 'PUT',
+          headers: devUserHeaders(),
+          body: JSON.stringify({
+            title: titleInput.value,
+            author: authorInput.value || null,
+            date: dateInput.value || null,
+            url: urlInput.value || null,
+            listen_url: listenUrlInput.value || null,
+            text: textInput.value,
+            restricted: restrictedInput.checked,
+            summary: summaryInput.value,
+            key_terms: keyTermsInput.value
+              .split(',')
+              .map((term) => term.trim())
+              .filter((term) => term),
+          }),
+        });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error(err.detail || t('import.updateFailed'));
+        }
+        activeEditId = null;
+        loadSources();
+        loadAuthors();
+      } catch (err) {
+        status.textContent = t('common.errorPrefix') + err.message;
       }
-      activeEditId = null;
-      loadSources();
-      loadAuthors();
-    } catch (err) {
-      status.textContent = t('common.errorPrefix') + err.message;
-    }
-  });
+    });
+  }
 
+  li.appendChild(form);
   return li;
 }
 
 function scheduleDeletion(s) {
   const timeoutId = setTimeout(async () => {
     pendingDeletions.delete(s.id);
+    if (activeEditId === s.id) {
+      activeEditId = null;
+    }
     try {
       await fetch(`/api/sources/${s.id}`, { method: 'DELETE', headers: devUserHeaders() });
     } catch (err) {
@@ -516,6 +570,11 @@ const MONTH_NAMES = {
   ],
 };
 
+function formatYear(dateStr) {
+  if (!dateStr) return t('common.noDate');
+  return dateStr.split('-')[0];
+}
+
 function monthYearKey(dateStr) {
   if (!dateStr) return '';
   const [year, month] = dateStr.split('-');
@@ -595,7 +654,11 @@ function renderSourceList(sources, options = {}) {
     }
 
     if (pendingDeletions.has(s.id)) {
-      list.appendChild(buildUndoRow(s));
+      if (activeEditId === s.id) {
+        list.appendChild(buildEditPanel(s, { pendingDeletion: true }));
+      } else {
+        list.appendChild(buildUndoRow(s));
+      }
       return;
     }
 
@@ -618,7 +681,7 @@ function renderSourceList(sources, options = {}) {
     } else {
       textSpan.append(t('common.unknownAuthor'));
     }
-    textSpan.append(` (${s.date || t('common.noDate')})`);
+    textSpan.append(` (${formatYear(s.date)})`);
     if (s.restricted) {
       const badge = document.createElement('span');
       badge.className = 'restricted-badge';

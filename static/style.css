@@ -35,9 +35,9 @@ body {
   line-height: 1.65;
   color: var(--color-text);
   background: var(--color-bg);
-  max-width: 720px;
+  max-width: min(980px, 92vw);
   margin: 0 auto;
-  padding: 3rem 1.5rem 5rem;
+  padding: clamp(1.5rem, 5vw, 3.5rem) clamp(1rem, 4vw, 2rem) 5rem;
 }
 
 h1, h2, h3 {
@@ -72,6 +72,7 @@ h3 {
 
 header {
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
   align-items: center;
   gap: 1rem;
@@ -404,10 +405,10 @@ section {
 }
 
 .source-row-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 0.75rem;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 0.5rem 0.75rem;
 }
 
 .source-row-actions {
@@ -558,6 +559,16 @@ section {
   border-bottom: none;
 }
 
+#source-list li.source-edit-panel--pending-deletion {
+  opacity: 0.65;
+}
+
+.source-edit-panel input:disabled,
+.source-edit-panel textarea:disabled {
+  cursor: not-allowed;
+  background: var(--color-border);
+}
+
 .source-edit-panel label {
   margin-bottom: 0.9rem;
 }
@@ -570,6 +581,18 @@ section {
 
 .source-edit-panel .link-button {
   margin-left: 1rem;
+}
+
+.edit-panel-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  margin-top: 0.5rem;
+}
+
+.edit-panel-actions .delete-button {
+  flex-shrink: 0;
 }
 
 details {
@@ -640,7 +663,7 @@ details a {
   top: calc(100% + 18px);
   left: 50%;
   transform: translateX(-50%);
-  width: 360px;
+  width: min(360px, calc(100vw - 3rem));
   border: 1px solid var(--color-border);
   background: var(--color-bg);
   border-radius: var(--radius);
@@ -648,6 +671,20 @@ details a {
   padding: 1.5rem;
   z-index: 10;
   text-align: left;
+}
+
+@media (max-width: 480px) {
+  .popover {
+    position: static;
+    width: auto;
+    transform: none;
+    margin-top: 1rem;
+    box-shadow: none;
+  }
+
+  .popover-arrow {
+    display: none;
+  }
 }
 
 .popover label {
