@@ -30,8 +30,11 @@ def client(tmp_path, monkeypatch):
     )
     monkeypatch.setattr(
         summarization,
-        "generate_summary",
-        lambda text, lang="de": {"summary": "", "key_terms": []},
+        "generate_bilingual_summary",
+        lambda text: {
+            "de": {"summary": "", "key_terms": []},
+            "en": {"summary": "", "key_terms": []},
+        },
     )
 
     # Standard-Testrolle: Quellen-Pfleger:in, damit bestehende Tests nicht jeden
@@ -467,8 +470,11 @@ def test_generate_source_summary_returns_ai_result(client, monkeypatch):
 
     monkeypatch.setattr(
         summarization,
-        "generate_summary",
-        lambda text, lang="de": {"summary": "KI-Zusammenfassung.", "key_terms": ["Begriff A", "Begriff B"]},
+        "generate_bilingual_summary",
+        lambda text: {
+            "de": {"summary": "KI-Zusammenfassung.", "key_terms": ["Begriff A", "Begriff B"]},
+            "en": {"summary": "AI summary.", "key_terms": ["Term A", "Term B"]},
+        },
     )
 
     response = client.post(f"/api/sources/{source_id}/generate-summary")
@@ -477,6 +483,12 @@ def test_generate_source_summary_returns_ai_result(client, monkeypatch):
     data = response.json()
     assert data["summary"] == "KI-Zusammenfassung."
     assert data["key_terms"] == ["Begriff A", "Begriff B"]
+
+    response_en = client.post(
+        f"/api/sources/{source_id}/generate-summary", headers={"X-Lang": "en"}
+    )
+    assert response_en.json()["summary"] == "AI summary."
+    assert response_en.json()["key_terms"] == ["Term A", "Term B"]
 
 
 def test_generate_source_summary_requires_pfleger_role(client):
@@ -619,10 +631,13 @@ def test_check_source_url_returns_404_for_unknown_source(client):
 def test_add_source_generates_summary_in_background_and_registers_terms(client, monkeypatch):
     monkeypatch.setattr(
         summarization,
-        "generate_summary",
-        lambda text, lang="de": {
-            "summary": "Eine Zusammenfassung.",
-            "key_terms": ["BetaCodex", "Dezentralisierung"],
+        "generate_bilingual_summary",
+        lambda text: {
+            "de": {
+                "summary": "Eine Zusammenfassung.",
+                "key_terms": ["BetaCodex", "Dezentralisierung"],
+            },
+            "en": {"summary": "", "key_terms": []},
         },
     )
 
@@ -645,11 +660,40 @@ def test_add_source_generates_summary_in_background_and_registers_terms(client, 
     assert term_names == {"BetaCodex", "Dezentralisierung"}
 
 
+def test_summary_is_served_in_the_requested_language(client, monkeypatch):
+    monkeypatch.setattr(
+        summarization,
+        "generate_bilingual_summary",
+        lambda text: {
+            "de": {"summary": "Deutsche Zusammenfassung.", "key_terms": ["BetaCodex"]},
+            "en": {"summary": "English summary.", "key_terms": ["BetaCodex EN"]},
+        },
+    )
+    create_res = client.post("/api/sources", json={"title": "Quelle", "text": "Ein Text."})
+    source_id = create_res.json()["id"]
+
+    de_sources = client.get("/api/sources", headers={"X-Lang": "de"}).json()
+    en_sources = client.get("/api/sources", headers={"X-Lang": "en"}).json()
+    de_entry = next(s for s in de_sources if s["id"] == source_id)
+    en_entry = next(s for s in en_sources if s["id"] == source_id)
+
+    assert de_entry["summary"] == "Deutsche Zusammenfassung."
+    assert de_entry["key_terms"] == ["BetaCodex"]
+    assert en_entry["summary"] == "English summary."
+    assert en_entry["key_terms"] == ["BetaCodex EN"]
+
+    term_names = {t["term"] for t in client.get("/api/terms").json()}
+    assert term_names == {"BetaCodex", "BetaCodex EN"}
+
+
 def test_update_source_can_edit_summary_and_key_terms(client, monkeypatch):
     monkeypatch.setattr(
         summarization,
-        "generate_summary",
-        lambda text, lang="de": {"summary": "Alte Zusammenfassung.", "key_terms": ["Alt"]},
+        "generate_bilingual_summary",
+        lambda text: {
+            "de": {"summary": "Alte Zusammenfassung.", "key_terms": ["Alt"]},
+            "en": {"summary": "", "key_terms": []},
+        },
     )
     create_res = client.post("/api/sources", json={"title": "Quelle", "text": "Text."})
     source_id = create_res.json()["id"]
@@ -675,8 +719,11 @@ def test_update_source_can_edit_summary_and_key_terms(client, monkeypatch):
 def test_update_source_without_summary_field_keeps_existing_summary(client, monkeypatch):
     monkeypatch.setattr(
         summarization,
-        "generate_summary",
-        lambda text, lang="de": {"summary": "Ursprüngliche Zusammenfassung.", "key_terms": ["Alt"]},
+        "generate_bilingual_summary",
+        lambda text: {
+            "de": {"summary": "Ursprüngliche Zusammenfassung.", "key_terms": ["Alt"]},
+            "en": {"summary": "", "key_terms": []},
+        },
     )
     create_res = client.post("/api/sources", json={"title": "Quelle", "text": "Text."})
     source_id = create_res.json()["id"]
@@ -693,8 +740,11 @@ def test_update_source_without_summary_field_keeps_existing_summary(client, monk
 def test_delete_source_removes_terms(client, monkeypatch):
     monkeypatch.setattr(
         summarization,
-        "generate_summary",
-        lambda text, lang="de": {"summary": "S.", "key_terms": ["EinzigerBegriff"]},
+        "generate_bilingual_summary",
+        lambda text: {
+            "de": {"summary": "S.", "key_terms": ["EinzigerBegriff"]},
+            "en": {"summary": "", "key_terms": []},
+        },
     )
     create_res = client.post("/api/sources", json={"title": "Quelle", "text": "Text."})
     source_id = create_res.json()["id"]

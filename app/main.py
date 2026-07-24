@@ -192,23 +192,35 @@ def _store_chunks(
     return len(chunks)
 
 
-def _to_source_out(entry: dict, can_view_full_text: bool = False) -> SourceOut:
+def _to_source_out(
+    entry: dict, can_view_full_text: bool = False, lang: str = i18n.DEFAULT_LANG
+) -> SourceOut:
     data = dict(entry)
     if data.get("restricted") and not can_view_full_text:
         data["text"] = ""
+    lang = lang if lang in ("de", "en") else i18n.DEFAULT_LANG
+    data["summary"] = data.get(f"summary_{lang}") or ""
+    data["key_terms"] = data.get(f"key_terms_{lang}") or []
     return SourceOut(**data)
 
 
-def _generate_summary_background(source_id: str, text: str, lang: str) -> None:
-    result = summarization.generate_summary(text, lang=lang)
+def _register_all_terms(source_id: str, entry: dict) -> None:
+    terms.unregister_source(source_id)
+    for term in (entry.get("key_terms_de") or []) + (entry.get("key_terms_en") or []):
+        terms.register_term(term, source_id)
+
+
+def _generate_summary_background(source_id: str, text: str) -> None:
+    result = summarization.generate_bilingual_summary(text)
     sources = _load_sources()
     if source_id not in sources:
         return
-    sources[source_id]["summary"] = result["summary"]
-    sources[source_id]["key_terms"] = result["key_terms"]
+    sources[source_id]["summary_de"] = result["de"]["summary"]
+    sources[source_id]["summary_en"] = result["en"]["summary"]
+    sources[source_id]["key_terms_de"] = result["de"]["key_terms"]
+    sources[source_id]["key_terms_en"] = result["en"]["key_terms"]
     _save_sources(sources)
-    for term in result["key_terms"]:
-        terms.register_term(term, source_id)
+    _register_all_terms(source_id, sources[source_id])
 
 
 @app.post("/api/sources", response_model=SourceOut)
@@ -236,14 +248,14 @@ def add_source(
         "chunk_count": chunk_count,
         "text": source.text.strip(),
         "restricted": source.restricted,
-        "summary": "",
-        "key_terms": [],
+        "summary_de": "",
+        "summary_en": "",
+        "key_terms_de": [],
+        "key_terms_en": [],
     }
     _save_sources(sources)
     authors.register_author(source.author or "", source_id)
-    background_tasks.add_task(
-        _generate_summary_background, source_id, source.text.strip(), x_lang
-    )
+    background_tasks.add_task(_generate_summary_background, source_id, source.text.strip())
 
     if source.pdf_upload_id:
         _consume_pdf_upload(source_id, source.pdf_upload_id)
@@ -251,7 +263,7 @@ def add_source(
         _sync_pdf_file_from_url(source_id, source.url)
         _sync_audio_file_from_url(source_id, source.url)
 
-    return _to_source_out(sources[source_id], can_view_full_text=True)
+    return _to_source_out(sources[source_id], can_view_full_text=True, lang=x_lang)
 
 
 @app.put("/api/sources/{source_id}", response_model=SourceOut)
@@ -285,18 +297,16 @@ def update_source(
         }
     )
     if source.summary is not None:
-        sources[source_id]["summary"] = source.summary
+        sources[source_id][f"summary_{x_lang}"] = source.summary
     if source.key_terms is not None:
-        sources[source_id]["key_terms"] = source.key_terms
+        sources[source_id][f"key_terms_{x_lang}"] = source.key_terms
     _save_sources(sources)
 
     authors.unregister_source(source_id)
     authors.register_author(source.author or "", source_id)
 
     if source.summary is not None or source.key_terms is not None:
-        terms.unregister_source(source_id)
-        for term in sources[source_id].get("key_terms", []):
-            terms.register_term(term, source_id)
+        _register_all_terms(source_id, sources[source_id])
 
     if source.pdf_upload_id:
         _consume_pdf_upload(source_id, source.pdf_upload_id)
@@ -304,7 +314,7 @@ def update_source(
         _sync_pdf_file_from_url(source_id, source.url)
         _sync_audio_file_from_url(source_id, source.url)
 
-    return _to_source_out(sources[source_id], can_view_full_text=True)
+    return _to_source_out(sources[source_id], can_view_full_text=True, lang=x_lang)
 
 
 @app.delete("/api/sources/{source_id}", status_code=204)
@@ -327,10 +337,13 @@ def delete_source(
 
 
 @app.get("/api/sources", response_model=list[SourceOut])
-def list_sources(x_dev_user: str = Header(default="anon")):
+def list_sources(
+    x_dev_user: str = Header(default="anon"),
+    x_lang: str = Header(default=i18n.DEFAULT_LANG),
+):
     can_view_full_text = users.has_role(x_dev_user, users.QUELLEN_PFLEGER)
     sources = _load_sources()
-    return [_to_source_out(entry, can_view_full_text) for entry in sources.values()]
+    return [_to_source_out(entry, can_view_full_text, x_lang) for entry in sources.values()]
 
 
 @app.get("/api/authors", response_model=list[AuthorOut])
@@ -377,8 +390,16 @@ def generate_source_summary(
         raise HTTPException(404, i18n.get_message("source_not_found", x_lang))
 
     text = sources[source_id].get("text", "")
-    result = summarization.generate_summary(text, lang=x_lang)
-    return SummaryOut(**result)
+    result = summarization.generate_bilingual_summary(text)
+    sources[source_id]["summary_de"] = result["de"]["summary"]
+    sources[source_id]["summary_en"] = result["en"]["summary"]
+    sources[source_id]["key_terms_de"] = result["de"]["key_terms"]
+    sources[source_id]["key_terms_en"] = result["en"]["key_terms"]
+    _save_sources(sources)
+    _register_all_terms(source_id, sources[source_id])
+
+    lang = x_lang if x_lang in ("de", "en") else i18n.DEFAULT_LANG
+    return SummaryOut(summary=result[lang]["summary"], key_terms=result[lang]["key_terms"])
 
 
 @app.post("/api/extract-pdf-upload", response_model=ExtractedUpload)

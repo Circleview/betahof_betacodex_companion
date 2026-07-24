@@ -24,6 +24,15 @@ Reply EXCLUSIVELY with a JSON object in exactly this format, with no markdown co
 """,
 }
 
+BILINGUAL_SYSTEM_PROMPT = """Du erstellst eine sachliche Zusammenfassung von ungefähr 120 Wörtern für den folgenden Text – und zwar sowohl auf Deutsch als auch auf Englisch.
+
+Antworte AUSSCHLIESSLICH mit einem JSON-Objekt in genau diesem Format, ohne Markdown-Codeblock und ohne weiteren Text:
+{"summary_de": "...", "summary_en": "...", "key_terms_de": ["...", "..."], "key_terms_en": ["...", "..."]}
+
+- "summary_de"/"summary_en": inhaltlich gleichwertige Zusammenfassungen, jeweils ca. 120 Wörter, in der jeweils genannten Sprache.
+- "key_terms_de"/"key_terms_en": jeweils 3 bis 6 prägnante Begriffe/Namen aus dem Text (kurze Substantive/Eigennamen, keine ganzen Sätze) in der jeweiligen Sprache – für "key_terms_en" die übliche englische Entsprechung verwenden, falls gebräuchlich, sonst den Originalbegriff. Dienen als Schlagworte für Querverweise zu anderen Quellen.
+"""
+
 DEFAULT_LANG = "de"
 MAX_INPUT_CHARS = 12000
 
@@ -64,3 +73,44 @@ def generate_summary(text: str, lang: str = DEFAULT_LANG) -> dict:
         return _parse_response(message.content[0].text)
     except Exception:
         return {"summary": "", "key_terms": []}
+
+
+def _parse_bilingual_response(raw: str) -> dict:
+    cleaned = raw.strip()
+    cleaned = re.sub(r"^```(json)?", "", cleaned).strip()
+    cleaned = re.sub(r"```$", "", cleaned).strip()
+    data = json.loads(cleaned)
+    return {
+        "de": {
+            "summary": (data.get("summary_de") or "").strip(),
+            "key_terms": [t.strip() for t in data.get("key_terms_de") or [] if t and t.strip()],
+        },
+        "en": {
+            "summary": (data.get("summary_en") or "").strip(),
+            "key_terms": [t.strip() for t in data.get("key_terms_en") or [] if t and t.strip()],
+        },
+    }
+
+
+def generate_bilingual_summary(text: str) -> dict:
+    text = text.strip()
+    if not text:
+        return {
+            "de": {"summary": "", "key_terms": []},
+            "en": {"summary": "", "key_terms": []},
+        }
+
+    client = _get_client()
+    try:
+        message = client.messages.create(
+            model=MODEL_NAME,
+            max_tokens=1000,
+            system=BILINGUAL_SYSTEM_PROMPT,
+            messages=[{"role": "user", "content": text[:MAX_INPUT_CHARS]}],
+        )
+        return _parse_bilingual_response(message.content[0].text)
+    except Exception:
+        return {
+            "de": {"summary": "", "key_terms": []},
+            "en": {"summary": "", "key_terms": []},
+        }

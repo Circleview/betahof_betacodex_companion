@@ -629,6 +629,10 @@ function sortSources(sources) {
       const authorA = (a.author || '￿').toLowerCase();
       const authorB = (b.author || '￿').toLowerCase();
       if (authorA !== authorB) return authorA.localeCompare(authorB);
+      if (!a.date && !b.date) return a.title.localeCompare(b.title);
+      if (!a.date) return 1;
+      if (!b.date) return -1;
+      if (a.date !== b.date) return b.date.localeCompare(a.date);
       return a.title.localeCompare(b.title);
     });
   }
@@ -919,7 +923,9 @@ function setSortMode(mode) {
 }
 
 async function loadSources() {
-  const res = await fetch('/api/sources', { headers: { 'X-Dev-User': getCurrentDevUser() } });
+  const res = await fetch('/api/sources', {
+    headers: { 'X-Dev-User': getCurrentDevUser(), 'X-Lang': getLang() },
+  });
   allSources = await res.json();
   renderSourceList(allSources);
   checkUrlHealth(allSources);
