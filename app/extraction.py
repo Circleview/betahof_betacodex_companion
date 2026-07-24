@@ -1,5 +1,4 @@
 import io
-import json
 import re
 import urllib.request
 from urllib.parse import parse_qs, urlparse
@@ -179,6 +178,26 @@ def extract_pdf(data: bytes) -> dict:
     }
 
 
+def _parse_markdown_extraction(raw: str) -> dict:
+    match = re.match(r"^---\n(.*?)\n---\n(.*)$", raw, re.DOTALL)
+    if not match:
+        return {"title": "", "author": "", "date": "", "text": raw.strip()}
+
+    frontmatter, body = match.group(1), match.group(2)
+    meta = {}
+    for line in frontmatter.splitlines():
+        if ":" in line:
+            key, _, value = line.partition(":")
+            meta[key.strip()] = value.strip()
+
+    return {
+        "title": meta.get("title", ""),
+        "author": meta.get("author", ""),
+        "date": meta.get("date", ""),
+        "text": body.strip(),
+    }
+
+
 def extract_from_url(url: str) -> dict:
     if _is_youtube_url(url):
         return _extract_youtube(url)
@@ -200,22 +219,22 @@ def extract_from_url(url: str) -> dict:
     if not downloaded:
         return {"title": "", "author": "", "date": "", "text": "", "extracted": False}
 
-    metadata_json = trafilatura.extract(
+    markdown_result = trafilatura.extract(
         downloaded,
         url=url,
-        output_format="json",
+        output_format="markdown",
         with_metadata=True,
         favor_precision=True,
     )
-    if not metadata_json:
+    if not markdown_result:
         return {"title": "", "author": "", "date": "", "text": "", "extracted": False}
 
-    data = json.loads(metadata_json)
-    text = (data.get("text") or "").strip()
+    parsed = _parse_markdown_extraction(markdown_result)
+    text = parsed["text"].strip()
     return {
-        "title": data.get("title") or "",
-        "author": data.get("author") or "",
-        "date": data.get("date") or "",
+        "title": parsed["title"],
+        "author": parsed["author"],
+        "date": parsed["date"],
         "text": text,
         "extracted": bool(text),
     }

@@ -72,5 +72,7 @@
   "import.sortByDate": "Sort by date (newest first)",
   "import.markupBold": "Bold",
   "import.markupItalic": "Italic",
-  "import.markupHeading": "Heading"
+  "import.markupHeading": "Heading",
+  "footer.github": "GitHub",
+  "footer.impressum": "Legal notice"
 }

@@ -72,5 +72,7 @@
   "import.sortByDate": "Nach Datum sortieren (neueste zuerst)",
   "import.markupBold": "Fett",
   "import.markupItalic": "Kursiv",
-  "import.markupHeading": "Überschrift"
+  "import.markupHeading": "Überschrift",
+  "footer.github": "GitHub",
+  "footer.impressum": "Impressum"
 }

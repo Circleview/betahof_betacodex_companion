@@ -604,6 +604,13 @@ def test_check_source_url_without_role_is_forbidden(client):
     assert response.status_code == 403
 
 
+def test_get_version_returns_a_string(client):
+    response = client.get("/api/version")
+    assert response.status_code == 200
+    assert isinstance(response.json()["version"], str)
+    assert response.json()["version"]
+
+
 def test_check_source_url_returns_404_for_unknown_source(client):
     response = client.get("/api/sources/does-not-exist/check-url")
     assert response.status_code == 404

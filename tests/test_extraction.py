@@ -1,7 +1,7 @@
-import json
 from unittest.mock import MagicMock, patch
 
 from app.extraction import (
+    _parse_markdown_extraction,
     download_audio_bytes,
     download_pdf_bytes,
     extract_from_url,
@@ -11,18 +11,48 @@ from app.extraction import (
 )
 
 
+def test_parse_markdown_extraction_reads_frontmatter_and_body():
+    raw = (
+        "---\n"
+        "title: Ein Titel: mit Doppelpunkt\n"
+        "author: Anna Mueller\n"
+        "date: 2023-11-20\n"
+        "---\n"
+        "# Ein Titel\n\nEin Absatz mit **fettem** Text."
+    )
+
+    result = _parse_markdown_extraction(raw)
+
+    assert result["title"] == "Ein Titel: mit Doppelpunkt"
+    assert result["author"] == "Anna Mueller"
+    assert result["date"] == "2023-11-20"
+    assert result["text"] == "# Ein Titel\n\nEin Absatz mit **fettem** Text."
+
+
+def test_parse_markdown_extraction_without_frontmatter_returns_raw_text():
+    result = _parse_markdown_extraction("Nur Fließtext ohne Frontmatter.")
+
+    assert result["title"] == ""
+    assert result["author"] == ""
+    assert result["date"] == ""
+    assert result["text"] == "Nur Fließtext ohne Frontmatter."
+
+
 def test_extract_from_url_returns_fields_on_success():
-    fake_json = json.dumps(
-        {
-            "title": "Ein Artikel",
-            "author": "Jane Doe",
-            "date": "2023-01-01",
-            "text": "Artikeltext hier.",
-        }
+    fake_markdown = (
+        "---\n"
+        "title: Ein Artikel\n"
+        "author: Jane Doe\n"
+        "date: 2023-01-01\n"
+        "---\n"
+        "# Ein Artikel\n\n"
+        "Artikeltext mit **fettem** Begriff hier.\n\n"
+        "## Zwischenueberschrift\n\n"
+        "Noch ein Absatz."
     )
     with (
         patch("app.extraction.trafilatura.fetch_url", return_value="<html>...</html>"),
-        patch("app.extraction.trafilatura.extract", return_value=fake_json),
+        patch("app.extraction.trafilatura.extract", return_value=fake_markdown),
     ):
         result = extract_from_url("https://example.org/artikel")
 
@@ -30,7 +60,12 @@ def test_extract_from_url_returns_fields_on_success():
         "title": "Ein Artikel",
         "author": "Jane Doe",
         "date": "2023-01-01",
-        "text": "Artikeltext hier.",
+        "text": (
+            "# Ein Artikel\n\n"
+            "Artikeltext mit **fettem** Begriff hier.\n\n"
+            "## Zwischenueberschrift\n\n"
+            "Noch ein Absatz."
+        ),
         "extracted": True,
     }
 
@@ -54,10 +89,12 @@ def test_extract_from_url_handles_empty_extraction():
 
 
 def test_extract_from_url_handles_missing_metadata_fields():
-    fake_json = json.dumps({"text": "Nur Text, keine Metadaten."})
     with (
         patch("app.extraction.trafilatura.fetch_url", return_value="<html>...</html>"),
-        patch("app.extraction.trafilatura.extract", return_value=fake_json),
+        patch(
+            "app.extraction.trafilatura.extract",
+            return_value="Nur Text, keine Metadaten.",
+        ),
     ):
         result = extract_from_url("https://example.org/ohne-metadaten")
 
@@ -65,6 +102,7 @@ def test_extract_from_url_handles_missing_metadata_fields():
     assert result["title"] == ""
     assert result["author"] == ""
     assert result["date"] == ""
+    assert result["text"] == "Nur Text, keine Metadaten."
 
 
 def test_extract_from_url_handles_fetch_exception():

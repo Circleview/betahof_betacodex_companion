@@ -1,4 +1,5 @@
 import json
+import subprocess
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -37,6 +38,7 @@ from app.models import (
     UrlCheckOut,
     UrlIn,
     UserOut,
+    VersionOut,
 )
 
 
@@ -65,7 +67,30 @@ AUDIO_DIR = DATA_DIR / "audio"
 
 DATA_DIR.mkdir(exist_ok=True)
 
+
+def _get_version() -> str:
+    try:
+        return (
+            subprocess.check_output(
+                ["git", "describe", "--tags", "--abbrev=0"],
+                cwd=BASE_DIR,
+                stderr=subprocess.DEVNULL,
+            )
+            .decode()
+            .strip()
+        )
+    except Exception:
+        return "dev"
+
+
+APP_VERSION = _get_version()
+
 app = FastAPI(title="BetaCodex Wissensassistent")
+
+
+@app.get("/api/version", response_model=VersionOut)
+def get_version():
+    return VersionOut(version=APP_VERSION)
 
 
 def _load_sources() -> dict:

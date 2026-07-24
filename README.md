@@ -118,6 +118,7 @@ Begründung: Es kommt auf Sprachqualität und einen schlanken Start an. Die Embe
 | Wissensgraph / Landkarte | Automatische Vernetzung der Inhalte aus den vorhandenen Embedding-Ähnlichkeiten; Darstellung per D3 oder Cytoscape. **Wichtig:** Schwellenwert für Kanten einbauen (Regler), sonst wird das Netz zum Wollknäuel |
 | Sprachdialog | STT für die Frage, TTS für die Antwort (z. B. ElevenLabs). Der Kern bleibt unverändert – Sprache ist nur eine Hülle. **Erst ganz zum Schluss**, sonst debuggt man zwei Dinge gleichzeitig |
 | Kuratierte Aufbereitung | Interessante Takes, Zitate und Impulse ansprechend im Frontend darstellen |
+| Anonymisierte Frage-Analyse | Gestellte Nutzerfragen datenschutzunproblematisch (keine Zuordnung zu Personen) in einer separaten Datenbank protokollieren – getrennt vom RAG-Antwortpfad, spielt für die Antwortgenerierung keine Rolle. Grundlage für spätere Trend-/Lücken-Erkennung ("was ist unklar, welche Quellen fehlen"), visuelle Cluster-Darstellung mit Verknüpfung zu passenden Quellen, sowie automatisch generierte Frage-Vorschläge für neue Nutzer:innen |
 
 ---
 

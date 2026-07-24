@@ -96,3 +96,7 @@ class UrlCheckOut(BaseModel):
 class SummaryOut(BaseModel):
     summary: str
     key_terms: list[str]
+
+
+class VersionOut(BaseModel):
+    version: str

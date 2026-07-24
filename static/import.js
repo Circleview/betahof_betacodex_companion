@@ -571,31 +571,47 @@ function escapeRegExp(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-function renderSummaryWithTerms(summaryText, keyTerms) {
-  const p = document.createElement('p');
-  p.className = 'source-summary-text';
-  if (!keyTerms || keyTerms.length === 0) {
-    p.textContent = summaryText;
-    return p;
-  }
+function highlightTermsInElement(container, keyTerms) {
+  if (!keyTerms || keyTerms.length === 0) return;
   const pattern = new RegExp(`(${keyTerms.map(escapeRegExp).join('|')})`, 'gi');
-  const parts = summaryText.split(pattern);
-  parts.forEach((part) => {
-    const isTerm = keyTerms.some((term) => term.toLowerCase() === part.toLowerCase());
-    if (isTerm) {
-      const btn = document.createElement('button');
-      btn.type = 'button';
-      btn.className = 'term-link';
-      const strong = document.createElement('strong');
-      strong.textContent = part;
-      btn.appendChild(strong);
-      btn.addEventListener('click', () => filterByTerm(part));
-      p.appendChild(btn);
-    } else {
-      p.appendChild(document.createTextNode(part));
-    }
+  const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
+  const textNodes = [];
+  let node = walker.nextNode();
+  while (node) {
+    pattern.lastIndex = 0;
+    if (pattern.test(node.textContent)) textNodes.push(node);
+    node = walker.nextNode();
+  }
+  textNodes.forEach((textNode) => {
+    pattern.lastIndex = 0;
+    const parts = textNode.textContent.split(pattern);
+    if (parts.length <= 1) return;
+    const frag = document.createDocumentFragment();
+    parts.forEach((part) => {
+      const isTerm = keyTerms.some((term) => term.toLowerCase() === part.toLowerCase());
+      if (isTerm) {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'term-link';
+        const strong = document.createElement('strong');
+        strong.textContent = part;
+        btn.appendChild(strong);
+        btn.addEventListener('click', () => filterByTerm(part));
+        frag.appendChild(btn);
+      } else if (part) {
+        frag.appendChild(document.createTextNode(part));
+      }
+    });
+    textNode.parentNode.replaceChild(frag, textNode);
   });
-  return p;
+}
+
+function renderSummaryWithTerms(summaryText, keyTerms) {
+  const wrapper = document.createElement('div');
+  wrapper.className = 'source-summary-text';
+  wrapper.innerHTML = renderMarkdown(summaryText);
+  highlightTermsInElement(wrapper, keyTerms);
+  return wrapper;
 }
 
 function sortSources(sources) {
@@ -663,28 +679,37 @@ function buildSourceDetails(s, citationUrl, openByDefault) {
   if (openByDefault) details.open = true;
 
   const toggle = document.createElement('summary');
-  toggle.textContent = t('import.summaryLabel');
+  const toggleIcon = document.createElement('span');
+  toggleIcon.className = 'source-summary-icon';
+  toggleIcon.innerHTML = MAGIC_ICON;
+  toggle.appendChild(toggleIcon);
+  toggle.appendChild(document.createTextNode(t('import.summaryLabel')));
   details.appendChild(toggle);
 
   if (s.summary) {
     details.appendChild(renderSummaryWithTerms(s.summary, s.key_terms));
   }
 
-  if (s.text) {
+  if (s.text || citationUrl) {
     const excerpt = document.createElement('p');
     excerpt.className = 'source-summary-text source-excerpt';
-    excerpt.textContent = truncateWords(s.text, 200);
+    if (s.text) {
+      excerpt.append(truncateWords(s.text, 200));
+    }
+    if (citationUrl) {
+      if (s.text) excerpt.append(' ');
+      const link = document.createElement('a');
+      link.href = citationUrl;
+      link.target = '_blank';
+      link.rel = 'noopener noreferrer';
+      link.className = 'source-open-link';
+      const openLabel = t('common.openSource');
+      link.title = openLabel;
+      link.setAttribute('aria-label', openLabel);
+      link.innerHTML = EXTERNAL_LINK_ICON;
+      excerpt.appendChild(link);
+    }
     details.appendChild(excerpt);
-  }
-
-  if (citationUrl) {
-    const link = document.createElement('a');
-    link.href = citationUrl;
-    link.target = '_blank';
-    link.rel = 'noopener noreferrer';
-    link.className = 'source-open-link';
-    link.textContent = t('common.openSource');
-    details.appendChild(link);
   }
 
   return details;
