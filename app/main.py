@@ -5,7 +5,7 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 from dotenv import load_dotenv
-from fastapi import Depends, FastAPI, File, Header, HTTPException, UploadFile
+from fastapi import BackgroundTasks, Depends, FastAPI, File, Header, HTTPException, UploadFile
 from fastapi.staticfiles import StaticFiles
 
 load_dotenv()
@@ -174,9 +174,22 @@ def _to_source_out(entry: dict, can_view_full_text: bool = False) -> SourceOut:
     return SourceOut(**data)
 
 
+def _generate_summary_background(source_id: str, text: str, lang: str) -> None:
+    result = summarization.generate_summary(text, lang=lang)
+    sources = _load_sources()
+    if source_id not in sources:
+        return
+    sources[source_id]["summary"] = result["summary"]
+    sources[source_id]["key_terms"] = result["key_terms"]
+    _save_sources(sources)
+    for term in result["key_terms"]:
+        terms.register_term(term, source_id)
+
+
 @app.post("/api/sources", response_model=SourceOut)
 def add_source(
     source: SourceIn,
+    background_tasks: BackgroundTasks,
     _user: str = Depends(require_role(users.QUELLEN_PFLEGER)),
     x_lang: str = Header(default=i18n.DEFAULT_LANG),
 ):
@@ -185,8 +198,6 @@ def add_source(
     source_id = str(uuid.uuid4())
     imported_at = datetime.now(timezone.utc).isoformat()
     chunk_count = _store_chunks(source_id, source, chunks, chunk_embeddings)
-
-    summary_result = summarization.generate_summary(source.text.strip(), lang=x_lang)
 
     sources = _load_sources()
     sources[source_id] = {
@@ -200,13 +211,14 @@ def add_source(
         "chunk_count": chunk_count,
         "text": source.text.strip(),
         "restricted": source.restricted,
-        "summary": summary_result["summary"],
-        "key_terms": summary_result["key_terms"],
+        "summary": "",
+        "key_terms": [],
     }
     _save_sources(sources)
     authors.register_author(source.author or "", source_id)
-    for term in summary_result["key_terms"]:
-        terms.register_term(term, source_id)
+    background_tasks.add_task(
+        _generate_summary_background, source_id, source.text.strip(), x_lang
+    )
 
     if source.pdf_upload_id:
         _consume_pdf_upload(source_id, source.pdf_upload_id)

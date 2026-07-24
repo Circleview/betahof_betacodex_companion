@@ -609,7 +609,7 @@ def test_check_source_url_returns_404_for_unknown_source(client):
     assert response.status_code == 404
 
 
-def test_add_source_generates_summary_and_registers_terms(client, monkeypatch):
+def test_add_source_generates_summary_in_background_and_registers_terms(client, monkeypatch):
     monkeypatch.setattr(
         summarization,
         "generate_summary",
@@ -623,8 +623,15 @@ def test_add_source_generates_summary_and_registers_terms(client, monkeypatch):
 
     assert create_res.status_code == 200
     data = create_res.json()
-    assert data["summary"] == "Eine Zusammenfassung."
-    assert set(data["key_terms"]) == {"BetaCodex", "Dezentralisierung"}
+    # Die Zusammenfassung wird im Hintergrund generiert, damit die Antwort auf
+    # /api/sources nicht auf den KI-Aufruf warten muss (schnellerer Import).
+    assert data["summary"] == ""
+    assert data["key_terms"] == []
+
+    source_id = data["id"]
+    updated = next(s for s in client.get("/api/sources").json() if s["id"] == source_id)
+    assert updated["summary"] == "Eine Zusammenfassung."
+    assert set(updated["key_terms"]) == {"BetaCodex", "Dezentralisierung"}
 
     terms_res = client.get("/api/terms").json()
     term_names = {t["term"] for t in terms_res}
