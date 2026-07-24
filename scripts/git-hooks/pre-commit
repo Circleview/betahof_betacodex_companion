@@ -1,0 +1,15 @@
+#!/bin/sh
+# Verhindert, dass .env (oder andere *.env-Dateien außer .env.example) committet werden.
+
+blocked=$(git diff --cached --name-only --diff-filter=ACM | grep -E '(^|/)\.env$|(^|/)\.env\.[^.]*$' | grep -v '\.env\.example$')
+
+if [ -n "$blocked" ]; then
+  echo "Commit abgebrochen: folgende Datei(en) sehen nach Secrets aus und wurden geblockt:"
+  echo "$blocked"
+  echo ""
+  echo "Falls das ein Fehlalarm ist, entferne die Datei aus dem Commit (git restore --staged <datei>)"
+  echo "oder passe scripts/git-hooks/pre-commit an."
+  exit 1
+fi
+
+exit 0

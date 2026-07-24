@@ -148,10 +148,21 @@ Der vertikale Durchstich läuft. Umgesetzt wurde:
 cd "Beta-Kodex - Wissenspartner"
 source venv/bin/activate          # oder: ./venv/bin/python -m ...
 cp .env.example .env              # ANTHROPIC_API_KEY eintragen
+git config core.hooksPath scripts/git-hooks   # einmalig: Secret-Schutz aktivieren (siehe unten)
 uvicorn app.main:app --reload
 ```
 
 Danach `http://127.0.0.1:8000/` im Browser öffnen. Ohne gültigen `ANTHROPIC_API_KEY` in `.env` funktioniert der Import (Chunking/Embedding/Ablage in Chroma), aber `/api/ask` schlägt beim eigentlichen LLM-Aufruf fehl.
+
+### Schutz vor versehentlichem Secret-Commit
+
+`.env` ist in `.gitignore` und wird dadurch nicht getrackt. Zusätzlich blockt ein Pre-Commit-Hook (`scripts/git-hooks/pre-commit`) jeden Commit, der eine `.env`-artige Datei enthält (z. B. bei `git add -f` aus Versehen). Der Hook ist Teil des Repos, muss aber **nach jedem frischen Clone einmalig aktiviert werden**:
+
+```bash
+git config core.hooksPath scripts/git-hooks
+```
+
+(In diesem Arbeitsverzeichnis ist das bereits erledigt.)
 
 ### Tests ausführen
 
