@@ -651,6 +651,13 @@ body:not(.chat-started) #question-form {
   display: none;
 }
 
+/* Cloudflare entfernt das gelöste Widget nicht aus dem DOM (der Container
+   bleibt also nicht :empty) - ohne diese Regel bliebe die Box nach
+   erfolgreicher Bestätigung sichtbar stehen. */
+.turnstile-container.turnstile-verified {
+  display: none;
+}
+
 /* Desktop: normaler Text-Button ("Absenden"/"Send"), Papierflieger-Icon
    bleibt versteckt - die Icon-Variante ist ausdrücklich nur eine
    Mobile-Lösung (siehe Media Query weiter unten), am Desktop ändert sich

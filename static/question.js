@@ -21,6 +21,10 @@ window.onTurnstileLoad = function () {
   turnstileWidgetId = window.turnstile.render(container, {
     sitekey: TURNSTILE_SITE_KEY,
     appearance: 'interaction-only',
+    // Cloudflare lässt das gelöste Widget im DOM stehen (der Container ist
+    // dann nicht mehr :empty), es würde also ohne diesen Callback sichtbar
+    // bleiben, obwohl die Bestätigung bereits abgeschlossen ist.
+    callback: () => container.classList.add('turnstile-verified'),
   });
 };
 
@@ -35,6 +39,11 @@ function resetTurnstile() {
   if (turnstileWidgetId !== null && window.turnstile) {
     window.turnstile.reset(turnstileWidgetId);
   }
+  // Nach dem Reset entscheidet Cloudflare neu, ob eine Interaktion nötig ist -
+  // die Klasse muss weg, sonst bliebe das Widget auch bei einer künftig
+  // tatsächlich nötigen Bestätigung dauerhaft ausgeblendet.
+  const container = document.getElementById('turnstile-container');
+  if (container) container.classList.remove('turnstile-verified');
 }
 
 const EXTERNAL_LINK_ICON =
