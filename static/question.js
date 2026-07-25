@@ -13,7 +13,14 @@ window.onTurnstileLoad = function () {
   if (!TURNSTILE_SITE_KEY) return;
   const container = document.getElementById('turnstile-container');
   if (!container || !window.turnstile) return;
-  turnstileWidgetId = window.turnstile.render(container, { sitekey: TURNSTILE_SITE_KEY });
+  // 'interaction-only': das Widget bleibt für die meisten Besucher:innen
+  // unsichtbar und erscheint nur, wenn Cloudflare tatsächlich eine
+  // Bestätigung braucht (Standard "always" würde die kleine Box dauerhaft
+  // im Formular anzeigen, auch wenn sie im Hintergrund automatisch besteht).
+  turnstileWidgetId = window.turnstile.render(container, {
+    sitekey: TURNSTILE_SITE_KEY,
+    appearance: 'interaction-only',
+  });
 };
 
 function getTurnstileToken() {
