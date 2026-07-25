@@ -332,27 +332,10 @@ function buildEditPanel(s, options = {}) {
   urlField.label.insertBefore(openUrlBtn, urlInput);
   form.appendChild(urlField.label);
 
-  const listenUrlInput = field('import.fieldListenUrl', 'listen-url', s.listen_url, 'url');
-
-  if (s.has_pdf) {
-    const pdfRow = document.createElement('p');
-    pdfRow.className = 'pdf-open-row';
-    const pdfBtn = document.createElement('button');
-    pdfBtn.type = 'button';
-    pdfBtn.className = 'link-button';
-    pdfBtn.textContent = t('import.openPdf');
-    pdfBtn.addEventListener('click', async () => {
-      try {
-        const res = await fetch(`/api/sources/${s.id}/pdf`, { headers: devUserHeaders() });
-        if (!res.ok) throw new Error(t('import.openPdfFailed'));
-        const blob = await res.blob();
-        window.open(URL.createObjectURL(blob), '_blank');
-      } catch (err) {
-        status.textContent = t('common.errorPrefix') + err.message;
-      }
-    });
-    pdfRow.appendChild(pdfBtn);
-    form.appendChild(pdfRow);
+  const listenUrlField = buildFieldLabel('import.fieldListenUrl', 'listen-url', s.listen_url, 'url');
+  const listenUrlInput = listenUrlField.input;
+  if (s.has_audio) {
+    form.appendChild(listenUrlField.label);
   }
 
   const textInput = field('import.fieldText', 'text', s.text, 'textarea');
@@ -361,7 +344,39 @@ function buildEditPanel(s, options = {}) {
   } else {
     textInput.required = true;
   }
-  textInput.parentNode.insertBefore(buildMarkupToolbar(textInput), textInput);
+
+  const toolbarRow = document.createElement('div');
+  toolbarRow.className = 'markup-toolbar-row';
+  toolbarRow.appendChild(buildMarkupToolbar(textInput));
+
+  if (s.has_pdf) {
+    const pdfBtn = document.createElement('button');
+    pdfBtn.type = 'button';
+    pdfBtn.className = 'link-button';
+    pdfBtn.textContent = t('import.openPdf');
+    pdfBtn.addEventListener('click', async () => {
+      // Fenster MUSS synchron innerhalb des Klick-Handlers geöffnet werden -
+      // ruft man window.open() erst nach einem await (fetch/blob), fehlt der
+      // Bezug zur User-Geste und der Browser blockiert das Popup lautlos.
+      const pdfWindow = window.open('', '_blank');
+      try {
+        const res = await fetch(`/api/sources/${s.id}/pdf`, { headers: devUserHeaders() });
+        if (!res.ok) throw new Error(t('import.openPdfFailed'));
+        const blob = await res.blob();
+        if (pdfWindow) {
+          pdfWindow.location = URL.createObjectURL(blob);
+        } else {
+          window.open(URL.createObjectURL(blob), '_blank');
+        }
+      } catch (err) {
+        if (pdfWindow) pdfWindow.close();
+        status.textContent = t('common.errorPrefix') + err.message;
+      }
+    });
+    toolbarRow.appendChild(pdfBtn);
+  }
+
+  textInput.parentNode.insertBefore(toolbarRow, textInput);
 
   const restrictedLabel = document.createElement('label');
   restrictedLabel.className = 'checkbox-label';
@@ -1109,7 +1124,10 @@ document.addEventListener('i18n:changed', () => {
 });
 
 const createTextInput = document.getElementById('text');
-createTextInput.parentNode.insertBefore(buildMarkupToolbar(createTextInput), createTextInput);
+const createToolbarRow = document.createElement('div');
+createToolbarRow.className = 'markup-toolbar-row';
+createToolbarRow.appendChild(buildMarkupToolbar(createTextInput));
+createTextInput.parentNode.insertBefore(createToolbarRow, createTextInput);
 
 await initI18n();
 await initRoleSwitcher();

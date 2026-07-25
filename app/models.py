@@ -30,6 +30,7 @@ class SourceOut(BaseModel):
     summary: str = ""
     key_terms: list[str] = []
     has_pdf: bool = False
+    has_audio: bool = False
 
 
 class QuestionIn(BaseModel):

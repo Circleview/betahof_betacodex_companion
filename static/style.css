@@ -269,10 +269,17 @@ textarea {
   accent-color: var(--color-accent);
 }
 
+.markup-toolbar-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin: 0.35rem 0 0.5rem;
+}
+
 .markup-toolbar {
   display: flex;
   gap: 0.4rem;
-  margin: 0.35rem 0 0.5rem;
 }
 
 .markup-button {
@@ -749,10 +756,6 @@ section {
   flex: 1;
   margin-bottom: 0;
   min-width: 0;
-}
-
-.pdf-open-row {
-  margin: -0.3rem 0 0.9rem;
 }
 
 .label-inline-icon {

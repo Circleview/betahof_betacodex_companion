@@ -856,6 +856,35 @@ def test_add_source_with_audio_url_stores_audio_file(client, monkeypatch, tmp_pa
     assert stored[0].read_bytes() == b"ID3-fake-audio-data"
 
 
+def test_source_with_audio_file_reports_has_audio_true(client, monkeypatch):
+    monkeypatch.setattr(extraction, "looks_like_audio", lambda url: True)
+    monkeypatch.setattr(extraction, "looks_like_pdf", lambda url: False)
+    monkeypatch.setattr(extraction, "download_audio_bytes", lambda url: b"ID3-fake-audio-data")
+
+    create_res = client.post(
+        "/api/sources",
+        json={
+            "title": "Podcast-Folge",
+            "url": "https://cdn.example.org/episode.mp3",
+            "text": "Inhalt der Folge.",
+        },
+    )
+    source_id = create_res.json()["id"]
+
+    sources = client.get("/api/sources").json()
+    entry = next(s for s in sources if s["id"] == source_id)
+    assert entry["has_audio"] is True
+
+
+def test_source_without_audio_reports_has_audio_false(client):
+    create_res = client.post("/api/sources", json={"title": "Quelle", "text": "Text."})
+    source_id = create_res.json()["id"]
+
+    sources = client.get("/api/sources").json()
+    entry = next(s for s in sources if s["id"] == source_id)
+    assert entry["has_audio"] is False
+
+
 def test_delete_source_removes_audio_file(client, monkeypatch):
     monkeypatch.setattr(extraction, "looks_like_audio", lambda url: True)
     monkeypatch.setattr(extraction, "looks_like_pdf", lambda url: False)

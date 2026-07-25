@@ -204,6 +204,7 @@ def _to_source_out(
     data["summary"] = data.get(f"summary_{lang}") or ""
     data["key_terms"] = data.get(f"key_terms_{lang}") or []
     data["has_pdf"] = (PDF_DIR / f"{data['id']}.pdf").exists()
+    data["has_audio"] = _existing_audio_file(data["id"]) is not None
     return SourceOut(**data)
 
 
