@@ -95,12 +95,6 @@ header h1 {
   margin: -0.75rem 0 2.5rem;
 }
 
-.section-label {
-  color: var(--color-text-muted);
-  font-size: 0.95rem;
-  margin-bottom: 1rem;
-}
-
 #import-link {
   flex-shrink: 0;
   display: flex;
@@ -147,11 +141,13 @@ header h1 {
   color: var(--color-accent);
 }
 
+/* Rechtsbündig statt zentriert - das Auth-Icon ist inzwischen immer das
+   letzte Element in der Kopfzeile, ein zentriertes Label würde auf schmalen
+   Bildschirmen über den rechten Seitenrand hinausragen. */
 .auth-username-label {
   position: absolute;
   top: 100%;
-  left: 50%;
-  transform: translateX(-50%);
+  right: 0;
   margin-top: 0.3rem;
   font-size: 0.7rem;
   color: var(--color-text-muted);
@@ -1011,13 +1007,31 @@ body:not(.chat-started) #question-form {
 
 .section-heading-row {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 1rem;
+  gap: 0.75rem 1rem;
   margin-bottom: 1rem;
 }
 
 .section-heading-row h3 {
   margin: 0;
+}
+
+/* Bündelt "Neue Quelle hinzufügen" (quelltyp-buttons) und die Sortier-Icons
+   zu einem Block rechtsbündig auf Höhe der Überschrift - margin-left:auto
+   funktioniert dabei sowohl in derselben Zeile als auch (auf schmalen
+   Bildschirmen) wenn der Block in eine eigene Zeile umbricht. */
+.section-heading-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 1.25rem;
+  margin-left: auto;
+}
+
+.section-heading-actions .sort-toolbar {
+  padding-left: 1.25rem;
+  border-left: 1px solid var(--color-border);
 }
 
 .sort-toolbar {
@@ -1328,23 +1342,13 @@ details a {
 
 .quelltyp-buttons {
   display: flex;
-  gap: 2.5rem;
-}
-
-.quelltyp-item {
-  display: flex;
-  flex-direction: column;
   align-items: center;
   gap: 0.5rem;
 }
 
 .quelltyp-item--anchor {
   position: relative;
-}
-
-.quelltyp-label {
-  font-size: 0.85rem;
-  color: var(--color-text-muted);
+  display: flex;
 }
 
 .circle-button {
@@ -1366,6 +1370,27 @@ details a {
   border-color: var(--color-accent);
   color: var(--color-accent);
   background: var(--color-accent-tint);
+}
+
+.circle-button--sm {
+  width: 32px;
+  height: 32px;
+}
+
+/* #quelltyp-bereich-Präfix erhöht die Spezifität bewusst über die gemeinsame
+   .popover-Basisregel hinaus - die Buttons sitzen jetzt rechts oben in der
+   Kopfzeile, ein mittig zentriertes Popover würde dort über den Bildschirmrand
+   hinausragen. Gleiches Muster wie beim Login-Popover (#auth-widget). */
+#quelltyp-bereich .popover {
+  left: auto;
+  right: 0;
+  transform: none;
+}
+
+#quelltyp-bereich .popover-arrow {
+  left: auto;
+  right: 12px;
+  transform: rotate(45deg);
 }
 
 .popover {

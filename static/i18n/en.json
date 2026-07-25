@@ -40,12 +40,9 @@
 
   "import.title": "Manage sources",
   "import.backLink": "← Back to conversation",
-  "import.addSourceLabel": "Add new source",
-  "import.typeText": "Text",
   "import.typeTextTitle": "Paste text",
   "import.typeUrlTitle": "URL",
   "import.typeFileTitle": "Upload PDF",
-  "import.typeFile": "File",
   "import.urlPopoverLabel": "URL (blog post/article/YouTube/PDF)",
   "import.loadButton": "Load",
   "import.pleaseEnterUrl": "Please enter a URL.",

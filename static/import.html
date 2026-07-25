@@ -15,66 +15,11 @@
 <header>
   <h1><span class="brand-dot" aria-hidden="true"></span><span data-i18n="import.title"></span></h1>
   <div class="header-actions">
+    <a href="/" id="back-link" data-i18n="import.backLink"></a>
     <span id="lang-switcher" class="lang-switcher"></span>
     <span id="auth-widget" class="auth-widget"></span>
-    <a href="/" id="back-link" data-i18n="import.backLink"></a>
   </div>
 </header>
-
-<section id="quelltyp-bereich">
-  <p class="section-label" data-i18n="import.addSourceLabel"></p>
-  <div class="quelltyp-buttons">
-    <div class="quelltyp-item">
-      <button type="button" id="typ-text" class="circle-button" data-i18n-title="import.typeTextTitle">
-        <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <rect x="4" y="3" width="16" height="18" rx="1"></rect>
-          <line x1="7" y1="8" x2="17" y2="8"></line>
-          <line x1="7" y1="12" x2="17" y2="12"></line>
-          <line x1="7" y1="16" x2="13" y2="16"></line>
-        </svg>
-      </button>
-      <span class="quelltyp-label" data-i18n="import.typeText"></span>
-    </div>
-    <div class="quelltyp-item quelltyp-item--anchor">
-      <button type="button" id="typ-url" class="circle-button" data-i18n-title="import.typeUrlTitle">
-        <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <rect x="3" y="9" width="10" height="6" rx="3"></rect>
-          <rect x="11" y="9" width="10" height="6" rx="3"></rect>
-          <line x1="9" y1="12" x2="15" y2="12"></line>
-        </svg>
-      </button>
-      <span class="quelltyp-label" data-i18n="import.typeUrlTitle"></span>
-
-      <div id="url-popover" class="popover hidden">
-        <div class="popover-arrow"></div>
-        <label><span data-i18n="import.urlPopoverLabel"></span>
-          <input type="url" id="popover-url" placeholder="https://...">
-        </label>
-        <button type="button" id="popover-load" data-i18n="import.loadButton"></button>
-        <p id="popover-status"></p>
-      </div>
-    </div>
-    <div class="quelltyp-item quelltyp-item--anchor">
-      <button type="button" id="typ-file" class="circle-button" data-i18n-title="import.typeFileTitle">
-        <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-          <polyline points="17 8 12 3 7 8"></polyline>
-          <line x1="12" y1="3" x2="12" y2="15"></line>
-        </svg>
-      </button>
-      <span class="quelltyp-label" data-i18n="import.typeFile"></span>
-
-      <div id="file-popover" class="popover hidden">
-        <div class="popover-arrow"></div>
-        <label><span data-i18n="import.fileFieldLabel"></span>
-          <input type="file" id="popover-file" accept="application/pdf">
-        </label>
-        <button type="button" id="popover-upload" data-i18n="import.uploadButton"></button>
-        <p id="upload-status"></p>
-      </div>
-    </div>
-  </div>
-</section>
 
 <section id="import-bereich" class="hidden">
   <form id="source-form">
@@ -102,21 +47,69 @@
 <section id="quellen-liste-bereich">
   <div class="section-heading-row">
     <h3 data-i18n="import.importedSourcesHeading"></h3>
-    <div class="sort-toolbar">
-      <button type="button" id="sort-author" class="sort-button active" data-i18n-title="import.sortByAuthor">
-        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
-          <circle cx="12" cy="7" r="4"></circle>
-        </svg>
-      </button>
-      <button type="button" id="sort-date" class="sort-button" data-i18n-title="import.sortByDate">
-        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M6 2h12"></path>
-          <path d="M6 22h12"></path>
-          <path d="M6 2v5a6 6 0 0 0 6 6 6 6 0 0 0 6-6V2"></path>
-          <path d="M6 22v-5a6 6 0 0 1 6-6 6 6 0 0 1 6 6v5"></path>
-        </svg>
-      </button>
+    <div class="section-heading-actions">
+      <div id="quelltyp-bereich" class="quelltyp-buttons">
+        <button type="button" id="typ-text" class="circle-button circle-button--sm" data-i18n-title="import.typeTextTitle">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="4" y="3" width="16" height="18" rx="1"></rect>
+            <line x1="7" y1="8" x2="17" y2="8"></line>
+            <line x1="7" y1="12" x2="17" y2="12"></line>
+            <line x1="7" y1="16" x2="13" y2="16"></line>
+          </svg>
+        </button>
+        <div class="quelltyp-item--anchor">
+          <button type="button" id="typ-url" class="circle-button circle-button--sm" data-i18n-title="import.typeUrlTitle">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="3" y="9" width="10" height="6" rx="3"></rect>
+              <rect x="11" y="9" width="10" height="6" rx="3"></rect>
+              <line x1="9" y1="12" x2="15" y2="12"></line>
+            </svg>
+          </button>
+
+          <div id="url-popover" class="popover hidden">
+            <div class="popover-arrow"></div>
+            <label><span data-i18n="import.urlPopoverLabel"></span>
+              <input type="url" id="popover-url" placeholder="https://...">
+            </label>
+            <button type="button" id="popover-load" data-i18n="import.loadButton"></button>
+            <p id="popover-status"></p>
+          </div>
+        </div>
+        <div class="quelltyp-item--anchor">
+          <button type="button" id="typ-file" class="circle-button circle-button--sm" data-i18n-title="import.typeFileTitle">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+              <polyline points="17 8 12 3 7 8"></polyline>
+              <line x1="12" y1="3" x2="12" y2="15"></line>
+            </svg>
+          </button>
+
+          <div id="file-popover" class="popover hidden">
+            <div class="popover-arrow"></div>
+            <label><span data-i18n="import.fileFieldLabel"></span>
+              <input type="file" id="popover-file" accept="application/pdf">
+            </label>
+            <button type="button" id="popover-upload" data-i18n="import.uploadButton"></button>
+            <p id="upload-status"></p>
+          </div>
+        </div>
+      </div>
+      <div class="sort-toolbar">
+        <button type="button" id="sort-author" class="sort-button active" data-i18n-title="import.sortByAuthor">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+            <circle cx="12" cy="7" r="4"></circle>
+          </svg>
+        </button>
+        <button type="button" id="sort-date" class="sort-button" data-i18n-title="import.sortByDate">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M6 2h12"></path>
+            <path d="M6 22h12"></path>
+            <path d="M6 2v5a6 6 0 0 0 6 6 6 6 0 0 0 6-6V2"></path>
+            <path d="M6 22v-5a6 6 0 0 1 6-6 6 6 0 0 1 6 6v5"></path>
+          </svg>
+        </button>
+      </div>
     </div>
   </div>
   <p id="source-filter-status" class="hidden">
