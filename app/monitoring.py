@@ -11,10 +11,13 @@ def _request(url: str, method: str) -> dict:
 
 
 def _classify_http_error(err: urllib.error.HTTPError) -> dict:
-    if err.code == 403:
+    if err.code in (403, 429):
         # Viele Seiten (z. B. academia.edu) blockieren automatisierte
         # HEAD/GET-Anfragen pauschal mit 403, obwohl die Seite im Browser
         # normal erreichbar ist - das werten wir nicht als defekten Link.
+        # LinkedIn (hinter Cloudflare) antwortet auf solche Anfragen sogar
+        # mit 429 + Bot-Challenge-Seite, unabhängig davon, ob der Artikel
+        # tatsächlich existiert - ebenfalls kein echter Broken Link.
         return {"reachable": True, "status_code": err.code}
     return {"reachable": err.code < 400, "status_code": err.code}
 

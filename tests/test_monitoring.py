@@ -62,6 +62,17 @@ def test_check_url_treats_403_as_reachable_after_405_fallback():
         assert check_url("https://example.org") == {"reachable": True, "status_code": 403}
 
 
+def test_check_url_treats_429_as_reachable():
+    # LinkedIn (hinter Cloudflare) blockiert automatisierte Anfragen mit 429 +
+    # Bot-Challenge-Seite, obwohl der Artikel selbst existiert und im Browser
+    # normal erreichbar ist.
+    error = urllib.error.HTTPError(
+        url="https://example.org", code=429, msg="Too Many Requests", hdrs=None, fp=None
+    )
+    with patch("app.monitoring.urllib.request.urlopen", side_effect=error):
+        assert check_url("https://example.org") == {"reachable": True, "status_code": 429}
+
+
 def test_check_url_handles_network_errors():
     with patch("app.monitoring.urllib.request.urlopen", side_effect=RuntimeError("boom")):
         assert check_url("https://example.org") == {"reachable": False, "status_code": None}
