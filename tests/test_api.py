@@ -2,6 +2,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app import (
+    auth,
     authors,
     captcha,
     embeddings,
@@ -16,7 +17,17 @@ from app import (
 )
 from app import main as main_module
 
-PFLEGER = "lena.pflegerin"
+PFLEGER = "lena.pflegerin@test.local"
+
+
+def login(test_client, email, role=None):
+    """Loggt einen TestClient über den echten Magic-Link-Verify-Pfad ein -
+    dessen Cookie-Jar merkt sich das gesetzte Session-Cookie für alle
+    folgenden Requests, genau wie ein echter Browser."""
+    if role:
+        users.invite_user(email, role, invited_by="test-bootstrap")
+    token = auth.create_magic_link_token(email, auth.LOGIN_LINK_MAX_AGE_SECONDS)
+    test_client.get(f"/api/auth/verify?token={token}", follow_redirects=False)
 
 
 @pytest.fixture
@@ -55,10 +66,25 @@ def client(tmp_path, monkeypatch):
     # Schutzverhalten selbst überschreiben diese Mocks gezielt.
     monkeypatch.setattr(captcha, "verify_turnstile_token", lambda token, remote_ip=None: True)
     monkeypatch.setattr(ratelimit, "_request_log", {})
+    monkeypatch.setattr(auth, "_consumed_jti", {})
+    # TestClient spricht "http://testserver" - ein "Secure"-Cookie würde vom
+    # Cookie-Jar sonst nie zurückgeschickt, der Login-Test-Client bliebe
+    # scheinbar ausgeloggt.
+    monkeypatch.setattr(main_module, "IS_DEV_ENVIRONMENT", True)
 
     # Standard-Testrolle: Quellen-Pfleger:in, damit bestehende Tests nicht jeden
-    # Request einzeln mit einem Rollen-Header versehen müssen.
-    return TestClient(main_module.app, headers={"X-Dev-User": PFLEGER})
+    # Request einzeln einloggen müssen.
+    test_client = TestClient(main_module.app)
+    login(test_client, PFLEGER, users.QUELLEN_PFLEGER)
+    return test_client
+
+
+@pytest.fixture
+def anon_client(client):
+    # Teilt sich die von `client` bereits vorgenommenen Monkeypatches (gleiche
+    # tmp_path/Module), hat aber keinen Session-Cookie - simuliert einen
+    # Besuch ganz ohne Login.
+    return TestClient(main_module.app)
 
 
 def test_add_source_creates_chunks(client):
@@ -342,70 +368,61 @@ def test_update_source_moves_author_registration(client):
     assert author_names == {"Neuer Autor"}
 
 
-def test_add_source_without_role_is_forbidden(client):
-    response = client.post(
+def test_add_source_without_role_is_forbidden(anon_client):
+    response = anon_client.post(
         "/api/sources",
         json={"title": "Quelle", "text": "Text."},
-        headers={"X-Dev-User": "anon"},
     )
     assert response.status_code == 403
 
 
-def test_add_source_with_unrelated_role_is_forbidden(client):
-    response = client.post(
+def test_add_source_with_unrelated_role_is_forbidden(anon_client):
+    login(anon_client, "uwe.admin@test.local", users.USER_ADMIN)
+    response = anon_client.post(
         "/api/sources",
         json={"title": "Quelle", "text": "Text."},
-        headers={"X-Dev-User": "uwe.admin"},
     )
     assert response.status_code == 403
 
 
-def test_add_source_as_system_admin_is_allowed(client):
-    response = client.post(
+def test_add_source_as_system_admin_is_allowed(anon_client):
+    login(anon_client, "root@test.local", users.SYSTEM_ADMIN)
+    response = anon_client.post(
         "/api/sources",
         json={"title": "Quelle", "text": "Text."},
-        headers={"X-Dev-User": "root"},
     )
     assert response.status_code == 200
 
 
-def test_update_source_without_role_is_forbidden(client):
+def test_update_source_without_role_is_forbidden(client, anon_client):
     create_res = client.post("/api/sources", json={"title": "Titel", "text": "Text."})
     source_id = create_res.json()["id"]
 
-    response = client.put(
+    response = anon_client.put(
         f"/api/sources/{source_id}",
         json={"title": "Neu", "text": "Neuer Text."},
-        headers={"X-Dev-User": "anon"},
     )
     assert response.status_code == 403
 
 
-def test_extract_url_without_role_is_forbidden(client, monkeypatch):
+def test_extract_url_without_role_is_forbidden(anon_client, monkeypatch):
     monkeypatch.setattr(
         extraction,
         "extract_from_url",
         lambda url: {"title": "T", "authors": [], "date": "", "text": "Text", "extracted": True},
     )
-    response = client.post(
+    response = anon_client.post(
         "/api/extract-url",
         json={"url": "https://example.org"},
-        headers={"X-Dev-User": "anon"},
     )
     assert response.status_code == 403
 
 
-def test_ask_and_list_sources_work_without_any_role(client):
+def test_ask_and_list_sources_work_without_any_role(client, anon_client):
     client.post("/api/sources", json={"title": "Quelle", "text": "Text zum Fragen."})
 
-    no_role_headers = {"X-Dev-User": "anon"}
-    assert client.get("/api/sources", headers=no_role_headers).status_code == 200
-    assert (
-        client.post(
-            "/api/ask", json={"question": "Frage?"}, headers=no_role_headers
-        ).status_code
-        == 200
-    )
+    assert anon_client.get("/api/sources").status_code == 200
+    assert anon_client.post("/api/ask", json={"question": "Frage?"}).status_code == 200
 
 
 def test_add_source_rejects_empty_text_in_english(client):
@@ -418,11 +435,11 @@ def test_add_source_rejects_empty_text_in_english(client):
     assert response.json()["detail"] == "Text must not be empty."
 
 
-def test_role_required_message_in_english(client):
-    response = client.post(
+def test_role_required_message_in_english(anon_client):
+    response = anon_client.post(
         "/api/sources",
         json={"title": "X", "text": "Text"},
-        headers={"X-Dev-User": "anon", "X-Lang": "en"},
+        headers={"X-Lang": "en"},
     )
     assert response.status_code == 403
     assert "requires the role" in response.json()["detail"]
@@ -444,14 +461,128 @@ def test_ask_uses_requested_language(client, monkeypatch):
     assert captured["lang"] == "en"
 
 
-def test_dev_list_users_returns_seeded_roles(client):
-    response = client.get("/api/dev/users")
+def test_whoami_reports_anonymous_by_default(anon_client):
+    response = anon_client.get("/api/auth/whoami")
     assert response.status_code == 200
-    data = {u["id"]: u["roles"] for u in response.json()}
-    assert data["anon"] == []
-    assert data["lena.pflegerin"] == ["quellen_pfleger"]
-    assert data["uwe.admin"] == ["user_admin"]
-    assert data["root"] == ["system_admin"]
+    assert response.json() == {"email": None, "roles": []}
+
+
+def test_whoami_reports_logged_in_user(client):
+    response = client.get("/api/auth/whoami")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["email"] == PFLEGER
+    assert data["roles"] == [users.QUELLEN_PFLEGER]
+
+
+def test_request_link_returns_generic_message_for_unknown_email(anon_client):
+    response = anon_client.post("/api/auth/request-link", json={"email": "ghost@test.local"})
+    assert response.status_code == 200
+    assert response.json()["detail"]
+
+
+def test_request_link_is_rate_limited(anon_client):
+    for _ in range(5):
+        anon_client.post("/api/auth/request-link", json={"email": "ghost@test.local"})
+    response = anon_client.post("/api/auth/request-link", json={"email": "ghost@test.local"})
+    assert response.status_code == 429
+
+
+def test_verify_with_valid_token_grants_access(anon_client):
+    users.invite_user("tester@test.local", users.QUELLEN_PFLEGER, invited_by="root@test.local")
+    token = auth.create_magic_link_token("tester@test.local", auth.LOGIN_LINK_MAX_AGE_SECONDS)
+
+    verify_res = anon_client.get(f"/api/auth/verify?token={token}", follow_redirects=False)
+    assert verify_res.status_code in (302, 307)
+
+    whoami_res = anon_client.get("/api/auth/whoami")
+    assert whoami_res.json()["email"] == "tester@test.local"
+
+
+def test_verify_with_invalid_token_redirects_without_cookie(anon_client):
+    response = anon_client.get("/api/auth/verify?token=not-a-real-token", follow_redirects=False)
+    assert response.status_code in (302, 307)
+    assert "auth=expired" in response.headers["location"]
+    assert anon_client.get("/api/auth/whoami").json()["email"] is None
+
+
+def test_verify_token_cannot_be_reused(anon_client):
+    users.invite_user("tester@test.local", users.QUELLEN_PFLEGER, invited_by="root@test.local")
+    token = auth.create_magic_link_token("tester@test.local", auth.LOGIN_LINK_MAX_AGE_SECONDS)
+    anon_client.get(f"/api/auth/verify?token={token}", follow_redirects=False)
+
+    second_attempt = anon_client.get(f"/api/auth/verify?token={token}", follow_redirects=False)
+    assert "auth=expired" in second_attempt.headers["location"]
+
+
+def test_logout_clears_session(client):
+    assert client.get("/api/auth/whoami").json()["email"] == PFLEGER
+    client.post("/api/auth/logout")
+    assert client.get("/api/auth/whoami").json()["email"] is None
+    assert client.post("/api/sources", json={"title": "X", "text": "Y"}).status_code == 403
+
+
+def test_invite_by_user_admin_creates_invited_user(anon_client):
+    login(anon_client, "admin@test.local", users.USER_ADMIN)
+
+    response = anon_client.post(
+        "/api/auth/invite", json={"email": "new@test.local", "role": users.QUELLEN_PFLEGER}
+    )
+
+    assert response.status_code == 201
+    data = response.json()
+    assert data["email"] == "new@test.local"
+    assert data["roles"] == [users.QUELLEN_PFLEGER]
+    assert data["status"] == "invited"
+
+
+def test_invite_forbids_user_admin_from_granting_system_admin(anon_client):
+    login(anon_client, "admin@test.local", users.USER_ADMIN)
+
+    response = anon_client.post(
+        "/api/auth/invite", json={"email": "new@test.local", "role": users.SYSTEM_ADMIN}
+    )
+
+    assert response.status_code == 403
+
+
+def test_invite_allows_system_admin_to_grant_any_role(anon_client):
+    login(anon_client, "root@test.local", users.SYSTEM_ADMIN)
+
+    response = anon_client.post(
+        "/api/auth/invite", json={"email": "new@test.local", "role": users.USER_ADMIN}
+    )
+
+    assert response.status_code == 201
+
+
+def test_invite_rejects_unknown_role(anon_client):
+    login(anon_client, "admin@test.local", users.USER_ADMIN)
+
+    response = anon_client.post(
+        "/api/auth/invite", json={"email": "new@test.local", "role": "not-a-role"}
+    )
+
+    assert response.status_code == 400
+
+
+def test_list_invited_users_requires_user_admin(anon_client):
+    login(anon_client, "someone@test.local", users.QUELLEN_PFLEGER)
+    response = anon_client.get("/api/auth/users")
+    assert response.status_code == 403
+
+
+def test_list_invited_users_returns_entries_for_admin(anon_client):
+    login(anon_client, "admin@test.local", users.USER_ADMIN)
+    anon_client.post(
+        "/api/auth/invite", json={"email": "new@test.local", "role": users.QUELLEN_PFLEGER}
+    )
+
+    response = anon_client.get("/api/auth/users")
+
+    assert response.status_code == 200
+    emails = {u["email"] for u in response.json()}
+    assert "new@test.local" in emails
 
 
 def test_delete_source_removes_it(client):
@@ -483,24 +614,24 @@ def test_delete_source_returns_404_for_unknown_id(client):
     assert response.status_code == 404
 
 
-def test_delete_source_without_role_is_forbidden(client):
+def test_delete_source_without_role_is_forbidden(client, anon_client):
     create_res = client.post("/api/sources", json={"title": "Bleibt", "text": "Text."})
     source_id = create_res.json()["id"]
 
-    response = client.delete(f"/api/sources/{source_id}", headers={"X-Dev-User": "anon"})
+    response = anon_client.delete(f"/api/sources/{source_id}")
 
     assert response.status_code == 403
     titles = [s["title"] for s in client.get("/api/sources").json()]
     assert "Bleibt" in titles
 
 
-def test_restricted_source_hides_text_from_anon(client):
+def test_restricted_source_hides_text_from_anon(client, anon_client):
     client.post(
         "/api/sources",
         json={"title": "Geschützt", "text": "Urheberrechtlich geschützter Inhalt.", "restricted": True},
     )
 
-    sources = client.get("/api/sources", headers={"X-Dev-User": "anon"}).json()
+    sources = anon_client.get("/api/sources").json()
 
     assert sources[0]["restricted"] is True
     assert sources[0]["text"] == ""
@@ -596,17 +727,14 @@ def test_generate_source_summary_returns_ai_result(client, monkeypatch):
     assert response_en.json()["key_terms"] == ["Term A", "Term B"]
 
 
-def test_generate_source_summary_requires_pfleger_role(client):
+def test_generate_source_summary_requires_pfleger_role(client, anon_client):
     create_res = client.post(
         "/api/sources",
         json={"title": "Quelle", "text": "Text."},
     )
     source_id = create_res.json()["id"]
 
-    response = client.post(
-        f"/api/sources/{source_id}/generate-summary",
-        headers={"X-Dev-User": "anon"},
-    )
+    response = anon_client.post(f"/api/sources/{source_id}/generate-summary")
 
     assert response.status_code == 403
 
@@ -641,11 +769,10 @@ def test_extract_pdf_upload_returns_extracted_fields(client, monkeypatch):
     assert data["upload_id"]
 
 
-def test_extract_pdf_upload_without_role_is_forbidden(client):
-    response = client.post(
+def test_extract_pdf_upload_without_role_is_forbidden(anon_client):
+    response = anon_client.post(
         "/api/extract-pdf-upload",
         files={"file": ("test.pdf", b"%PDF-1.4 fake", "application/pdf")},
-        headers={"X-Dev-User": "anon"},
     )
     assert response.status_code == 403
 
@@ -715,11 +842,11 @@ def test_get_source_pdf_returns_file_content(client, monkeypatch):
     assert response.headers["content-type"] == "application/pdf"
 
 
-def test_get_source_pdf_requires_pfleger_role(client):
+def test_get_source_pdf_requires_pfleger_role(client, anon_client):
     create_res = client.post("/api/sources", json={"title": "Quelle", "text": "Text."})
     source_id = create_res.json()["id"]
 
-    response = client.get(f"/api/sources/{source_id}/pdf", headers={"X-Dev-User": "anon"})
+    response = anon_client.get(f"/api/sources/{source_id}/pdf")
 
     assert response.status_code == 403
 
@@ -763,15 +890,13 @@ def test_check_source_url_without_url_reports_has_url_false(client):
     assert response.json() == {"has_url": False, "reachable": None, "status_code": None}
 
 
-def test_check_source_url_without_role_is_forbidden(client):
+def test_check_source_url_without_role_is_forbidden(client, anon_client):
     create_res = client.post(
         "/api/sources", json={"title": "Mit URL", "url": "https://example.org", "text": "Text."}
     )
     source_id = create_res.json()["id"]
 
-    response = client.get(
-        f"/api/sources/{source_id}/check-url", headers={"X-Dev-User": "anon"}
-    )
+    response = anon_client.get(f"/api/sources/{source_id}/check-url")
 
     assert response.status_code == 403
 

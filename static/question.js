@@ -1,5 +1,6 @@
 import { initI18n, t, getLang } from '/i18n.js';
 import { renderMarkdown } from '/markdown.js';
+import { initAuth, hasRole, onAuthChange } from '/auth.js';
 
 // Spam-/Bot-Schutz für die Frage-Eingabe (Cloudflare Turnstile). Hier den
 // Site-Key aus dem Cloudflare-Dashboard eintragen. Bleibt das Feld leer,
@@ -57,42 +58,8 @@ const EDIT_ICON =
   '<path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z"></path>' +
   "</svg>";
 
-// Quellen-Pfleger:innen testen ihre Quellen vermutlich auch über die
-// Konversationsansicht - der Rollen-Schalter im Header (nur Desktop) nutzt
-// dasselbe geteilte localStorage("devUser") wie import.html.
-let currentUserRoles = [];
-
-function getCurrentDevUser() {
-  return localStorage.getItem('devUser') || 'anon';
-}
-
-async function initRoleSwitcher() {
-  const select = document.getElementById('dev-role');
-  const res = await fetch('/api/dev/users');
-  const devUserList = await res.json();
-  select.innerHTML = '';
-  devUserList.forEach((u) => {
-    const option = document.createElement('option');
-    option.value = u.id;
-    option.textContent = u.name;
-    select.appendChild(option);
-  });
-  if (!devUserList.some((u) => u.id === getCurrentDevUser())) {
-    localStorage.setItem('devUser', devUserList[0] ? devUserList[0].id : 'anon');
-  }
-  select.value = getCurrentDevUser();
-  currentUserRoles = (devUserList.find((u) => u.id === getCurrentDevUser()) || {}).roles || [];
-  select.addEventListener('change', () => {
-    localStorage.setItem('devUser', select.value);
-    currentUserRoles = (devUserList.find((u) => u.id === select.value) || {}).roles || [];
-    // Zeigt/versteckt die Bearbeiten-Icons in der Sidebar sofort passend zur
-    // neu gewählten Rolle, ohne dass eine neue Antwort nötig ist.
-    renderSidebarSources();
-  });
-}
-
 function hasPflegerRole() {
-  return currentUserRoles.includes('quellen_pfleger') || currentUserRoles.includes('system_admin');
+  return hasRole('quellen_pfleger');
 }
 
 function appendEditSourceLink(container, sourceId) {
@@ -311,7 +278,7 @@ function extractCitedSources(container, sources) {
 }
 
 await initI18n();
-await initRoleSwitcher();
+await initAuth();
 
 const chatMessages = document.getElementById('chat-messages');
 const questionInput = document.getElementById('question');
@@ -337,10 +304,19 @@ function renderSidebarSources() {
   });
 }
 
+// Zeigt/versteckt die Bearbeiten-Icons in der Sidebar sofort passend zum
+// Login-Status, ohne dass eine neue Antwort nötig ist.
+onAuthChange(() => renderSidebarSources());
+
 document.getElementById('question-form').addEventListener('submit', async (e) => {
   e.preventDefault();
   const question = questionInput.value.trim();
   if (!question) return;
+
+  // Schaltet vom zentrierten Startzustand (nur Eingabefeld) auf die volle
+  // Ansicht (Sidebar + Nachrichtenverlauf) um, sobald die erste Frage
+  // gestellt wird - siehe .chat-started in style.css.
+  document.body.classList.add('chat-started');
 
   const { message: userMessage, bubble: userBubble } = buildChatMessage('user');
   userBubble.textContent = question;

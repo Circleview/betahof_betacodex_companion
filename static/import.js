@@ -1,5 +1,6 @@
 import { initI18n, t, getLang } from '/i18n.js';
 import { renderMarkdown } from '/markdown.js';
+import { initAuth, hasRole, onAuthChange } from '/auth.js';
 
 const importBereich = document.getElementById('import-bereich');
 const urlPopover = document.getElementById('url-popover');
@@ -115,8 +116,6 @@ let allSources = [];
 let currentSourceList = [];
 let currentDisplayedSources = [];
 let activeEditId = null;
-let devUserList = [];
-let currentUserRoles = [];
 let pendingUploadId = null;
 let currentSortMode = 'author';
 const pendingDeletions = new Map();
@@ -124,53 +123,25 @@ const unreachableSourceIds = new Set();
 const expandedSourceIds = new Set();
 
 function hasPflegerRole() {
-  return currentUserRoles.includes('quellen_pfleger') || currentUserRoles.includes('system_admin');
-}
-
-function getCurrentDevUser() {
-  return localStorage.getItem('devUser') || 'anon';
+  return hasRole('quellen_pfleger');
 }
 
 function devUserHeaders() {
+  // Name beibehalten (viele Call-Sites), sendet aber keinen Header mehr -
+  // die Identität kommt jetzt automatisch über das Session-Cookie mit.
   return {
     'Content-Type': 'application/json',
-    'X-Dev-User': getCurrentDevUser(),
     'X-Lang': getLang(),
   };
 }
 
-function updateCurrentUserRoles() {
-  const match = devUserList.find((u) => u.id === getCurrentDevUser());
-  currentUserRoles = match ? match.roles : [];
+function updateSourceManagementVisibility() {
   quelltypBereich.classList.toggle('hidden', !hasPflegerRole());
   if (!hasPflegerRole()) {
     importBereich.classList.add('hidden');
     urlPopover.classList.add('hidden');
     filePopover.classList.add('hidden');
   }
-}
-
-async function initRoleSwitcher() {
-  const select = document.getElementById('dev-role');
-  const res = await fetch('/api/dev/users');
-  devUserList = await res.json();
-  select.innerHTML = '';
-  devUserList.forEach((u) => {
-    const option = document.createElement('option');
-    option.value = u.id;
-    option.textContent = u.name;
-    select.appendChild(option);
-  });
-  if (!devUserList.some((u) => u.id === getCurrentDevUser())) {
-    localStorage.setItem('devUser', devUserList[0] ? devUserList[0].id : 'anon');
-  }
-  select.value = getCurrentDevUser();
-  updateCurrentUserRoles();
-  select.addEventListener('change', () => {
-    localStorage.setItem('devUser', select.value);
-    updateCurrentUserRoles();
-    loadSources();
-  });
 }
 
 function showForm() {
@@ -272,7 +243,7 @@ document.getElementById('popover-upload').addEventListener('click', async () => 
     formData.append('file', file);
     const res = await fetch('/api/extract-pdf-upload', {
       method: 'POST',
-      headers: { 'X-Dev-User': getCurrentDevUser(), 'X-Lang': getLang() },
+      headers: { 'X-Lang': getLang() },
       body: formData,
     });
     if (!res.ok) {
@@ -1256,7 +1227,7 @@ function setSortMode(mode) {
 
 async function loadSources() {
   const res = await fetch('/api/sources', {
-    headers: { 'X-Dev-User': getCurrentDevUser(), 'X-Lang': getLang() },
+    headers: { 'X-Lang': getLang() },
   });
   allSources = await res.json();
   renderSourceList(allSources);
@@ -1375,7 +1346,12 @@ document.addEventListener('i18n:changed', () => {
 // es erscheinen die rohen Übersetzungsschlüssel statt echtem Text (genau
 // dieser Fehler wurde hier gemeldet und behoben).
 await initI18n();
-await initRoleSwitcher();
+await initAuth();
+updateSourceManagementVisibility();
+onAuthChange(() => {
+  updateSourceManagementVisibility();
+  loadSources();
+});
 
 renderCreateAuthorDateRow();
 

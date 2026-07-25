@@ -57,10 +57,30 @@ class AnswerOut(BaseModel):
     sources: list[ChunkRef]
 
 
-class UserOut(BaseModel):
-    id: str
-    name: str
+class RequestLinkIn(BaseModel):
+    email: str
+
+
+class InviteIn(BaseModel):
+    email: str
+    role: str
+
+
+class WhoAmIOut(BaseModel):
+    email: Optional[str] = None
+    roles: list[str] = []
+
+
+class AdminUserOut(BaseModel):
+    email: str
     roles: list[str]
+    status: str
+    invited_at: Optional[str] = None
+    last_login_at: Optional[str] = None
+
+
+class MessageOut(BaseModel):
+    detail: str
 
 
 class AuthorOut(BaseModel):

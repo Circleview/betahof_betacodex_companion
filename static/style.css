@@ -138,26 +138,110 @@ header h1 {
   flex-wrap: wrap;
 }
 
-.dev-role-picker {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  margin: 0;
-  font-size: 0.8rem;
-  color: var(--color-text-muted);
-  white-space: nowrap;
+.auth-widget {
+  position: relative;
+  display: inline-flex;
 }
 
-#dev-role {
-  display: inline-block;
-  width: auto;
-  margin-top: 0;
+.auth-widget-button--active {
+  color: var(--color-accent);
+}
+
+/* #auth-widget-Präfix erhöht die Spezifität bewusst über die gemeinsame
+   .popover-Basisregel (weiter unten in dieser Datei) hinaus - sonst gewinnt
+   bei gleicher Spezifität die spätere Regel im Quellcode und das Popover
+   bleibt mittig über dem schmalen Icon zentriert statt rechtsbündig daran. */
+#auth-widget .auth-popover {
+  left: auto;
+  right: 0;
+  transform: none;
+  top: calc(100% + 14px);
+  width: min(420px, calc(100vw - 3rem));
+}
+
+#auth-widget .auth-popover .popover-arrow {
+  left: auto;
+  right: 12px;
+  transform: rotate(45deg);
+}
+
+.auth-login-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.auth-status {
+  color: var(--color-text-muted);
+  font-size: 0.9rem;
+}
+
+.auth-status-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-top: -0.75rem;
+}
+
+.auth-roles {
+  color: var(--color-text-muted);
   font-size: 0.85rem;
-  padding: 0.3rem 0.6rem;
-  border-radius: var(--radius);
-  border: 1px solid var(--color-border);
-  background: var(--color-bg);
-  color: var(--color-text);
+}
+
+.auth-admin-section {
+  margin-top: 1.25rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--color-border);
+}
+
+.auth-section-heading {
+  font-size: 0.8rem;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  margin-bottom: 0.5rem;
+}
+
+.auth-invite-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.auth-invite-form input {
+  /* Immer die volle Zeile für sich - sonst bleibt neben Rollen-Auswahl
+     und Button kaum Platz für die E-Mail-Adresse übrig. */
+  flex: 1 1 100%;
+  min-width: 0;
+  margin-top: 0;
+}
+
+.auth-invite-form select {
+  flex: 1;
+  min-width: 0;
+  margin-top: 0;
+  width: auto;
+}
+
+.auth-invite-form button {
+  flex: 0 0 auto;
+}
+
+.auth-user-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  max-height: 160px;
+  overflow-y: auto;
+  font-size: 0.85rem;
+  color: var(--color-text-muted);
+}
+
+.auth-user-list li {
+  padding: 0.3rem 0;
+  border-bottom: 1px solid var(--color-border);
 }
 
 .lang-switcher {
@@ -362,6 +446,60 @@ section {
   margin-bottom: 3rem;
 }
 
+/* body als Flex-Spalte mit voller Bildschirmhöhe (nur auf der Chat-Seite,
+   :has(#frage-bereich) schließt import.html aus) - Grundlage dafür, dass
+   #frage-bereich per flex:1 den verbleibenden Platz zwischen Header/Tagline
+   und Footer exakt ausfüllt und sein Inhalt darin zentrieren kann. */
+body:has(#frage-bereich) {
+  display: flex;
+  flex-direction: column;
+  min-height: 100dvh;
+}
+
+#frage-bereich {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Startzustand ohne laufende Konversation: nur das Eingabefeld zeigen,
+   zentriert im verbleibenden Platz - Sidebar und (leerer) Nachrichtenverlauf
+   bleiben unsichtbar. Sobald die erste Frage gestellt wird, setzt question.js
+   die Klasse "chat-started" auf <body> und die volle Ansicht erscheint
+   (Sidebar, Nachrichtenverlauf, die Chat-Box mit Rahmen). Gilt unverändert
+   für Desktop und Mobile. */
+body:not(.chat-started) #frage-bereich {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+body:not(.chat-started) #sources-sidebar,
+body:not(.chat-started) #chat-messages {
+  display: none;
+}
+
+body:not(.chat-started) #chat-column {
+  /* Ohne dies würde die mobile Regel weiter unten (#chat-column { flex: 1 })
+     die Box auf die volle Höhe von #frage-bereich aufblasen - dann sitzt das
+     Formular oben statt zentriert. flex:initial lässt sie auf Inhaltsgröße
+     schrumpfen, damit align-items/justify-content vom Elternelement greifen. */
+  flex: initial;
+  width: 100%;
+  max-width: 560px;
+  height: auto;
+  min-height: 0;
+  max-height: none;
+  border: none;
+  background: transparent;
+}
+
+body:not(.chat-started) #question-form {
+  border-top: none;
+  padding-left: 0;
+  padding-right: 0;
+}
+
 #chat-column {
   display: flex;
   flex-direction: column;
@@ -370,7 +508,7 @@ section {
   max-height: 780px;
   background: var(--color-surface);
   border: 1px solid var(--color-border);
-  border-radius: 16px;
+  border-radius: var(--radius);
   overflow: hidden;
 }
 
@@ -485,9 +623,14 @@ section {
 #question-form input {
   margin-top: 0;
   flex: 1;
-  border-radius: 999px;
+  border-radius: var(--radius);
   padding: 0.7rem 1.25rem;
   background: var(--color-surface);
+  /* Ohne dies erbt das Feld font-size: 0.95rem (~15px) von der generischen
+     input/textarea-Regel - iOS Safari zoomt beim Fokussieren automatisch in
+     jedes Feld mit weniger als 16px Schriftgröße hinein (der gemeldete
+     "Zoom-Glitch" beim Start der Konversation). */
+  font-size: 16px;
 }
 
 /* Ohne konfigurierten Turnstile-Site-Key bleibt der Container leer und darf
@@ -505,7 +648,7 @@ section {
    Mobile-Lösung (siehe Media Query weiter unten), am Desktop ändert sich
    nichts. */
 #question-form button.send-button {
-  border-radius: 999px;
+  border-radius: var(--radius);
   flex-shrink: 0;
 }
 
@@ -597,30 +740,18 @@ section {
     padding-right: 0.75rem;
   }
 
-  body:has(#frage-bereich) {
-    display: flex;
-    flex-direction: column;
-    min-height: 100dvh;
-  }
-
   header {
     align-items: flex-start;
     padding-bottom: 0.85rem;
     margin-bottom: 0.85rem;
   }
 
-  /* Quellen-Icon und Sprachumschalter passen als eigene Zeile neben der
-     Überschrift nicht mehr nebeneinander - stattdessen rechtsbündig
-     übereinander (Icon oben, Sprache darunter), damit die Kopfzeile nicht
-     umbricht. */
+  /* Bricht der Header um (Titel + Actions passen nicht in eine Zeile),
+     landet .header-actions als einzelnes Element auf seiner eigenen Zeile
+     sonst am linken statt am rechten Rand - hier wie am Desktop erzwungen. */
   .header-actions {
-    flex-direction: column;
-    align-items: flex-end;
-    gap: 0.5rem;
-  }
-
-  #import-link {
-    order: -1;
+    width: 100%;
+    justify-content: flex-end;
   }
 
   header h1 {
@@ -633,9 +764,6 @@ section {
   }
 
   #frage-bereich {
-    display: flex;
-    flex-direction: column;
-    flex: 1;
     min-height: 0;
     /* In Flexbox kollabieren Geschwister-Margins NICHT wie im normalen
        Blockfluss - margin-bottom hier UND margin-top von .site-footer
@@ -1015,6 +1143,10 @@ section {
   .icon-button.remove-author-btn {
     opacity: 1;
   }
+
+  .icon-button.auth-widget-button {
+    opacity: 1;
+  }
 }
 
 #source-list li.source-row--unreachable {
@@ -1288,10 +1420,17 @@ details a {
   padding-top: 1rem;
   border-top: 1px solid var(--color-border);
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
+  justify-content: flex-end;
   gap: 0.6rem;
   font-size: 0.8rem;
   color: var(--color-text-muted);
+}
+
+.footer-tagline {
+  margin-right: auto;
+  white-space: nowrap;
 }
 
 .site-footer a {

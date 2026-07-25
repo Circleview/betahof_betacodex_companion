@@ -1,4 +1,5 @@
 import json
+import os
 import subprocess
 import uuid
 from datetime import datetime, timezone
@@ -7,12 +8,13 @@ from urllib.parse import urlsplit
 
 from dotenv import load_dotenv
 from fastapi import BackgroundTasks, Depends, FastAPI, File, Header, HTTPException, Request, UploadFile
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 load_dotenv()
 
 from app import (
+    auth,
     authors,
     captcha,
     chunking,
@@ -20,6 +22,7 @@ from app import (
     extraction,
     i18n,
     llm,
+    mail,
     monitoring,
     ratelimit,
     summarization,
@@ -28,34 +31,44 @@ from app import (
     vectorstore,
 )
 from app.models import (
+    AdminUserOut,
     AnswerOut,
     AuthorOut,
     ChunkRef,
     ExtractedSource,
     ExtractedUpload,
+    InviteIn,
+    MessageOut,
     QuestionIn,
+    RequestLinkIn,
     SourceIn,
     SourceOut,
     SummaryOut,
     TermOut,
     UrlCheckOut,
     UrlIn,
-    UserOut,
     VersionOut,
+    WhoAmIOut,
 )
+
+# "development": Cookies werden ohne "Secure"-Flag gesetzt, damit Logins auch
+# über http://localhost funktionieren (siehe .env.example).
+IS_DEV_ENVIRONMENT = os.environ.get("ENVIRONMENT", "").strip().lower() == "development"
+
+
+def _get_current_user_email(request: Request) -> str | None:
+    return auth.verify_session_token(request.cookies.get(auth.SESSION_COOKIE_NAME))
 
 
 def require_role(role: str):
-    def check(
-        x_dev_user: str = Header(default="anon"),
-        x_lang: str = Header(default=i18n.DEFAULT_LANG),
-    ):
-        if not users.has_role(x_dev_user, role):
+    def check(request: Request, x_lang: str = Header(default=i18n.DEFAULT_LANG)):
+        email = _get_current_user_email(request)
+        if not users.has_role(email, role):
             raise HTTPException(
                 403,
-                i18n.get_message("role_required", x_lang, role=role, user=x_dev_user),
+                i18n.get_message("role_required", x_lang, role=role, user=email or "anon"),
             )
-        return x_dev_user
+        return email
 
     return check
 
@@ -69,6 +82,7 @@ PDF_UPLOAD_STAGING_DIR = DATA_DIR / "pdf_uploads"
 AUDIO_DIR = DATA_DIR / "audio"
 
 DATA_DIR.mkdir(exist_ok=True)
+users.ensure_bootstrap_admin(os.environ.get("SYSTEM_ADMIN_EMAIL", ""))
 
 
 def _get_version() -> str:
@@ -366,10 +380,11 @@ def delete_source(
 
 @app.get("/api/sources", response_model=list[SourceOut])
 def list_sources(
-    x_dev_user: str = Header(default="anon"),
+    request: Request,
     x_lang: str = Header(default=i18n.DEFAULT_LANG),
 ):
-    can_view_full_text = users.has_role(x_dev_user, users.QUELLEN_PFLEGER)
+    email = _get_current_user_email(request)
+    can_view_full_text = users.has_role(email, users.QUELLEN_PFLEGER)
     sources = _load_sources()
     return [_to_source_out(entry, can_view_full_text, x_lang) for entry in sources.values()]
 
@@ -384,9 +399,89 @@ def list_terms():
     return terms.list_terms()
 
 
-@app.get("/api/dev/users", response_model=list[UserOut])
-def dev_list_users():
+@app.post("/api/auth/request-link", response_model=MessageOut)
+def request_login_link(
+    payload: RequestLinkIn,
+    request: Request,
+    x_lang: str = Header(default=i18n.DEFAULT_LANG),
+):
+    email = payload.email.strip().lower()
+    client_ip = request.client.host if request.client else "unknown"
+    if ratelimit.is_rate_limited(f"login-ip:{client_ip}", max_requests=10, window_seconds=3600) or (
+        email and ratelimit.is_rate_limited(f"login-email:{email}", max_requests=5, window_seconds=3600)
+    ):
+        raise HTTPException(429, i18n.get_message("rate_limited", x_lang))
+    if "@" not in email:
+        raise HTTPException(400, i18n.get_message("invalid_email", x_lang))
+
+    # Immer dieselbe generische Antwort, unabhängig davon, ob die Adresse
+    # bekannt ist - verhindert, dass sich per Trial-and-Error herausfinden
+    # lässt, welche E-Mails eingeladen wurden.
+    if users.get_user(email):
+        token = auth.create_magic_link_token(email, auth.LOGIN_LINK_MAX_AGE_SECONDS)
+        link_url = str(request.base_url) + f"api/auth/verify?token={token}"
+        mail.send_login_link_email(email, link_url, x_lang)
+    return MessageOut(detail=i18n.get_message("magic_link_sent", x_lang))
+
+
+@app.get("/api/auth/verify")
+def verify_login_link(token: str):
+    email = auth.verify_magic_link_token(token)
+    if not email or not users.get_user(email):
+        return RedirectResponse("/?auth=expired")
+
+    users.mark_logged_in(email)
+    response = RedirectResponse("/")
+    response.set_cookie(
+        auth.SESSION_COOKIE_NAME,
+        auth.create_session_token(email),
+        max_age=auth.SESSION_MAX_AGE_SECONDS,
+        httponly=True,
+        samesite="lax",
+        secure=not IS_DEV_ENVIRONMENT,
+        path="/",
+    )
+    return response
+
+
+@app.post("/api/auth/logout", status_code=204)
+def logout():
+    response = Response(status_code=204)
+    response.delete_cookie(auth.SESSION_COOKIE_NAME, path="/")
+    return response
+
+
+@app.get("/api/auth/whoami", response_model=WhoAmIOut)
+def whoami(request: Request):
+    email = _get_current_user_email(request)
+    return WhoAmIOut(email=email, roles=users.get_roles(email))
+
+
+@app.get("/api/auth/users", response_model=list[AdminUserOut])
+def list_invited_users(_user: str = Depends(require_role(users.USER_ADMIN))):
     return users.list_users()
+
+
+@app.post("/api/auth/invite", response_model=AdminUserOut, status_code=201)
+def invite_user(
+    payload: InviteIn,
+    request: Request,
+    current_user: str = Depends(require_role(users.USER_ADMIN)),
+    x_lang: str = Header(default=i18n.DEFAULT_LANG),
+):
+    if payload.role not in users.ALL_ROLES:
+        raise HTTPException(400, i18n.get_message("invite_invalid_role", x_lang))
+    if payload.role in (users.USER_ADMIN, users.SYSTEM_ADMIN) and not users.has_role(
+        current_user, users.SYSTEM_ADMIN
+    ):
+        raise HTTPException(403, i18n.get_message("invite_role_forbidden", x_lang))
+
+    email = payload.email.strip().lower()
+    entry = users.invite_user(email, payload.role, invited_by=current_user)
+    token = auth.create_magic_link_token(email, auth.INVITE_LINK_MAX_AGE_SECONDS)
+    link_url = str(request.base_url) + f"api/auth/verify?token={token}"
+    mail.send_invite_email(email, link_url, payload.role, x_lang)
+    return entry
 
 
 @app.get("/api/sources/{source_id}/check-url", response_model=UrlCheckOut)
