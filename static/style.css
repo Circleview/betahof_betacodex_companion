@@ -490,6 +490,16 @@ section {
   background: var(--color-surface);
 }
 
+/* Ohne konfigurierten Turnstile-Site-Key bleibt der Container leer und darf
+   keinen Platz in der Eingabezeile beanspruchen. */
+.turnstile-container {
+  flex-shrink: 0;
+}
+
+.turnstile-container:empty {
+  display: none;
+}
+
 /* Desktop: normaler Text-Button ("Absenden"/"Send"), Papierflieger-Icon
    bleibt versteckt - die Icon-Variante ist ausdrücklich nur eine
    Mobile-Lösung (siehe Media Query weiter unten), am Desktop ändert sich

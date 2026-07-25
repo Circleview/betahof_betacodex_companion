@@ -36,6 +36,7 @@ class SourceOut(BaseModel):
 class QuestionIn(BaseModel):
     question: str
     top_k: int = 5
+    turnstile_token: str = ""
 
 
 class ChunkRef(BaseModel):

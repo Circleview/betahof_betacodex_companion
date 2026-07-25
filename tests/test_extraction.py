@@ -1,6 +1,7 @@
 from unittest.mock import MagicMock, patch
 
 from app.extraction import (
+    _extract_youtube,
     _parse_markdown_extraction,
     _split_authors,
     download_audio_bytes,
@@ -312,3 +313,71 @@ def test_extract_from_url_routes_audio_to_manual_fallback():
     assert result["extracted"] is False
     assert result["text"] == ""
     assert result["title"] == "Folge 42 ueber dezentralisierung"
+
+
+def _fake_transcript_segment(start, text):
+    segment = MagicMock()
+    segment.start = start
+    segment.text = text
+    return segment
+
+
+def test_extract_youtube_returns_flowing_text_without_timestamps():
+    segments = [
+        _fake_transcript_segment(0.0, "Hallo und willkommen"),
+        _fake_transcript_segment(3.5, "zu diesem Video."),
+        _fake_transcript_segment(7.0, "Heute geht es um Beta."),
+    ]
+    fake_api = MagicMock()
+    fake_api.fetch.return_value = segments
+    with (
+        patch("app.extraction.YouTubeTranscriptApi", return_value=fake_api),
+        patch(
+            "app.extraction._fetch_youtube_metadata",
+            return_value={"title": "Ein Video", "date": "2024-01-01"},
+        ),
+    ):
+        result = _extract_youtube("https://www.youtube.com/watch?v=abc123")
+
+    assert result["extracted"] is True
+    assert result["title"] == "Ein Video"
+    assert result["date"] == "2024-01-01"
+    assert result["authors"] == []
+    assert result["text"] == "Hallo und willkommen zu diesem Video. Heute geht es um Beta."
+    assert "[" not in result["text"]
+
+
+def test_extract_youtube_falls_back_to_transcript_list_when_fetch_fails():
+    transcript = MagicMock()
+    transcript.fetch.return_value = [_fake_transcript_segment(0.0, "Fallback-Text.")]
+    fake_api = MagicMock()
+    fake_api.fetch.side_effect = Exception("keine deutsche/englische Spur verfügbar")
+    fake_api.list.return_value = [transcript]
+    with (
+        patch("app.extraction.YouTubeTranscriptApi", return_value=fake_api),
+        patch(
+            "app.extraction._fetch_youtube_metadata",
+            return_value={"title": "", "date": ""},
+        ),
+    ):
+        result = _extract_youtube("https://youtu.be/abc123")
+
+    assert result["extracted"] is True
+    assert result["text"] == "Fallback-Text."
+
+
+def test_extract_youtube_handles_missing_video_id():
+    result = _extract_youtube("https://www.youtube.com/")
+
+    assert result["extracted"] is False
+    assert result["text"] == ""
+
+
+def test_extract_youtube_handles_transcript_fetch_failure():
+    fake_api = MagicMock()
+    fake_api.fetch.side_effect = Exception("boom")
+    fake_api.list.side_effect = Exception("boom")
+    with patch("app.extraction.YouTubeTranscriptApi", return_value=fake_api):
+        result = _extract_youtube("https://www.youtube.com/watch?v=abc123")
+
+    assert result["extracted"] is False

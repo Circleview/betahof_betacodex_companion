@@ -1,6 +1,34 @@
 import { initI18n, t, getLang } from '/i18n.js';
 import { renderMarkdown } from '/markdown.js';
 
+// Spam-/Bot-Schutz für die Frage-Eingabe (Cloudflare Turnstile). Hier den
+// Site-Key aus dem Cloudflare-Dashboard eintragen. Bleibt das Feld leer,
+// bleibt das Widget einfach unsichtbar/inaktiv - der Backend-Check ist dann
+// ebenfalls deaktiviert (siehe app/captcha.py), die App bleibt also auch
+// ohne Turnstile-Setup voll nutzbar (z.B. lokale Entwicklung).
+const TURNSTILE_SITE_KEY = '0x4AAAAAAD9q6Ufs_N8-KCI3';
+let turnstileWidgetId = null;
+
+window.onTurnstileLoad = function () {
+  if (!TURNSTILE_SITE_KEY) return;
+  const container = document.getElementById('turnstile-container');
+  if (!container || !window.turnstile) return;
+  turnstileWidgetId = window.turnstile.render(container, { sitekey: TURNSTILE_SITE_KEY });
+};
+
+function getTurnstileToken() {
+  if (turnstileWidgetId !== null && window.turnstile) {
+    return window.turnstile.getResponse(turnstileWidgetId) || '';
+  }
+  return '';
+}
+
+function resetTurnstile() {
+  if (turnstileWidgetId !== null && window.turnstile) {
+    window.turnstile.reset(turnstileWidgetId);
+  }
+}
+
 const EXTERNAL_LINK_ICON =
   '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" ' +
   'stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
@@ -325,8 +353,12 @@ document.getElementById('question-form').addEventListener('submit', async (e) =>
     const res = await fetch('/api/ask', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-Lang': getLang() },
-      body: JSON.stringify({ question, top_k: 5 }),
+      body: JSON.stringify({ question, top_k: 5, turnstile_token: getTurnstileToken() }),
     });
+    // Turnstile-Tokens sind Einweg-Token - nach jedem Versuch (egal ob
+    // erfolgreich oder nicht) zurücksetzen, damit die nächste Frage ein
+    // frisches Token bekommt.
+    resetTurnstile();
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
       throw new Error(err.detail || t('index.askError'));

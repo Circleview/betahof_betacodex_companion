@@ -298,7 +298,35 @@ function normalizeAuthor(name) {
   return name.trim().split(/\s+/).join(' ').toLowerCase();
 }
 
+// Analog zu app/extraction.py:_extract_video_id() - dieselbe Quelle kann
+// unter mehreren URL-Formen eingefügt werden (youtu.be/ID vs.
+// youtube.com/watch?v=ID, zusätzliche Parameter wie "&t=42s"), die der
+// generische String-Vergleich unten sonst als unterschiedlich ansieht.
+function extractYoutubeVideoId(url) {
+  let parsed;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return null;
+  }
+  const host = parsed.hostname.toLowerCase();
+  if (host.includes('youtu.be')) {
+    return parsed.pathname.replace(/^\/+/, '').split('/')[0] || null;
+  }
+  if (host.includes('youtube.com')) {
+    if (parsed.pathname === '/watch') {
+      return parsed.searchParams.get('v');
+    }
+    if (parsed.pathname.startsWith('/shorts/')) {
+      return parsed.pathname.split('/shorts/')[1].split('/')[0] || null;
+    }
+  }
+  return null;
+}
+
 function normalizeUrlForComparison(url) {
+  const videoId = extractYoutubeVideoId(url);
+  if (videoId) return `youtube:${videoId.toLowerCase()}`;
   return url.trim().replace(/\/+$/, '').toLowerCase();
 }
 

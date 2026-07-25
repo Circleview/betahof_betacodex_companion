@@ -1,7 +1,19 @@
 import pytest
 from fastapi.testclient import TestClient
 
-from app import authors, embeddings, extraction, llm, monitoring, summarization, terms, users, vectorstore
+from app import (
+    authors,
+    captcha,
+    embeddings,
+    extraction,
+    llm,
+    monitoring,
+    ratelimit,
+    summarization,
+    terms,
+    users,
+    vectorstore,
+)
 from app import main as main_module
 
 PFLEGER = "lena.pflegerin"
@@ -36,6 +48,13 @@ def client(tmp_path, monkeypatch):
             "en": {"summary": "", "key_terms": []},
         },
     )
+
+    # /api/ask ist durch Rate-Limiting + Captcha-Prüfung abgesichert - für die
+    # meisten Tests hier standardmäßig deaktiviert, damit sie sich weiterhin
+    # nur um ihr jeweiliges Verhalten kümmern müssen. Eigene Tests für das
+    # Schutzverhalten selbst überschreiben diese Mocks gezielt.
+    monkeypatch.setattr(captcha, "verify_turnstile_token", lambda token, remote_ip=None: True)
+    monkeypatch.setattr(ratelimit, "_request_log", {})
 
     # Standard-Testrolle: Quellen-Pfleger:in, damit bestehende Tests nicht jeden
     # Request einzeln mit einem Rollen-Header versehen müssen.
@@ -75,6 +94,27 @@ def test_list_sources_returns_imported_sources(client):
 def test_ask_without_sources_returns_400(client):
     response = client.post("/api/ask", json={"question": "Was ist der BetaCodex?"})
     assert response.status_code == 400
+
+
+def test_ask_rejects_when_captcha_verification_fails(client, monkeypatch):
+    client.post("/api/sources", json={"title": "Quelle", "text": "Ein Text."})
+    monkeypatch.setattr(captcha, "verify_turnstile_token", lambda token, remote_ip=None: False)
+
+    response = client.post("/api/ask", json={"question": "Frage?"})
+
+    assert response.status_code == 400
+
+
+def test_ask_rejects_after_rate_limit_exceeded(client):
+    client.post("/api/sources", json={"title": "Quelle", "text": "Ein Text."})
+
+    for _ in range(ratelimit.MAX_REQUESTS):
+        response = client.post("/api/ask", json={"question": "Frage?"})
+        assert response.status_code == 200
+
+    response = client.post("/api/ask", json={"question": "Frage?"})
+
+    assert response.status_code == 429
 
 
 def test_ask_returns_answer_with_sources(client):

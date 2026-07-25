@@ -36,15 +36,6 @@ def _extract_video_id(url: str) -> str | None:
     return None
 
 
-def _format_timestamp(seconds: float) -> str:
-    total = int(seconds)
-    minutes, secs = divmod(total, 60)
-    hours, minutes = divmod(minutes, 60)
-    if hours:
-        return f"{hours}:{minutes:02d}:{secs:02d}"
-    return f"{minutes}:{secs:02d}"
-
-
 def _fetch_youtube_metadata(url: str) -> dict:
     try:
         req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
@@ -77,7 +68,11 @@ def _extract_youtube(url: str) -> dict:
     except Exception:
         return {"title": "", "authors": [], "date": "", "text": "", "extracted": False}
 
-    text = "\n".join(f"[{_format_timestamp(s.start)}] {s.text}" for s in fetched).strip()
+    # Fließtext statt Zeilen mit Zeitstempel-Präfix - für die spätere
+    # Verwendung als Antwort-Kontext ist der reine, lesbare Wortlaut
+    # hilfreicher als eine mit Sprungmarken durchsetzte Liste.
+    text = " ".join(s.text.strip() for s in fetched if s.text.strip())
+    text = re.sub(r"\s+", " ", text).strip()
     metadata = _fetch_youtube_metadata(url)
 
     return {

@@ -14,12 +14,14 @@ load_dotenv()
 
 from app import (
     authors,
+    captcha,
     chunking,
     embeddings,
     extraction,
     i18n,
     llm,
     monitoring,
+    ratelimit,
     summarization,
     terms,
     users,
@@ -467,7 +469,13 @@ def extract_url(payload: UrlIn, _user: str = Depends(require_role(users.QUELLEN_
 
 
 @app.post("/api/ask", response_model=AnswerOut)
-def ask(question: QuestionIn, x_lang: str = Header(default=i18n.DEFAULT_LANG)):
+def ask(question: QuestionIn, request: Request, x_lang: str = Header(default=i18n.DEFAULT_LANG)):
+    client_ip = request.client.host if request.client else "unknown"
+    if ratelimit.is_rate_limited(client_ip):
+        raise HTTPException(429, i18n.get_message("rate_limited", x_lang))
+    if not captcha.verify_turnstile_token(question.turnstile_token, client_ip):
+        raise HTTPException(400, i18n.get_message("captcha_failed", x_lang))
+
     sources = _load_sources()
     if not sources:
         raise HTTPException(400, i18n.get_message("no_sources", x_lang))
