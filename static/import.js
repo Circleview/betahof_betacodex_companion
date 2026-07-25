@@ -44,6 +44,19 @@ const WARNING_ICON =
   '<line x1="3" y1="3" x2="21" y2="21"></line>' +
   "</svg>";
 
+const PLUS_ICON =
+  '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" ' +
+  'stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
+  '<line x1="12" y1="5" x2="12" y2="19"></line>' +
+  '<line x1="5" y1="12" x2="19" y2="12"></line>' +
+  "</svg>";
+
+const REMOVE_ICON =
+  '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" ' +
+  'stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
+  '<line x1="5" y1="12" x2="19" y2="12"></line>' +
+  "</svg>";
+
 const UNDO_DURATION_MS = 30000;
 
 function wrapSelection(textarea, marker) {
@@ -93,6 +106,13 @@ function buildMarkupToolbar(textarea) {
 }
 
 let allSources = [];
+// Die zuletzt an renderSourceList() übergebene, NICHT expandierte Quellenliste
+// (z.B. allSources oder eine gefilterte Teilmenge) - wird für Re-Renders der
+// gleichen Ansicht (Auf-/Zuklappen, nach Bearbeiten, ...) verwendet. Würde man
+// stattdessen currentDisplayedSources erneut übergeben, würde sortSources()
+// im Autoren-Modus die dort bereits (Quelle, Autor)-expandierten Einträge bei
+// jedem Re-Render erneut expandieren (Quelle erscheint dann mehrfach).
+let currentSourceList = [];
 let currentDisplayedSources = [];
 let activeEditId = null;
 let devUserList = [];
@@ -157,19 +177,21 @@ function showForm() {
   importBereich.classList.remove('hidden');
   urlPopover.classList.add('hidden');
   filePopover.classList.add('hidden');
+  // Sonst stand nach einem erfolgreichen Import und direktem Anlegen der
+  // nächsten Quelle noch die alte Erfolgsmeldung unter dem Formular.
+  document.getElementById('import-status').textContent = '';
 }
 
 function fillForm({
   title = '',
-  author = '',
+  authors = [],
   date = '',
   url = '',
   text = '',
   restricted = false,
 }) {
   document.getElementById('title').value = title;
-  document.getElementById('author').value = author;
-  document.getElementById('date').value = date;
+  renderCreateAuthorDateRow(authors, date);
   document.getElementById('url').value = url;
   document.getElementById('text').value = text;
   document.getElementById('restricted').checked = restricted;
@@ -186,6 +208,9 @@ document.getElementById('typ-url').addEventListener('click', () => {
   filePopover.classList.add('hidden');
   urlPopover.classList.toggle('hidden');
   document.getElementById('popover-status').textContent = '';
+  if (!urlPopover.classList.contains('hidden')) {
+    document.getElementById('popover-url').focus();
+  }
 });
 
 document.getElementById('typ-file').addEventListener('click', () => {
@@ -226,7 +251,7 @@ document.getElementById('popover-load').addEventListener('click', async () => {
       showForm();
       return;
     }
-    fillForm({ title: data.title, author: data.author, date: data.date, url, text: data.text });
+    fillForm({ title: data.title, authors: data.authors, date: data.date, url, text: data.text });
     showForm();
   } catch (err) {
     status.textContent = t('common.errorPrefix') + err.message;
@@ -262,7 +287,7 @@ document.getElementById('popover-upload').addEventListener('click', async () => 
       showForm();
       return;
     }
-    fillForm({ title: data.title, author: data.author, date: data.date, text: data.text });
+    fillForm({ title: data.title, authors: data.authors, date: data.date, text: data.text });
     showForm();
   } catch (err) {
     status.textContent = t('common.errorPrefix') + err.message;
@@ -281,6 +306,109 @@ function findExistingSourceByUrl(url) {
   const normalized = normalizeUrlForComparison(url);
   if (!normalized) return null;
   return allSources.find((s) => s.url && normalizeUrlForComparison(s.url) === normalized) || null;
+}
+
+function buildFieldLabelWithId(labelKey, id, value, type) {
+  const label = document.createElement('label');
+  label.textContent = t(labelKey);
+  const input = document.createElement(type === 'textarea' ? 'textarea' : 'input');
+  if (type !== 'textarea') input.type = type;
+  else input.rows = 10;
+  input.id = id;
+  input.value = value || '';
+  label.appendChild(input);
+  return { label, input };
+}
+
+// Wird sowohl im Bearbeiten- als auch im Neu-anlegen-Formular verwendet
+// (siehe unten im Skript), damit Autor(en)/Datum an genau einer Stelle
+// gepflegt werden und in beiden Masken automatisch gleich aussehen.
+// Eine Quelle kann mehrere Autor:innen haben - das erste Feld steht mit dem
+// Datum in einer Zeile, über das "+"-Icon lassen sich beliebig viele weitere
+// Autoren-Zeilen darunter ergänzen (jede mit eigenem "+"), ab der zweiten
+// Zeile zusätzlich mit einem "-"-Icon zum Entfernen.
+function buildAuthorFields(authorId, authorValues, dateId, dateValue) {
+  const values = authorValues && authorValues.length ? authorValues : [''];
+
+  function buildAuthorInput(value) {
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'author-input';
+    input.setAttribute('list', 'author-suggestions');
+    input.setAttribute('autocomplete', 'off');
+    input.value = value || '';
+    return input;
+  }
+
+  function buildAddButton(insertNewRow) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'icon-button add-author-btn';
+    btn.innerHTML = PLUS_ICON;
+    const label = t('import.addAuthor');
+    btn.title = label;
+    btn.setAttribute('aria-label', label);
+    btn.addEventListener('click', () => insertNewRow(buildExtraRow('')));
+    return btn;
+  }
+
+  function buildRemoveButton(row) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'icon-button remove-author-btn';
+    btn.innerHTML = REMOVE_ICON;
+    const label = t('import.removeAuthor');
+    btn.title = label;
+    btn.setAttribute('aria-label', label);
+    btn.addEventListener('click', () => row.remove());
+    return btn;
+  }
+
+  function buildExtraRow(value) {
+    const row = document.createElement('div');
+    row.className = 'author-extra-row';
+    row.appendChild(buildAuthorInput(value));
+    row.appendChild(buildAddButton((newRow) => row.insertAdjacentElement('afterend', newRow)));
+    row.appendChild(buildRemoveButton(row));
+    return row;
+  }
+
+  const extraRowsContainer = document.createElement('div');
+  extraRowsContainer.className = 'author-extra-rows';
+  values.slice(1).forEach((value) => {
+    extraRowsContainer.appendChild(buildExtraRow(value));
+  });
+
+  const firstInput = buildAuthorInput(values[0]);
+  firstInput.id = authorId;
+  const authorInputGroup = document.createElement('span');
+  authorInputGroup.className = 'author-input-group';
+  authorInputGroup.appendChild(firstInput);
+  authorInputGroup.appendChild(buildAddButton((newRow) => extraRowsContainer.prepend(newRow)));
+
+  const authorLabel = document.createElement('label');
+  authorLabel.textContent = t('import.fieldAuthor');
+  authorLabel.appendChild(authorInputGroup);
+
+  const dateField = buildFieldLabelWithId('import.fieldDate', dateId, dateValue, 'date');
+
+  const row = document.createElement('div');
+  row.className = 'field-row';
+  row.appendChild(authorLabel);
+  row.appendChild(dateField.label);
+
+  const wrapper = document.createElement('div');
+  wrapper.className = 'author-fields';
+  wrapper.appendChild(row);
+  wrapper.appendChild(extraRowsContainer);
+
+  function getAuthorValues() {
+    return [...wrapper.querySelectorAll('.author-input')]
+      .map((input) => input.value.trim())
+      .filter((value) => value);
+  }
+
+  return { wrapper, dateInput: dateField.input, getAuthorValues };
 }
 
 function buildEditPanel(s, options = {}) {
@@ -317,17 +445,12 @@ function buildEditPanel(s, options = {}) {
   const titleInput = field('import.fieldTitle', 'title', s.title, 'text');
   titleInput.required = true;
 
-  const authorField = buildFieldLabel('import.fieldAuthor', 'author', s.author, 'text');
-  const authorInput = authorField.input;
-  authorInput.setAttribute('list', 'author-suggestions');
-  authorInput.setAttribute('autocomplete', 'off');
-  const dateField = buildFieldLabel('import.fieldDate', 'date', s.date, 'date');
-  const dateInput = dateField.input;
-  const authorDateRow = document.createElement('div');
-  authorDateRow.className = 'field-row';
-  authorDateRow.appendChild(authorField.label);
-  authorDateRow.appendChild(dateField.label);
-  form.appendChild(authorDateRow);
+  const {
+    wrapper: authorFieldsWrapper,
+    dateInput,
+    getAuthorValues,
+  } = buildAuthorFields(`edit-author-${s.id}`, s.authors, `edit-date-${s.id}`, s.date);
+  form.appendChild(authorFieldsWrapper);
 
   const urlField = buildFieldLabel('import.fieldUrl', 'url', s.url, 'url');
   const urlInput = urlField.input;
@@ -422,7 +545,7 @@ function buildEditPanel(s, options = {}) {
   if (pendingDeletion) {
     [
       titleInput,
-      authorInput,
+      ...authorFieldsWrapper.querySelectorAll('.author-input'),
       dateInput,
       urlInput,
       listenUrlInput,
@@ -480,7 +603,7 @@ function buildEditPanel(s, options = {}) {
     cancelBtn.textContent = t('common.cancel');
     cancelBtn.addEventListener('click', () => {
       activeEditId = null;
-      renderSourceList(currentDisplayedSources);
+      renderSourceList(currentSourceList);
     });
     primaryActions.appendChild(cancelBtn);
 
@@ -510,7 +633,7 @@ function buildEditPanel(s, options = {}) {
           headers: devUserHeaders(),
           body: JSON.stringify({
             title: titleInput.value,
-            author: authorInput.value || null,
+            authors: getAuthorValues(),
             date: dateInput.value || null,
             url: urlInput.value || null,
             listen_url: listenUrlInput.value || null,
@@ -600,7 +723,7 @@ function scheduleDeletion(s) {
     loadAuthors();
   }, UNDO_DURATION_MS);
   pendingDeletions.set(s.id, { timeoutId });
-  renderSourceList(currentDisplayedSources);
+  renderSourceList(currentSourceList);
 }
 
 function cancelDeletion(id) {
@@ -609,7 +732,7 @@ function cancelDeletion(id) {
     clearTimeout(entry.timeoutId);
     pendingDeletions.delete(id);
   }
-  renderSourceList(currentDisplayedSources);
+  renderSourceList(currentSourceList);
 }
 
 function buildUndoRow(s) {
@@ -694,28 +817,51 @@ function renderSummaryWithTerms(summaryText, keyTerms) {
   return wrapper;
 }
 
+function isFilterActive() {
+  return !document.getElementById('source-filter-status').classList.contains('hidden');
+}
+
 function sortSources(sources) {
-  const copy = [...sources];
-  if (currentSortMode === 'date') {
+  // In einer bereits gefilterten Ansicht (z.B. "nach Autor:in gefiltert")
+  // ist die Liste schon auf die relevanten Quellen eingeschränkt - hier NICHT
+  // zusätzlich pro Autor:in expandieren, sonst erscheint eine Quelle mit
+  // mehreren Autor:innen mehrfach identisch untereinander.
+  if (currentSortMode === 'date' || isFilterActive()) {
+    const copy = [...sources];
     copy.sort((a, b) => {
       if (!a.date && !b.date) return a.title.localeCompare(b.title);
       if (!a.date) return 1;
       if (!b.date) return -1;
       return b.date.localeCompare(a.date);
     });
-  } else {
-    copy.sort((a, b) => {
-      const authorA = (a.author || '￿').toLowerCase();
-      const authorB = (b.author || '￿').toLowerCase();
-      if (authorA !== authorB) return authorA.localeCompare(authorB);
-      if (!a.date && !b.date) return a.title.localeCompare(b.title);
-      if (!a.date) return 1;
-      if (!b.date) return -1;
-      if (a.date !== b.date) return b.date.localeCompare(a.date);
-      return a.title.localeCompare(b.title);
-    });
+    return copy;
   }
-  return copy;
+
+  // Autor-Modus: eine Quelle mit mehreren Autor:innen bekommt einen Eintrag
+  // PRO Autor (__sortAuthor), damit sie unter jedem ihrer Autor:innen als
+  // eigene Sektion erscheint. Quellen ganz ohne Autor bleiben ein Eintrag.
+  const expanded = [];
+  sources.forEach((s) => {
+    if (s.authors && s.authors.length) {
+      s.authors.forEach((authorName) => {
+        expanded.push({ ...s, __sortAuthor: authorName });
+      });
+    } else {
+      expanded.push({ ...s, __sortAuthor: null });
+    }
+  });
+
+  expanded.sort((a, b) => {
+    const authorA = (a.__sortAuthor || '￿').toLowerCase();
+    const authorB = (b.__sortAuthor || '￿').toLowerCase();
+    if (authorA !== authorB) return authorA.localeCompare(authorB);
+    if (!a.date && !b.date) return a.title.localeCompare(b.title);
+    if (!a.date) return 1;
+    if (!b.date) return -1;
+    if (a.date !== b.date) return b.date.localeCompare(a.date);
+    return a.title.localeCompare(b.title);
+  });
+  return expanded;
 }
 
 const MONTH_NAMES = {
@@ -803,6 +949,7 @@ function buildAuthorMarker(name) {
 }
 
 function renderSourceList(sources, options = {}) {
+  currentSourceList = sources;
   const sorted = sortSources(sources);
   currentDisplayedSources = sorted;
   const list = document.getElementById('source-list');
@@ -812,8 +959,8 @@ function renderSourceList(sources, options = {}) {
   const authorCounts = new Map();
   if (currentSortMode === 'author') {
     sorted.forEach((s) => {
-      if (!s.author) return;
-      const key = normalizeAuthor(s.author);
+      if (!s.__sortAuthor) return;
+      const key = normalizeAuthor(s.__sortAuthor);
       authorCounts.set(key, (authorCounts.get(key) || 0) + 1);
     });
   }
@@ -842,10 +989,10 @@ function renderSourceList(sources, options = {}) {
 
     let extraGapAfterAuthorGroup = false;
     if (currentSortMode === 'author' && !pendingDeletions.has(s.id)) {
-      const key = s.author ? normalizeAuthor(s.author) : null;
+      const key = s.__sortAuthor ? normalizeAuthor(s.__sortAuthor) : null;
       const isNewAuthor = key && key !== lastAuthorKey;
       if (isNewAuthor && (authorCounts.get(key) || 0) > 1) {
-        list.appendChild(buildAuthorMarker(s.author));
+        list.appendChild(buildAuthorMarker(s.__sortAuthor));
       } else if (
         isNewAuthor &&
         lastAuthorKey &&
@@ -897,20 +1044,23 @@ function renderSourceList(sources, options = {}) {
         } else {
           expandedSourceIds.add(s.id);
         }
-        renderSourceList(currentDisplayedSources, options);
+        renderSourceList(currentSourceList, options);
       });
       textSpan.appendChild(titleBtn);
       textSpan.append(' – ');
     } else {
       textSpan.append(`${s.title} – `);
     }
-    if (s.author) {
-      const authorBtn = document.createElement('button');
-      authorBtn.type = 'button';
-      authorBtn.className = 'link-button';
-      authorBtn.textContent = s.author;
-      authorBtn.addEventListener('click', () => filterByAuthor(s.author));
-      textSpan.appendChild(authorBtn);
+    if (s.authors && s.authors.length) {
+      s.authors.forEach((name, index) => {
+        if (index > 0) textSpan.append(', ');
+        const authorBtn = document.createElement('button');
+        authorBtn.type = 'button';
+        authorBtn.className = 'link-button';
+        authorBtn.textContent = name;
+        authorBtn.addEventListener('click', () => filterByAuthor(name));
+        textSpan.appendChild(authorBtn);
+      });
     } else {
       textSpan.append(t('common.unknownAuthor'));
     }
@@ -938,7 +1088,7 @@ function renderSourceList(sources, options = {}) {
       if (hasPflegerRole()) {
         warning.addEventListener('click', () => {
           activeEditId = activeEditId === s.id ? null : s.id;
-          renderSourceList(currentDisplayedSources, options);
+          renderSourceList(currentSourceList, options);
         });
       }
       actions.appendChild(warning);
@@ -967,7 +1117,7 @@ function renderSourceList(sources, options = {}) {
       editBtn.innerHTML = EDIT_ICON;
       editBtn.addEventListener('click', () => {
         activeEditId = activeEditId === s.id ? null : s.id;
-        renderSourceList(currentDisplayedSources, options);
+        renderSourceList(currentSourceList, options);
       });
       actions.appendChild(editBtn);
     }
@@ -1002,7 +1152,7 @@ async function checkUrlHealth(sources) {
       // URL wurde entfernt (z.B. beim Bearbeiten) - eine evtl. alte
       // Unreachable-Markierung ist dann nicht mehr gültig.
       if (unreachableSourceIds.delete(s.id)) {
-        renderSourceList(currentDisplayedSources);
+        renderSourceList(currentSourceList);
       }
       return;
     }
@@ -1017,10 +1167,10 @@ async function checkUrlHealth(sources) {
       // vorher wurde eine Markierung nie wieder entfernt.
       if (isUnreachable && !wasUnreachable) {
         unreachableSourceIds.add(s.id);
-        renderSourceList(currentDisplayedSources);
+        renderSourceList(currentSourceList);
       } else if (!isUnreachable && wasUnreachable) {
         unreachableSourceIds.delete(s.id);
-        renderSourceList(currentDisplayedSources);
+        renderSourceList(currentSourceList);
       }
     } catch (err) {
       // Netzwerkfehler beim Erreichbarkeits-Check ignorieren.
@@ -1033,11 +1183,14 @@ async function filterByAuthor(name) {
   const authorEntries = await res.json();
   const match = authorEntries.find((a) => normalizeAuthor(a.name) === normalizeAuthor(name));
   const ids = match ? match.source_ids : [];
-  renderSourceList(allSources.filter((s) => ids.includes(s.id)));
 
   document.getElementById('source-filter-label').textContent = t('import.filteredByAuthor');
   document.getElementById('source-filter-name').textContent = match ? match.name : name;
+  // Muss VOR renderSourceList() gesetzt werden - sortSources() liest den
+  // Filter-Status, um die Autoren-Expansion in der gefilterten Ansicht zu
+  // unterdrücken (siehe isFilterActive()).
   document.getElementById('source-filter-status').classList.remove('hidden');
+  renderSourceList(allSources.filter((s) => ids.includes(s.id)));
 }
 
 function normalizeTerm(term) {
@@ -1050,16 +1203,16 @@ async function filterByTerm(term) {
   const match = termEntries.find((t2) => normalizeTerm(t2.term) === normalizeTerm(term));
   const ids = match ? match.source_ids : [];
   ids.forEach((id) => expandedSourceIds.add(id));
-  renderSourceList(allSources.filter((s) => ids.includes(s.id)));
 
   document.getElementById('source-filter-label').textContent = t('import.filteredByTerm');
   document.getElementById('source-filter-name').textContent = match ? match.term : term;
   document.getElementById('source-filter-status').classList.remove('hidden');
+  renderSourceList(allSources.filter((s) => ids.includes(s.id)));
 }
 
 document.getElementById('source-filter-clear').addEventListener('click', () => {
-  renderSourceList(allSources);
   document.getElementById('source-filter-status').classList.add('hidden');
+  renderSourceList(allSources);
 });
 
 document.getElementById('sort-author').addEventListener('click', () => setSortMode('author'));
@@ -1070,7 +1223,7 @@ function setSortMode(mode) {
   document.getElementById('sort-author').classList.toggle('active', mode === 'author');
   document.getElementById('sort-date').classList.toggle('active', mode === 'date');
   document.getElementById('source-list').classList.toggle('timeline-mode', mode === 'date');
-  renderSourceList(currentDisplayedSources);
+  renderSourceList(currentSourceList);
 }
 
 async function loadSources() {
@@ -1114,7 +1267,7 @@ document.getElementById('source-form').addEventListener('submit', async (e) => {
   e.preventDefault();
   const payload = {
     title: document.getElementById('title').value,
-    author: document.getElementById('author').value || null,
+    authors: getCreateAuthorValues(),
     date: document.getElementById('date').value || null,
     url: document.getElementById('url').value || null,
     text: document.getElementById('text').value,
@@ -1143,6 +1296,10 @@ document.getElementById('source-form').addEventListener('submit', async (e) => {
     const data = await res.json();
     status.textContent = t('import.importedStatus', { title: data.title, count: data.chunk_count });
     document.getElementById('source-form').reset();
+    // form.reset() setzt bei den dynamisch erzeugten Autoren-Feldern nur den
+    // Wert zurück, entfernt aber keine per "+" hinzugefügten Extra-Zeilen -
+    // hier explizit auf ein einzelnes leeres Feld zurücksetzen.
+    renderCreateAuthorDateRow([], '');
     pendingUploadId = null;
     importBereich.classList.add('hidden');
     // Die URL-Eingabe im "Von URL importieren"-Popover gehört NICHT zu
@@ -1158,10 +1315,41 @@ document.getElementById('source-form').addEventListener('submit', async (e) => {
   }
 });
 
+let getCreateAuthorValues = () => [];
+
+function renderCreateAuthorDateRow(overrideAuthorValues, overrideDateValue) {
+  const existingAuthor = document.getElementById('author');
+  const existingDate = document.getElementById('date');
+  const authorValues =
+    overrideAuthorValues !== undefined
+      ? overrideAuthorValues
+      : existingAuthor
+        ? getCreateAuthorValues()
+        : [];
+  const dateValue =
+    overrideDateValue !== undefined ? overrideDateValue : existingDate ? existingDate.value : '';
+  const target = existingAuthor
+    ? existingAuthor.closest('.author-fields')
+    : document.getElementById('create-author-date-row');
+  const built = buildAuthorFields('author', authorValues, 'date', dateValue);
+  target.replaceWith(built.wrapper);
+  getCreateAuthorValues = built.getAuthorValues;
+}
+
 document.addEventListener('i18n:changed', () => {
   loadSources();
   loadAuthors();
+  renderCreateAuthorDateRow();
 });
+
+// buildAuthorFields()/buildMarkupToolbar() rufen t() auf - das darf erst
+// NACH await initI18n() passieren, sonst ist das Wörterbuch noch leer und
+// es erscheinen die rohen Übersetzungsschlüssel statt echtem Text (genau
+// dieser Fehler wurde hier gemeldet und behoben).
+await initI18n();
+await initRoleSwitcher();
+
+renderCreateAuthorDateRow();
 
 const createTextInput = document.getElementById('text');
 const createToolbarRow = document.createElement('div');
@@ -1169,7 +1357,5 @@ createToolbarRow.className = 'markup-toolbar-row';
 createToolbarRow.appendChild(buildMarkupToolbar(createTextInput));
 createTextInput.parentNode.insertBefore(createToolbarRow, createTextInput);
 
-await initI18n();
-await initRoleSwitcher();
 loadSources();
 loadAuthors();

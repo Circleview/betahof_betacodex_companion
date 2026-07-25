@@ -105,9 +105,17 @@ def get_version():
 
 
 def _load_sources() -> dict:
-    if SOURCES_FILE.exists():
-        return json.loads(SOURCES_FILE.read_text())
-    return {}
+    if not SOURCES_FILE.exists():
+        return {}
+    sources = json.loads(SOURCES_FILE.read_text())
+    for entry in sources.values():
+        if "authors" not in entry:
+            # Migration vom alten einzelnen "author"-Feld auf eine Liste -
+            # läuft transparent bei jedem Laden mit, kein separates Skript
+            # nötig. Beim nächsten Speichern ist der Datensatz bereinigt.
+            old_author = entry.pop("author", None)
+            entry["authors"] = [old_author] if old_author else []
+    return sources
 
 
 def _save_sources(sources: dict) -> None:
@@ -187,18 +195,21 @@ def _store_chunks(
     source_id: str, source: SourceIn, chunks: list[str], chunk_embeddings: list[list[float]]
 ) -> int:
     chunk_ids = [f"{source_id}::{i}" for i in range(len(chunks))]
-    metadatas = [
-        {
+    metadatas = []
+    for i in range(len(chunks)):
+        metadata = {
             "source_id": source_id,
             "title": source.title,
-            "author": source.author or "",
             "date": source.date or "",
             "url": source.url or "",
             "listen_url": source.listen_url or "",
             "position": i,
         }
-        for i in range(len(chunks))
-    ]
+        # ChromaDB-Metadata-Listen dürfen nicht leer sein - bei keinem Autor
+        # den Schlüssel ganz weglassen statt "authors": [].
+        if source.authors:
+            metadata["authors"] = source.authors
+        metadatas.append(metadata)
     vectorstore.add_chunks(chunk_ids, chunks, chunk_embeddings, metadatas)
     return len(chunks)
 
@@ -253,7 +264,7 @@ def add_source(
     sources[source_id] = {
         "id": source_id,
         "title": source.title,
-        "author": source.author,
+        "authors": source.authors,
         "date": source.date,
         "url": source.url,
         "listen_url": source.listen_url,
@@ -267,7 +278,8 @@ def add_source(
         "key_terms_en": [],
     }
     _save_sources(sources)
-    authors.register_author(source.author or "", source_id)
+    for name in source.authors:
+        authors.register_author(name, source_id)
     background_tasks.add_task(_generate_summary_background, source_id, source.text.strip())
 
     if source.pdf_upload_id:
@@ -302,7 +314,7 @@ def update_source(
     sources[source_id].update(
         {
             "title": source.title,
-            "author": source.author,
+            "authors": source.authors,
             "date": source.date,
             "url": source.url,
             "listen_url": source.listen_url,
@@ -316,7 +328,8 @@ def update_source(
     _save_sources(sources)
 
     authors.unregister_source(source_id)
-    authors.register_author(source.author or "", source_id)
+    for name in source.authors:
+        authors.register_author(name, source_id)
 
     if source.summary is not None or source.key_terms is not None:
         _register_all_terms(source_id, sources[source_id])
@@ -474,12 +487,15 @@ def ask(question: QuestionIn, x_lang: str = Header(default=i18n.DEFAULT_LANG)):
     chunk_refs = []
     llm_chunks = []
     for chunk_id, doc, meta in zip(ids, documents, metadatas):
+        # Rückwärtskompatibel lesen: alte, noch nicht neu gespeicherte Chunks
+        # haben noch den alten skalaren "author"-Schlüssel statt der Liste.
+        authors_list = meta.get("authors") or ([meta["author"]] if meta.get("author") else [])
         chunk_refs.append(
             ChunkRef(
                 chunk_id=chunk_id,
                 source_id=meta["source_id"],
                 title=meta["title"],
-                author=meta["author"] or None,
+                authors=authors_list,
                 date=meta["date"] or None,
                 url=meta["url"] or None,
                 listen_url=meta.get("listen_url") or None,
@@ -490,7 +506,7 @@ def ask(question: QuestionIn, x_lang: str = Header(default=i18n.DEFAULT_LANG)):
         llm_chunks.append(
             {
                 "title": meta["title"],
-                "author": meta["author"] or unknown_label,
+                "author": ", ".join(authors_list) or unknown_label,
                 "date": meta["date"] or unknown_label,
                 "text": doc,
             }

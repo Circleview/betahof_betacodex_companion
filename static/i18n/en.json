@@ -46,6 +46,8 @@
   "import.uploadFailedGeneric": "Upload failed",
   "import.fieldTitle": "Title*",
   "import.fieldAuthor": "Author",
+  "import.addAuthor": "Add another author",
+  "import.removeAuthor": "Remove author",
   "import.fieldDate": "Publication date",
   "import.fieldUrl": "URL",
   "import.fieldListenUrl": "Listen URL (e.g. podcast page)",

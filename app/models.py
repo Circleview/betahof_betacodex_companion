@@ -5,7 +5,7 @@ from pydantic import BaseModel
 
 class SourceIn(BaseModel):
     title: str
-    author: Optional[str] = None
+    authors: list[str] = []
     date: Optional[str] = None
     url: Optional[str] = None
     listen_url: Optional[str] = None
@@ -19,7 +19,7 @@ class SourceIn(BaseModel):
 class SourceOut(BaseModel):
     id: str
     title: str
-    author: Optional[str] = None
+    authors: list[str] = []
     date: Optional[str] = None
     url: Optional[str] = None
     listen_url: Optional[str] = None
@@ -42,7 +42,7 @@ class ChunkRef(BaseModel):
     chunk_id: str
     source_id: str
     title: str
-    author: Optional[str] = None
+    authors: list[str] = []
     date: Optional[str] = None
     url: Optional[str] = None
     listen_url: Optional[str] = None
@@ -79,7 +79,7 @@ class UrlIn(BaseModel):
 
 class ExtractedSource(BaseModel):
     title: str
-    author: str
+    authors: list[str] = []
     date: str
     text: str
     extracted: bool

@@ -46,6 +46,8 @@
   "import.uploadFailedGeneric": "Fehler beim Hochladen",
   "import.fieldTitle": "Titel*",
   "import.fieldAuthor": "Autor",
+  "import.addAuthor": "Weitere:n Autor:in hinzufügen",
+  "import.removeAuthor": "Autor:in entfernen",
   "import.fieldDate": "Erscheinungsdatum",
   "import.fieldUrl": "URL",
   "import.fieldListenUrl": "Anhör-URL (z. B. Podcast-Seite)",

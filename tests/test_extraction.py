@@ -2,6 +2,7 @@ from unittest.mock import MagicMock, patch
 
 from app.extraction import (
     _parse_markdown_extraction,
+    _split_authors,
     download_audio_bytes,
     download_pdf_bytes,
     extract_from_url,
@@ -9,6 +10,42 @@ from app.extraction import (
     looks_like_audio,
     looks_like_pdf,
 )
+
+
+def test_split_authors_handles_common_separators():
+    assert _split_authors("Jane Doe; John Roe") == ["Jane Doe", "John Roe"]
+    assert _split_authors("Jane Doe, John Roe") == ["Jane Doe", "John Roe"]
+    assert _split_authors("Jane Doe and John Roe") == ["Jane Doe", "John Roe"]
+    assert _split_authors("Jane Doe und John Roe") == ["Jane Doe", "John Roe"]
+    assert _split_authors("Jane Doe & John Roe") == ["Jane Doe", "John Roe"]
+
+
+def test_split_authors_trims_whitespace_and_drops_empty_parts():
+    assert _split_authors("  Jane Doe ;; John Roe  ") == ["Jane Doe", "John Roe"]
+
+
+def test_split_authors_handles_single_author():
+    assert _split_authors("Jane Doe") == ["Jane Doe"]
+
+
+def test_split_authors_handles_empty_string():
+    assert _split_authors("") == []
+    assert _split_authors("   ") == []
+
+
+def test_parse_markdown_extraction_splits_multiple_authors():
+    raw = (
+        "---\n"
+        "title: Ein Titel\n"
+        "author: Anna Mueller; Ben Schmidt\n"
+        "date: 2023-11-20\n"
+        "---\n"
+        "Text."
+    )
+
+    result = _parse_markdown_extraction(raw)
+
+    assert result["authors"] == ["Anna Mueller", "Ben Schmidt"]
 
 
 def test_parse_markdown_extraction_reads_frontmatter_and_body():
@@ -24,7 +61,7 @@ def test_parse_markdown_extraction_reads_frontmatter_and_body():
     result = _parse_markdown_extraction(raw)
 
     assert result["title"] == "Ein Titel: mit Doppelpunkt"
-    assert result["author"] == "Anna Mueller"
+    assert result["authors"] == ["Anna Mueller"]
     assert result["date"] == "2023-11-20"
     assert result["text"] == "# Ein Titel\n\nEin Absatz mit **fettem** Text."
 
@@ -33,7 +70,7 @@ def test_parse_markdown_extraction_without_frontmatter_returns_raw_text():
     result = _parse_markdown_extraction("Nur Fließtext ohne Frontmatter.")
 
     assert result["title"] == ""
-    assert result["author"] == ""
+    assert result["authors"] == []
     assert result["date"] == ""
     assert result["text"] == "Nur Fließtext ohne Frontmatter."
 
@@ -58,7 +95,7 @@ def test_extract_from_url_returns_fields_on_success():
 
     assert result == {
         "title": "Ein Artikel",
-        "author": "Jane Doe",
+        "authors": ["Jane Doe"],
         "date": "2023-01-01",
         "text": (
             "# Ein Artikel\n\n"
@@ -100,7 +137,7 @@ def test_extract_from_url_handles_missing_metadata_fields():
 
     assert result["extracted"] is True
     assert result["title"] == ""
-    assert result["author"] == ""
+    assert result["authors"] == []
     assert result["date"] == ""
     assert result["text"] == "Nur Text, keine Metadaten."
 
@@ -140,7 +177,7 @@ def test_extract_pdf_returns_metadata_and_text():
 
     assert result == {
         "title": "Ein PDF",
-        "author": "Jane Doe",
+        "authors": ["Jane Doe"],
         "date": "2023-01-15",
         "text": "Seite eins.\nSeite zwei.",
         "extracted": True,
@@ -153,7 +190,7 @@ def test_extract_pdf_handles_missing_metadata():
         result = extract_pdf(b"fake-bytes")
 
     assert result["title"] == ""
-    assert result["author"] == ""
+    assert result["authors"] == []
     assert result["date"] == ""
     assert result["extracted"] is True
 

@@ -47,7 +47,7 @@ def test_add_source_creates_chunks(client):
         "/api/sources",
         json={
             "title": "Testquelle",
-            "author": "Autor X",
+            "authors": ["Autor X"],
             "date": "2024-01-01",
             "url": "https://example.org",
             "text": "Ein kurzer Beispieltext für den Test.",
@@ -82,7 +82,7 @@ def test_ask_returns_answer_with_sources(client):
         "/api/sources",
         json={
             "title": "BetaCodex Quelle",
-            "author": "Autor Y",
+            "authors": ["Autor Y"],
             "date": "2023-05-01",
             "url": "https://example.org/quelle",
             "text": "Der BetaCodex beschreibt Prinzipien dezentraler Organisation.",
@@ -96,6 +96,7 @@ def test_ask_returns_answer_with_sources(client):
     assert data["answer"] == "Testantwort [1]."
     assert len(data["sources"]) == 1
     assert data["sources"][0]["title"] == "BetaCodex Quelle"
+    assert data["sources"][0]["authors"] == ["Autor Y"]
 
 
 def test_extract_url_endpoint_returns_extracted_fields(client, monkeypatch):
@@ -104,7 +105,7 @@ def test_extract_url_endpoint_returns_extracted_fields(client, monkeypatch):
         "extract_from_url",
         lambda url: {
             "title": "Extrahierter Titel",
-            "author": "Autor Z",
+            "authors": ["Autor Z"],
             "date": "2024-02-02",
             "text": "Extrahierter Text.",
             "extracted": True,
@@ -124,7 +125,7 @@ def test_extract_url_endpoint_reports_failed_extraction(client, monkeypatch):
     monkeypatch.setattr(
         extraction,
         "extract_from_url",
-        lambda url: {"title": "", "author": "", "date": "", "text": "", "extracted": False},
+        lambda url: {"title": "", "authors": [], "date": "", "text": "", "extracted": False},
     )
 
     response = client.post("/api/extract-url", json={"url": "https://example.org/nicht-lesbar"})
@@ -136,11 +137,11 @@ def test_extract_url_endpoint_reports_failed_extraction(client, monkeypatch):
 def test_add_source_registers_author(client):
     client.post(
         "/api/sources",
-        json={"title": "Quelle 1", "author": "Jane Doe", "text": "Erster Text."},
+        json={"title": "Quelle 1", "authors": ["Jane Doe"], "text": "Erster Text."},
     )
     client.post(
         "/api/sources",
-        json={"title": "Quelle 2", "author": "jane   doe", "text": "Zweiter Text."},
+        json={"title": "Quelle 2", "authors": ["jane   doe"], "text": "Zweiter Text."},
     )
 
     response = client.get("/api/authors")
@@ -150,6 +151,25 @@ def test_add_source_registers_author(client):
     assert len(data) == 1
     assert data[0]["name"] == "Jane Doe"
     assert data[0]["source_count"] == 2
+
+
+def test_add_source_with_multiple_authors_registers_all(client):
+    create_res = client.post(
+        "/api/sources",
+        json={
+            "title": "Gemeinsame Quelle",
+            "authors": ["Jane Doe", "John Roe"],
+            "text": "Gemeinsamer Text.",
+        },
+    )
+
+    assert create_res.json()["authors"] == ["Jane Doe", "John Roe"]
+
+    author_names = {a["name"] for a in client.get("/api/authors").json()}
+    assert author_names == {"Jane Doe", "John Roe"}
+
+    response = client.post("/api/ask", json={"question": "Worum geht es?"})
+    assert response.json()["sources"][0]["authors"] == ["Jane Doe", "John Roe"]
 
 
 def test_add_source_without_author_does_not_appear_in_directory(client):
@@ -166,7 +186,7 @@ def test_update_source_changes_metadata_and_rechunks(client):
         "/api/sources",
         json={
             "title": "Alter Titel",
-            "author": "Alt Autor",
+            "authors": ["Alt Autor"],
             "date": "2020-01-01",
             "text": "Alter Text.",
         },
@@ -177,7 +197,7 @@ def test_update_source_changes_metadata_and_rechunks(client):
         f"/api/sources/{source_id}",
         json={
             "title": "Neuer Titel",
-            "author": "Neu Autor",
+            "authors": ["Neu Autor"],
             "date": "2021-01-01",
             "url": "https://example.org",
             "text": "Neuer Text mit anderem Inhalt.",
@@ -187,7 +207,7 @@ def test_update_source_changes_metadata_and_rechunks(client):
     assert update_res.status_code == 200
     data = update_res.json()
     assert data["title"] == "Neuer Titel"
-    assert data["author"] == "Neu Autor"
+    assert data["authors"] == ["Neu Autor"]
     assert data["text"] == "Neuer Text mit anderem Inhalt."
 
     list_res = client.get("/api/sources")
@@ -202,13 +222,13 @@ def test_update_source_returns_404_for_unknown_id(client):
 def test_update_source_rejects_empty_text_without_touching_existing_data(client):
     create_res = client.post(
         "/api/sources",
-        json={"title": "Titel", "author": "Autor", "text": "Ursprünglicher Text."},
+        json={"title": "Titel", "authors": ["Autor"], "text": "Ursprünglicher Text."},
     )
     source_id = create_res.json()["id"]
 
     response = client.put(
         f"/api/sources/{source_id}",
-        json={"title": "Titel", "author": "Autor", "text": "   "},
+        json={"title": "Titel", "authors": ["Autor"], "text": "   "},
     )
 
     assert response.status_code == 400
@@ -224,13 +244,13 @@ def test_update_source_rejects_empty_text_without_touching_existing_data(client)
 
 def test_update_source_moves_author_registration(client):
     create_res = client.post(
-        "/api/sources", json={"title": "Titel", "author": "Alter Autor", "text": "Text."}
+        "/api/sources", json={"title": "Titel", "authors": ["Alter Autor"], "text": "Text."}
     )
     source_id = create_res.json()["id"]
 
     client.put(
         f"/api/sources/{source_id}",
-        json={"title": "Titel", "author": "Neuer Autor", "text": "Text."},
+        json={"title": "Titel", "authors": ["Neuer Autor"], "text": "Text."},
     )
 
     author_names = {a["name"] for a in client.get("/api/authors").json()}
@@ -280,7 +300,7 @@ def test_extract_url_without_role_is_forbidden(client, monkeypatch):
     monkeypatch.setattr(
         extraction,
         "extract_from_url",
-        lambda url: {"title": "T", "author": "", "date": "", "text": "Text", "extracted": True},
+        lambda url: {"title": "T", "authors": [], "date": "", "text": "Text", "extracted": True},
     )
     response = client.post(
         "/api/extract-url",
@@ -362,7 +382,7 @@ def test_delete_source_removes_it(client):
 
 def test_delete_source_cleans_up_chunks_and_author(client):
     create_res = client.post(
-        "/api/sources", json={"title": "Löschmich", "author": "Jane Doe", "text": "Text."}
+        "/api/sources", json={"title": "Löschmich", "authors": ["Jane Doe"], "text": "Text."}
     )
     source_id = create_res.json()["id"]
 
@@ -517,7 +537,7 @@ def test_extract_pdf_upload_returns_extracted_fields(client, monkeypatch):
         "extract_pdf",
         lambda data: {
             "title": "PDF-Titel",
-            "author": "PDF-Autor",
+            "authors": ["PDF-Autor"],
             "date": "2023-01-01",
             "text": "PDF-Inhalt.",
             "extracted": True,
@@ -551,7 +571,7 @@ def test_add_source_with_pdf_upload_id_persists_file(client, monkeypatch):
         "extract_pdf",
         lambda data: {
             "title": "PDF-Titel",
-            "author": "",
+            "authors": [],
             "date": "",
             "text": "PDF-Inhalt.",
             "extracted": True,
@@ -590,7 +610,7 @@ def test_get_source_pdf_returns_file_content(client, monkeypatch):
     monkeypatch.setattr(
         extraction,
         "extract_pdf",
-        lambda data: {"title": "PDF-Titel", "author": "", "date": "", "text": "PDF-Inhalt.", "extracted": True},
+        lambda data: {"title": "PDF-Titel", "authors": [], "date": "", "text": "PDF-Inhalt.", "extracted": True},
     )
     upload_res = client.post(
         "/api/extract-pdf-upload",

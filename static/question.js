@@ -28,7 +28,8 @@ function buildSourceInfo(s) {
 
   const heading = document.createElement('p');
   heading.className = 'citation-card-heading';
-  heading.textContent = `${s.title} – ${s.author || t('common.unknownAuthor')} (${formatYear(s.date)})`;
+  const authorLabel = s.authors && s.authors.length ? s.authors.join(', ') : t('common.unknownAuthor');
+  heading.textContent = `${s.title} – ${authorLabel} (${formatYear(s.date)})`;
   wrapper.appendChild(heading);
 
   const excerpt = document.createElement('p');
@@ -47,7 +48,7 @@ function buildSourceInfo(s) {
     a.title = label;
     a.setAttribute('aria-label', label);
     a.innerHTML = EXTERNAL_LINK_ICON;
-    wrapper.appendChild(a);
+    excerpt.appendChild(a);
   }
 
   return wrapper;
@@ -60,11 +61,11 @@ function buildSourcesList(sources) {
     const li = document.createElement('li');
     const details = document.createElement('details');
     const summary = document.createElement('summary');
-    summary.textContent = `${s.title} – ${s.author || t('common.unknownAuthor')} (${formatYear(s.date)})`;
+    const authorLabel = s.authors && s.authors.length ? s.authors.join(', ') : t('common.unknownAuthor');
+    summary.textContent = `${s.title} – ${authorLabel} (${formatYear(s.date)})`;
     details.appendChild(summary);
     const p = document.createElement('p');
     p.textContent = truncateWords(s.text, 100);
-    details.appendChild(p);
     const citationUrl = s.listen_url || s.url;
     if (citationUrl) {
       const a = document.createElement('a');
@@ -76,8 +77,9 @@ function buildSourcesList(sources) {
       a.title = label;
       a.setAttribute('aria-label', label);
       a.innerHTML = EXTERNAL_LINK_ICON;
-      details.appendChild(a);
+      p.appendChild(a);
     }
+    details.appendChild(p);
     li.appendChild(details);
     sourcesList.appendChild(li);
   });

@@ -8,6 +8,16 @@ from pypdf import PdfReader
 from youtube_transcript_api import YouTubeTranscriptApi
 
 
+def _split_authors(raw: str) -> list[str]:
+    """Zerlegt einen extrahierten Autoren-String an gängigen Trennern in
+    einzelne Namen (Best-effort-Heuristik - Nutzer:innen können über die
+    "+"-Felder im Formular jederzeit manuell korrigieren/ergänzen)."""
+    if not raw or not raw.strip():
+        return []
+    parts = re.split(r";|,| und | and |&", raw)
+    return [p.strip() for p in parts if p.strip()]
+
+
 def _is_youtube_url(url: str) -> bool:
     host = urlparse(url).netloc.lower()
     return "youtube.com" in host or "youtu.be" in host
@@ -54,7 +64,7 @@ def _fetch_youtube_metadata(url: str) -> dict:
 def _extract_youtube(url: str) -> dict:
     video_id = _extract_video_id(url)
     if not video_id:
-        return {"title": "", "author": "", "date": "", "text": "", "extracted": False}
+        return {"title": "", "authors": [], "date": "", "text": "", "extracted": False}
 
     api = YouTubeTranscriptApi()
     try:
@@ -65,14 +75,14 @@ def _extract_youtube(url: str) -> dict:
             transcript = next(iter(transcript_list))
             fetched = transcript.fetch()
     except Exception:
-        return {"title": "", "author": "", "date": "", "text": "", "extracted": False}
+        return {"title": "", "authors": [], "date": "", "text": "", "extracted": False}
 
     text = "\n".join(f"[{_format_timestamp(s.start)}] {s.text}" for s in fetched).strip()
     metadata = _fetch_youtube_metadata(url)
 
     return {
         "title": metadata["title"],
-        "author": "",
+        "authors": [],
         "date": metadata["date"],
         "text": text,
         "extracted": bool(text),
@@ -114,7 +124,7 @@ def _guess_title_from_url(url: str) -> str:
 def _extract_audio(url: str) -> dict:
     return {
         "title": _guess_title_from_url(url),
-        "author": "",
+        "authors": [],
         "date": "",
         "text": "",
         "extracted": False,
@@ -154,11 +164,12 @@ def extract_pdf(data: bytes) -> dict:
     try:
         reader = PdfReader(io.BytesIO(data))
     except Exception:
-        return {"title": "", "author": "", "date": "", "text": "", "extracted": False}
+        return {"title": "", "authors": [], "date": "", "text": "", "extracted": False}
 
     meta = reader.metadata
     title = (meta.title or "").strip() if meta and meta.title else ""
-    author = (meta.author or "").strip() if meta and meta.author else ""
+    author_raw = (meta.author or "").strip() if meta and meta.author else ""
+    authors = _split_authors(author_raw)
     date = _parse_pdf_date(meta.get("/CreationDate")) if meta else ""
 
     text_parts = []
@@ -171,7 +182,7 @@ def extract_pdf(data: bytes) -> dict:
 
     return {
         "title": title,
-        "author": author,
+        "authors": authors,
         "date": date,
         "text": text,
         "extracted": bool(text),
@@ -181,7 +192,7 @@ def extract_pdf(data: bytes) -> dict:
 def _parse_markdown_extraction(raw: str) -> dict:
     match = re.match(r"^---\n(.*?)\n---\n(.*)$", raw, re.DOTALL)
     if not match:
-        return {"title": "", "author": "", "date": "", "text": raw.strip()}
+        return {"title": "", "authors": [], "date": "", "text": raw.strip()}
 
     frontmatter, body = match.group(1), match.group(2)
     meta = {}
@@ -192,7 +203,7 @@ def _parse_markdown_extraction(raw: str) -> dict:
 
     return {
         "title": meta.get("title", ""),
-        "author": meta.get("author", ""),
+        "authors": _split_authors(meta.get("author", "")),
         "date": meta.get("date", ""),
         "text": body.strip(),
     }
@@ -208,7 +219,7 @@ def extract_from_url(url: str) -> dict:
     if looks_like_pdf(url):
         data = download_pdf_bytes(url)
         if not data:
-            return {"title": "", "author": "", "date": "", "text": "", "extracted": False}
+            return {"title": "", "authors": [], "date": "", "text": "", "extracted": False}
         return extract_pdf(data)
 
     try:
@@ -217,7 +228,7 @@ def extract_from_url(url: str) -> dict:
         downloaded = None
 
     if not downloaded:
-        return {"title": "", "author": "", "date": "", "text": "", "extracted": False}
+        return {"title": "", "authors": [], "date": "", "text": "", "extracted": False}
 
     markdown_result = trafilatura.extract(
         downloaded,
@@ -227,13 +238,13 @@ def extract_from_url(url: str) -> dict:
         favor_precision=True,
     )
     if not markdown_result:
-        return {"title": "", "author": "", "date": "", "text": "", "extracted": False}
+        return {"title": "", "authors": [], "date": "", "text": "", "extracted": False}
 
     parsed = _parse_markdown_extraction(markdown_result)
     text = parsed["text"].strip()
     return {
         "title": parsed["title"],
-        "author": parsed["author"],
+        "authors": parsed["authors"],
         "date": parsed["date"],
         "text": text,
         "extracted": bool(text),

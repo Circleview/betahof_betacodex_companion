@@ -710,6 +710,8 @@ section {
 
 .external-link {
   display: inline-flex;
+  vertical-align: middle;
+  margin-left: 0.35rem;
   color: var(--color-accent);
 }
 
@@ -988,6 +990,11 @@ section {
   .icon-button.warning-icon {
     opacity: 1;
   }
+
+  .icon-button.add-author-btn,
+  .icon-button.remove-author-btn {
+    opacity: 1;
+  }
 }
 
 #source-list li.source-row--unreachable {
@@ -1064,6 +1071,41 @@ section {
   flex: 1;
   margin-bottom: 0;
   min-width: 0;
+}
+
+.author-input-group {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  margin-top: 0.35rem;
+}
+
+.author-input-group .author-input {
+  flex: 1;
+  min-width: 0;
+  margin-top: 0;
+}
+
+.author-extra-rows:not(:empty) {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  margin-bottom: 0.9rem;
+}
+
+.author-extra-row {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  /* Gleiche Breite wie das erste Autorenfeld, das sich per .field-row
+     (flex:1 + 1rem gap) die Zeile mit dem Datumsfeld teilt. */
+  max-width: calc(50% - 0.5rem);
+}
+
+.author-extra-row .author-input {
+  flex: 1;
+  min-width: 0;
+  margin-top: 0;
 }
 
 .label-inline-icon {
