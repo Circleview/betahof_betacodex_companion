@@ -9,6 +9,71 @@ const EXTERNAL_LINK_ICON =
   '<line x1="10" y1="14" x2="21" y2="3"></line>' +
   "</svg>";
 
+const MAGIC_ICON =
+  '<svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor" stroke="none">' +
+  '<path d="M12 2l1.8 5.2L19 9l-5.2 1.8L12 16l-1.8-5.2L5 9l5.2-1.8L12 2z"></path>' +
+  '<path d="M19 13l.9 2.1L22 16l-2.1.9L19 19l-.9-2.1L16 16l2.1-.9L19 13z"></path>' +
+  "</svg>";
+
+const EDIT_ICON =
+  '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" ' +
+  'stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
+  '<path d="M12 20h9"></path>' +
+  '<path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z"></path>' +
+  "</svg>";
+
+// Quellen-Pfleger:innen testen ihre Quellen vermutlich auch über die
+// Konversationsansicht - der Rollen-Schalter im Header (nur Desktop) nutzt
+// dasselbe geteilte localStorage("devUser") wie import.html.
+let currentUserRoles = [];
+
+function getCurrentDevUser() {
+  return localStorage.getItem('devUser') || 'anon';
+}
+
+async function initRoleSwitcher() {
+  const select = document.getElementById('dev-role');
+  const res = await fetch('/api/dev/users');
+  const devUserList = await res.json();
+  select.innerHTML = '';
+  devUserList.forEach((u) => {
+    const option = document.createElement('option');
+    option.value = u.id;
+    option.textContent = u.name;
+    select.appendChild(option);
+  });
+  if (!devUserList.some((u) => u.id === getCurrentDevUser())) {
+    localStorage.setItem('devUser', devUserList[0] ? devUserList[0].id : 'anon');
+  }
+  select.value = getCurrentDevUser();
+  currentUserRoles = (devUserList.find((u) => u.id === getCurrentDevUser()) || {}).roles || [];
+  select.addEventListener('change', () => {
+    localStorage.setItem('devUser', select.value);
+    currentUserRoles = (devUserList.find((u) => u.id === select.value) || {}).roles || [];
+    // Zeigt/versteckt die Bearbeiten-Icons in der Sidebar sofort passend zur
+    // neu gewählten Rolle, ohne dass eine neue Antwort nötig ist.
+    renderSidebarSources();
+  });
+}
+
+function hasPflegerRole() {
+  return currentUserRoles.includes('quellen_pfleger') || currentUserRoles.includes('system_admin');
+}
+
+function appendEditSourceLink(container, sourceId) {
+  if (!hasPflegerRole()) return;
+  const a = document.createElement('a');
+  a.href = `/import.html?edit=${encodeURIComponent(sourceId)}`;
+  a.target = '_blank';
+  a.rel = 'noopener noreferrer';
+  a.className = 'external-link';
+  const label = t('common.editSource');
+  a.title = label;
+  a.setAttribute('aria-label', label);
+  a.innerHTML = EDIT_ICON;
+  container.appendChild(a);
+}
+
 function formatYear(dateStr) {
   if (!dateStr) return t('common.noDate');
   return dateStr.split('-')[0];
@@ -50,6 +115,7 @@ function buildSourceInfo(s) {
     a.innerHTML = EXTERNAL_LINK_ICON;
     excerpt.appendChild(a);
   }
+  appendEditSourceLink(excerpt, s.source_id);
 
   return wrapper;
 }
@@ -60,12 +126,27 @@ function buildSourcesList(sources) {
   sources.forEach((s) => {
     const li = document.createElement('li');
     const details = document.createElement('details');
-    const summary = document.createElement('summary');
+    details.dataset.chunkId = s.chunk_id;
+    const summaryToggle = document.createElement('summary');
     const authorLabel = s.authors && s.authors.length ? s.authors.join(', ') : t('common.unknownAuthor');
-    summary.textContent = `${s.title} – ${authorLabel} (${formatYear(s.date)})`;
-    details.appendChild(summary);
+    summaryToggle.textContent = `${s.title} – ${authorLabel} (${formatYear(s.date)})`;
+    details.appendChild(summaryToggle);
     const p = document.createElement('p');
-    p.textContent = truncateWords(s.text, 100);
+    // Hier bewusst die KI-Zusammenfassung statt des Chunk-Ausschnitts (anders
+    // als buildSourceInfo() in der Konversationsansicht) - fehlt sie (noch)
+    // für eine Quelle, auf den Chunk-Ausschnitt zurückfallen.
+    if (s.summary) {
+      const icon = document.createElement('span');
+      icon.className = 'source-summary-icon';
+      const tooltip = t('import.aiSummaryTooltip');
+      icon.title = tooltip;
+      icon.setAttribute('aria-label', tooltip);
+      icon.innerHTML = MAGIC_ICON;
+      p.appendChild(icon);
+      p.appendChild(document.createTextNode(' ' + s.summary));
+    } else {
+      p.textContent = truncateWords(s.text, 100);
+    }
     const citationUrl = s.listen_url || s.url;
     if (citationUrl) {
       const a = document.createElement('a');
@@ -79,6 +160,7 @@ function buildSourcesList(sources) {
       a.innerHTML = EXTERNAL_LINK_ICON;
       p.appendChild(a);
     }
+    appendEditSourceLink(p, s.source_id);
     details.appendChild(p);
     li.appendChild(details);
     sourcesList.appendChild(li);
@@ -102,14 +184,15 @@ function makeCitationsClickable(container, sources) {
     const parts = textNode.textContent.split(/(\[\d+\])/g);
     if (parts.length === 1) return;
     const frag = document.createDocumentFragment();
-    parts.forEach((part) => {
+    for (let i = 0; i < parts.length; i += 1) {
+      const part = parts[i];
       const match = part.match(/^\[(\d+)\]$/);
       if (match) {
         const index = parseInt(match[1], 10) - 1;
         const source = sources[index];
         if (!source) {
           frag.appendChild(document.createTextNode(part));
-          return;
+          continue;
         }
         const btn = document.createElement('button');
         btn.type = 'button';
@@ -128,11 +211,26 @@ function makeCitationsClickable(container, sources) {
           paragraph.insertAdjacentElement('afterend', card);
           openCards.set(index, card);
         });
-        frag.appendChild(btn);
+        // Satzzeichen, die direkt (ohne Leerzeichen) auf die Quellenangabe
+        // folgen (z. B. "[1]."), sollen beim Zeilenumbruch nicht von ihr
+        // getrennt werden - beides zusammen in einen nowrap-Wrapper packen,
+        // im Zweifel bricht die ganze Einheit gemeinsam um.
+        const wrap = document.createElement('span');
+        wrap.className = 'citation-ref-wrap';
+        wrap.appendChild(btn);
+        const nextPart = parts[i + 1];
+        if (nextPart) {
+          const punctMatch = nextPart.match(/^[.,;:!?)]+/);
+          if (punctMatch) {
+            wrap.appendChild(document.createTextNode(punctMatch[0]));
+            parts[i + 1] = nextPart.slice(punctMatch[0].length);
+          }
+        }
+        frag.appendChild(wrap);
       } else if (part) {
         frag.appendChild(document.createTextNode(part));
       }
-    });
+    }
     textNode.parentNode.replaceChild(frag, textNode);
   });
 }
@@ -161,11 +259,48 @@ function scrollChatToBottom(container) {
   container.scrollTop = container.scrollHeight;
 }
 
+// Nur Quellen, die im gerenderten Antworttext tatsächlich per "[n]" zitiert
+// werden, sollen in der Sidebar auftauchen - data.sources enthält auch
+// Top-K-Treffer, die die KI am Ende gar nicht zitiert hat.
+function extractCitedSources(container, sources) {
+  const matches = container.textContent.match(/\[(\d+)\]/g) || [];
+  const cited = [];
+  const seen = new Set();
+  matches.forEach((m) => {
+    const index = parseInt(m.slice(1, -1), 10) - 1;
+    if (seen.has(index) || !sources[index]) return;
+    seen.add(index);
+    cited.push(sources[index]);
+  });
+  return cited;
+}
+
 await initI18n();
+await initRoleSwitcher();
 
 const chatMessages = document.getElementById('chat-messages');
 const questionInput = document.getElementById('question');
 const sidebarSourcesList = document.getElementById('sidebar-sources-list');
+
+// Baut sich über die gesamte Konversation auf (chunk_id -> Quelle) - einmal
+// zitierte Quellen bleiben in der Sidebar stehen, auch wenn eine spätere
+// Antwort sie nicht erneut zitiert.
+const conversationCitedSources = new Map();
+
+// Baut die Sidebar-Liste neu auf, behält dabei aber den Auf-/Zu-Zustand
+// bereits aufgeklappter <details> bei (sonst klappt z.B. ein Sprachwechsel
+// oder eine neue Antwort eine gerade gelesene Zusammenfassung wieder zu).
+function renderSidebarSources() {
+  const openChunkIds = new Set(
+    [...sidebarSourcesList.querySelectorAll('details[open]')].map((d) => d.dataset.chunkId)
+  );
+  sidebarSourcesList.replaceChildren(
+    ...buildSourcesList([...conversationCitedSources.values()]).children
+  );
+  sidebarSourcesList.querySelectorAll('details').forEach((d) => {
+    if (openChunkIds.has(d.dataset.chunkId)) d.open = true;
+  });
+}
 
 document.getElementById('question-form').addEventListener('submit', async (e) => {
   e.preventDefault();
@@ -199,12 +334,29 @@ document.getElementById('question-form').addEventListener('submit', async (e) =>
     const data = await res.json();
     assistantBubble.innerHTML = renderMarkdown(data.answer);
     makeCitationsClickable(assistantBubble, data.sources);
-    sidebarSourcesList.replaceChildren(...buildSourcesList(data.sources).children);
+    extractCitedSources(assistantBubble, data.sources).forEach((s) => {
+      conversationCitedSources.set(s.chunk_id, s);
+    });
+    renderSidebarSources();
   } catch (err) {
     assistantBubble.textContent = t('common.errorPrefix') + err.message;
   }
   scrollChatToBottom(chatMessages);
 });
+
+async function refreshCitedSourceSummaries() {
+  if (conversationCitedSources.size === 0) return;
+  const res = await fetch('/api/sources', { headers: { 'X-Lang': getLang() } });
+  if (!res.ok) return;
+  const currentSources = await res.json();
+  const summaryBySourceId = new Map(currentSources.map((s) => [s.id, s.summary]));
+  conversationCitedSources.forEach((s) => {
+    if (summaryBySourceId.has(s.source_id)) {
+      s.summary = summaryBySourceId.get(s.source_id) || null;
+    }
+  });
+  renderSidebarSources();
+}
 
 document.addEventListener('i18n:changed', () => {
   // Der Platzhalter wird normalerweise per data-i18n-placeholder gesetzt,
@@ -213,4 +365,9 @@ document.addEventListener('i18n:changed', () => {
   if (chatMessages.children.length > 0) {
     questionInput.placeholder = t('index.questionPlaceholderContinue');
   }
+  // Die KI-Zusammenfassungen in der "Verwendete Quellen"-Sidebar sind
+  // sprachabhängig (summary_de/summary_en) - bei Sprachwechsel neu laden,
+  // statt die zuvor in der alten Sprache eingesammelten Texte stehen zu
+  // lassen.
+  refreshCitedSourceSummaries();
 });

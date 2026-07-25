@@ -48,6 +48,7 @@ class ChunkRef(BaseModel):
     listen_url: Optional[str] = None
     position: int
     text: str
+    summary: Optional[str] = None
 
 
 class AnswerOut(BaseModel):

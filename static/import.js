@@ -1357,5 +1357,20 @@ createToolbarRow.className = 'markup-toolbar-row';
 createToolbarRow.appendChild(buildMarkupToolbar(createTextInput));
 createTextInput.parentNode.insertBefore(createToolbarRow, createTextInput);
 
-loadSources();
+await loadSources();
 loadAuthors();
+
+// Deep-Link aus der Konversationsansicht (Stift-Icon an Zitat-Snippets, nur
+// für Quellen-Pfleger:innen sichtbar): /import.html?edit=<source_id> öffnet
+// die betreffende Quelle direkt im Bearbeiten-Modus und scrollt sie in den
+// sichtbaren Bereich.
+const deepLinkEditId = new URLSearchParams(window.location.search).get('edit');
+if (deepLinkEditId && hasPflegerRole() && allSources.some((s) => s.id === deepLinkEditId)) {
+  activeEditId = deepLinkEditId;
+  renderSourceList(currentSourceList);
+  requestAnimationFrame(() => {
+    document
+      .querySelector(`#source-list [data-source-id="${deepLinkEditId}"]`)
+      ?.scrollIntoView({ block: 'center' });
+  });
+}

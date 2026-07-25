@@ -483,6 +483,7 @@ def ask(question: QuestionIn, x_lang: str = Header(default=i18n.DEFAULT_LANG)):
         raise HTTPException(400, i18n.get_message("no_matching_chunks", x_lang))
 
     unknown_label = "unbekannt" if x_lang == "de" else "unknown"
+    summary_lang = x_lang if x_lang in ("de", "en") else i18n.DEFAULT_LANG
 
     chunk_refs = []
     llm_chunks = []
@@ -501,6 +502,7 @@ def ask(question: QuestionIn, x_lang: str = Header(default=i18n.DEFAULT_LANG)):
                 listen_url=meta.get("listen_url") or None,
                 position=meta["position"],
                 text=doc,
+                summary=sources.get(meta["source_id"], {}).get(f"summary_{summary_lang}") or None,
             )
         )
         llm_chunks.append(

@@ -99,6 +99,51 @@ def test_ask_returns_answer_with_sources(client):
     assert data["sources"][0]["authors"] == ["Autor Y"]
 
 
+def test_ask_includes_source_summary(client):
+    create_res = client.post(
+        "/api/sources",
+        json={
+            "title": "BetaCodex Quelle",
+            "authors": ["Autor Y"],
+            "text": "Der BetaCodex beschreibt Prinzipien dezentraler Organisation.",
+        },
+    )
+    source_id = create_res.json()["id"]
+    # add_source() generiert die Zusammenfassung selbst im Hintergrund - hier
+    # stattdessen direkt über das Bearbeiten-Endpoint setzen, ohne auf den
+    # (in Tests gemockten) KI-Hintergrundlauf angewiesen zu sein.
+    client.put(
+        f"/api/sources/{source_id}",
+        json={
+            "title": "BetaCodex Quelle",
+            "authors": ["Autor Y"],
+            "text": "Der BetaCodex beschreibt Prinzipien dezentraler Organisation.",
+            "summary": "Kurzfassung der Quelle.",
+        },
+    )
+
+    response = client.post("/api/ask", json={"question": "Was beschreibt der BetaCodex?"})
+
+    assert response.status_code == 200
+    assert response.json()["sources"][0]["summary"] == "Kurzfassung der Quelle."
+
+
+def test_ask_reports_null_summary_when_source_has_none(client):
+    client.post(
+        "/api/sources",
+        json={
+            "title": "BetaCodex Quelle ohne Zusammenfassung",
+            "authors": ["Autor Y"],
+            "text": "Der BetaCodex beschreibt Prinzipien dezentraler Organisation.",
+        },
+    )
+
+    response = client.post("/api/ask", json={"question": "Was beschreibt der BetaCodex?"})
+
+    assert response.status_code == 200
+    assert response.json()["sources"][0]["summary"] is None
+
+
 def test_extract_url_endpoint_returns_extracted_fields(client, monkeypatch):
     monkeypatch.setattr(
         extraction,

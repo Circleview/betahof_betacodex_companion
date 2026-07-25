@@ -4,7 +4,7 @@ MESSAGES = {
         "no_chunks": "Aus dem Text konnten keine Chunks erzeugt werden.",
         "source_not_found": "Quelle nicht gefunden.",
         "no_sources": "Noch keine Quellen importiert.",
-        "no_matching_chunks": "Keine passenden Chunks gefunden.",
+        "no_matching_chunks": "Keine passenden Inhalte in den Quellen gefunden.",
         "role_required": "Diese Aktion erfordert die Rolle '{role}' (aktuell: '{user}').",
     },
     "en": {
@@ -12,7 +12,7 @@ MESSAGES = {
         "no_chunks": "No chunks could be created from the text.",
         "source_not_found": "Source not found.",
         "no_sources": "No sources imported yet.",
-        "no_matching_chunks": "No matching chunks found.",
+        "no_matching_chunks": "No matching content found in the sources.",
         "role_required": "This action requires the role '{role}' (current: '{user}').",
     },
 }
