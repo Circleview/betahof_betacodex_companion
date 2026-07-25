@@ -35,6 +35,7 @@
   "import.urlPopoverLabel": "URL (Blogpost/Artikel/YouTube/PDF)",
   "import.loadButton": "Laden",
   "import.pleaseEnterUrl": "Bitte eine URL eintragen.",
+  "import.urlAlreadyExists": "Diese URL wurde bereits importiert: \"{title}\".",
   "import.loadingExtracting": "Lade und extrahiere...",
   "import.extractionFailedGeneric": "Fehler bei der Extraktion",
   "import.extractionEmpty": "Automatische Extraktion fehlgeschlagen. Bitte Text manuell einfügen.",

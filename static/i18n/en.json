@@ -35,6 +35,7 @@
   "import.urlPopoverLabel": "URL (blog post/article/YouTube/PDF)",
   "import.loadButton": "Load",
   "import.pleaseEnterUrl": "Please enter a URL.",
+  "import.urlAlreadyExists": "This URL has already been imported: \"{title}\".",
   "import.loadingExtracting": "Loading and extracting...",
   "import.extractionFailedGeneric": "Extraction failed",
   "import.extractionEmpty": "Automatic extraction failed. Please paste the text manually.",

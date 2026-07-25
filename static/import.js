@@ -164,7 +164,6 @@ function fillForm({
   author = '',
   date = '',
   url = '',
-  listen_url = '',
   text = '',
   restricted = false,
 }) {
@@ -172,7 +171,6 @@ function fillForm({
   document.getElementById('author').value = author;
   document.getElementById('date').value = date;
   document.getElementById('url').value = url;
-  document.getElementById('listen_url').value = listen_url;
   document.getElementById('text').value = text;
   document.getElementById('restricted').checked = restricted;
 }
@@ -202,6 +200,11 @@ document.getElementById('popover-load').addEventListener('click', async () => {
   const status = document.getElementById('popover-status');
   if (!url) {
     status.textContent = t('import.pleaseEnterUrl');
+    return;
+  }
+  const existing = findExistingSourceByUrl(url);
+  if (existing) {
+    status.textContent = t('import.urlAlreadyExists', { title: existing.title });
     return;
   }
   status.textContent = t('import.loadingExtracting');
@@ -268,6 +271,16 @@ document.getElementById('popover-upload').addEventListener('click', async () => 
 
 function normalizeAuthor(name) {
   return name.trim().split(/\s+/).join(' ').toLowerCase();
+}
+
+function normalizeUrlForComparison(url) {
+  return url.trim().replace(/\/+$/, '').toLowerCase();
+}
+
+function findExistingSourceByUrl(url) {
+  const normalized = normalizeUrlForComparison(url);
+  if (!normalized) return null;
+  return allSources.find((s) => s.url && normalizeUrlForComparison(s.url) === normalized) || null;
 }
 
 function buildEditPanel(s, options = {}) {
@@ -827,10 +840,22 @@ function renderSourceList(sources, options = {}) {
       }
     }
 
+    let extraGapAfterAuthorGroup = false;
     if (currentSortMode === 'author' && !pendingDeletions.has(s.id)) {
       const key = s.author ? normalizeAuthor(s.author) : null;
-      if (key && key !== lastAuthorKey && (authorCounts.get(key) || 0) > 1) {
+      const isNewAuthor = key && key !== lastAuthorKey;
+      if (isNewAuthor && (authorCounts.get(key) || 0) > 1) {
         list.appendChild(buildAuthorMarker(s.author));
+      } else if (
+        isNewAuthor &&
+        lastAuthorKey &&
+        (authorCounts.get(lastAuthorKey) || 0) > 1
+      ) {
+        // Dieser Autor hat nur eine Quelle (keine eigene Zwischenüberschrift),
+        // steht aber direkt nach einem Autor MIT Zwischenüberschrift - ohne
+        // zusätzlichen Abstand sähe es so aus, als gehöre die Quelle noch
+        // zum vorherigen Autor.
+        extraGapAfterAuthorGroup = true;
       }
       lastAuthorKey = key;
     }
@@ -848,6 +873,9 @@ function renderSourceList(sources, options = {}) {
     li.className = 'source-row';
     if (unreachableSourceIds.has(s.id)) {
       li.classList.add('source-row--unreachable');
+    }
+    if (extraGapAfterAuthorGroup) {
+      li.classList.add('source-row--after-author-group');
     }
     li.dataset.sourceId = s.id;
 
@@ -1089,12 +1117,18 @@ document.getElementById('source-form').addEventListener('submit', async (e) => {
     author: document.getElementById('author').value || null,
     date: document.getElementById('date').value || null,
     url: document.getElementById('url').value || null,
-    listen_url: document.getElementById('listen_url').value || null,
     text: document.getElementById('text').value,
     restricted: document.getElementById('restricted').checked,
     pdf_upload_id: pendingUploadId,
   };
   const status = document.getElementById('import-status');
+  if (payload.url) {
+    const existing = findExistingSourceByUrl(payload.url);
+    if (existing) {
+      status.textContent = t('import.urlAlreadyExists', { title: existing.title });
+      return;
+    }
+  }
   status.textContent = t('import.importing');
   try {
     const res = await fetch('/api/sources', {
@@ -1111,6 +1145,12 @@ document.getElementById('source-form').addEventListener('submit', async (e) => {
     document.getElementById('source-form').reset();
     pendingUploadId = null;
     importBereich.classList.add('hidden');
+    // Die URL-Eingabe im "Von URL importieren"-Popover gehört NICHT zu
+    // #source-form (separates Formular für /api/extract-url) und wurde
+    // daher vom obigen reset() nicht mit geleert - beim nächsten Import
+    // stand sonst noch die vorherige URL darin.
+    document.getElementById('popover-url').value = '';
+    document.getElementById('popover-status').textContent = '';
     loadSources();
     loadAuthors();
   } catch (err) {

@@ -997,6 +997,14 @@ section {
   margin-left: -0.85rem;
 }
 
+/* Ein Autor mit nur einer Quelle bekommt keine eigene Zwischenüberschrift
+   (siehe buildAuthorMarker) - folgt er direkt auf einen Autor MIT
+   Zwischenüberschrift, braucht es trotzdem sichtbaren Abstand, sonst
+   wirkt seine Quelle wie ein weiterer Eintrag des vorherigen Autors. */
+#source-list li.source-row--after-author-group {
+  margin-top: 1.25rem;
+}
+
 /* In der Timeline-Ansicht hat li.source-row bereits eigene margin/padding,
    damit Trennlinie und Punkt exakt auf der Zeitlinie sitzen - diese
    Positionierung darf die Warnzeile nicht überschreiben. */
