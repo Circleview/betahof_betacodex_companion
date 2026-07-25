@@ -7,6 +7,7 @@ from urllib.parse import urlsplit
 
 from dotenv import load_dotenv
 from fastapi import BackgroundTasks, Depends, FastAPI, File, Header, HTTPException, UploadFile
+from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 load_dotenv()
@@ -75,6 +76,7 @@ def _get_version() -> str:
                 ["git", "describe", "--tags", "--abbrev=0"],
                 cwd=BASE_DIR,
                 stderr=subprocess.DEVNULL,
+                timeout=2,
             )
             .decode()
             .strip()
@@ -201,6 +203,7 @@ def _to_source_out(
     lang = lang if lang in ("de", "en") else i18n.DEFAULT_LANG
     data["summary"] = data.get(f"summary_{lang}") or ""
     data["key_terms"] = data.get(f"key_terms_{lang}") or []
+    data["has_pdf"] = (PDF_DIR / f"{data['id']}.pdf").exists()
     return SourceOut(**data)
 
 
@@ -379,6 +382,23 @@ def check_source_url(
     return UrlCheckOut(has_url=True, **result)
 
 
+@app.get("/api/sources/{source_id}/pdf")
+def get_source_pdf(
+    source_id: str,
+    _user: str = Depends(require_role(users.QUELLEN_PFLEGER)),
+    x_lang: str = Header(default=i18n.DEFAULT_LANG),
+):
+    sources = _load_sources()
+    if source_id not in sources:
+        raise HTTPException(404, i18n.get_message("source_not_found", x_lang))
+
+    pdf_path = PDF_DIR / f"{source_id}.pdf"
+    if not pdf_path.exists():
+        raise HTTPException(404, i18n.get_message("source_not_found", x_lang))
+
+    return FileResponse(pdf_path, media_type="application/pdf")
+
+
 @app.post("/api/sources/{source_id}/generate-summary", response_model=SummaryOut)
 def generate_source_summary(
     source_id: str,
@@ -471,4 +491,11 @@ def ask(question: QuestionIn, x_lang: str = Header(default=i18n.DEFAULT_LANG)):
     return AnswerOut(answer=answer_text, sources=chunk_refs)
 
 
-app.mount("/", StaticFiles(directory=str(STATIC_DIR), html=True), name="static")
+class NoCacheStaticFiles(StaticFiles):
+    def file_response(self, *args, **kwargs):
+        response = super().file_response(*args, **kwargs)
+        response.headers["Cache-Control"] = "no-cache"
+        return response
+
+
+app.mount("/", NoCacheStaticFiles(directory=str(STATIC_DIR), html=True), name="static")

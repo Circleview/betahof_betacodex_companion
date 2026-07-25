@@ -572,6 +572,61 @@ def test_add_source_with_pdf_upload_id_persists_file(client, monkeypatch):
     assert (main_module.PDF_DIR / f"{source_id}.pdf").exists()
     assert not (main_module.PDF_UPLOAD_STAGING_DIR / f"{upload_id}.pdf").exists()
 
+    sources = client.get("/api/sources").json()
+    entry = next(s for s in sources if s["id"] == source_id)
+    assert entry["has_pdf"] is True
+
+
+def test_source_without_pdf_reports_has_pdf_false(client):
+    create_res = client.post("/api/sources", json={"title": "Quelle", "text": "Text."})
+    source_id = create_res.json()["id"]
+
+    sources = client.get("/api/sources").json()
+    entry = next(s for s in sources if s["id"] == source_id)
+    assert entry["has_pdf"] is False
+
+
+def test_get_source_pdf_returns_file_content(client, monkeypatch):
+    monkeypatch.setattr(
+        extraction,
+        "extract_pdf",
+        lambda data: {"title": "PDF-Titel", "author": "", "date": "", "text": "PDF-Inhalt.", "extracted": True},
+    )
+    upload_res = client.post(
+        "/api/extract-pdf-upload",
+        files={"file": ("test.pdf", b"%PDF-1.4 fake", "application/pdf")},
+    )
+    upload_id = upload_res.json()["upload_id"]
+    create_res = client.post(
+        "/api/sources",
+        json={"title": "Aus PDF", "text": "PDF-Inhalt.", "pdf_upload_id": upload_id},
+    )
+    source_id = create_res.json()["id"]
+
+    response = client.get(f"/api/sources/{source_id}/pdf")
+
+    assert response.status_code == 200
+    assert response.content == b"%PDF-1.4 fake"
+    assert response.headers["content-type"] == "application/pdf"
+
+
+def test_get_source_pdf_requires_pfleger_role(client):
+    create_res = client.post("/api/sources", json={"title": "Quelle", "text": "Text."})
+    source_id = create_res.json()["id"]
+
+    response = client.get(f"/api/sources/{source_id}/pdf", headers={"X-Dev-User": "anon"})
+
+    assert response.status_code == 403
+
+
+def test_get_source_pdf_returns_404_when_no_pdf_stored(client):
+    create_res = client.post("/api/sources", json={"title": "Quelle", "text": "Text."})
+    source_id = create_res.json()["id"]
+
+    response = client.get(f"/api/sources/{source_id}/pdf")
+
+    assert response.status_code == 404
+
 
 def test_check_source_url_reports_reachability(client, monkeypatch):
     create_res = client.post(

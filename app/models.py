@@ -29,6 +29,7 @@ class SourceOut(BaseModel):
     restricted: bool = False
     summary: str = ""
     key_terms: list[str] = []
+    has_pdf: bool = False
 
 
 class QuestionIn(BaseModel):

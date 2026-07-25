@@ -39,9 +39,9 @@ const MAGIC_ICON =
 const WARNING_ICON =
   '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" ' +
   'stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
-  '<path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"></path>' +
-  '<line x1="12" y1="9" x2="12" y2="13"></line>' +
-  '<line x1="12" y1="17" x2="12.01" y2="17"></line>' +
+  '<path d="M14 4l1.5-1.5a3.54 3.54 0 1 1 5 5L19 9"></path>' +
+  '<path d="M10 15l-1.5 1.5a3.54 3.54 0 1 1-5-5L5 10"></path>' +
+  '<line x1="3" y1="3" x2="21" y2="21"></line>' +
   "</svg>";
 
 const UNDO_DURATION_MS = 30000;
@@ -283,7 +283,7 @@ function buildEditPanel(s, options = {}) {
   const status = document.createElement('p');
   status.className = 'edit-status';
 
-  function field(labelKey, idSuffix, value, type) {
+  function buildFieldLabel(labelKey, idSuffix, value, type) {
     const label = document.createElement('label');
     label.textContent = t(labelKey);
     const input = document.createElement(type === 'textarea' ? 'textarea' : 'input');
@@ -292,18 +292,69 @@ function buildEditPanel(s, options = {}) {
     input.id = `edit-${idSuffix}-${s.id}`;
     input.value = value || '';
     label.appendChild(input);
+    return { label, input };
+  }
+
+  function field(labelKey, idSuffix, value, type) {
+    const { label, input } = buildFieldLabel(labelKey, idSuffix, value, type);
     form.appendChild(label);
     return input;
   }
 
   const titleInput = field('import.fieldTitle', 'title', s.title, 'text');
   titleInput.required = true;
-  const authorInput = field('import.fieldAuthor', 'author', s.author, 'text');
+
+  const authorField = buildFieldLabel('import.fieldAuthor', 'author', s.author, 'text');
+  const authorInput = authorField.input;
   authorInput.setAttribute('list', 'author-suggestions');
   authorInput.setAttribute('autocomplete', 'off');
-  const dateInput = field('import.fieldDate', 'date', s.date, 'date');
-  const urlInput = field('import.fieldUrl', 'url', s.url, 'url');
+  const dateField = buildFieldLabel('import.fieldDate', 'date', s.date, 'date');
+  const dateInput = dateField.input;
+  const authorDateRow = document.createElement('div');
+  authorDateRow.className = 'field-row';
+  authorDateRow.appendChild(authorField.label);
+  authorDateRow.appendChild(dateField.label);
+  form.appendChild(authorDateRow);
+
+  const urlField = buildFieldLabel('import.fieldUrl', 'url', s.url, 'url');
+  const urlInput = urlField.input;
+  const openUrlBtn = document.createElement('button');
+  openUrlBtn.type = 'button';
+  openUrlBtn.className = 'icon-button label-inline-icon';
+  const openUrlLabel = t('common.openSource');
+  openUrlBtn.title = openUrlLabel;
+  openUrlBtn.setAttribute('aria-label', openUrlLabel);
+  openUrlBtn.innerHTML = EXTERNAL_LINK_ICON;
+  openUrlBtn.addEventListener('click', () => {
+    const value = urlInput.value.trim();
+    if (value) window.open(value, '_blank', 'noopener,noreferrer');
+  });
+  urlField.label.insertBefore(openUrlBtn, urlInput);
+  form.appendChild(urlField.label);
+
   const listenUrlInput = field('import.fieldListenUrl', 'listen-url', s.listen_url, 'url');
+
+  if (s.has_pdf) {
+    const pdfRow = document.createElement('p');
+    pdfRow.className = 'pdf-open-row';
+    const pdfBtn = document.createElement('button');
+    pdfBtn.type = 'button';
+    pdfBtn.className = 'link-button';
+    pdfBtn.textContent = t('import.openPdf');
+    pdfBtn.addEventListener('click', async () => {
+      try {
+        const res = await fetch(`/api/sources/${s.id}/pdf`, { headers: devUserHeaders() });
+        if (!res.ok) throw new Error(t('import.openPdfFailed'));
+        const blob = await res.blob();
+        window.open(URL.createObjectURL(blob), '_blank');
+      } catch (err) {
+        status.textContent = t('common.errorPrefix') + err.message;
+      }
+    });
+    pdfRow.appendChild(pdfBtn);
+    form.appendChild(pdfRow);
+  }
+
   const textInput = field('import.fieldText', 'text', s.text, 'textarea');
   if (s.restricted) {
     textInput.placeholder = t('import.restrictedTextPlaceholder');
@@ -701,17 +752,10 @@ function buildSourceDetails(s, citationUrl) {
   const container = document.createElement('div');
   container.className = 'source-summary';
 
-  if (s.summary) {
-    const summaryEl = renderSummaryWithTerms(s.summary, s.key_terms);
-    prependAiIcon(summaryEl);
-    container.appendChild(summaryEl);
-    if (citationUrl) appendOpenLink(summaryEl, citationUrl);
-  } else if (citationUrl) {
-    const linkOnly = document.createElement('p');
-    linkOnly.className = 'source-summary-text';
-    appendOpenLink(linkOnly, citationUrl);
-    container.appendChild(linkOnly);
-  }
+  const summaryEl = renderSummaryWithTerms(s.summary, s.key_terms);
+  prependAiIcon(summaryEl);
+  container.appendChild(summaryEl);
+  if (citationUrl) appendOpenLink(summaryEl, citationUrl);
 
   return container;
 }
@@ -723,26 +767,64 @@ function buildTimelineMarker(label) {
   return li;
 }
 
+function buildAuthorMarker(name) {
+  const li = document.createElement('li');
+  li.className = 'author-marker';
+  li.textContent = name;
+  return li;
+}
+
 function renderSourceList(sources, options = {}) {
   const sorted = sortSources(sources);
   currentDisplayedSources = sorted;
   const list = document.getElementById('source-list');
   list.innerHTML = '';
   let lastMonthYear = null;
+  let lastAuthorKey = null;
+  const authorCounts = new Map();
+  if (currentSortMode === 'author') {
+    sorted.forEach((s) => {
+      if (!s.author) return;
+      const key = normalizeAuthor(s.author);
+      authorCounts.set(key, (authorCounts.get(key) || 0) + 1);
+    });
+  }
+  let gridRow = 0;
+  // In der Timeline-Ansicht braucht jede <li> eine EXPLIZITE Grid-Zeile:
+  // ohne das packt CSS-Grid-Auto-Placement eine Quellen-Zeile fälschlich
+  // in dieselbe Zeile wie das direkt vorangehende Monat-Jahr-Label
+  // (Spalte 3 ist dort ja noch frei) - dadurch verschwanden Punkt und
+  // Zeitlinie für genau diese Zeilen.
+  const appendTimelineRow = (el) => {
+    if (currentSortMode === 'date') {
+      gridRow += 1;
+      el.style.gridRow = String(gridRow);
+    }
+    list.appendChild(el);
+  };
+
   sorted.forEach((s) => {
     if (currentSortMode === 'date' && !pendingDeletions.has(s.id)) {
       const key = monthYearKey(s.date);
       if (key !== lastMonthYear) {
-        list.appendChild(buildTimelineMarker(formatMonthYear(s.date)));
+        appendTimelineRow(buildTimelineMarker(formatMonthYear(s.date)));
         lastMonthYear = key;
       }
     }
 
+    if (currentSortMode === 'author' && !pendingDeletions.has(s.id)) {
+      const key = s.author ? normalizeAuthor(s.author) : null;
+      if (key && key !== lastAuthorKey && (authorCounts.get(key) || 0) > 1) {
+        list.appendChild(buildAuthorMarker(s.author));
+      }
+      lastAuthorKey = key;
+    }
+
     if (pendingDeletions.has(s.id)) {
       if (activeEditId === s.id) {
-        list.appendChild(buildEditPanel(s, { pendingDeletion: true }));
+        appendTimelineRow(buildEditPanel(s, { pendingDeletion: true }));
       } else {
-        list.appendChild(buildUndoRow(s));
+        appendTimelineRow(buildUndoRow(s));
       }
       return;
     }
@@ -758,7 +840,7 @@ function renderSourceList(sources, options = {}) {
     header.className = 'source-row-header';
 
     const citationUrl = s.listen_url || s.url;
-    const hasDetails = !!(s.summary || citationUrl);
+    const hasDetails = !!s.summary;
 
     const textSpan = document.createElement('span');
     if (hasDetails) {
@@ -803,12 +885,19 @@ function renderSourceList(sources, options = {}) {
     actions.className = 'source-row-actions';
 
     if (unreachableSourceIds.has(s.id)) {
-      const warning = document.createElement('span');
+      const warning = document.createElement(hasPflegerRole() ? 'button' : 'span');
+      if (hasPflegerRole()) warning.type = 'button';
       warning.className = 'icon-button warning-icon';
       const warnLabel = t('common.urlUnreachable');
       warning.title = warnLabel;
       warning.setAttribute('aria-label', warnLabel);
       warning.innerHTML = WARNING_ICON;
+      if (hasPflegerRole()) {
+        warning.addEventListener('click', () => {
+          activeEditId = activeEditId === s.id ? null : s.id;
+          renderSourceList(currentDisplayedSources, options);
+        });
+      }
       actions.appendChild(warning);
     }
 
@@ -847,34 +936,53 @@ function renderSourceList(sources, options = {}) {
       li.appendChild(buildSourceDetails(s, citationUrl));
     }
 
-    list.appendChild(li);
+    appendTimelineRow(li);
 
     if (activeEditId === s.id) {
-      list.appendChild(buildEditPanel(s));
+      appendTimelineRow(buildEditPanel(s));
     }
   });
+
+  if (currentSortMode === 'date') {
+    // "-1" als Grid-Zeilen-Ende bezieht sich nur auf EXPLIZIT deklarierte
+    // Zeilen (grid-template-rows), nicht auf implizit erzeugte - deshalb hier
+    // das tatsächliche Zeilenende als Variable setzen, damit die Zeitlinie
+    // (::after) wirklich bis zur letzten Zeile durchläuft.
+    list.style.setProperty('--timeline-row-end', String(gridRow + 1));
+  }
 }
 
 async function checkUrlHealth(sources) {
   if (!hasPflegerRole()) return;
-  sources
-    .filter((s) => s.url)
-    .forEach(async (s) => {
-      try {
-        const res = await fetch(`/api/sources/${s.id}/check-url`, { headers: devUserHeaders() });
-        if (!res.ok) return;
-        const data = await res.json();
-        if (data.has_url && data.reachable === false) {
-          unreachableSourceIds.add(s.id);
-          const row = document.querySelector(`#source-list li[data-source-id="${s.id}"] .source-row-actions`);
-          if (row && !row.querySelector('.unreachable-marker')) {
-            renderSourceList(currentDisplayedSources);
-          }
-        }
-      } catch (err) {
-        // Netzwerkfehler beim Erreichbarkeits-Check ignorieren.
+  sources.forEach(async (s) => {
+    if (!s.url) {
+      // URL wurde entfernt (z.B. beim Bearbeiten) - eine evtl. alte
+      // Unreachable-Markierung ist dann nicht mehr gültig.
+      if (unreachableSourceIds.delete(s.id)) {
+        renderSourceList(currentDisplayedSources);
       }
-    });
+      return;
+    }
+    try {
+      const res = await fetch(`/api/sources/${s.id}/check-url`, { headers: devUserHeaders() });
+      if (!res.ok) return;
+      const data = await res.json();
+      const isUnreachable = data.has_url && data.reachable === false;
+      const wasUnreachable = unreachableSourceIds.has(s.id);
+      // Sowohl neu erkannte als auch (nach einer URL-Reparatur) nicht mehr
+      // bestehende Unreachable-Zustände müssen sofort sichtbar werden -
+      // vorher wurde eine Markierung nie wieder entfernt.
+      if (isUnreachable && !wasUnreachable) {
+        unreachableSourceIds.add(s.id);
+        renderSourceList(currentDisplayedSources);
+      } else if (!isUnreachable && wasUnreachable) {
+        unreachableSourceIds.delete(s.id);
+        renderSourceList(currentDisplayedSources);
+      }
+    } catch (err) {
+      // Netzwerkfehler beim Erreichbarkeits-Check ignorieren.
+    }
+  });
 }
 
 async function filterByAuthor(name) {

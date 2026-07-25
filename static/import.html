@@ -105,22 +105,24 @@
 <datalist id="author-suggestions"></datalist>
 
 <section id="quellen-liste-bereich">
-  <h3 data-i18n="import.importedSourcesHeading"></h3>
-  <div class="sort-toolbar">
-    <button type="button" id="sort-author" class="sort-button active" data-i18n-title="import.sortByAuthor">
-      <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
-        <circle cx="12" cy="7" r="4"></circle>
-      </svg>
-    </button>
-    <button type="button" id="sort-date" class="sort-button" data-i18n-title="import.sortByDate">
-      <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M6 2h12"></path>
-        <path d="M6 22h12"></path>
-        <path d="M6 2v5a6 6 0 0 0 6 6 6 6 0 0 0 6-6V2"></path>
-        <path d="M6 22v-5a6 6 0 0 1 6-6 6 6 0 0 1 6 6v5"></path>
-      </svg>
-    </button>
+  <div class="section-heading-row">
+    <h3 data-i18n="import.importedSourcesHeading"></h3>
+    <div class="sort-toolbar">
+      <button type="button" id="sort-author" class="sort-button active" data-i18n-title="import.sortByAuthor">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+          <circle cx="12" cy="7" r="4"></circle>
+        </svg>
+      </button>
+      <button type="button" id="sort-date" class="sort-button" data-i18n-title="import.sortByDate">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M6 2h12"></path>
+          <path d="M6 22h12"></path>
+          <path d="M6 2v5a6 6 0 0 0 6 6 6 6 0 0 0 6-6V2"></path>
+          <path d="M6 22v-5a6 6 0 0 1 6-6 6 6 0 0 1 6 6v5"></path>
+        </svg>
+      </button>
+    </div>
   </div>
   <p id="source-filter-status" class="hidden">
     <span id="source-filter-label"></span> <strong id="source-filter-name"></strong>

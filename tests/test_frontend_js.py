@@ -4,7 +4,7 @@ from pathlib import Path
 STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
 
 APPEND_CALL_RE = re.compile(
-    r"\b(?:appendChild|insertBefore|prepend|replaceChild|insertAdjacentElement)\s*\("
+    r"\b(?:appendChild|insertBefore|prepend|replaceChild|insertAdjacentElement|appendTimelineRow)\s*\("
 )
 CREATE_ELEMENT_RE = re.compile(r"\bconst\s+(\w+)\s*=\s*document\.createElement\(")
 FUNCTION_START_RE = re.compile(r"function\s+\w+\s*\([^)]*\)\s*\{")
@@ -33,10 +33,14 @@ def _find_orphaned_elements(function_body: str) -> list[str]:
     orphaned = []
     for name in CREATE_ELEMENT_RE.findall(function_body):
         appended = re.search(
-            rf"(?:appendChild|insertBefore|prepend|replaceChild|insertAdjacentElement)\([^)]*\b{name}\b",
+            rf"(?:appendChild|insertBefore|prepend|replaceChild|insertAdjacentElement|appendTimelineRow)\([^)]*\b{name}\b",
             function_body,
         )
-        returned = re.search(rf"\breturn\s+{name}\b", function_body)
+        # Direkte Rückgabe (`return label;`) ODER als Objekt-Property zurückgegeben
+        # (`return { label, input };`), z.B. bei buildFieldLabel().
+        returned = re.search(rf"\breturn\s+{name}\b", function_body) or re.search(
+            rf"\breturn\s*\{{[^}}]*\b{name}\b[^}}]*\}}", function_body
+        )
         if not appended and not returned:
             orphaned.append(name)
     return orphaned

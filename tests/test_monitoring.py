@@ -39,6 +39,29 @@ def test_check_url_reports_http_error_status_for_non_405():
         assert check_url("https://example.org") == {"reachable": False, "status_code": 404}
 
 
+def test_check_url_treats_403_as_reachable():
+    # Manche Seiten (z. B. academia.edu) blockieren automatisierte HEAD-Anfragen
+    # pauschal mit 403, obwohl die Seite im Browser normal erreichbar ist.
+    error = urllib.error.HTTPError(
+        url="https://example.org", code=403, msg="Forbidden", hdrs=None, fp=None
+    )
+    with patch("app.monitoring.urllib.request.urlopen", side_effect=error):
+        assert check_url("https://example.org") == {"reachable": True, "status_code": 403}
+
+
+def test_check_url_treats_403_as_reachable_after_405_fallback():
+    error_405 = urllib.error.HTTPError(
+        url="https://example.org", code=405, msg="Method Not Allowed", hdrs=None, fp=None
+    )
+    error_403 = urllib.error.HTTPError(
+        url="https://example.org", code=403, msg="Forbidden", hdrs=None, fp=None
+    )
+    with patch(
+        "app.monitoring.urllib.request.urlopen", side_effect=[error_405, error_403]
+    ):
+        assert check_url("https://example.org") == {"reachable": True, "status_code": 403}
+
+
 def test_check_url_handles_network_errors():
     with patch("app.monitoring.urllib.request.urlopen", side_effect=RuntimeError("boom")):
         assert check_url("https://example.org") == {"reachable": False, "status_code": None}
