@@ -68,9 +68,20 @@ function renderLangSwitcher() {
   });
 }
 
-export async function initI18n() {
-  dict = await loadDict(currentLang);
-  applyStaticTranslations();
-  renderLangSwitcher();
-  return dict;
+let initPromise = null;
+
+// Mehrere unabhängige <script type="module">-Tags (z.B. question.js/import.js
+// UND footer.js) rufen initI18n() jeweils selbst auf, um sich nicht auf eine
+// bestimmte Ausführungsreihenfolge der Module verlassen zu müssen - ohne
+// Memoisierung würde das Wörterbuch mehrfach unnötig neu geladen.
+export function initI18n() {
+  if (!initPromise) {
+    initPromise = (async () => {
+      dict = await loadDict(currentLang);
+      applyStaticTranslations();
+      renderLangSwitcher();
+      return dict;
+    })();
+  }
+  return initPromise;
 }

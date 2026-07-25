@@ -175,6 +175,7 @@ document.getElementById('question-form').addEventListener('submit', async (e) =>
   chatMessages.appendChild(userMessage);
 
   questionInput.value = '';
+  questionInput.placeholder = t('index.questionPlaceholderContinue');
   questionInput.focus();
 
   const { message: assistantMessage, bubble: assistantBubble } = buildChatMessage('assistant');
@@ -201,4 +202,13 @@ document.getElementById('question-form').addEventListener('submit', async (e) =>
     assistantBubble.textContent = t('common.errorPrefix') + err.message;
   }
   scrollChatToBottom(chatMessages);
+});
+
+document.addEventListener('i18n:changed', () => {
+  // Der Platzhalter wird normalerweise per data-i18n-placeholder gesetzt,
+  // das kennt aber nicht den "fortsetzen"-Zustand nach der ersten Frage -
+  // bei einem Sprachwechsel mitten im Gespräch sonst falsch zurückgesetzt.
+  if (chatMessages.children.length > 0) {
+    questionInput.placeholder = t('index.questionPlaceholderContinue');
+  }
 });

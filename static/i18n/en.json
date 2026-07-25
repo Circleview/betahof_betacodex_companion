@@ -17,6 +17,7 @@
   "index.viewSources": "View all sources",
   "index.tagline": "Answers exclusively from vetted BetaCodex sources – with source citations.",
   "index.questionPlaceholder": "Start a conversation",
+  "index.questionPlaceholderContinue": "Continue the conversation",
   "index.askButton": "Send",
   "index.searching": "Searching for an answer...",
   "index.askError": "Request failed",

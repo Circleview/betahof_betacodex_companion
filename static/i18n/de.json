@@ -17,6 +17,7 @@
   "index.viewSources": "Alle Quellen anzeigen",
   "index.tagline": "Antworten ausschließlich aus geprüften Beta-Kodex-Quellen – mit Quellenverweis.",
   "index.questionPlaceholder": "Konversation starten",
+  "index.questionPlaceholderContinue": "Konversation fortsetzen",
   "index.askButton": "Absenden",
   "index.searching": "Suche Antwort...",
   "index.askError": "Fehler bei der Anfrage",

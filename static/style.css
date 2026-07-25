@@ -472,6 +472,11 @@ section {
   align-items: center;
   gap: 0.6rem;
   padding: 1rem 1.25rem;
+  /* Auf iPhones mit Home-Indicator/Notch (viewport-fit=cover im Meta-Tag
+     nötig, sonst liefert env() hier nur 0) darf die Eingabezeile nicht
+     darunter verschwinden - max() behält auf normalen Geräten weiterhin
+     den regulären 1rem-Abstand. */
+  padding-bottom: max(1rem, env(safe-area-inset-bottom));
   border-top: 1px solid var(--color-border);
   background: var(--color-bg);
   flex-shrink: 0;
@@ -485,9 +490,17 @@ section {
   background: var(--color-surface);
 }
 
-#question-form button[type="submit"] {
+/* Desktop: normaler Text-Button ("Absenden"/"Send"), Papierflieger-Icon
+   bleibt versteckt - die Icon-Variante ist ausdrücklich nur eine
+   Mobile-Lösung (siehe Media Query weiter unten), am Desktop ändert sich
+   nichts. */
+#question-form button.send-button {
   border-radius: 999px;
   flex-shrink: 0;
+}
+
+.send-icon {
+  display: none;
 }
 
 .chat-sources-heading {
@@ -542,6 +555,133 @@ section {
 
   #sources-sidebar h3 {
     font-size: 0.95rem;
+  }
+}
+
+/* Mobile: der Chat soll wie eine moderne Chat-App möglichst den ganzen
+   sichtbaren Bildschirm ausfüllen (Vorbild: eigenes CRT-Tool, dort per
+   `.app-layout { height: 100dvh }` gelöst). Eine feste vh-Höhe wie am
+   Desktop (siehe #chat-column oben) reicht auf dem Handy nicht - Header +
+   Tagline + feste Prozenthöhe sprengen zusammen leicht die tatsächliche
+   Viewport-Höhe, wodurch die Eingabezeile unten abgeschnitten wurde
+   (per echtem Fenstertest verifiziert). Lösung: #chat-column bekommt
+   `flex: 1` und füllt IMMER exakt den nach Header/Tagline verbleibenden
+   Platz, unabhängig von der genauen Bildschirmhöhe. `:has(#frage-bereich)`
+   sorgt dafür, dass NUR die Chat-Seite (index.html) betroffen ist, nicht
+   die Quellen-Pflege (import.html) mit ihrer potenziell langen Liste, die
+   ganz normal scrollen soll. */
+@media (max-width: 640px) {
+  /* body ist standardmäßig nur 92vw breit (siehe max-width: min(980px, 92vw)
+     oben) UND hat zusätzlich eigenes horizontales Padding - auf dem Handy
+     verschenkt das spürbar Platz. Beides hier verkleinern, damit der Chat
+     die Bildschirmbreite tatsächlich ausnutzt. */
+  body {
+    max-width: 100%;
+    padding-left: 0.75rem;
+    padding-right: 0.75rem;
+  }
+
+  body:has(#frage-bereich) {
+    display: flex;
+    flex-direction: column;
+    min-height: 100dvh;
+  }
+
+  header {
+    align-items: flex-start;
+    padding-bottom: 0.85rem;
+    margin-bottom: 0.85rem;
+  }
+
+  /* Quellen-Icon und Sprachumschalter passen als eigene Zeile neben der
+     Überschrift nicht mehr nebeneinander - stattdessen rechtsbündig
+     übereinander (Icon oben, Sprache darunter), damit die Kopfzeile nicht
+     umbricht. */
+  .header-actions {
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 0.5rem;
+  }
+
+  #import-link {
+    order: -1;
+  }
+
+  header h1 {
+    font-size: 1.25rem;
+  }
+
+  .tagline {
+    margin: -0.5rem 0 1.1rem;
+    font-size: 0.85rem;
+  }
+
+  #frage-bereich {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+    /* In Flexbox kollabieren Geschwister-Margins NICHT wie im normalen
+       Blockfluss - margin-bottom hier UND margin-top von .site-footer
+       hätten sich sonst zu einer doppelt so großen Lücke addiert. */
+    margin-bottom: 1rem;
+  }
+
+  #chat-column {
+    flex: 1;
+    height: auto;
+    min-height: 280px;
+    max-height: none;
+    /* Der äußere Rahmen (Border/abgerundete Ecken/eigene Hintergrundfarbe)
+       wirkt auf dem Handy wie eine unnötige Box um die Konversation -
+       hier entfernt, damit der Chat direkt in die Seite integriert wirkt
+       und nicht zusätzlich Breite "kostet". */
+    border: none;
+    border-radius: 0;
+    background: transparent;
+  }
+
+  #question-form {
+    padding-left: 0;
+    padding-right: 0;
+  }
+
+  #chat-messages {
+    padding-left: 0;
+    padding-right: 0;
+  }
+
+  .chat-bubble {
+    max-width: 92%;
+  }
+
+  body {
+    padding-bottom: 1.5rem;
+  }
+
+  .site-footer {
+    flex-shrink: 0;
+    margin-top: 0;
+  }
+
+  /* Nur auf Mobile: Papierflieger-Icon statt Textbutton, spart Platz in
+     der Eingabezeile - am Desktop bleibt der Textbutton unverändert. */
+  .send-label {
+    display: none;
+  }
+
+  .send-icon {
+    display: inline-flex;
+  }
+
+  #question-form button.send-button {
+    width: 44px;
+    height: 44px;
+    padding: 0;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
   }
 }
 
