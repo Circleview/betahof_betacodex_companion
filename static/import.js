@@ -1177,7 +1177,20 @@ async function checkUrlHealth(sources) {
   });
 }
 
-async function filterByAuthor(name) {
+// Der Klick auf einen Autor/Begriff kann von weit unten in der Liste
+// kommen (z.B. aus dem Autoren-Verzeichnis oder einer Quellenzeile) - die
+// gefilterte Ergebnisliste erscheint aber oben bei "Importierte Quellen",
+// deshalb dorthin scrollen statt die aktuelle Scroll-Position zu behalten.
+function scrollToFilteredResults() {
+  document.getElementById('quellen-liste-bereich')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+// Merkt sich den aktiven Filter, damit loadSources() (z.B. nach dem
+// Aktualisieren/Löschen einer Quelle) ihn erneut anwenden kann, statt
+// stillschweigend auf die ungefilterte Liste zurückzufallen.
+let activeFilter = null;
+
+async function applyAuthorFilter(name) {
   const res = await fetch('/api/authors');
   const authorEntries = await res.json();
   const match = authorEntries.find((a) => normalizeAuthor(a.name) === normalizeAuthor(name));
@@ -1192,11 +1205,17 @@ async function filterByAuthor(name) {
   renderSourceList(allSources.filter((s) => ids.includes(s.id)));
 }
 
+async function filterByAuthor(name) {
+  activeFilter = { type: 'author', value: name };
+  await applyAuthorFilter(name);
+  scrollToFilteredResults();
+}
+
 function normalizeTerm(term) {
   return term.trim().toLowerCase();
 }
 
-async function filterByTerm(term) {
+async function applyTermFilter(term) {
   const res = await fetch('/api/terms');
   const termEntries = await res.json();
   const match = termEntries.find((t2) => normalizeTerm(t2.term) === normalizeTerm(term));
@@ -1209,7 +1228,14 @@ async function filterByTerm(term) {
   renderSourceList(allSources.filter((s) => ids.includes(s.id)));
 }
 
+async function filterByTerm(term) {
+  activeFilter = { type: 'term', value: term };
+  await applyTermFilter(term);
+  scrollToFilteredResults();
+}
+
 document.getElementById('source-filter-clear').addEventListener('click', () => {
+  activeFilter = null;
   document.getElementById('source-filter-status').classList.add('hidden');
   renderSourceList(allSources);
 });
@@ -1230,7 +1256,16 @@ async function loadSources() {
     headers: { 'X-Lang': getLang() },
   });
   allSources = await res.json();
-  renderSourceList(allSources);
+  // Ein aktiver Autor:innen-/Begriffs-Filter soll ein Neuladen (z.B. nach
+  // dem Aktualisieren oder Löschen einer Quelle) überleben, statt
+  // stillschweigend auf die ungefilterte Liste zurückzuspringen.
+  if (activeFilter?.type === 'author') {
+    await applyAuthorFilter(activeFilter.value);
+  } else if (activeFilter?.type === 'term') {
+    await applyTermFilter(activeFilter.value);
+  } else {
+    renderSourceList(allSources);
+  }
   checkUrlHealth(allSources);
 }
 

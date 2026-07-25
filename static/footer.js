@@ -11,9 +11,15 @@ function buildLink(href, text) {
   return a;
 }
 
-function renderFooterLinks() {
+// Der Footer sieht auf jeder Seite identisch aus - der Hinweistext steht
+// deshalb immer fest im Footer, unabhängig von Bildschirmbreite oder Seite.
+function renderFooter() {
   const footer = document.getElementById('site-footer');
   if (!footer) return;
+
+  const taglineSpan = document.createElement('span');
+  taglineSpan.className = 'footer-tagline';
+  taglineSpan.textContent = t('index.tagline');
 
   const versionSpan = document.createElement('span');
   versionSpan.id = 'footer-version';
@@ -21,48 +27,13 @@ function renderFooterLinks() {
   versionSpan.textContent = currentVersion;
 
   footer.replaceChildren(
+    taglineSpan,
     buildLink('https://betacodex.org', 'betacodex.org'),
     buildLink('https://github.com/Circleview/betahof_betacodex_companion', t('footer.github')),
     versionSpan,
-    buildLink('https://betahof.de', 'Beta Hof'),
+    buildLink('https://www.betahof.de/beratung/', 'Beta Hof'),
     buildLink('https://www.betahof.de/impressum/', t('footer.impressum')),
   );
-}
-
-// Der Hinweistext wandert nur dann in den Footer, wenn dort tatsächlich
-// Platz ist (Footer bleibt einzeilig) - sonst bleibt er im Header stehen.
-// Wird deshalb nach jedem Render neu vermessen statt per fester Breakpoint.
-function fitTaglineIntoFooter() {
-  const footer = document.getElementById('site-footer');
-  const headerTagline = document.querySelector('.tagline');
-  if (!footer || !headerTagline) return;
-
-  headerTagline.style.display = '';
-  const baseHeight = footer.offsetHeight;
-
-  const taglineSpan = document.createElement('span');
-  taglineSpan.className = 'footer-tagline';
-  taglineSpan.textContent = t('index.tagline');
-  footer.insertBefore(taglineSpan, footer.firstChild);
-
-  if (footer.offsetHeight > baseHeight) {
-    taglineSpan.remove();
-  } else {
-    headerTagline.style.display = 'none';
-  }
-}
-
-function renderFooter() {
-  renderFooterLinks();
-  fitTaglineIntoFooter();
-}
-
-function debounce(fn, delayMs) {
-  let timer;
-  return () => {
-    clearTimeout(timer);
-    timer = setTimeout(fn, delayMs);
-  };
 }
 
 export async function initFooter() {
@@ -81,5 +52,4 @@ export async function initFooter() {
 
   renderFooter();
   document.addEventListener('i18n:changed', renderFooter);
-  window.addEventListener('resize', debounce(renderFooter, 150));
 }

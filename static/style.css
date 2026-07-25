@@ -89,12 +89,6 @@ header h1 {
   margin: 0;
 }
 
-.tagline {
-  color: var(--color-text-muted);
-  font-size: 0.95rem;
-  margin: -0.75rem 0 2.5rem;
-}
-
 #import-link {
   flex-shrink: 0;
   display: flex;
@@ -480,11 +474,26 @@ body:not(.chat-started) #frage-bereich {
   display: flex;
   align-items: center;
   justify-content: center;
+  /* #frage-bereich ist ein <section> und erbt dadurch margin-bottom: 3rem;
+     zusammen mit dem margin-top des Footers ergäbe das eine Lücke NUR
+     unterhalb dieser Box - justify-content:center würde dann nicht zwischen
+     den beiden Trennlinien (Header-Rand/Footer-Rand) zentrieren, sondern
+     spürbar zu weit oben. Hier auf 0 gesetzt, damit die Box wirklich bis
+     zur Fußzeile reicht. */
+  margin-bottom: 0;
 }
 
 body:not(.chat-started) #sources-sidebar,
 body:not(.chat-started) #chat-messages {
   display: none;
+}
+
+body:not(.chat-started) .site-footer {
+  /* Gleicher Abstand wie header -> #frage-bereich (1.5rem), damit die Box
+     oben UND unten denselben Puffer zur jeweiligen Trennlinie hat - nur so
+     zentriert justify-content:center wirklich zwischen den beiden Linien
+     statt spürbar zu weit oben. */
+  margin-top: 1.5rem;
 }
 
 body:not(.chat-started) #chat-column {
@@ -771,11 +780,6 @@ body:not(.chat-started) #question-form {
 
   header h1 {
     font-size: 1.25rem;
-  }
-
-  .tagline {
-    margin: -0.5rem 0 1.1rem;
-    font-size: 0.85rem;
   }
 
   #frage-bereich {
@@ -1474,11 +1478,11 @@ details a {
 
 .footer-tagline {
   margin-right: auto;
-  white-space: nowrap;
 }
 
 .site-footer a {
   color: var(--color-text-muted);
+  text-decoration: none;
 }
 
 .site-footer a:hover {
