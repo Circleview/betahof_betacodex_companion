@@ -2,7 +2,7 @@
 <html lang="de">
 <head>
 <meta charset="UTF-8">
-<title>BetaCodex Wissensassistent</title>
+<title>BetaCodex Companion</title>
 <link rel="stylesheet" href="/style.css">
 </head>
 <body>
@@ -23,13 +23,17 @@
 <p class="tagline" data-i18n="index.tagline"></p>
 
 <section id="frage-bereich">
-  <form id="question-form">
-    <input type="text" id="question" data-i18n-placeholder="index.questionPlaceholder" required>
-    <button type="submit" data-i18n="index.askButton"></button>
-  </form>
-  <div id="answer"></div>
-  <h3 data-i18n="index.usedSourcesHeading"></h3>
-  <ol id="answer-sources"></ol>
+  <aside id="sources-sidebar">
+    <h3 data-i18n="index.usedSourcesHeading"></h3>
+    <ol id="sidebar-sources-list"></ol>
+  </aside>
+  <div id="chat-column">
+    <div id="chat-messages" aria-live="polite"></div>
+    <form id="question-form">
+      <input type="text" id="question" data-i18n-placeholder="index.questionPlaceholder" required>
+      <button type="submit" data-i18n="index.askButton"></button>
+    </form>
+  </div>
 </section>
 
 <footer class="site-footer">

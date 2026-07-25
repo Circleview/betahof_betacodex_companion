@@ -9,6 +9,11 @@ const EXTERNAL_LINK_ICON =
   '<line x1="10" y1="14" x2="21" y2="3"></line>' +
   "</svg>";
 
+function formatYear(dateStr) {
+  if (!dateStr) return t('common.noDate');
+  return dateStr.split('-')[0];
+}
+
 function truncateWords(text, maxWords) {
   const words = text.trim().split(/\s+/);
   if (words.length <= maxWords) {
@@ -23,7 +28,7 @@ function buildSourceInfo(s) {
 
   const heading = document.createElement('p');
   heading.className = 'citation-card-heading';
-  heading.textContent = `${s.title} – ${s.author || t('common.unknownAuthor')} (${s.date || t('common.noDate')})`;
+  heading.textContent = `${s.title} – ${s.author || t('common.unknownAuthor')} (${formatYear(s.date)})`;
   wrapper.appendChild(heading);
 
   const excerpt = document.createElement('p');
@@ -48,13 +53,14 @@ function buildSourceInfo(s) {
   return wrapper;
 }
 
-function renderSourcesList(sourcesList, sources) {
-  sourcesList.innerHTML = '';
+function buildSourcesList(sources) {
+  const sourcesList = document.createElement('ol');
+  sourcesList.className = 'chat-sources-list';
   sources.forEach((s) => {
     const li = document.createElement('li');
     const details = document.createElement('details');
     const summary = document.createElement('summary');
-    summary.textContent = `${s.title} – ${s.author || t('common.unknownAuthor')} (${s.date || t('common.noDate')})`;
+    summary.textContent = `${s.title} – ${s.author || t('common.unknownAuthor')} (${formatYear(s.date)})`;
     details.appendChild(summary);
     const p = document.createElement('p');
     p.textContent = truncateWords(s.text, 100);
@@ -75,6 +81,7 @@ function renderSourcesList(sourcesList, sources) {
     li.appendChild(details);
     sourcesList.appendChild(li);
   });
+  return sourcesList;
 }
 
 function makeCitationsClickable(container, sources) {
@@ -128,15 +135,54 @@ function makeCitationsClickable(container, sources) {
   });
 }
 
+function buildChatMessage(role) {
+  const message = document.createElement('div');
+  message.className = `chat-message chat-message--${role}`;
+  const bubble = document.createElement('div');
+  bubble.className = 'chat-bubble';
+  message.appendChild(bubble);
+  return { message, bubble };
+}
+
+function buildTypingIndicator() {
+  const typing = document.createElement('div');
+  typing.className = 'chat-typing';
+  for (let i = 0; i < 3; i += 1) {
+    const dot = document.createElement('span');
+    dot.className = 'chat-typing-dot';
+    typing.appendChild(dot);
+  }
+  return typing;
+}
+
+function scrollChatToBottom(container) {
+  container.scrollTop = container.scrollHeight;
+}
+
 await initI18n();
+
+const chatMessages = document.getElementById('chat-messages');
+const questionInput = document.getElementById('question');
+const sidebarSourcesList = document.getElementById('sidebar-sources-list');
 
 document.getElementById('question-form').addEventListener('submit', async (e) => {
   e.preventDefault();
-  const question = document.getElementById('question').value;
-  const answerDiv = document.getElementById('answer');
-  const sourcesList = document.getElementById('answer-sources');
-  answerDiv.textContent = t('index.searching');
-  sourcesList.innerHTML = '';
+  const question = questionInput.value.trim();
+  if (!question) return;
+
+  const { message: userMessage, bubble: userBubble } = buildChatMessage('user');
+  userBubble.textContent = question;
+  chatMessages.appendChild(userMessage);
+
+  questionInput.value = '';
+  questionInput.focus();
+
+  const { message: assistantMessage, bubble: assistantBubble } = buildChatMessage('assistant');
+  assistantBubble.setAttribute('aria-label', t('index.searching'));
+  assistantBubble.appendChild(buildTypingIndicator());
+  chatMessages.appendChild(assistantMessage);
+  scrollChatToBottom(chatMessages);
+
   try {
     const res = await fetch('/api/ask', {
       method: 'POST',
@@ -148,10 +194,11 @@ document.getElementById('question-form').addEventListener('submit', async (e) =>
       throw new Error(err.detail || t('index.askError'));
     }
     const data = await res.json();
-    answerDiv.innerHTML = renderMarkdown(data.answer);
-    makeCitationsClickable(answerDiv, data.sources);
-    renderSourcesList(sourcesList, data.sources);
+    assistantBubble.innerHTML = renderMarkdown(data.answer);
+    makeCitationsClickable(assistantBubble, data.sources);
+    sidebarSourcesList.replaceChildren(...buildSourcesList(data.sources).children);
   } catch (err) {
-    answerDiv.textContent = t('common.errorPrefix') + err.message;
+    assistantBubble.textContent = t('common.errorPrefix') + err.message;
   }
+  scrollChatToBottom(chatMessages);
 });
