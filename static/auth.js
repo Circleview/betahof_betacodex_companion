@@ -12,6 +12,18 @@ const AUTH_ICON =
   '<circle cx="12" cy="7" r="4"></circle>' +
   '</svg>';
 
+// Angemeldeter Zustand: gleiches Personen-Icon plus kleines Haken-Abzeichen
+// unten rechts, statt eines komplett anderen Icons - bleibt auf den ersten
+// Blick als "derselbe" User-Button erkennbar, nur eben eingeloggt.
+const AUTH_ICON_LOGGED_IN =
+  '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" ' +
+  'stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
+  '<path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>' +
+  '<circle cx="12" cy="7" r="4"></circle>' +
+  '<circle cx="18.5" cy="18.5" r="4.5" fill="var(--color-accent)" stroke="var(--color-bg)" stroke-width="1.5"></circle>' +
+  '<path d="M16.6 18.6l1.3 1.3 2.2-2.6" stroke="var(--color-bg)" stroke-width="1.6"></path>' +
+  '</svg>';
+
 const ROLE_LABEL_KEYS = {
   quellen_pfleger: 'auth.roleQuellenPfleger',
   user_admin: 'auth.roleUserAdmin',
@@ -217,11 +229,23 @@ function renderWidget(showExpiredNotice) {
   button.type = 'button';
   button.className = 'icon-button auth-widget-button';
   if (currentUser.email) button.classList.add('auth-widget-button--active');
-  const title = t('auth.iconTitle');
+  const title = currentUser.email
+    ? `${t('auth.iconTitle')} (${currentUser.email})`
+    : t('auth.iconTitle');
   button.title = title;
   button.setAttribute('aria-label', title);
-  button.innerHTML = AUTH_ICON;
+  button.innerHTML = currentUser.email ? AUTH_ICON_LOGGED_IN : AUTH_ICON;
   container.appendChild(button);
+
+  if (currentUser.email) {
+    // Absolut positioniert (relativ zu .auth-widget), damit der Name unter
+    // dem Icon erscheint, ohne die Höhe der Icon-Zeile zu beeinflussen und
+    // die anderen Icons daneben zu verschieben.
+    const usernameLabel = document.createElement('span');
+    usernameLabel.className = 'auth-username-label';
+    usernameLabel.textContent = currentUser.email.split('@')[0];
+    container.appendChild(usernameLabel);
+  }
 
   const popover = document.createElement('div');
   popover.className = 'popover auth-popover hidden';

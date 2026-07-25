@@ -147,6 +147,18 @@ header h1 {
   color: var(--color-accent);
 }
 
+.auth-username-label {
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  margin-top: 0.3rem;
+  font-size: 0.7rem;
+  color: var(--color-text-muted);
+  white-space: nowrap;
+  pointer-events: none;
+}
+
 /* #auth-widget-Präfix erhöht die Spezifität bewusst über die gemeinsame
    .popover-Basisregel (weiter unten in dieser Datei) hinaus - sonst gewinnt
    bei gleicher Spezifität die spätere Regel im Quellcode und das Popover
