@@ -33,6 +33,14 @@
   box-sizing: border-box;
 }
 
+/* Für window.scrollTo()/scrollIntoView()-Aufrufe auf Seitenebene (siehe
+   Konversationsansicht ab 900px, wo die Chat-Box selbst mitwächst statt
+   intern zu scrollen) - ohne dies springt die Seite ruckartig statt sanft
+   zu scrollen. */
+html {
+  scroll-behavior: smooth;
+}
+
 body {
   font-family: var(--font-sans);
   font-size: 17px;
@@ -445,6 +453,10 @@ button[type="submit"]:hover, #popover-load:hover, #popover-upload:hover {
   font-weight: 700;
 }
 
+#source-filter-clear {
+  font-size: 0.85rem;
+}
+
 section {
   margin-bottom: 3rem;
 }
@@ -518,6 +530,11 @@ body:not(.chat-started) #question-form {
   padding-right: 0;
 }
 
+/* Basisverhalten (Mobile/Tablet, <900px): feste Höhe mit intern scrollendem
+   #chat-messages - siehe ausführliche Begründung bei der 640px-Regel weiter
+   unten. Ab 900px hebt die Desktop-Regel diese Höhenbegrenzung bewusst auf
+   (siehe dort) - dort soll die Box mit dem Antworttext mitwachsen wie im
+   Chat-Modus von Claude, statt intern zu scrollen. */
 #chat-column {
   display: flex;
   flex-direction: column;
@@ -544,6 +561,14 @@ body:not(.chat-started) #question-form {
   display: flex;
   flex-direction: column;
   animation: chat-message-in 0.18s ease;
+}
+
+@media (min-width: 900px) {
+  /* Reserviert Platz, damit scrollChatToBottom() (scrollIntoView) eine
+     Nachricht nicht direkt hinter dem sticky Eingabefeld versteckt. */
+  .chat-message {
+    scroll-margin-bottom: 6rem;
+  }
 }
 
 @keyframes chat-message-in {
@@ -715,6 +740,12 @@ body:not(.chat-started) #question-form {
     grid-column: 1;
     position: sticky;
     top: 1.5rem;
+    /* Ohne Deckelung würde die Liste bei vielen zitierten Quellen beliebig
+       lang und die Seite müsste allein deswegen gescrollt werden - stattdessen
+       bekommt sie hier eine eigene, vom Konversationsbereich unabhängige
+       Scrollleiste, sobald sie den verfügbaren vertikalen Platz sprengt. */
+    max-height: calc(100vh - 3rem);
+    overflow-y: auto;
   }
 
   /* #chat-column braucht eine EXPLIZITE Spalten-Zuweisung: ist die Sidebar
@@ -733,6 +764,33 @@ body:not(.chat-started) #question-form {
 
   #sources-sidebar h3 {
     font-size: 0.95rem;
+  }
+
+  /* Ab hier wächst die Konversations-Box mit dem Antworttext mit statt
+     intern zu scrollen (Vorbild: Chat-Modus von Claude) - das Eingabefeld
+     bleibt per position:sticky immer mit sichtbarem Abstand zum unteren
+     Bildschirmrand erreichbar, auch wenn die Seite dadurch insgesamt länger
+     wird und selbst scrollt. Nur nach der ersten Frage relevant - vorher
+     zeigt body:not(.chat-started) ohnehin die kompakte, zentrierte
+     Startansicht (dortige Regeln haben höhere Spezifität und bleiben
+     unberührt). */
+  body.chat-started #chat-column {
+    height: auto;
+    max-height: none;
+    overflow: visible;
+  }
+
+  body.chat-started #chat-messages {
+    overflow-y: visible;
+  }
+
+  body.chat-started #question-form {
+    position: sticky;
+    bottom: max(1rem, env(safe-area-inset-bottom));
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+    z-index: 1;
   }
 }
 
@@ -899,6 +957,15 @@ body:not(.chat-started) #question-form {
 .citation-card-heading {
   font-weight: 600;
   margin: 0 0 0.5rem;
+}
+
+.citation-author-link {
+  color: inherit;
+  text-decoration: none;
+}
+
+.citation-author-link:hover {
+  color: var(--color-accent);
 }
 
 .citation-card-text {

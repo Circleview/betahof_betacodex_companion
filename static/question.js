@@ -2,16 +2,36 @@ import { initI18n, t, getLang } from '/i18n.js';
 import { renderMarkdown } from '/markdown.js';
 import { initAuth, hasRole, onAuthChange } from '/auth.js';
 
-// Spam-/Bot-Schutz für die Frage-Eingabe (Cloudflare Turnstile). Hier den
-// Site-Key aus dem Cloudflare-Dashboard eintragen. Bleibt das Feld leer,
-// bleibt das Widget einfach unsichtbar/inaktiv - der Backend-Check ist dann
-// ebenfalls deaktiviert (siehe app/captcha.py), die App bleibt also auch
-// ohne Turnstile-Setup voll nutzbar (z.B. lokale Entwicklung).
-const TURNSTILE_SITE_KEY = '0x4AAAAAAD9q6Ufs_N8-KCI3';
+// Spam-/Bot-Schutz für die Frage-Eingabe (Cloudflare Turnstile). Der Site-Key
+// kommt bewusst NICHT fest einkompiliert, sondern zur Laufzeit vom Backend
+// (/api/turnstile-config, gespeist aus der Server-seitigen TURNSTILE_SITE_KEY-
+// Umgebungsvariable) - so können Dev/Stabil/Produktion unterschiedliche, zu
+// ihrem jeweiligen Hostnamen passende Keys nutzen. Ein für die Produktions-
+// domain registrierter Site-Key akzeptiert z.B. kein localhost: die Cloudflare-
+// Challenge bliebe dort für immer "pending", ohne sichtbaren Fehler und ohne
+// je ein gültiges Token zu liefern (siehe .env.example für Cloudflares
+// öffentliche Test-Keys, die für genau diesen Fall gedacht sind). Bleibt der
+// Key leer, bleibt das Widget einfach unsichtbar/inaktiv - der Backend-Check
+// ist dann ebenfalls deaktiviert (siehe app/captcha.py), die App bleibt also
+// auch ohne Turnstile-Setup voll nutzbar.
+let turnstileSiteKey = '';
 let turnstileWidgetId = null;
 
+const turnstileConfigPromise = fetch('/api/turnstile-config')
+  .then((res) => res.json())
+  .then((data) => {
+    turnstileSiteKey = data.site_key || '';
+  })
+  .catch(() => {
+    turnstileSiteKey = '';
+  });
+
 window.onTurnstileLoad = function () {
-  if (!TURNSTILE_SITE_KEY) return;
+  turnstileConfigPromise.then(renderTurnstileWidget);
+};
+
+function renderTurnstileWidget() {
+  if (!turnstileSiteKey) return;
   const container = document.getElementById('turnstile-container');
   if (!container || !window.turnstile) return;
   // 'interaction-only': das Widget bleibt für die meisten Besucher:innen
@@ -19,14 +39,24 @@ window.onTurnstileLoad = function () {
   // Bestätigung braucht (Standard "always" würde die kleine Box dauerhaft
   // im Formular anzeigen, auch wenn sie im Hintergrund automatisch besteht).
   turnstileWidgetId = window.turnstile.render(container, {
-    sitekey: TURNSTILE_SITE_KEY,
+    sitekey: turnstileSiteKey,
     appearance: 'interaction-only',
     // Cloudflare lässt das gelöste Widget im DOM stehen (der Container ist
     // dann nicht mehr :empty), es würde also ohne diesen Callback sichtbar
     // bleiben, obwohl die Bestätigung bereits abgeschlossen ist.
     callback: () => container.classList.add('turnstile-verified'),
+    // Ohne diesen Callback bleibt ein falsch konfigurierter/nicht für dieses
+    // Hostname freigegebener Site-Key komplett stumm (siehe Kommentar oben) -
+    // damit landet der Grund wenigstens sichtbar in der Konsole statt in
+    // einem für Nutzer:innen undurchsichtigen "Sicherheitsprüfung
+    // fehlgeschlagen".
+    'error-callback': () => {
+      console.error(
+        '[Turnstile] Widget-Fehler - Site-Key evtl. nicht für dieses Hostname freigegeben.'
+      );
+    },
   });
-};
+}
 
 function getTurnstileToken() {
   if (turnstileWidgetId !== null && window.turnstile) {
@@ -98,14 +128,39 @@ function truncateWords(text, maxWords) {
   return words.slice(0, maxWords).join(' ') + '…';
 }
 
+function appendAuthorLinks(container, authorNames) {
+  if (!authorNames || !authorNames.length) {
+    container.appendChild(document.createTextNode(t('common.unknownAuthor')));
+    return;
+  }
+  authorNames.forEach((name, index) => {
+    if (index > 0) container.appendChild(document.createTextNode(', '));
+    const a = document.createElement('a');
+    a.href = `/import.html?author=${encodeURIComponent(name)}`;
+    a.target = '_blank';
+    a.rel = 'noopener noreferrer';
+    a.className = 'citation-author-link';
+    const label = t('common.viewAuthorProfile', { name });
+    a.title = label;
+    a.setAttribute('aria-label', label);
+    a.textContent = name;
+    // Verhindert, dass ein Klick auf den Link innerhalb eines <summary>
+    // (siehe buildSourcesList) zusätzlich das umgebende <details>-Element
+    // auf-/zuklappt.
+    a.addEventListener('click', (e) => e.stopPropagation());
+    container.appendChild(a);
+  });
+}
+
 function buildSourceInfo(s) {
   const wrapper = document.createElement('div');
   wrapper.className = 'citation-card-content';
 
   const heading = document.createElement('p');
   heading.className = 'citation-card-heading';
-  const authorLabel = s.authors && s.authors.length ? s.authors.join(', ') : t('common.unknownAuthor');
-  heading.textContent = `${s.title} – ${authorLabel} (${formatYear(s.date)})`;
+  heading.appendChild(document.createTextNode(`${s.title} – `));
+  appendAuthorLinks(heading, s.authors);
+  heading.appendChild(document.createTextNode(` (${formatYear(s.date)})`));
   wrapper.appendChild(heading);
 
   const excerpt = document.createElement('p');
@@ -139,8 +194,9 @@ function buildSourcesList(sources) {
     const details = document.createElement('details');
     details.dataset.chunkId = s.chunk_id;
     const summaryToggle = document.createElement('summary');
-    const authorLabel = s.authors && s.authors.length ? s.authors.join(', ') : t('common.unknownAuthor');
-    summaryToggle.textContent = `${s.title} – ${authorLabel} (${formatYear(s.date)})`;
+    summaryToggle.appendChild(document.createTextNode(`${s.title} – `));
+    appendAuthorLinks(summaryToggle, s.authors);
+    summaryToggle.appendChild(document.createTextNode(` (${formatYear(s.date)})`));
     details.appendChild(summaryToggle);
     const p = document.createElement('p');
     // Hier bewusst die KI-Zusammenfassung statt des Chunk-Ausschnitts (anders
@@ -266,8 +322,13 @@ function buildTypingIndicator() {
   return typing;
 }
 
-function scrollChatToBottom(container) {
-  container.scrollTop = container.scrollHeight;
+function scrollChatToBottom(element) {
+  // scrollIntoView statt container.scrollTop, weil ab 900px die Chat-Box mit
+  // dem Antworttext mitwächst statt intern zu scrollen (siehe style.css) -
+  // der scrollende Bereich ist dann die Seite selbst, nicht mehr
+  // #chat-messages. scrollIntoView findet den jeweils richtigen scrollenden
+  // Vorfahren automatisch und funktioniert daher für beide Layouts.
+  element.scrollIntoView({ behavior: 'smooth', block: 'end' });
 }
 
 // Nur Quellen, die im gerenderten Antworttext tatsächlich per "[n]" zitiert
@@ -339,7 +400,7 @@ document.getElementById('question-form').addEventListener('submit', async (e) =>
   assistantBubble.setAttribute('aria-label', t('index.searching'));
   assistantBubble.appendChild(buildTypingIndicator());
   chatMessages.appendChild(assistantMessage);
-  scrollChatToBottom(chatMessages);
+  scrollChatToBottom(assistantMessage);
 
   try {
     const res = await fetch('/api/ask', {
@@ -365,7 +426,7 @@ document.getElementById('question-form').addEventListener('submit', async (e) =>
   } catch (err) {
     assistantBubble.textContent = t('common.errorPrefix') + err.message;
   }
-  scrollChatToBottom(chatMessages);
+  scrollChatToBottom(assistantMessage);
 });
 
 async function refreshCitedSourceSummaries() {

@@ -1165,6 +1165,24 @@ def test_get_version_returns_a_string(client):
     assert response.json()["version"]
 
 
+def test_get_turnstile_config_returns_configured_site_key(client, monkeypatch):
+    monkeypatch.setattr(main_module, "TURNSTILE_SITE_KEY", "1x00000000000000000000AA")
+
+    response = client.get("/api/turnstile-config")
+
+    assert response.status_code == 200
+    assert response.json() == {"site_key": "1x00000000000000000000AA"}
+
+
+def test_get_turnstile_config_returns_empty_string_when_unset(client, monkeypatch):
+    monkeypatch.setattr(main_module, "TURNSTILE_SITE_KEY", "")
+
+    response = client.get("/api/turnstile-config")
+
+    assert response.status_code == 200
+    assert response.json() == {"site_key": ""}
+
+
 def test_check_source_url_returns_404_for_unknown_source(client):
     response = client.get("/api/sources/does-not-exist/check-url")
     assert response.status_code == 404

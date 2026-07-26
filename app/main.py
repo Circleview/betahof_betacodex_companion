@@ -49,6 +49,7 @@ from app.models import (
     SourceOut,
     SummaryOut,
     TermOut,
+    TurnstileConfigOut,
     UrlCheckOut,
     UrlIn,
     VersionOut,
@@ -58,6 +59,14 @@ from app.models import (
 # "development": Cookies werden ohne "Secure"-Flag gesetzt, damit Logins auch
 # über http://localhost funktionieren (siehe .env.example).
 IS_DEV_ENVIRONMENT = os.environ.get("ENVIRONMENT", "").strip().lower() == "development"
+
+# Der Site-Key ist (anders als TURNSTILE_SECRET_KEY) öffentlich und für den
+# Turnstile-Mechanismus ausdrücklich dafür gedacht, im Frontend zu landen -
+# über /api/turnstile-config statt fest ins JS einkompiliert, damit Dev/Stabil/
+# Produktion unterschiedliche, zum jeweiligen Hostnamen passende Keys nutzen
+# können (ein Produktions-Site-Key akzeptiert z.B. kein localhost - siehe
+# .env.example für Cloudflares offizielle Test-Keys für die lokale Entwicklung).
+TURNSTILE_SITE_KEY = os.environ.get("TURNSTILE_SITE_KEY", "")
 
 
 def _get_current_user_email(request: Request) -> str | None:
@@ -122,6 +131,11 @@ async def add_security_headers(request: Request, call_next):
 @app.get("/api/version", response_model=VersionOut)
 def get_version():
     return VersionOut(version=APP_VERSION)
+
+
+@app.get("/api/turnstile-config", response_model=TurnstileConfigOut)
+def get_turnstile_config():
+    return TurnstileConfigOut(site_key=TURNSTILE_SITE_KEY)
 
 
 def _load_sources() -> dict:

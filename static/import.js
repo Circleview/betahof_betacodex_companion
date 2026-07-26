@@ -440,6 +440,12 @@ function buildEditPanel(s, options = {}) {
     input.id = `edit-${idSuffix}-${s.id}`;
     input.value = value || '';
     label.appendChild(input);
+    // Explizit setzen statt auf die implizite "erstes labelfähiges Kind"-Regel
+    // zu vertrauen - sonst wird ein später in dieses Label eingefügter Button
+    // (z.B. das Öffnen-Icon vor dem URL-Feld) zum Klick-Ziel des gesamten
+    // Labels, und ein Klick irgendwo in der Zeile löst den Button aus statt
+    // nur einen Klick direkt auf das Icon.
+    label.htmlFor = input.id;
     return { label, input };
   }
 
@@ -1272,7 +1278,7 @@ function setSortMode(mode) {
   renderSourceList(currentSourceList);
 }
 
-async function loadSources() {
+async function loadSources({ skipUrlHealthCheck = false } = {}) {
   const res = await fetch('/api/sources', {
     headers: { 'X-Lang': getLang() },
   });
@@ -1290,7 +1296,15 @@ async function loadSources() {
     authorPanelEditMode = false;
     renderAuthorInfoPanel();
   }
-  checkUrlHealth(allSources);
+  // skipUrlHealthCheck: beim allerersten Laden (siehe unten) sollen die
+  // Deep-Links (?edit=/?author=) zuerst ihre eigene, für die Nutzer:in
+  // sichtbare Anfrage stellen können, bevor der Browser seine begrenzten
+  // gleichzeitigen Verbindungen mit einem Check pro Quelle flutet - sonst
+  // reiht sich deren Anfrage hinten an und die gefilterte Ansicht wirkt
+  // spürbar langsam.
+  if (!skipUrlHealthCheck) {
+    checkUrlHealth(allSources);
+  }
 }
 
 async function loadAuthors() {
@@ -1556,6 +1570,7 @@ function buildAuthorEditPanel(a) {
     input.id = `edit-author-${idSuffix}-${a.name}`;
     input.value = value || '';
     label.appendChild(input);
+    label.htmlFor = input.id;
     form.appendChild(label);
     return input;
   }
@@ -1778,7 +1793,7 @@ createToolbarRow.className = 'markup-toolbar-row';
 createToolbarRow.appendChild(buildMarkupToolbar(createTextInput));
 createTextInput.parentNode.insertBefore(createToolbarRow, createTextInput);
 
-await loadSources();
+await loadSources({ skipUrlHealthCheck: true });
 loadAuthors();
 
 // Deep-Link aus der Konversationsansicht (Stift-Icon an Zitat-Snippets, nur
@@ -1795,3 +1810,13 @@ if (deepLinkEditId && hasPflegerRole() && allSources.some((s) => s.id === deepLi
       ?.scrollIntoView({ block: 'center' });
   });
 }
+
+// Deep-Link aus der Konversationsansicht (Autor:innen-Links an Zitaten):
+// /import.html?author=<name> filtert direkt auf die Texte dieser Person und
+// zeigt ihr Profil (inkl. Vita) im Info-Panel an.
+const deepLinkAuthor = new URLSearchParams(window.location.search).get('author');
+if (deepLinkAuthor) {
+  await filterByAuthor(deepLinkAuthor);
+}
+
+checkUrlHealth(allSources);

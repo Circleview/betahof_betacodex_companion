@@ -149,3 +149,7 @@ class SummaryOut(BaseModel):
 
 class VersionOut(BaseModel):
     version: str
+
+
+class TurnstileConfigOut(BaseModel):
+    site_key: str
