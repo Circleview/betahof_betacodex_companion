@@ -33,6 +33,15 @@ Antworte AUSSCHLIESSLICH mit einem JSON-Objekt in genau diesem Format, ohne Mark
 - "key_terms_de"/"key_terms_en": jeweils 3 bis 6 prägnante Begriffe/Namen aus dem Text (kurze Substantive/Eigennamen, keine ganzen Sätze) in der jeweiligen Sprache – für "key_terms_en" die übliche englische Entsprechung verwenden, falls gebräuchlich, sonst den Originalbegriff. Dienen als Schlagworte für Querverweise zu anderen Quellen.
 """
 
+BIO_SYSTEM_PROMPTS = {
+    "de": """Du schreibst eine kurze, sachliche Vita (ca. 60-80 Wörter) für eine Autorin/einen Autor, basierend auf den Titeln und Zusammenfassungen ihrer/seiner Quellen.
+
+Antworte AUSSCHLIESSLICH mit dem Vita-Text selbst - ohne Anführungszeichen, ohne Markdown, ohne Überschrift, ohne weiteren Text.""",
+    "en": """You write a short, factual bio (approximately 60-80 words) for an author, based on the titles and summaries of their sources.
+
+Reply EXCLUSIVELY with the bio text itself - no quotation marks, no markdown, no heading, no other text.""",
+}
+
 DEFAULT_LANG = "de"
 MAX_INPUT_CHARS = 12000
 
@@ -114,3 +123,22 @@ def generate_bilingual_summary(text: str) -> dict:
             "de": {"summary": "", "key_terms": []},
             "en": {"summary": "", "key_terms": []},
         }
+
+
+def generate_author_bio(name: str, texts: list[str], lang: str = DEFAULT_LANG) -> str:
+    lang = lang if lang in BIO_SYSTEM_PROMPTS else DEFAULT_LANG
+    content = "\n\n".join(t.strip() for t in texts if t and t.strip())
+    if not content:
+        return ""
+
+    client = _get_client()
+    try:
+        message = client.messages.create(
+            model=MODEL_NAME,
+            max_tokens=300,
+            system=BIO_SYSTEM_PROMPTS[lang],
+            messages=[{"role": "user", "content": f"Name: {name}\n\n{content[:MAX_INPUT_CHARS]}"}],
+        )
+        return message.content[0].text.strip()
+    except Exception:
+        return ""

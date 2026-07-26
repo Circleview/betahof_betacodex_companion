@@ -44,6 +44,17 @@
 
 <datalist id="author-suggestions"></datalist>
 
+<datalist id="social-platform-suggestions">
+  <option value="LinkedIn"></option>
+  <option value="X (Twitter)"></option>
+  <option value="Instagram"></option>
+  <option value="Facebook"></option>
+  <option value="YouTube"></option>
+  <option value="Mastodon"></option>
+  <option value="Bluesky"></option>
+  <option value="TikTok"></option>
+</datalist>
+
 <section id="quellen-liste-bereich">
   <div class="section-heading-row">
     <h3 data-i18n="import.importedSourcesHeading"></h3>
@@ -112,11 +123,14 @@
       </div>
     </div>
   </div>
-  <p id="source-filter-status" class="hidden">
-    <span id="source-filter-label"></span> <strong id="source-filter-name"></strong>
-    &ndash; <button type="button" id="source-filter-clear" class="link-button" data-i18n="import.showAll"></button>
-  </p>
-  <ul id="source-list"></ul>
+  <div id="quellen-liste-body" class="quellen-liste-body">
+    <div id="author-info-panel" class="author-info-panel hidden"></div>
+    <p id="source-filter-status" class="hidden">
+      <span id="source-filter-label"></span> <strong id="source-filter-name"></strong>
+      &ndash; <button type="button" id="source-filter-clear" class="link-button" data-i18n="import.showAll"></button>
+    </p>
+    <ul id="source-list"></ul>
+  </div>
 </section>
 
 <section id="autoren-bereich">

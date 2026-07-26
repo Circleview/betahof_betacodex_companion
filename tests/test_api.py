@@ -3,6 +3,7 @@ from fastapi.testclient import TestClient
 
 from app import (
     auth,
+    author_profiles,
     authors,
     captcha,
     embeddings,
@@ -43,6 +44,7 @@ def client(tmp_path, monkeypatch):
     monkeypatch.setattr(vectorstore, "_collection", None)
 
     monkeypatch.setattr(authors, "AUTHORS_FILE", tmp_path / "authors.json")
+    monkeypatch.setattr(author_profiles, "AUTHOR_PROFILES_FILE", tmp_path / "author_profiles.json")
     monkeypatch.setattr(users, "USERS_FILE", tmp_path / "users.json")
     monkeypatch.setattr(terms, "TERMS_FILE", tmp_path / "terms.json")
 
@@ -59,6 +61,11 @@ def client(tmp_path, monkeypatch):
             "en": {"summary": "", "key_terms": []},
         },
     )
+    # Ohne dieses Mock würde jede neue Person beim Import einen echten
+    # API-Call für die automatische Vita auslösen (Backlog: "jede:r Autor:in
+    # soll von Anfang an eine Vita haben"). Tests, die dieses Verhalten
+    # gezielt prüfen, überschreiben das Mock lokal.
+    monkeypatch.setattr(summarization, "generate_author_bio", lambda name, texts, lang="de": "")
 
     # /api/ask ist durch Rate-Limiting + Captcha-Prüfung abgesichert - für die
     # meisten Tests hier standardmäßig deaktiviert, damit sie sich weiterhin
@@ -742,6 +749,256 @@ def test_generate_source_summary_requires_pfleger_role(client, anon_client):
 def test_generate_source_summary_unknown_source_returns_404(client):
     response = client.post("/api/sources/does-not-exist/generate-summary")
     assert response.status_code == 404
+
+
+def test_list_authors_includes_empty_profile_fields_by_default(client):
+    client.post("/api/sources", json={"title": "Quelle", "authors": ["Jane Doe"], "text": "Text."})
+
+    response = client.get("/api/authors")
+
+    assert response.status_code == 200
+    entry = next(a for a in response.json() if a["name"] == "Jane Doe")
+    assert entry["bio"] == ""
+    assert entry["photo_url"] == ""
+    assert entry["website"] == ""
+    assert entry["social_links"] == []
+
+
+def test_update_author_profile_requires_pfleger_role(client, anon_client):
+    client.post("/api/sources", json={"title": "Quelle", "authors": ["Jane Doe"], "text": "Text."})
+
+    response = anon_client.put("/api/authors/Jane Doe", json={"bio": "Vita."})
+
+    assert response.status_code == 403
+
+
+def test_update_author_profile_unknown_author_returns_404(client):
+    response = client.put("/api/authors/Does Not Exist", json={"bio": "Vita."})
+    assert response.status_code == 404
+
+
+def test_update_author_profile_updates_bio_and_links(client):
+    client.post("/api/sources", json={"title": "Quelle", "authors": ["Jane Doe"], "text": "Text."})
+
+    response = client.put(
+        "/api/authors/Jane Doe",
+        json={
+            "bio": "Kurze Vita.",
+            "photo_url": "https://example.org/foto.jpg",
+            "website": "https://example.org",
+            "social_links": [{"platform": "LinkedIn", "url": "https://linkedin.com/in/jane"}],
+        },
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["bio"] == "Kurze Vita."
+    assert data["photo_url"] == "https://example.org/foto.jpg"
+    assert data["website"] == "https://example.org"
+    assert data["social_links"] == [{"platform": "LinkedIn", "url": "https://linkedin.com/in/jane"}]
+
+    listed = next(a for a in client.get("/api/authors").json() if a["name"] == "Jane Doe")
+    assert listed["bio"] == "Kurze Vita."
+
+
+def test_update_author_profile_partial_update_preserves_other_fields(client):
+    client.post("/api/sources", json={"title": "Quelle", "authors": ["Jane Doe"], "text": "Text."})
+    client.put("/api/authors/Jane Doe", json={"bio": "Erste Vita.", "website": "https://jane.example"})
+
+    response = client.put("/api/authors/Jane Doe", json={"bio": "Aktualisierte Vita."})
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["bio"] == "Aktualisierte Vita."
+    assert data["website"] == "https://jane.example"
+
+
+def test_rename_author_updates_sources_and_registry(client):
+    client.post("/api/sources", json={"title": "Quelle", "authors": ["Jane Doe"], "text": "Text."})
+    client.put("/api/authors/Jane Doe", json={"bio": "Vita von Jane."})
+
+    response = client.post("/api/authors/Jane Doe/rename", json={"new_name": "Jane Smith"})
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["name"] == "Jane Smith"
+    assert data["bio"] == "Vita von Jane."
+
+    names = {a["name"] for a in client.get("/api/authors").json()}
+    assert "Jane Smith" in names
+    assert "Jane Doe" not in names
+
+    source = client.get("/api/sources").json()[0]
+    assert source["authors"] == ["Jane Smith"]
+
+
+def test_rename_author_preserves_coauthors(client):
+    client.post(
+        "/api/sources",
+        json={"title": "Quelle", "authors": ["Jane Doe", "John Roe"], "text": "Text."},
+    )
+
+    client.post("/api/authors/Jane Doe/rename", json={"new_name": "Jane Smith"})
+
+    source = client.get("/api/sources").json()[0]
+    assert set(source["authors"]) == {"Jane Smith", "John Roe"}
+
+
+def test_rename_author_deduplicates_when_merging_into_existing_coauthor(client):
+    client.post(
+        "/api/sources",
+        json={"title": "Quelle", "authors": ["Jane Doe", "Jane Smith"], "text": "Text."},
+    )
+
+    client.post("/api/authors/Jane Doe/rename", json={"new_name": "Jane Smith"})
+
+    source = client.get("/api/sources").json()[0]
+    assert source["authors"] == ["Jane Smith"]
+
+
+def test_rename_author_requires_pfleger_role(client, anon_client):
+    client.post("/api/sources", json={"title": "Quelle", "authors": ["Jane Doe"], "text": "Text."})
+
+    response = anon_client.post("/api/authors/Jane Doe/rename", json={"new_name": "Jane Smith"})
+
+    assert response.status_code == 403
+
+
+def test_rename_author_unknown_author_returns_404(client):
+    response = client.post("/api/authors/Does Not Exist/rename", json={"new_name": "New Name"})
+    assert response.status_code == 404
+
+
+def test_rename_author_rejects_empty_new_name(client):
+    client.post("/api/sources", json={"title": "Quelle", "authors": ["Jane Doe"], "text": "Text."})
+
+    response = client.post("/api/authors/Jane Doe/rename", json={"new_name": "   "})
+
+    assert response.status_code == 400
+
+
+def test_generate_author_bio_returns_ai_result(client, monkeypatch):
+    client.post("/api/sources", json={"title": "Quelle", "authors": ["Jane Doe"], "text": "Text."})
+    monkeypatch.setattr(
+        summarization, "generate_author_bio", lambda name, texts, lang="de": "KI-Vita."
+    )
+
+    response = client.post("/api/authors/Jane Doe/generate-bio")
+
+    assert response.status_code == 200
+    assert response.json()["bio"] == "KI-Vita."
+    listed = next(a for a in client.get("/api/authors").json() if a["name"] == "Jane Doe")
+    assert listed["bio"] == "KI-Vita."
+    assert listed["bio_ai_generated"] is True
+
+
+def test_update_author_profile_clears_ai_flag_when_bio_text_changes(client, monkeypatch):
+    client.post("/api/sources", json={"title": "Quelle", "authors": ["Jane Doe"], "text": "Text."})
+    monkeypatch.setattr(
+        summarization, "generate_author_bio", lambda name, texts, lang="de": "KI-Vita."
+    )
+    client.post("/api/authors/Jane Doe/generate-bio")
+
+    response = client.put("/api/authors/Jane Doe", json={"bio": "Von Hand überarbeitete Vita."})
+
+    assert response.status_code == 200
+    assert response.json()["bio_ai_generated"] is False
+
+
+def test_generate_author_bio_requires_pfleger_role(client, anon_client):
+    client.post("/api/sources", json={"title": "Quelle", "authors": ["Jane Doe"], "text": "Text."})
+
+    response = anon_client.post("/api/authors/Jane Doe/generate-bio")
+
+    assert response.status_code == 403
+
+
+def test_generate_author_bio_unknown_author_returns_404(client):
+    response = client.post("/api/authors/Does Not Exist/generate-bio")
+    assert response.status_code == 404
+
+
+def test_add_source_auto_generates_bio_for_new_author(client, monkeypatch):
+    monkeypatch.setattr(
+        summarization, "generate_author_bio", lambda name, texts, lang="de": "Automatische Vita."
+    )
+
+    client.post("/api/sources", json={"title": "Quelle", "authors": ["Jane Doe"], "text": "Text."})
+
+    listed = next(a for a in client.get("/api/authors").json() if a["name"] == "Jane Doe")
+    assert listed["bio"] == "Automatische Vita."
+    assert listed["bio_ai_generated"] is True
+
+
+def test_add_source_does_not_regenerate_bio_for_already_known_author(client, monkeypatch):
+    calls = []
+    monkeypatch.setattr(
+        summarization,
+        "generate_author_bio",
+        lambda name, texts, lang="de": calls.append(name) or "Automatische Vita.",
+    )
+
+    client.post("/api/sources", json={"title": "Erste Quelle", "authors": ["Jane Doe"], "text": "Text."})
+    client.post("/api/sources", json={"title": "Zweite Quelle", "authors": ["Jane Doe"], "text": "Text."})
+
+    assert calls == ["Jane Doe"]
+
+
+def test_add_source_does_not_generate_bio_for_empty_author_name(client, monkeypatch):
+    calls = []
+    monkeypatch.setattr(
+        summarization,
+        "generate_author_bio",
+        lambda name, texts, lang="de": calls.append(name) or "Vita.",
+    )
+
+    client.post("/api/sources", json={"title": "Quelle", "authors": [""], "text": "Text."})
+
+    assert calls == []
+
+
+def test_update_source_auto_generates_bio_only_for_newly_added_author(client, monkeypatch):
+    calls = []
+    monkeypatch.setattr(
+        summarization,
+        "generate_author_bio",
+        lambda name, texts, lang="de": calls.append(name) or "Vita.",
+    )
+    create_res = client.post(
+        "/api/sources", json={"title": "Quelle", "authors": ["Jane Doe"], "text": "Text."}
+    )
+    source_id = create_res.json()["id"]
+    calls.clear()
+
+    client.put(
+        f"/api/sources/{source_id}",
+        json={"title": "Quelle", "authors": ["Jane Doe", "Neue Person"], "text": "Text."},
+    )
+
+    assert calls == ["Neue Person"]
+
+
+def test_update_source_does_not_treat_authors_sole_source_edit_as_new(client, monkeypatch):
+    # Regressionstest: unregister_source() (vor dem Neu-Registrieren in
+    # update_source) löscht den Registry-Eintrag einer Person kurzzeitig,
+    # wenn dies ihre einzige Quelle war - das darf nicht dazu führen, dass
+    # eine bereits vorhandene Vita durch eine neu generierte überschrieben wird.
+    monkeypatch.setattr(
+        summarization, "generate_author_bio", lambda name, texts, lang="de": "Sollte nicht erscheinen."
+    )
+    create_res = client.post(
+        "/api/sources", json={"title": "Quelle", "authors": ["Jane Doe"], "text": "Text."}
+    )
+    source_id = create_res.json()["id"]
+    client.put("/api/authors/Jane Doe", json={"bio": "Von Hand gepflegte Vita."})
+
+    client.put(
+        f"/api/sources/{source_id}",
+        json={"title": "Aktualisierter Titel", "authors": ["Jane Doe"], "text": "Text."},
+    )
+
+    listed = next(a for a in client.get("/api/authors").json() if a["name"] == "Jane Doe")
+    assert listed["bio"] == "Von Hand gepflegte Vita."
 
 
 def test_extract_pdf_upload_returns_extracted_fields(client, monkeypatch):

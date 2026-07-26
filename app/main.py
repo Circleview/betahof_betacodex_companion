@@ -15,6 +15,7 @@ load_dotenv()
 
 from app import (
     auth,
+    author_profiles,
     authors,
     captcha,
     chunking,
@@ -34,6 +35,9 @@ from app.models import (
     AdminUserOut,
     AnswerOut,
     AuthorOut,
+    AuthorProfileIn,
+    BioOut,
+    RenameAuthorIn,
     ChunkRef,
     ExtractedSource,
     ExtractedUpload,
@@ -295,7 +299,10 @@ def add_source(
     }
     _save_sources(sources)
     for name in source.authors:
+        is_new_author = _find_author(name) is None
         authors.register_author(name, source_id)
+        if is_new_author:
+            background_tasks.add_task(_generate_author_bio_background, name, x_lang)
     background_tasks.add_task(_generate_summary_background, source_id, source.text.strip())
 
     if source.pdf_upload_id:
@@ -311,6 +318,7 @@ def add_source(
 def update_source(
     source_id: str,
     source: SourceIn,
+    background_tasks: BackgroundTasks,
     _user: str = Depends(require_role(users.QUELLEN_PFLEGER)),
     x_lang: str = Header(default=i18n.DEFAULT_LANG),
 ):
@@ -343,9 +351,20 @@ def update_source(
         sources[source_id][f"key_terms_{x_lang}"] = source.key_terms
     _save_sources(sources)
 
+    # VOR unregister_source() erfassen: war dies die letzte Quelle einer
+    # Person, würde unregister_source deren Registry-Eintrag kurzzeitig
+    # löschen - _find_author(name) läge danach fälschlich bei "neu", obwohl
+    # die Person längst existiert (und ggf. schon eine Vita hat).
+    existing_author_keys = {
+        " ".join(a["name"].strip().split()).lower() for a in authors.list_authors()
+    }
+
     authors.unregister_source(source_id)
     for name in source.authors:
+        is_new_author = " ".join(name.strip().split()).lower() not in existing_author_keys
         authors.register_author(name, source_id)
+        if is_new_author:
+            background_tasks.add_task(_generate_author_bio_background, name, x_lang)
 
     if source.summary is not None or source.key_terms is not None:
         _register_all_terms(source_id, sources[source_id])
@@ -391,7 +410,154 @@ def list_sources(
 
 @app.get("/api/authors", response_model=list[AuthorOut])
 def list_authors():
-    return authors.list_authors()
+    entries = authors.list_authors()
+    for entry in entries:
+        entry.update(author_profiles.get_profile(entry["name"]))
+    return entries
+
+
+def _find_author(name: str) -> dict | None:
+    normalized = " ".join(name.strip().split()).lower()
+    return next(
+        (a for a in authors.list_authors() if " ".join(a["name"].strip().split()).lower() == normalized),
+        None,
+    )
+
+
+def _collect_author_bio_texts(matching: dict, lang: str) -> list[str]:
+    sources = _load_sources()
+    texts = []
+    for source_id in matching["source_ids"]:
+        source = sources.get(source_id)
+        if not source:
+            continue
+        summary = source.get(f"summary_{lang}") or source.get("text", "")
+        texts.append(f"{source.get('title', '')}: {summary}")
+    return texts
+
+
+def _generate_author_bio_background(name: str, lang: str) -> None:
+    # Wird für jede neu im System auftauchende Person angestoßen (siehe
+    # add_source/update_source) - jede:r Autor:in soll von Anfang an eine
+    # Vita haben, statt leer zu starten. Läuft im Hintergrund wie die
+    # Quellen-Zusammenfassung, damit der Import nicht auf den KI-Aufruf
+    # warten muss.
+    matching = _find_author(name)
+    if matching is None:
+        return
+    # Schreibt absichtlich nur eine LEERE Vita - so bleibt der Aufruf
+    # idempotent (und überschreibt nie eine bereits vorhandene, ggf. von
+    # Hand gepflegte Vita), selbst wenn update_source eine Person kurzzeitig
+    # fälschlich als "neu" einstuft (siehe dortiger Kommentar).
+    if author_profiles.get_profile(matching["name"])["bio"]:
+        return
+    lang = lang if lang in ("de", "en") else i18n.DEFAULT_LANG
+    texts = _collect_author_bio_texts(matching, lang)
+    bio = summarization.generate_author_bio(matching["name"], texts, lang)
+    if bio:
+        author_profiles.set_profile(name, bio=bio, bio_ai_generated=True)
+
+
+@app.put("/api/authors/{name}", response_model=AuthorOut)
+def update_author_profile(
+    name: str,
+    profile: AuthorProfileIn,
+    _user: str = Depends(require_role(users.QUELLEN_PFLEGER)),
+    x_lang: str = Header(default=i18n.DEFAULT_LANG),
+):
+    matching = _find_author(name)
+    if matching is None:
+        raise HTTPException(404, i18n.get_message("author_not_found", x_lang))
+
+    author_profiles.set_profile(
+        name,
+        bio=profile.bio,
+        photo_url=profile.photo_url,
+        website=profile.website,
+        social_links=[link.model_dump() for link in profile.social_links]
+        if profile.social_links is not None
+        else None,
+    )
+    matching.update(author_profiles.get_profile(name))
+    return matching
+
+
+@app.post("/api/authors/{name}/rename", response_model=AuthorOut)
+def rename_author_endpoint(
+    name: str,
+    payload: RenameAuthorIn,
+    _user: str = Depends(require_role(users.QUELLEN_PFLEGER)),
+    x_lang: str = Header(default=i18n.DEFAULT_LANG),
+):
+    matching = _find_author(name)
+    if matching is None:
+        raise HTTPException(404, i18n.get_message("author_not_found", x_lang))
+
+    new_name = payload.new_name.strip()
+    if not new_name:
+        raise HTTPException(400, i18n.get_message("invalid_author_name", x_lang))
+
+    old_name = matching["name"]
+    old_key = " ".join(old_name.strip().split()).lower()
+
+    # Der Name ist kein eigenständiges Feld, sondern wird aus dem
+    # authors-Feld jeder Quelle abgeleitet (siehe app/authors.py) - eine
+    # Umbenennung muss deshalb in JEDER betroffenen Quelle nachvollzogen
+    # werden, sonst würde die nächste Quellen-Bearbeitung (die authors.py
+    # per unregister/register neu aufbaut) den alten Namen wiederherstellen.
+    sources = _load_sources()
+    for source_id in matching["source_ids"]:
+        source = sources.get(source_id)
+        if not source:
+            continue
+        updated_names = []
+        seen_keys = set()
+        for author_name in source.get("authors") or []:
+            candidate = (
+                new_name
+                if " ".join(author_name.strip().split()).lower() == old_key
+                else author_name
+            )
+            key = " ".join(candidate.strip().split()).lower()
+            if key in seen_keys:
+                continue
+            seen_keys.add(key)
+            updated_names.append(candidate)
+        source["authors"] = updated_names
+    _save_sources(sources)
+
+    for source_id in matching["source_ids"]:
+        source = sources.get(source_id)
+        if not source:
+            continue
+        authors.unregister_source(source_id)
+        for author_name in source.get("authors") or []:
+            authors.register_author(author_name, source_id)
+
+    author_profiles.rename_profile(old_name, new_name)
+
+    updated = _find_author(new_name)
+    if updated is None:
+        raise HTTPException(404, i18n.get_message("author_not_found", x_lang))
+    updated.update(author_profiles.get_profile(new_name))
+    return updated
+
+
+@app.post("/api/authors/{name}/generate-bio", response_model=BioOut)
+def generate_author_bio_endpoint(
+    name: str,
+    _user: str = Depends(require_role(users.QUELLEN_PFLEGER)),
+    x_lang: str = Header(default=i18n.DEFAULT_LANG),
+):
+    matching = _find_author(name)
+    if matching is None:
+        raise HTTPException(404, i18n.get_message("author_not_found", x_lang))
+
+    lang = x_lang if x_lang in ("de", "en") else i18n.DEFAULT_LANG
+    texts = _collect_author_bio_texts(matching, lang)
+    bio = summarization.generate_author_bio(matching["name"], texts, lang)
+    author_profiles.set_profile(name, bio=bio, bio_ai_generated=True)
+    return BioOut(bio=bio)
 
 
 @app.get("/api/terms", response_model=list[TermOut])

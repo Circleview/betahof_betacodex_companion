@@ -83,10 +83,35 @@ class MessageOut(BaseModel):
     detail: str
 
 
+class SocialLink(BaseModel):
+    platform: str
+    url: str
+
+
 class AuthorOut(BaseModel):
     name: str
     source_count: int
     source_ids: list[str]
+    bio: str = ""
+    bio_ai_generated: bool = False
+    photo_url: str = ""
+    website: str = ""
+    social_links: list[SocialLink] = []
+
+
+class AuthorProfileIn(BaseModel):
+    bio: Optional[str] = None
+    photo_url: Optional[str] = None
+    website: Optional[str] = None
+    social_links: Optional[list[SocialLink]] = None
+
+
+class BioOut(BaseModel):
+    bio: str
+
+
+class RenameAuthorIn(BaseModel):
+    new_name: str
 
 
 class TermOut(BaseModel):

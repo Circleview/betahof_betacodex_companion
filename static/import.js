@@ -58,6 +58,7 @@ const REMOVE_ICON =
   '<line x1="5" y1="12" x2="19" y2="12"></line>' +
   "</svg>";
 
+
 const UNDO_DURATION_MS = 30000;
 
 function wrapSelection(textarea, marker) {
@@ -121,6 +122,13 @@ let currentSortMode = 'author';
 const pendingDeletions = new Map();
 const unreachableSourceIds = new Set();
 const expandedSourceIds = new Set();
+
+let allAuthors = [];
+// Das aktuell nach Filter angezeigte Autor:innen-Profil (nur gesetzt, wenn
+// per Namen gefiltert wird) - steuert die zweigeteilte Ansicht neben der
+// gefilterten Quellenliste (buildAuthorInfoView/buildAuthorEditPanel).
+let filteredAuthorEntry = null;
+let authorPanelEditMode = false;
 
 function hasPflegerRole() {
   return hasRole('quellen_pfleger');
@@ -662,7 +670,7 @@ function buildEditPanel(s, options = {}) {
   return li;
 }
 
-function addMagicButton(input, onClick) {
+function addMagicButton(input, onClick, titleKey = 'import.generateSummaryTitle') {
   const wrapper = document.createElement('div');
   wrapper.className = 'field-with-magic';
   input.parentNode.insertBefore(wrapper, input);
@@ -671,7 +679,7 @@ function addMagicButton(input, onClick) {
   const btn = document.createElement('button');
   btn.type = 'button';
   btn.className = 'magic-button';
-  const title = t('import.generateSummaryTitle');
+  const title = t(titleKey);
   btn.title = title;
   btn.setAttribute('aria-label', title);
   btn.innerHTML = MAGIC_ICON;
@@ -909,11 +917,11 @@ function appendOpenLink(container, citationUrl) {
   target.appendChild(link);
 }
 
-function prependAiIcon(container) {
+function prependAiIcon(container, tooltipKey = 'import.aiSummaryTooltip') {
   const icon = document.createElement('span');
   icon.className = 'source-summary-icon';
   icon.innerHTML = MAGIC_ICON;
-  const tooltip = t('import.aiSummaryTooltip');
+  const tooltip = t(tooltipKey);
   icon.title = tooltip;
   icon.setAttribute('aria-label', tooltip);
   const target = container.querySelector('p:first-of-type') || container;
@@ -1196,13 +1204,19 @@ async function applyAuthorFilter(name) {
   const match = authorEntries.find((a) => normalizeAuthor(a.name) === normalizeAuthor(name));
   const ids = match ? match.source_ids : [];
 
-  document.getElementById('source-filter-label').textContent = t('import.filteredByAuthor');
+  document.getElementById('source-filter-label').textContent = t(
+    ids.length === 1 ? 'import.filteredByAuthor' : 'import.filteredByAuthorPlural'
+  );
   document.getElementById('source-filter-name').textContent = match ? match.name : name;
   // Muss VOR renderSourceList() gesetzt werden - sortSources() liest den
   // Filter-Status, um die Autoren-Expansion in der gefilterten Ansicht zu
   // unterdrücken (siehe isFilterActive()).
   document.getElementById('source-filter-status').classList.remove('hidden');
   renderSourceList(allSources.filter((s) => ids.includes(s.id)));
+
+  filteredAuthorEntry = match || null;
+  authorPanelEditMode = false;
+  renderAuthorInfoPanel();
 }
 
 async function filterByAuthor(name) {
@@ -1226,6 +1240,10 @@ async function applyTermFilter(term) {
   document.getElementById('source-filter-name').textContent = match ? match.term : term;
   document.getElementById('source-filter-status').classList.remove('hidden');
   renderSourceList(allSources.filter((s) => ids.includes(s.id)));
+
+  filteredAuthorEntry = null;
+  authorPanelEditMode = false;
+  renderAuthorInfoPanel();
 }
 
 async function filterByTerm(term) {
@@ -1238,6 +1256,9 @@ document.getElementById('source-filter-clear').addEventListener('click', () => {
   activeFilter = null;
   document.getElementById('source-filter-status').classList.add('hidden');
   renderSourceList(allSources);
+  filteredAuthorEntry = null;
+  authorPanelEditMode = false;
+  renderAuthorInfoPanel();
 });
 
 document.getElementById('sort-author').addEventListener('click', () => setSortMode('author'));
@@ -1265,36 +1286,397 @@ async function loadSources() {
     await applyTermFilter(activeFilter.value);
   } else {
     renderSourceList(allSources);
+    filteredAuthorEntry = null;
+    authorPanelEditMode = false;
+    renderAuthorInfoPanel();
   }
   checkUrlHealth(allSources);
 }
 
 async function loadAuthors() {
   const res = await fetch('/api/authors');
-  const authorEntries = await res.json();
-
-  const list = document.getElementById('author-list');
-  list.innerHTML = '';
-  authorEntries.forEach((a) => {
-    const li = document.createElement('li');
-    const authorBtn = document.createElement('button');
-    authorBtn.type = 'button';
-    authorBtn.className = 'link-button';
-    authorBtn.textContent = a.name;
-    authorBtn.addEventListener('click', () => filterByAuthor(a.name));
-    li.appendChild(authorBtn);
-    const countKey = a.source_count === 1 ? 'common.sourceCountOne' : 'common.sourceCountMany';
-    li.append(` (${t(countKey, { count: a.source_count })})`);
-    list.appendChild(li);
-  });
+  allAuthors = await res.json();
+  renderAuthorList();
 
   const datalist = document.getElementById('author-suggestions');
   datalist.innerHTML = '';
-  authorEntries.forEach((a) => {
+  allAuthors.forEach((a) => {
     const option = document.createElement('option');
     option.value = a.name;
     datalist.appendChild(option);
   });
+}
+
+function renderAuthorList() {
+  const list = document.getElementById('author-list');
+  list.replaceChildren(...allAuthors.map(buildAuthorListItem));
+}
+
+function buildAuthorLink(url, label) {
+  const link = document.createElement('a');
+  link.href = url;
+  link.target = '_blank';
+  link.rel = 'noopener noreferrer';
+  link.className = 'author-link';
+  const icon = document.createElement('span');
+  icon.className = 'author-link-icon';
+  icon.innerHTML = EXTERNAL_LINK_ICON;
+  link.appendChild(icon);
+  link.append(label);
+  return link;
+}
+
+function buildAuthorBioSection(a) {
+  const container = document.createElement('div');
+  container.className = 'author-bio-section';
+
+  if (a.bio) {
+    const bioP = document.createElement('p');
+    bioP.className = 'author-bio-text';
+    bioP.textContent = a.bio;
+    container.appendChild(bioP);
+    if (a.bio_ai_generated) prependAiIcon(container, 'import.aiBioTooltip');
+  }
+
+  const linksRow = document.createElement('div');
+  linksRow.className = 'author-links-row';
+  if (a.website) linksRow.appendChild(buildAuthorLink(a.website, t('import.fieldWebsite')));
+  (a.social_links || []).forEach((link) => {
+    if (link.url) linksRow.appendChild(buildAuthorLink(link.url, link.platform || link.url));
+  });
+  if (linksRow.children.length) container.appendChild(linksRow);
+
+  if (!a.bio && !linksRow.children.length && !a.photo_url) {
+    const emptyP = document.createElement('p');
+    emptyP.className = 'author-bio-text author-bio-text--empty';
+    emptyP.textContent = t('import.authorProfileEmpty');
+    container.appendChild(emptyP);
+  }
+
+  return container;
+}
+
+function buildSocialLinksField(initialLinks) {
+  const wrapper = document.createElement('div');
+  wrapper.className = 'social-links-field';
+
+  const rows = document.createElement('div');
+  rows.className = 'social-link-rows';
+  wrapper.appendChild(rows);
+
+  // Ohne Zeilen gibt es nichts zu entfernen - dann steht ein einzelner
+  // "+"-Button für sich, um die erste Zeile anzulegen (analog zum
+  // Mehrfach-Autoren-Feld bei Quellen, das dieselben Icons verwendet).
+  const standaloneAddBtn = document.createElement('button');
+  standaloneAddBtn.type = 'button';
+  standaloneAddBtn.className = 'icon-button add-author-btn';
+  standaloneAddBtn.innerHTML = PLUS_ICON;
+  const addLabel = t('import.addSocialLink');
+  standaloneAddBtn.title = addLabel;
+  standaloneAddBtn.setAttribute('aria-label', addLabel);
+  standaloneAddBtn.addEventListener('click', () => rows.appendChild(buildRow(null)));
+  wrapper.appendChild(standaloneAddBtn);
+
+  function refreshStandaloneButton() {
+    standaloneAddBtn.classList.toggle('hidden', rows.children.length > 0);
+  }
+
+  function buildAddButton(insertNewRow) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'icon-button add-author-btn';
+    btn.innerHTML = PLUS_ICON;
+    btn.title = addLabel;
+    btn.setAttribute('aria-label', addLabel);
+    btn.addEventListener('click', () => insertNewRow(buildRow(null)));
+    return btn;
+  }
+
+  function buildRemoveButton(row) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'icon-button remove-author-btn';
+    btn.innerHTML = REMOVE_ICON;
+    const removeLabel = t('import.removeSocialLink');
+    btn.title = removeLabel;
+    btn.setAttribute('aria-label', removeLabel);
+    btn.addEventListener('click', () => {
+      row.remove();
+      refreshStandaloneButton();
+    });
+    return btn;
+  }
+
+  function buildRow(link) {
+    const row = document.createElement('div');
+    row.className = 'social-link-row';
+
+    const platformInput = document.createElement('input');
+    platformInput.type = 'text';
+    platformInput.className = 'social-platform-input';
+    platformInput.setAttribute('list', 'social-platform-suggestions');
+    platformInput.setAttribute('autocomplete', 'off');
+    platformInput.placeholder = t('import.socialPlatformPlaceholder');
+    platformInput.value = (link && link.platform) || '';
+
+    const urlInput = document.createElement('input');
+    urlInput.type = 'url';
+    urlInput.className = 'social-url-input';
+    urlInput.placeholder = t('import.socialUrlPlaceholder');
+    urlInput.value = (link && link.url) || '';
+
+    row.appendChild(platformInput);
+    row.appendChild(urlInput);
+    row.appendChild(buildAddButton((newRow) => row.insertAdjacentElement('afterend', newRow)));
+    row.appendChild(buildRemoveButton(row));
+    return row;
+  }
+
+  (initialLinks && initialLinks.length ? initialLinks : []).forEach((link) => {
+    rows.appendChild(buildRow(link));
+  });
+  refreshStandaloneButton();
+
+  function getSocialLinkValues() {
+    return [...rows.querySelectorAll('.social-link-row')]
+      .map((row) => ({
+        platform: row.querySelector('.social-platform-input').value.trim(),
+        url: row.querySelector('.social-url-input').value.trim(),
+      }))
+      .filter((link) => link.platform && link.url);
+  }
+
+  return { wrapper, getSocialLinkValues };
+}
+
+async function generateAuthorBio(name, bioInput, statusEl, buttons) {
+  buttons.forEach((b) => {
+    b.disabled = true;
+  });
+  statusEl.textContent = t('import.generatingBio');
+  try {
+    const res = await fetch(`/api/authors/${encodeURIComponent(name)}/generate-bio`, {
+      method: 'POST',
+      headers: devUserHeaders(),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || t('import.generateBioFailed'));
+    }
+    const data = await res.json();
+    if (!bioInput.value.trim()) bioInput.value = data.bio;
+    statusEl.textContent = '';
+  } catch (err) {
+    statusEl.textContent = t('common.errorPrefix') + err.message;
+  } finally {
+    buttons.forEach((b) => {
+      b.disabled = false;
+    });
+  }
+}
+
+function buildAuthorInfoView(a) {
+  const wrapper = document.createElement('div');
+  wrapper.className = 'author-info-view';
+
+  const headerRow = document.createElement('div');
+  headerRow.className = 'author-info-header-row';
+
+  const heading = document.createElement('h4');
+  heading.className = 'author-info-heading';
+  heading.textContent = a.name;
+  headerRow.appendChild(heading);
+
+  const photoCol = document.createElement('div');
+  photoCol.className = 'author-info-photo-col';
+
+  if (a.photo_url) {
+    const img = document.createElement('img');
+    img.src = a.photo_url;
+    img.alt = a.name;
+    img.className = 'author-photo';
+    photoCol.appendChild(img);
+  }
+
+  headerRow.appendChild(photoCol);
+  wrapper.appendChild(headerRow);
+  wrapper.appendChild(buildAuthorBioSection(a));
+
+  if (hasPflegerRole()) {
+    const editRow = document.createElement('div');
+    editRow.className = 'author-info-edit-row';
+    const editBtn = document.createElement('button');
+    editBtn.type = 'button';
+    editBtn.className = 'icon-button author-info-edit-btn';
+    const editLabel = t('common.editAuthor');
+    editBtn.title = editLabel;
+    editBtn.setAttribute('aria-label', editLabel);
+    editBtn.innerHTML = EDIT_ICON;
+    editBtn.addEventListener('click', () => {
+      authorPanelEditMode = true;
+      renderAuthorInfoPanel();
+    });
+    editRow.appendChild(editBtn);
+    wrapper.appendChild(editRow);
+  }
+
+  return wrapper;
+}
+
+function renderAuthorInfoPanel() {
+  const panel = document.getElementById('author-info-panel');
+  const body = document.getElementById('quellen-liste-body');
+  if (!filteredAuthorEntry) {
+    panel.replaceChildren();
+    panel.classList.add('hidden');
+    body.classList.remove('quellen-liste-body--author-filtered');
+    return;
+  }
+  body.classList.add('quellen-liste-body--author-filtered');
+  panel.classList.remove('hidden');
+  panel.replaceChildren(
+    authorPanelEditMode ? buildAuthorEditPanel(filteredAuthorEntry) : buildAuthorInfoView(filteredAuthorEntry)
+  );
+}
+
+function buildAuthorEditPanel(a) {
+  const wrapper = document.createElement('div');
+  wrapper.className = 'author-edit-panel';
+
+  const form = document.createElement('form');
+  const status = document.createElement('p');
+  status.className = 'edit-status';
+
+  function field(labelKey, idSuffix, value, type) {
+    const label = document.createElement('label');
+    label.textContent = t(labelKey);
+    const input = document.createElement(type === 'textarea' ? 'textarea' : 'input');
+    if (type !== 'textarea') input.type = type;
+    else input.rows = 4;
+    input.id = `edit-author-${idSuffix}-${a.name}`;
+    input.value = value || '';
+    label.appendChild(input);
+    form.appendChild(label);
+    return input;
+  }
+
+  const nameInput = field('import.fieldAuthorName', 'name', a.name, 'text');
+
+  const bioInput = field('import.fieldBio', 'bio', a.bio, 'textarea');
+  const magicButtons = [];
+  const triggerGenerateBio = () => generateAuthorBio(a.name, bioInput, status, magicButtons);
+  magicButtons.push(addMagicButton(bioInput, triggerGenerateBio, 'import.generateBioTitle'));
+
+  const photoUrlInput = field('import.fieldPhotoUrl', 'photo-url', a.photo_url, 'url');
+  const photoFieldRow = document.createElement('div');
+  photoFieldRow.className = 'photo-field-row';
+  photoUrlInput.parentNode.insertBefore(photoFieldRow, photoUrlInput);
+  photoFieldRow.appendChild(photoUrlInput);
+
+  const photoPreview = document.createElement('img');
+  photoPreview.className = 'author-photo-preview';
+  photoPreview.alt = a.name;
+  photoPreview.hidden = !a.photo_url;
+  if (a.photo_url) photoPreview.src = a.photo_url;
+  // Bild lädt/existiert nicht (z.B. während der Eingabe noch unvollständige
+  // URL) - dann lieber gar nichts zeigen statt ein kaputtes Bild-Icon.
+  photoPreview.addEventListener('error', () => {
+    photoPreview.hidden = true;
+  });
+  photoUrlInput.addEventListener('input', () => {
+    const value = photoUrlInput.value.trim();
+    photoPreview.hidden = !value;
+    if (value) photoPreview.src = value;
+  });
+  photoFieldRow.appendChild(photoPreview);
+
+  const websiteInput = field('import.fieldWebsite', 'website', a.website, 'url');
+
+  const socialLabel = document.createElement('label');
+  socialLabel.textContent = t('import.fieldSocialLinks');
+  const { wrapper: socialWrapper, getSocialLinkValues } = buildSocialLinksField(a.social_links);
+  socialLabel.appendChild(socialWrapper);
+  form.appendChild(socialLabel);
+
+  const actionsRow = document.createElement('div');
+  actionsRow.className = 'edit-panel-actions';
+
+  const primaryActions = document.createElement('div');
+  const submitBtn = document.createElement('button');
+  submitBtn.type = 'submit';
+  submitBtn.textContent = t('import.updateButton');
+  primaryActions.appendChild(submitBtn);
+
+  const cancelBtn = document.createElement('button');
+  cancelBtn.type = 'button';
+  cancelBtn.className = 'link-button';
+  cancelBtn.textContent = t('common.cancel');
+  cancelBtn.addEventListener('click', () => {
+    authorPanelEditMode = false;
+    renderAuthorInfoPanel();
+  });
+  primaryActions.appendChild(cancelBtn);
+  actionsRow.appendChild(primaryActions);
+
+  form.appendChild(actionsRow);
+  form.appendChild(status);
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    status.textContent = t('import.updating');
+    try {
+      let currentName = a.name;
+      const newName = nameInput.value.trim();
+      if (newName && newName !== currentName) {
+        const renameRes = await fetch(`/api/authors/${encodeURIComponent(currentName)}/rename`, {
+          method: 'POST',
+          headers: devUserHeaders(),
+          body: JSON.stringify({ new_name: newName }),
+        });
+        if (!renameRes.ok) {
+          const err = await renameRes.json().catch(() => ({}));
+          throw new Error(err.detail || t('import.renameFailed'));
+        }
+        currentName = newName;
+      }
+
+      const res = await fetch(`/api/authors/${encodeURIComponent(currentName)}`, {
+        method: 'PUT',
+        headers: devUserHeaders(),
+        body: JSON.stringify({
+          bio: bioInput.value,
+          photo_url: photoUrlInput.value,
+          website: websiteInput.value,
+          social_links: getSocialLinkValues(),
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || t('import.updateFailed'));
+      }
+      authorPanelEditMode = false;
+      await applyAuthorFilter(currentName);
+      await loadAuthors();
+    } catch (err) {
+      status.textContent = t('common.errorPrefix') + err.message;
+    }
+  });
+
+  wrapper.appendChild(form);
+  return wrapper;
+}
+
+function buildAuthorListItem(a) {
+  const li = document.createElement('li');
+  const authorBtn = document.createElement('button');
+  authorBtn.type = 'button';
+  authorBtn.className = 'link-button';
+  authorBtn.textContent = a.name;
+  authorBtn.addEventListener('click', () => filterByAuthor(a.name));
+  li.appendChild(authorBtn);
+  const countKey = a.source_count === 1 ? 'common.sourceCountOne' : 'common.sourceCountMany';
+  li.append(` (${t(countKey, { count: a.source_count })})`);
+  return li;
 }
 
 document.getElementById('source-form').addEventListener('submit', async (e) => {
