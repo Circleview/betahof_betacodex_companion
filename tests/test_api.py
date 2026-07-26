@@ -6,6 +6,7 @@ from app import (
     author_profiles,
     authors,
     captcha,
+    chunking,
     embeddings,
     extraction,
     llm,
@@ -215,6 +216,133 @@ def test_ask_reports_null_summary_when_source_has_none(client):
 
     assert response.status_code == 200
     assert response.json()["sources"][0]["summary"] is None
+
+
+def test_ask_sets_highlighted_text_from_local_fallback_without_quote_block(client):
+    client.post(
+        "/api/sources",
+        json={
+            "title": "BetaCodex Quelle",
+            "authors": ["Autor Y"],
+            "text": "Der BetaCodex beschreibt Prinzipien dezentraler Organisation.",
+        },
+    )
+
+    response = client.post("/api/ask", json={"question": "Was beschreibt der BetaCodex?"})
+
+    assert response.status_code == 200
+    assert (
+        response.json()["sources"][0]["highlighted_text"]
+        == "Der BetaCodex beschreibt Prinzipien dezentraler Organisation."
+    )
+
+
+def test_ask_uses_llm_quote_when_it_matches_the_chunk(client, monkeypatch):
+    client.post(
+        "/api/sources",
+        json={
+            "title": "BetaCodex Quelle",
+            "authors": ["Autor Y"],
+            "text": (
+                "Erster Satz zur Einordnung. Der BetaCodex beschreibt Prinzipien "
+                "dezentraler Organisation. Ein dritter Satz als Abschluss."
+            ),
+        },
+    )
+    monkeypatch.setattr(
+        llm,
+        "answer_question",
+        lambda question, chunks, lang="de": (
+            "Antwort [1].\n\n---QUOTES---\n"
+            '[1]: "Der BetaCodex beschreibt Prinzipien dezentraler Organisation."\n'
+        ),
+    )
+
+    response = client.post("/api/ask", json={"question": "Was beschreibt der BetaCodex?"})
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["answer"] == "Antwort [1]."
+    assert (
+        data["sources"][0]["highlighted_text"]
+        == "Der BetaCodex beschreibt Prinzipien dezentraler Organisation."
+    )
+
+
+def test_ask_falls_back_to_local_highlight_when_llm_quote_not_found_in_chunk(client, monkeypatch):
+    client.post(
+        "/api/sources",
+        json={
+            "title": "BetaCodex Quelle",
+            "authors": ["Autor Y"],
+            "text": "Der BetaCodex beschreibt Prinzipien dezentraler Organisation.",
+        },
+    )
+    monkeypatch.setattr(
+        llm,
+        "answer_question",
+        lambda question, chunks, lang="de": (
+            "Antwort [1].\n\n---QUOTES---\n"
+            '[1]: "Dieser Satz kommt in der Quelle so gar nicht vor."\n'
+        ),
+    )
+
+    response = client.post("/api/ask", json={"question": "Was beschreibt der BetaCodex?"})
+
+    assert response.status_code == 200
+    # Fällt auf das lokale Highlight zurück, statt das halluzinierte Zitat
+    # zu übernehmen (Verifikation gegen den echten Chunk-Text greift).
+    assert (
+        response.json()["sources"][0]["highlighted_text"]
+        == "Der BetaCodex beschreibt Prinzipien dezentraler Organisation."
+    )
+
+
+def test_reindex_sources_requires_pfleger_role(anon_client):
+    response = anon_client.post("/api/admin/reindex-sources")
+    assert response.status_code == 403
+
+
+def test_reindex_sources_replaces_chunks_with_new_chunking(client, monkeypatch):
+    client.post(
+        "/api/sources",
+        json={
+            "title": "BetaCodex Quelle",
+            "authors": ["Autor Y"],
+            "text": "Der BetaCodex beschreibt Prinzipien dezentraler Organisation.",
+        },
+    )
+
+    # Simuliert eine geänderte Chunking-Logik (z.B. das Satzgrenzen-Snapping) -
+    # nach der Neu-Indizierung müssen die NEUEN Chunk-Inhalte im Vektorspeicher
+    # landen, nicht mehr die beim ursprünglichen Import erzeugten.
+    monkeypatch.setattr(chunking, "chunk_text", lambda text, **kwargs: ["Neu gechunkter Inhalt."])
+
+    response = client.post("/api/admin/reindex-sources")
+    assert response.status_code == 200
+
+    ask_response = client.post("/api/ask", json={"question": "Was beschreibt der BetaCodex?"})
+    assert ask_response.json()["sources"][0]["text"] == "Neu gechunkter Inhalt."
+
+
+def test_reindex_sources_skips_broken_records_without_aborting(client, monkeypatch):
+    client.post(
+        "/api/sources",
+        json={
+            "title": "Gute Quelle",
+            "authors": ["Autor Y"],
+            "text": "Der BetaCodex beschreibt Prinzipien dezentraler Organisation.",
+        },
+    )
+
+    def _broken_chunk_text(text, **kwargs):
+        raise ValueError("kaputter Datensatz")
+
+    monkeypatch.setattr(chunking, "chunk_text", _broken_chunk_text)
+
+    response = client.post("/api/admin/reindex-sources")
+
+    assert response.status_code == 200
 
 
 def test_extract_url_endpoint_returns_extracted_fields(client, monkeypatch):

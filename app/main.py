@@ -281,6 +281,40 @@ def _generate_summary_background(source_id: str, text: str) -> None:
     _register_all_terms(source_id, sources[source_id])
 
 
+def _reindex_all_sources() -> None:
+    """Chunked/embedded jede vorhandene Quelle neu (z.B. nach einer
+    Änderung an `chunking.chunk_text()`) - `sources.json` selbst bleibt
+    unangetastet, nur der abgeleitete Chroma-Index wird ersetzt. Pro Quelle
+    gekapselt, damit ein einzelner defekter Datensatz nicht den gesamten
+    Lauf abbricht."""
+    sources = _load_sources()
+    for source_id, data in sources.items():
+        try:
+            source = SourceIn(
+                title=data.get("title", ""),
+                authors=data.get("authors") or [],
+                date=data.get("date"),
+                url=data.get("url"),
+                listen_url=data.get("listen_url"),
+                text=data.get("text", ""),
+            )
+            chunks, chunk_embeddings = _prepare_chunks(source, i18n.DEFAULT_LANG)
+        except Exception:
+            continue
+        vectorstore.delete_source_chunks(source_id)
+        _store_chunks(source_id, source, chunks, chunk_embeddings)
+
+
+@app.post("/api/admin/reindex-sources", response_model=MessageOut)
+def reindex_sources(
+    background_tasks: BackgroundTasks,
+    _user: str = Depends(require_role(users.QUELLEN_PFLEGER)),
+    x_lang: str = Header(default=i18n.DEFAULT_LANG),
+):
+    background_tasks.add_task(_reindex_all_sources)
+    return MessageOut(detail=i18n.get_message("reindex_started", x_lang))
+
+
 @app.post("/api/sources", response_model=SourceOut)
 def add_source(
     source: SourceIn,
@@ -743,6 +777,28 @@ def extract_url(payload: UrlIn, _user: str = Depends(require_role(users.QUELLEN_
     return ExtractedSource(**result)
 
 
+def _normalize_for_match(text: str) -> str:
+    return " ".join(text.split()).lower()
+
+
+def _best_local_sentence(doc: str, query_embedding: list[float]) -> str | None:
+    """Lokales Fallback-Highlighting (Baustein A): zerlegt den Chunk in
+    Sätze und wählt per Skalarprodukt (beide Embeddings normalisiert) den
+    Satz, der der Frage am nächsten kommt - kostet keine Anthropic-API,
+    läuft komplett mit dem bereits geladenen lokalen Embedding-Modell."""
+    sentences = chunking.split_sentences(doc)
+    if not sentences:
+        return None
+    if len(sentences) == 1:
+        return sentences[0]
+    sentence_embeddings = embeddings.embed_passages(sentences)
+    best_index = max(
+        range(len(sentences)),
+        key=lambda i: sum(a * b for a, b in zip(sentence_embeddings[i], query_embedding)),
+    )
+    return sentences[best_index]
+
+
 @app.post("/api/ask", response_model=AnswerOut)
 def ask(question: QuestionIn, request: Request, x_lang: str = Header(default=i18n.DEFAULT_LANG)):
     client_ip = request.client.host if request.client else "unknown"
@@ -770,6 +826,7 @@ def ask(question: QuestionIn, request: Request, x_lang: str = Header(default=i18
 
     chunk_refs = []
     llm_chunks = []
+    local_highlights = []
     for chunk_id, doc, meta in zip(ids, documents, metadatas):
         # Rückwärtskompatibel lesen: alte, noch nicht neu gespeicherte Chunks
         # haben noch den alten skalaren "author"-Schlüssel statt der Liste.
@@ -796,8 +853,24 @@ def ask(question: QuestionIn, request: Request, x_lang: str = Header(default=i18
                 "text": doc,
             }
         )
+        # Baustein A (kostenloses lokales Fallback-Highlighting): schon hier
+        # berechnen, nicht erst wenn ein KI-Zitat fehlschlägt - braucht
+        # dieselben Chunks/Embeddings, die wir gerade ohnehin verarbeiten.
+        local_highlights.append(_best_local_sentence(doc, query_embedding))
 
-    answer_text = llm.answer_question(question.question, llm_chunks, lang=x_lang)
+    raw_answer = llm.answer_question(question.question, llm_chunks, lang=x_lang)
+    answer_text, quotes_by_citation = llm.parse_answer_and_quotes(raw_answer)
+
+    for i, chunk_ref in enumerate(chunk_refs):
+        citation_number = i + 1
+        llm_quote = quotes_by_citation.get(citation_number)
+        # Baustein B: nur übernehmen, wenn es sich nachweislich um einen
+        # echten Ausschnitt aus genau diesem Chunk handelt (Schutz gegen
+        # Halluzination/Umformulierung) - sonst greift Baustein A.
+        if llm_quote and _normalize_for_match(llm_quote) in _normalize_for_match(chunk_ref.text):
+            chunk_ref.highlighted_text = llm_quote
+        else:
+            chunk_ref.highlighted_text = local_highlights[i]
 
     return AnswerOut(answer=answer_text, sources=chunk_refs)
 

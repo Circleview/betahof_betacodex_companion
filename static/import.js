@@ -6,6 +6,7 @@ const importBereich = document.getElementById('import-bereich');
 const urlPopover = document.getElementById('url-popover');
 const filePopover = document.getElementById('file-popover');
 const quelltypBereich = document.getElementById('quelltyp-bereich');
+const reindexBereich = document.getElementById('reindex-bereich');
 
 const EDIT_ICON =
   '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" ' +
@@ -145,6 +146,7 @@ function devUserHeaders() {
 
 function updateSourceManagementVisibility() {
   quelltypBereich.classList.toggle('hidden', !hasPflegerRole());
+  reindexBereich.classList.toggle('hidden', !hasPflegerRole());
   if (!hasPflegerRole()) {
     importBereich.classList.add('hidden');
     urlPopover.classList.add('hidden');
@@ -1269,6 +1271,27 @@ document.getElementById('source-filter-clear').addEventListener('click', () => {
 
 document.getElementById('sort-author').addEventListener('click', () => setSortMode('author'));
 document.getElementById('sort-date').addEventListener('click', () => setSortMode('date'));
+
+document.getElementById('reindex-sources-btn').addEventListener('click', async (e) => {
+  const btn = e.currentTarget;
+  const status = document.getElementById('reindex-status');
+  btn.disabled = true;
+  status.textContent = t('import.reindexing');
+  status.classList.remove('hidden');
+  try {
+    const res = await fetch('/api/admin/reindex-sources', { method: 'POST', headers: { 'X-Lang': getLang() } });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || t('import.reindexFailed'));
+    }
+    const data = await res.json();
+    status.textContent = data.detail;
+  } catch (err) {
+    status.textContent = t('common.errorPrefix') + err.message;
+  } finally {
+    btn.disabled = false;
+  }
+});
 
 function setSortMode(mode) {
   currentSortMode = mode;

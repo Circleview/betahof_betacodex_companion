@@ -152,6 +152,40 @@ function appendAuthorLinks(container, authorNames) {
   });
 }
 
+function findHighlightRange(text, highlight) {
+  const exactIndex = text.indexOf(highlight);
+  if (exactIndex !== -1) return [exactIndex, exactIndex + highlight.length];
+
+  // Das KI-Zitat kann Zeilenumbrüche/Mehrfach-Leerzeichen aus der
+  // Originalquelle (z.B. PDF-Layoutumbrüche) leicht anders normalisiert
+  // wiedergeben als der exakte Chunk-Text - deshalb zusätzlich mit
+  // whitespace-toleranter Suche versuchen, bevor ganz auf Highlighting
+  // verzichtet wird.
+  const pattern = highlight
+    .trim()
+    .split(/\s+/)
+    .map((word) => word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+    .join('\\s+');
+  if (!pattern) return null;
+  const match = text.match(new RegExp(pattern, 'i'));
+  return match ? [match.index, match.index + match[0].length] : null;
+}
+
+function appendTextWithHighlight(container, text, highlight) {
+  const range = highlight ? findHighlightRange(text, highlight) : null;
+  if (!range) {
+    container.appendChild(document.createTextNode(text));
+    return;
+  }
+  const [start, end] = range;
+  if (start > 0) container.appendChild(document.createTextNode(text.slice(0, start)));
+  const mark = document.createElement('mark');
+  mark.className = 'citation-highlight';
+  mark.textContent = text.slice(start, end);
+  container.appendChild(mark);
+  if (end < text.length) container.appendChild(document.createTextNode(text.slice(end)));
+}
+
 function buildSourceInfo(s) {
   const wrapper = document.createElement('div');
   wrapper.className = 'citation-card-content';
@@ -165,7 +199,11 @@ function buildSourceInfo(s) {
 
   const excerpt = document.createElement('p');
   excerpt.className = 'citation-card-text';
-  excerpt.textContent = truncateWords(s.text, 100);
+  // Voller Chunk-Text statt Kappung bei 100 Wörtern - das ist der Teil, der
+  // beim Beantworten tatsächlich als Quelle herangezogen wurde (Backlog #59).
+  // Der beleg-relevante Satz (KI-Zitat oder lokales Fallback-Highlighting,
+  // siehe app/main.py) wird darin zusätzlich optisch hervorgehoben.
+  appendTextWithHighlight(excerpt, s.text, s.highlighted_text);
   wrapper.appendChild(excerpt);
 
   const citationUrl = s.listen_url || s.url;

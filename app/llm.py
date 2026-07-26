@@ -1,3 +1,5 @@
+import re
+
 import anthropic
 
 MODEL_NAME = "claude-haiku-4-5-20251001"
@@ -13,6 +15,11 @@ Regeln:
 - Formatiere die Antwort mit minimalem Markdown (fett für zentrale Begriffe, ggf. kurze Absätze), aber ohne Emojis.
 - Antworte IMMER in derselben Sprache, in der die Nutzerfrage gestellt wurde – unabhängig von der Sprache dieser Systemanweisung. Erkenne die Sprache der Frage selbstständig; sie kann von Deutsch oder Englisch abweichen.
 - Antworte präzise und ohne Floskeln.
+- Füge nach der Antwort (durch eine Leerzeile getrennt) einen zusätzlichen Block hinzu, der für jede verwendete Quellenzahl [n] das wörtliche Satzzitat aus dem jeweiligen Textausschnitt angibt, auf das sich die Aussage stützt. Exaktes Format, unabhängig von der Antwortsprache:
+---QUOTES---
+[1]: "wörtliches Zitat, Zeichen für Zeichen wie im Textausschnitt"
+[2]: "wörtliches Zitat, Zeichen für Zeichen wie im Textausschnitt"
+  Nur für tatsächlich verwendete Nummern, ein Zitat pro Nummer, wortwörtlich aus dem jeweiligen Textausschnitt übernommen (keine Umformulierung) - auch wenn die Antwort selbst den Inhalt umformuliert.
 """,
     "en": """You are a very experienced BetaCodex advisor. You answer questions EXCLUSIVELY based on the text excerpts provided to you.
 
@@ -24,8 +31,34 @@ Rules:
 - Format the answer with minimal Markdown (bold for key terms, short paragraphs where helpful), but no emojis.
 - ALWAYS answer in the same language the user's question was asked in – regardless of the language of this system prompt. Detect the question's language yourself; it may be neither German nor English.
 - Answer precisely and without filler phrases.
+- After the answer (separated by a blank line), add an extra block that gives, for every citation number [n] you used, the exact verbatim sentence from that text excerpt the statement is based on. Exact format, regardless of the answer's language:
+---QUOTES---
+[1]: "verbatim quote, character-for-character as in the text excerpt"
+[2]: "verbatim quote, character-for-character as in the text excerpt"
+  Only for numbers actually used, one quote per number, taken word-for-word from that excerpt (no paraphrasing) - even if the answer itself paraphrases the content.
 """,
 }
+
+_QUOTES_MARKER = "---QUOTES---"
+_QUOTE_LINE_RE = re.compile(r'^\[(\d+)\]:\s*"(.+)"\s*$', re.MULTILINE)
+
+
+def parse_answer_and_quotes(raw: str) -> tuple[str, dict[int, str]]:
+    """Trennt die für Nutzer:innen sichtbare Antwort vom angehängten
+    Zitat-Block. Fehlt der Block (z.B. bei einfachen Test-Fakes, die nur
+    einen Antworttext liefern), wird ein leeres Dict zurückgegeben - der
+    Aufrufer fällt dann auf das lokale Satz-Highlighting zurück."""
+    marker_index = raw.find(_QUOTES_MARKER)
+    if marker_index == -1:
+        return raw.strip(), {}
+
+    answer = raw[:marker_index].strip()
+    quotes_block = raw[marker_index + len(_QUOTES_MARKER) :]
+    quotes = {
+        int(match.group(1)): match.group(2).strip()
+        for match in _QUOTE_LINE_RE.finditer(quotes_block)
+    }
+    return answer, quotes
 
 DEFAULT_LANG = "de"
 
