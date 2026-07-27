@@ -1470,6 +1470,29 @@ body:not(.chat-started) #question-form {
   margin-top: 0;
 }
 
+/* Backlog #86: hüllt eine Autor:innen-Eingabezeile und das dazugehörige,
+   optionale "Autorenprofil pflegen"-Panel gemeinsam ein, damit "+"/"-"
+   beide zusammen verschieben/entfernen (siehe buildExtraRow in import.js). */
+.author-extra-row-group {
+  max-width: calc(50% - 0.5rem);
+}
+
+.new-author-profile {
+  margin-top: 0.5rem;
+  font-size: 0.9rem;
+}
+
+.new-author-profile-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+  margin-top: 0.6rem;
+}
+
+.new-author-profile-body label {
+  margin-bottom: 0;
+}
+
 .label-inline-icon {
   margin-left: 0.4rem;
   vertical-align: middle;

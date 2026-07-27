@@ -97,6 +97,7 @@
   "import.authorsHeading": "Authors",
   "import.authorProfileEmpty": "No profile added yet.",
   "import.fieldAuthorName": "Name",
+  "import.newAuthorProfileToggle": "Manage author profile",
   "import.fieldBio": "Bio",
   "import.fieldPhotoUrl": "Photo URL",
   "import.fieldWebsite": "Website",

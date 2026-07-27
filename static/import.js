@@ -528,6 +528,82 @@ function buildFieldLabelWithId(labelKey, id, value, type) {
   return { label, input };
 }
 
+// Aufklappbarer Bereich unterhalb eines Autor:innen-Feldes, der nur bei
+// einer noch nicht erfassten Person sichtbar wird (siehe attachNewAuthorToggle
+// weiter unten) - dieselben Felder wie im bestehenden Autor:innen-Profil
+// (buildAuthorEditPanel), ohne den KI-Vita-Button: es gibt zu diesem
+// Zeitpunkt noch keine gespeicherten Quellen dieser Person, aus denen sich
+// eine Vita generieren ließe.
+function buildNewAuthorProfilePanel() {
+  const details = document.createElement('details');
+  details.className = 'new-author-profile hidden';
+
+  const summary = document.createElement('summary');
+  summary.textContent = t('import.newAuthorProfileToggle');
+  details.appendChild(summary);
+
+  const body = document.createElement('div');
+  body.className = 'new-author-profile-body';
+  details.appendChild(body);
+
+  function fieldRow(labelKey, type) {
+    const label = document.createElement('label');
+    const span = document.createElement('span');
+    span.textContent = t(labelKey);
+    label.appendChild(span);
+    const input = document.createElement(type === 'textarea' ? 'textarea' : 'input');
+    if (type === 'textarea') input.rows = 3;
+    else input.type = type;
+    label.appendChild(input);
+    body.appendChild(label);
+    return input;
+  }
+
+  const photoUrlInput = fieldRow('import.fieldPhotoUrl', 'url');
+  const photoFieldRow = document.createElement('div');
+  photoFieldRow.className = 'photo-field-row';
+  photoUrlInput.parentNode.insertBefore(photoFieldRow, photoUrlInput);
+  photoFieldRow.appendChild(photoUrlInput);
+  const photoPreview = document.createElement('img');
+  photoPreview.className = 'author-photo-preview';
+  photoPreview.hidden = true;
+  photoPreview.addEventListener('error', () => {
+    photoPreview.hidden = true;
+  });
+  photoUrlInput.addEventListener('input', () => {
+    const value = photoUrlInput.value.trim();
+    photoPreview.hidden = !value;
+    if (value) photoPreview.src = value;
+  });
+  photoFieldRow.appendChild(photoPreview);
+
+  const websiteInput = fieldRow('import.fieldWebsite', 'url');
+
+  const socialLabel = document.createElement('label');
+  socialLabel.textContent = t('import.fieldSocialLinks');
+  const { wrapper: socialWrapper, getSocialLinkValues } = buildSocialLinksField([]);
+  socialLabel.appendChild(socialWrapper);
+  body.appendChild(socialLabel);
+
+  const bioInput = fieldRow('import.fieldBio', 'textarea');
+
+  function getProfileValues() {
+    return {
+      photo_url: photoUrlInput.value.trim(),
+      website: websiteInput.value.trim(),
+      social_links: getSocialLinkValues(),
+      bio: bioInput.value.trim(),
+    };
+  }
+
+  function hasAnyValue() {
+    const v = getProfileValues();
+    return !!(v.photo_url || v.website || v.social_links.length || v.bio);
+  }
+
+  return { details, getProfileValues, hasAnyValue };
+}
+
 // Wird sowohl im Bearbeiten- als auch im Neu-anlegen-Formular verwendet
 // (siehe unten im Skript), damit Autor(en)/Datum an genau einer Stelle
 // gepflegt werden und in beiden Masken automatisch gleich aussehen.
@@ -535,8 +611,33 @@ function buildFieldLabelWithId(labelKey, id, value, type) {
 // Datum in einer Zeile, über das "+"-Icon lassen sich beliebig viele weitere
 // Autoren-Zeilen darunter ergänzen (jede mit eigenem "+"), ab der zweiten
 // Zeile zusätzlich mit einem "-"-Icon zum Entfernen.
-function buildAuthorFields(authorId, authorValues, dateId, dateValue) {
+//
+// enableNewAuthorProfile: nur im Neu-anlegen-Formular aktiviert (siehe
+// renderCreateAuthorDateRow) - zeigt unter einer noch nicht erfassten
+// Person "Autorenprofil pflegen" an (Backlog #86). Im Bearbeiten-Formular
+// bewusst deaktiviert: dort gäbe es aktuell keine Stelle, die eingegebene
+// Profildaten für einen neu hinzugefügten Co-Autor auch tatsächlich
+// speichert - eine sichtbare, aber wirkungslose Eingabe wäre schlimmer als
+// gar keine.
+function buildAuthorFields(authorId, authorValues, dateId, dateValue, enableNewAuthorProfile = false) {
   const values = authorValues && authorValues.length ? authorValues : [''];
+  const profileEntries = [];
+
+  function attachNewAuthorToggle(input, container) {
+    if (!enableNewAuthorProfile) return;
+    const { details, getProfileValues, hasAnyValue } = buildNewAuthorProfilePanel();
+    container.appendChild(details);
+    profileEntries.push({ input, getProfileValues, hasAnyValue });
+
+    function refreshVisibility() {
+      const name = input.value.trim();
+      const isKnownOrEmpty = !name || allAuthors.some((a) => normalizeAuthor(a.name) === normalizeAuthor(name));
+      details.classList.toggle('hidden', isKnownOrEmpty);
+      if (isKnownOrEmpty) details.open = false;
+    }
+    input.addEventListener('input', refreshVisibility);
+    refreshVisibility();
+  }
 
   function buildAuthorInput(value) {
     const input = document.createElement('input');
@@ -560,7 +661,7 @@ function buildAuthorFields(authorId, authorValues, dateId, dateValue) {
     return btn;
   }
 
-  function buildRemoveButton(row) {
+  function buildRemoveButton(group) {
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.className = 'icon-button remove-author-btn';
@@ -568,17 +669,27 @@ function buildAuthorFields(authorId, authorValues, dateId, dateValue) {
     const label = t('import.removeAuthor');
     btn.title = label;
     btn.setAttribute('aria-label', label);
-    btn.addEventListener('click', () => row.remove());
+    btn.addEventListener('click', () => group.remove());
     return btn;
   }
 
   function buildExtraRow(value) {
+    // "group" hält Eingabezeile UND das dazugehörige "Autorenprofil
+    // pflegen"-Panel zusammen, damit beide gemeinsam per "-" entfernt bzw.
+    // per "+" als Einheit nach diesem Eintrag eingefügt werden.
+    const group = document.createElement('div');
+    group.className = 'author-extra-row-group';
+
     const row = document.createElement('div');
     row.className = 'author-extra-row';
-    row.appendChild(buildAuthorInput(value));
-    row.appendChild(buildAddButton((newRow) => row.insertAdjacentElement('afterend', newRow)));
-    row.appendChild(buildRemoveButton(row));
-    return row;
+    const input = buildAuthorInput(value);
+    row.appendChild(input);
+    row.appendChild(buildAddButton((newGroup) => group.insertAdjacentElement('afterend', newGroup)));
+    row.appendChild(buildRemoveButton(group));
+    group.appendChild(row);
+
+    attachNewAuthorToggle(input, group);
+    return group;
   }
 
   const extraRowsContainer = document.createElement('div');
@@ -608,6 +719,7 @@ function buildAuthorFields(authorId, authorValues, dateId, dateValue) {
   const wrapper = document.createElement('div');
   wrapper.className = 'author-fields';
   wrapper.appendChild(row);
+  attachNewAuthorToggle(firstInput, wrapper);
   wrapper.appendChild(extraRowsContainer);
 
   function getAuthorValues() {
@@ -616,7 +728,22 @@ function buildAuthorFields(authorId, authorValues, dateId, dateValue) {
       .filter((value) => value);
   }
 
-  return { wrapper, dateInput: dateField.input, getAuthorValues };
+  // Liefert Profildaten NUR für Namen, die (a) noch nicht in allAuthors
+  // erfasst sind UND (b) tatsächlich ausgefüllt wurden - ein leer
+  // gelassenes, nur aufgeklapptes Panel erzeugt keinen Eintrag.
+  function getNewAuthorProfiles() {
+    const result = {};
+    profileEntries.forEach(({ input, getProfileValues, hasAnyValue }) => {
+      const name = input.value.trim();
+      if (!name || !hasAnyValue()) return;
+      const isKnown = allAuthors.some((a) => normalizeAuthor(a.name) === normalizeAuthor(name));
+      if (isKnown) return;
+      result[name] = getProfileValues();
+    });
+    return result;
+  }
+
+  return { wrapper, dateInput: dateField.input, getAuthorValues, getNewAuthorProfiles };
 }
 
 function buildEditPanel(s, options = {}) {
@@ -2052,6 +2179,16 @@ document.getElementById('source-form').addEventListener('submit', async (e) => {
       // neue Status-Icon soll direkt nach dem Anlegen sichtbar sein.
       fetchImportJobs();
     }
+    // add_source registriert neue Autor:innen synchron (authors.register_author),
+    // daher kann das Profil direkt im Anschluss per PUT gespeichert werden.
+    const newAuthorProfiles = getCreateNewAuthorProfiles();
+    for (const [name, profile] of Object.entries(newAuthorProfiles)) {
+      await fetch(`/api/authors/${encodeURIComponent(name)}`, {
+        method: 'PUT',
+        headers: devUserHeaders(),
+        body: JSON.stringify(profile),
+      }).catch(() => {});
+    }
     document.getElementById('source-form').reset();
     // form.reset() setzt bei den dynamisch erzeugten Autoren-Feldern nur den
     // Wert zurück, entfernt aber keine per "+" hinzugefügten Extra-Zeilen -
@@ -2079,6 +2216,7 @@ document.getElementById('source-form').addEventListener('submit', async (e) => {
 });
 
 let getCreateAuthorValues = () => [];
+let getCreateNewAuthorProfiles = () => ({});
 
 function renderCreateAuthorDateRow(overrideAuthorValues, overrideDateValue) {
   const existingAuthor = document.getElementById('author');
@@ -2094,9 +2232,10 @@ function renderCreateAuthorDateRow(overrideAuthorValues, overrideDateValue) {
   const target = existingAuthor
     ? existingAuthor.closest('.author-fields')
     : document.getElementById('create-author-date-row');
-  const built = buildAuthorFields('author', authorValues, 'date', dateValue);
+  const built = buildAuthorFields('author', authorValues, 'date', dateValue, true);
   target.replaceWith(built.wrapper);
   getCreateAuthorValues = built.getAuthorValues;
+  getCreateNewAuthorProfiles = built.getNewAuthorProfiles;
 }
 
 document.addEventListener('i18n:changed', () => {

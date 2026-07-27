@@ -1214,6 +1214,27 @@ def test_add_source_auto_generates_bio_for_new_author(client, monkeypatch):
     assert listed["bio_ai_generated"] is True
 
 
+def test_generate_author_bio_background_does_not_overwrite_bio_saved_during_ai_call(client, monkeypatch):
+    # Regressionstest für Backlog #86: das "Autorenprofil pflegen"-Panel im
+    # Anlegen-Formular sendet direkt nach dem Anlegen der Quelle ein PUT mit
+    # der von Hand eingegebenen Vita. Der KI-Aufruf zur automatischen
+    # Vita-Generierung läuft im selben Moment im Hintergrund und dauert
+    # länger - schreibt er NACH dem manuellen PUT, darf er die von Hand
+    # gepflegte Vita nicht mehr überschreiben (siehe zweite Prüfung in
+    # _generate_author_bio_background unmittelbar vor dem Schreiben).
+    def fake_generate_author_bio(name, texts, lang="de"):
+        client.put(f"/api/authors/{name}", json={"bio": "Manuell gepflegte Vita."})
+        return "Automatische Vita."
+
+    monkeypatch.setattr(summarization, "generate_author_bio", fake_generate_author_bio)
+
+    client.post("/api/sources", json={"title": "Quelle", "authors": ["Jane Doe"], "text": "Text."})
+
+    listed = next(a for a in client.get("/api/authors").json() if a["name"] == "Jane Doe")
+    assert listed["bio"] == "Manuell gepflegte Vita."
+    assert listed["bio_ai_generated"] is not True
+
+
 def test_add_source_does_not_regenerate_bio_for_already_known_author(client, monkeypatch):
     calls = []
     monkeypatch.setattr(

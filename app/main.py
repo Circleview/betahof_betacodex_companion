@@ -663,7 +663,12 @@ def _generate_author_bio_background(name: str, lang: str) -> None:
     lang = lang if lang in ("de", "en") else i18n.DEFAULT_LANG
     texts = _collect_author_bio_texts(matching, lang)
     bio = summarization.generate_author_bio(matching["name"], texts, lang)
-    if bio:
+    # Erneute Prüfung unmittelbar vor dem Schreiben: der KI-Aufruf oben
+    # dauert mehrere Sekunden - in dieser Zeit kann z.B. das "Autorenprofil
+    # pflegen"-Panel (Backlog #86) bereits eine von Hand eingegebene Vita
+    # gespeichert haben. Ohne diese zweite Prüfung würde die spätere KI-Vita
+    # die gerade erst gespeicherte manuelle Vita kommentarlos überschreiben.
+    if bio and not author_profiles.get_profile(matching["name"])["bio"]:
         author_profiles.set_profile(name, bio=bio, bio_ai_generated=True)
 
 
