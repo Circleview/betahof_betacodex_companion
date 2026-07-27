@@ -44,6 +44,7 @@ from app.models import (
     ChunkRef,
     ExtractedSource,
     ExtractedUpload,
+    FeedbackIn,
     ImportJobOut,
     InviteIn,
     MessageOut,
@@ -1185,6 +1186,31 @@ def ask(question: QuestionIn, request: Request, x_lang: str = Header(default=i18
         )
 
     return AnswerOut(answer=answer_text, sources=chunk_refs)
+
+
+@app.post("/api/feedback", response_model=MessageOut)
+def submit_feedback(
+    feedback: FeedbackIn, request: Request, x_lang: str = Header(default=i18n.DEFAULT_LANG)
+):
+    client_ip = request.client.host if request.client else "unknown"
+    # Deutlich enger als /api/ask (Standard 10/60s) - Feedback wird von
+    # echten Nutzer:innen selten und nie in Serie abgeschickt, ein enges
+    # Limit verhindert Postfach-Spam ohne echte Nutzung einzuschränken.
+    if ratelimit.is_rate_limited(f"feedback-ip:{client_ip}", max_requests=3, window_seconds=3600):
+        raise HTTPException(429, i18n.get_message("rate_limited", x_lang))
+    if not captcha.verify_turnstile_token(feedback.turnstile_token, client_ip):
+        raise HTTPException(400, i18n.get_message("captcha_failed", x_lang))
+
+    message = feedback.message.strip()
+    if not message:
+        raise HTTPException(400, i18n.get_message("feedback_empty", x_lang))
+
+    sender = feedback.email.strip() or i18n.get_message("feedback_no_email", x_lang)
+    subject = i18n.get_message("mail_feedback_subject", x_lang)
+    body = i18n.get_message("mail_feedback_body", x_lang, message=message, sender=sender)
+    mail.send_mail(os.environ.get("SYSTEM_ADMIN_EMAIL", ""), subject, body)
+
+    return MessageOut(detail=i18n.get_message("feedback_sent", x_lang))
 
 
 class NoCacheStaticFiles(StaticFiles):

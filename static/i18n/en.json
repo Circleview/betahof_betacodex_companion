@@ -127,5 +127,10 @@
   "import.markupHeading": "Heading",
   "footer.github": "GitHub",
   "footer.feedback": "Feedback",
+  "footer.feedbackMessageLabel": "Your message",
+  "footer.feedbackEmailLabel": "Email (optional, for follow-up questions)",
+  "footer.feedbackSubmit": "Send",
+  "footer.feedbackSending": "Sending...",
+  "footer.feedbackFailed": "Sending failed.",
   "footer.impressum": "Legal notice"
 }

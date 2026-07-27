@@ -24,6 +24,11 @@ MESSAGES = {
         "mail_login_body": "Hallo,\n\nhier ist dein Login-Link (15 Minuten gültig):\n{link}\n\nFalls du das nicht angefordert hast, kannst du diese E-Mail ignorieren.",
         "mail_invite_subject": "Einladung zu BetaCodex Companion",
         "mail_invite_body": "Hallo,\n\ndu wurdest mit der Rolle '{role}' zu BetaCodex Companion eingeladen. Über diesen Link (7 Tage gültig) kannst du dich anmelden:\n{link}",
+        "feedback_empty": "Bitte eine Nachricht eingeben.",
+        "feedback_sent": "Danke für dein Feedback!",
+        "feedback_no_email": "(keine Angabe)",
+        "mail_feedback_subject": "Feedback: BetaCodex Companion",
+        "mail_feedback_body": "Neues Feedback über BetaCodex Companion:\n\n{message}\n\nAbsender:in: {sender}",
     },
     "en": {
         "text_empty": "Text must not be empty.",
@@ -50,6 +55,11 @@ MESSAGES = {
         "mail_login_body": "Hello,\n\nhere is your login link (valid for 15 minutes):\n{link}\n\nIf you didn't request this, you can ignore this email.",
         "mail_invite_subject": "Invitation to BetaCodex Companion",
         "mail_invite_body": "Hello,\n\nyou've been invited to BetaCodex Companion with the role '{role}'. Use this link (valid for 7 days) to sign in:\n{link}",
+        "feedback_empty": "Please enter a message.",
+        "feedback_sent": "Thanks for your feedback!",
+        "feedback_no_email": "(not provided)",
+        "mail_feedback_subject": "Feedback: BetaCodex Companion",
+        "mail_feedback_body": "New feedback via BetaCodex Companion:\n\n{message}\n\nSender: {sender}",
     },
 }
 

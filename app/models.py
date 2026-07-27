@@ -51,6 +51,12 @@ class QuestionIn(BaseModel):
     turnstile_token: str = ""
 
 
+class FeedbackIn(BaseModel):
+    message: str
+    email: str = ""
+    turnstile_token: str = ""
+
+
 class ChunkRef(BaseModel):
     chunk_id: str
     source_id: str

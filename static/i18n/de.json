@@ -127,5 +127,10 @@
   "import.markupHeading": "Überschrift",
   "footer.github": "GitHub",
   "footer.feedback": "Feedback",
+  "footer.feedbackMessageLabel": "Deine Nachricht",
+  "footer.feedbackEmailLabel": "E-Mail (optional, für Rückfragen)",
+  "footer.feedbackSubmit": "Absenden",
+  "footer.feedbackSending": "Sende...",
+  "footer.feedbackFailed": "Senden fehlgeschlagen.",
   "footer.impressum": "Impressum"
 }

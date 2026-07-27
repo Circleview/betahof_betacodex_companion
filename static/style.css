@@ -1875,9 +1875,13 @@ details a {
   background: var(--color-bg);
 }
 
-#import-status, #popover-status, #upload-status {
+#import-status, #popover-status, #upload-status, .feedback-status {
   color: var(--color-text-muted);
   font-size: 0.9rem;
+}
+
+.feedback-popover button[type="submit"] {
+  width: 100%;
 }
 
 .site-footer {
@@ -1908,4 +1912,40 @@ details a {
 
 .footer-version {
   font-variant-numeric: tabular-nums;
+}
+
+/* Backlog #85: Feedback-Popover statt reinem GitHub-Issues-Link - der
+   Trigger soll aber weiterhin wie die übrigen Footer-Links aussehen, nicht
+   wie ein hervorgehobener .link-button (Standard: fett, unterstrichen). */
+.footer-feedback {
+  position: relative;
+  display: inline-flex;
+}
+
+.footer-feedback > .link-button {
+  color: var(--color-text-muted);
+  font-weight: inherit;
+  font-size: inherit;
+  text-decoration: none;
+}
+
+.footer-feedback > .link-button:hover {
+  color: var(--color-accent);
+}
+
+/* Der Footer sitzt am Seitenende - ein nach unten aufklappendes Popover
+   (Standard .popover-Regel) würde meist über den Bildschirmrand
+   hinausragen, deshalb öffnet es hier stattdessen nach oben. */
+.feedback-popover {
+  top: auto;
+  bottom: calc(100% + 18px);
+  left: 0;
+  transform: none;
+}
+
+.feedback-popover .popover-arrow {
+  top: auto;
+  bottom: -7px;
+  left: 12px;
+  transform: rotate(225deg);
 }

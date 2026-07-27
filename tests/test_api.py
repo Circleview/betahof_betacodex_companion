@@ -10,6 +10,7 @@ from app import (
     embeddings,
     extraction,
     llm,
+    mail,
     monitoring,
     ratelimit,
     summarization,
@@ -258,6 +259,62 @@ def test_ask_rejects_after_rate_limit_exceeded(client):
         assert response.status_code == 200
 
     response = client.post("/api/ask", json={"question": "Frage?"})
+
+    assert response.status_code == 429
+
+
+def test_feedback_sends_mail_to_admin_and_returns_confirmation(client, monkeypatch):
+    monkeypatch.setenv("SYSTEM_ADMIN_EMAIL", "admin@test.local")
+    calls = []
+    monkeypatch.setattr(mail, "send_mail", lambda to, subject, body: calls.append((to, subject, body)))
+
+    response = client.post(
+        "/api/feedback", json={"message": "Tolles Tool!", "email": "nutzer@test.local"}
+    )
+
+    assert response.status_code == 200
+    assert len(calls) == 1
+    to, subject, body = calls[0]
+    assert to == "admin@test.local"
+    assert "Tolles Tool!" in body
+    assert "nutzer@test.local" in body
+
+
+def test_feedback_uses_placeholder_when_email_omitted(client, monkeypatch):
+    monkeypatch.setenv("SYSTEM_ADMIN_EMAIL", "admin@test.local")
+    calls = []
+    monkeypatch.setattr(mail, "send_mail", lambda to, subject, body: calls.append((to, subject, body)))
+
+    client.post("/api/feedback", json={"message": "Anonymes Feedback."})
+
+    body = calls[0][2]
+    assert "(keine Angabe)" in body
+
+
+def test_feedback_rejects_empty_message(client, monkeypatch):
+    calls = []
+    monkeypatch.setattr(mail, "send_mail", lambda to, subject, body: calls.append((to, subject, body)))
+
+    response = client.post("/api/feedback", json={"message": "   "})
+
+    assert response.status_code == 400
+    assert calls == []
+
+
+def test_feedback_rejects_when_captcha_verification_fails(client, monkeypatch):
+    monkeypatch.setattr(captcha, "verify_turnstile_token", lambda token, remote_ip=None: False)
+
+    response = client.post("/api/feedback", json={"message": "Feedback."})
+
+    assert response.status_code == 400
+
+
+def test_feedback_rejects_after_rate_limit_exceeded(client):
+    for _ in range(3):
+        response = client.post("/api/feedback", json={"message": "Feedback."})
+        assert response.status_code == 200
+
+    response = client.post("/api/feedback", json={"message": "Feedback."})
 
     assert response.status_code == 429
 
