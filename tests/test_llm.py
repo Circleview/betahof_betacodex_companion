@@ -46,7 +46,7 @@ def test_parse_answer_and_quotes_splits_answer_from_quote_block():
     answer, quotes = llm.parse_answer_and_quotes(raw)
 
     assert answer == "Ein Flip ist ein Zustandswechsel [1]."
-    assert quotes == {1: "Any irritation can flip the system into the New state."}
+    assert quotes == {1: ["Any irritation can flip the system into the New state."]}
 
 
 def test_parse_answer_and_quotes_handles_multiple_quotes():
@@ -58,7 +58,19 @@ def test_parse_answer_and_quotes_handles_multiple_quotes():
     )
     _, quotes = llm.parse_answer_and_quotes(raw)
 
-    assert quotes == {1: "Erstes Zitat.", 2: "Zweites Zitat."}
+    assert quotes == {1: ["Erstes Zitat."], 2: ["Zweites Zitat."]}
+
+
+def test_parse_answer_and_quotes_collects_repeated_citation_number_in_order():
+    raw = (
+        'Aussage A [1]. Aussage B [1].\n\n'
+        '---QUOTES---\n'
+        '[1]: "Beleg für Aussage A."\n'
+        '[1]: "Beleg für Aussage B."\n'
+    )
+    _, quotes = llm.parse_answer_and_quotes(raw)
+
+    assert quotes == {1: ["Beleg für Aussage A.", "Beleg für Aussage B."]}
 
 
 def test_parse_answer_and_quotes_returns_empty_dict_without_marker():

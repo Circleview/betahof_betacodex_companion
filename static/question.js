@@ -186,7 +186,7 @@ function appendTextWithHighlight(container, text, highlight) {
   if (end < text.length) container.appendChild(document.createTextNode(text.slice(end)));
 }
 
-function buildSourceInfo(s) {
+function buildSourceInfo(s, highlight) {
   const wrapper = document.createElement('div');
   wrapper.className = 'citation-card-content';
 
@@ -202,8 +202,11 @@ function buildSourceInfo(s) {
   // Voller Chunk-Text statt Kappung bei 100 Wörtern - das ist der Teil, der
   // beim Beantworten tatsächlich als Quelle herangezogen wurde (Backlog #59).
   // Der beleg-relevante Satz (KI-Zitat oder lokales Fallback-Highlighting,
-  // siehe app/main.py) wird darin zusätzlich optisch hervorgehoben.
-  appendTextWithHighlight(excerpt, s.text, s.highlighted_text);
+  // siehe app/main.py) wird darin zusätzlich optisch hervorgehoben - je
+  // nachdem, WELCHES Vorkommen dieser Quelle im Antworttext aufgeklappt
+  // wurde (`highlight`-Parameter), nicht pauschal dasselbe für die ganze
+  // Quelle, da derselbe Chunk mehrere unterschiedliche Aussagen belegen kann.
+  appendTextWithHighlight(excerpt, s.text, highlight);
   wrapper.appendChild(excerpt);
 
   const citationUrl = s.listen_url || s.url;
@@ -274,7 +277,20 @@ function buildSourcesList(sources) {
 }
 
 function makeCitationsClickable(container, sources) {
+  // Schlüssel ist der tatsächliche INHALT (Chunk + Highlight), nicht die
+  // Zitat-Nummer und nicht der einzelne Button: Verweisen zwei verschiedene
+  // [n]-Vorkommen auf denselben Chunk mit demselben Highlight (z.B. dieselbe
+  // Aussage wird zweimal referenziert), teilen sie sich eine Karte statt
+  // dieselbe Box mehrfach aufzuklappen - haben sie dagegen unterschiedliche
+  // Highlights (unterschiedliche Aussagen im selben Chunk), bleiben es
+  // unabhängig auf-/zuklappbare Karten.
   const openCards = new Map();
+  // Zählt pro Quellen-Index, das wievielte Mal sie im Antworttext auftaucht -
+  // damit jedes Vorkommen sein eigenes, zu genau dieser Aussage passendes
+  // Highlight bekommt (`source.highlighted_texts[occurrence]`), statt bei
+  // Mehrfachzitaten derselben Quelle immer dasselbe erste Highlight zu
+  // zeigen (siehe app/main.py: highlighted_texts ist pro Vorkommen sortiert).
+  const occurrenceCounts = new Map();
   const textNodes = [];
   const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
   let node = walker.nextNode();
@@ -299,22 +315,31 @@ function makeCitationsClickable(container, sources) {
           frag.appendChild(document.createTextNode(part));
           continue;
         }
+        // Zum Erstellungszeitpunkt festhalten, nicht erst im Klick-Handler
+        // lesen - sonst würde bei einem späteren Klick der inzwischen schon
+        // weitergezählte, falsche Vorkommens-Index verwendet.
+        const myOccurrence = occurrenceCounts.get(index) || 0;
+        occurrenceCounts.set(index, myOccurrence + 1);
+        const highlights = source.highlighted_texts || [];
+        const highlight = highlights[myOccurrence] ?? highlights[0] ?? null;
+        const contentKey = `${source.chunk_id}::${highlight || ''}`;
+
         const btn = document.createElement('button');
         btn.type = 'button';
         btn.className = 'citation-ref';
         btn.textContent = part;
         btn.addEventListener('click', () => {
           const paragraph = btn.closest('p') || container;
-          if (openCards.has(index)) {
-            openCards.get(index).remove();
-            openCards.delete(index);
+          if (openCards.has(contentKey)) {
+            openCards.get(contentKey).remove();
+            openCards.delete(contentKey);
             return;
           }
           const card = document.createElement('div');
           card.className = 'citation-card';
-          card.appendChild(buildSourceInfo(source));
+          card.appendChild(buildSourceInfo(source, highlight));
           paragraph.insertAdjacentElement('afterend', card);
-          openCards.set(index, card);
+          openCards.set(contentKey, card);
         });
         // Satzzeichen, die direkt (ohne Leerzeichen) auf die Quellenangabe
         // folgen (z. B. "[1]."), sollen beim Zeilenumbruch nicht von ihr
@@ -360,13 +385,21 @@ function buildTypingIndicator() {
   return typing;
 }
 
-function scrollChatToBottom(element) {
-  // scrollIntoView statt container.scrollTop, weil ab 900px die Chat-Box mit
-  // dem Antworttext mitwächst statt intern zu scrollen (siehe style.css) -
-  // der scrollende Bereich ist dann die Seite selbst, nicht mehr
-  // #chat-messages. scrollIntoView findet den jeweils richtigen scrollenden
-  // Vorfahren automatisch und funktioniert daher für beide Layouts.
-  element.scrollIntoView({ behavior: 'smooth', block: 'end' });
+function scrollQuestionIntoView(element) {
+  // Verankert die gerade gestellte Frage oben im sichtbaren Bereich, statt
+  // ans Ende der (noch wachsenden) Antwort zu scrollen - vorher sprang der
+  // Fokus sichtbar hoch und runter, weil einmal direkt nach dem Absenden
+  // (kurzer Tippindikator) und ein zweites Mal nach Eintreffen der oft viel
+  // längeren Antwort ans jeweilige Element-Ende gescrollt wurde. So bleibt
+  // die eigene Frage als Orientierungspunkt stehen, während die Antwort
+  // darunter erscheint - besonders auf dem Handy wichtig, wo sonst der
+  // Überblick verloren geht. scrollIntoView statt container.scrollTop, weil
+  // ab 900px die Chat-Box mit dem Antworttext mitwächst statt intern zu
+  // scrollen (siehe style.css) - der scrollende Bereich ist dann die Seite
+  // selbst, nicht mehr #chat-messages; scrollIntoView findet den jeweils
+  // richtigen scrollenden Vorfahren automatisch und funktioniert daher für
+  // beide Layouts.
+  element.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 // Nur Quellen, die im gerenderten Antworttext tatsächlich per "[n]" zitiert
@@ -429,16 +462,24 @@ document.getElementById('question-form').addEventListener('submit', async (e) =>
   const { message: userMessage, bubble: userBubble } = buildChatMessage('user');
   userBubble.textContent = question;
   chatMessages.appendChild(userMessage);
+  scrollQuestionIntoView(userMessage);
 
   questionInput.value = '';
   questionInput.placeholder = t('index.questionPlaceholderContinue');
-  questionInput.focus();
+  // Auf dem Handy öffnet .focus() die virtuelle Tastatur, deren eigenes
+  // "gefokussiertes Feld ins Bild scrollen"-Verhalten den obigen Scroll auf
+  // die gerade gestellte Frage sofort wieder zunichtemacht (die Frage
+  // verschwindet hinter der Tastatur). Am Desktop gibt es dieses Problem
+  // nicht - dort bleibt das automatische Fokussieren fürs schnelle
+  // Nachfragen bestehen.
+  if (!window.matchMedia('(max-width: 640px)').matches) {
+    questionInput.focus();
+  }
 
   const { message: assistantMessage, bubble: assistantBubble } = buildChatMessage('assistant');
   assistantBubble.setAttribute('aria-label', t('index.searching'));
   assistantBubble.appendChild(buildTypingIndicator());
   chatMessages.appendChild(assistantMessage);
-  scrollChatToBottom(assistantMessage);
 
   try {
     const res = await fetch('/api/ask', {
@@ -464,7 +505,6 @@ document.getElementById('question-form').addEventListener('submit', async (e) =>
   } catch (err) {
     assistantBubble.textContent = t('common.errorPrefix') + err.message;
   }
-  scrollChatToBottom(assistantMessage);
 });
 
 async function refreshCitedSourceSummaries() {

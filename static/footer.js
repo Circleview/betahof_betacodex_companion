@@ -2,12 +2,13 @@ import { t, initI18n } from '/i18n.js';
 
 let currentVersion = '';
 
-function buildLink(href, text) {
+function buildLink(href, text, className) {
   const a = document.createElement('a');
   a.href = href;
   a.target = '_blank';
   a.rel = 'noopener noreferrer';
   a.textContent = text;
+  if (className) a.className = className;
   return a;
 }
 
@@ -28,8 +29,18 @@ function renderFooter() {
 
   footer.replaceChildren(
     taglineSpan,
+    buildLink(
+      'https://github.com/Circleview/betahof_betacodex_companion/issues',
+      t('footer.feedback')
+    ),
     buildLink('https://betacodex.org', 'betacodex.org'),
-    buildLink('https://github.com/Circleview/betahof_betacodex_companion', t('footer.github')),
+    // Auf schmalen Bildschirmen wird's sonst zu eng - dieser Link darf als
+    // erstes weichen (siehe .footer-github-link in style.css).
+    buildLink(
+      'https://github.com/Circleview/betahof_betacodex_companion',
+      t('footer.github'),
+      'footer-github-link'
+    ),
     versionSpan,
     buildLink('https://www.betahof.de/beratung/', 'Beta Hof'),
     buildLink('https://www.betahof.de/impressum/', t('footer.impressum')),

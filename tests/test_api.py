@@ -218,7 +218,7 @@ def test_ask_reports_null_summary_when_source_has_none(client):
     assert response.json()["sources"][0]["summary"] is None
 
 
-def test_ask_sets_highlighted_text_from_local_fallback_without_quote_block(client):
+def test_ask_sets_highlighted_texts_from_local_fallback_without_quote_block(client):
     client.post(
         "/api/sources",
         json={
@@ -231,10 +231,9 @@ def test_ask_sets_highlighted_text_from_local_fallback_without_quote_block(clien
     response = client.post("/api/ask", json={"question": "Was beschreibt der BetaCodex?"})
 
     assert response.status_code == 200
-    assert (
-        response.json()["sources"][0]["highlighted_text"]
-        == "Der BetaCodex beschreibt Prinzipien dezentraler Organisation."
-    )
+    assert response.json()["sources"][0]["highlighted_texts"] == [
+        "Der BetaCodex beschreibt Prinzipien dezentraler Organisation."
+    ]
 
 
 def test_ask_uses_llm_quote_when_it_matches_the_chunk(client, monkeypatch):
@@ -263,10 +262,9 @@ def test_ask_uses_llm_quote_when_it_matches_the_chunk(client, monkeypatch):
     assert response.status_code == 200
     data = response.json()
     assert data["answer"] == "Antwort [1]."
-    assert (
-        data["sources"][0]["highlighted_text"]
-        == "Der BetaCodex beschreibt Prinzipien dezentraler Organisation."
-    )
+    assert data["sources"][0]["highlighted_texts"] == [
+        "Der BetaCodex beschreibt Prinzipien dezentraler Organisation."
+    ]
 
 
 def test_ask_falls_back_to_local_highlight_when_llm_quote_not_found_in_chunk(client, monkeypatch):
@@ -292,10 +290,40 @@ def test_ask_falls_back_to_local_highlight_when_llm_quote_not_found_in_chunk(cli
     assert response.status_code == 200
     # Fällt auf das lokale Highlight zurück, statt das halluzinierte Zitat
     # zu übernehmen (Verifikation gegen den echten Chunk-Text greift).
-    assert (
-        response.json()["sources"][0]["highlighted_text"]
-        == "Der BetaCodex beschreibt Prinzipien dezentraler Organisation."
+    assert response.json()["sources"][0]["highlighted_texts"] == [
+        "Der BetaCodex beschreibt Prinzipien dezentraler Organisation."
+    ]
+
+
+def test_ask_uses_different_highlight_per_occurrence_of_the_same_source(client, monkeypatch):
+    client.post(
+        "/api/sources",
+        json={
+            "title": "BetaCodex Quelle",
+            "authors": ["Autor Y"],
+            "text": (
+                "Der BetaCodex beschreibt Prinzipien dezentraler Organisation. "
+                "Teams organisieren sich in Zellen ohne zentrale Weisung."
+            ),
+        },
     )
+    monkeypatch.setattr(
+        llm,
+        "answer_question",
+        lambda question, chunks, lang="de": (
+            "Aussage A [1]. Aussage B [1].\n\n---QUOTES---\n"
+            '[1]: "Der BetaCodex beschreibt Prinzipien dezentraler Organisation."\n'
+            '[1]: "Teams organisieren sich in Zellen ohne zentrale Weisung."\n'
+        ),
+    )
+
+    response = client.post("/api/ask", json={"question": "Was beschreibt der BetaCodex?"})
+
+    assert response.status_code == 200
+    assert response.json()["sources"][0]["highlighted_texts"] == [
+        "Der BetaCodex beschreibt Prinzipien dezentraler Organisation.",
+        "Teams organisieren sich in Zellen ohne zentrale Weisung.",
+    ]
 
 
 def test_reindex_sources_requires_pfleger_role(anon_client):

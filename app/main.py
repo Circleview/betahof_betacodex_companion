@@ -1,5 +1,6 @@
 import json
 import os
+import re
 import subprocess
 import uuid
 from datetime import datetime, timezone
@@ -799,6 +800,74 @@ def _best_local_sentence(doc: str, query_embedding: list[float]) -> str | None:
     return sentences[best_index]
 
 
+_CITATION_NUMBER_RE = re.compile(r"\[(\d+)\]")
+
+
+def _compute_occurrence_highlights(
+    answer_text: str,
+    chunk_docs: list[str],
+    quotes_by_citation: dict[int, list[str]],
+) -> list[list[str]]:
+    """Bausteine A+B kombiniert, aber pro VORKOMMEN statt pro Chunk: zerlegt
+    den fertigen Antworttext in Sätze, findet darin alle [n]-Zitat-Marker
+    und bestimmt für jedes Vorkommen (in Auftrittsreihenfolge) ein eigenes
+    Highlight - bevorzugt ein verifiziertes KI-Zitat (Baustein B), sonst den
+    zur jeweiligen AUSSAGE im Antworttext (nicht zur ursprünglichen
+    Nutzerfrage) lokal best-passenden Satz im Chunk (Baustein A). Derselbe
+    Chunk kann so für unterschiedliche Aussagen im selben Antworttext
+    unterschiedliche Highlights bekommen, statt immer dasselbe zu zeigen."""
+    used_quote_index: dict[int, int] = {}
+    occurrence_highlights: list[list[str]] = [[] for _ in chunk_docs]
+    sentence_cache: dict[int, tuple[list[str], list[list[float]] | None]] = {}
+
+    for sentence in chunking.split_sentences(answer_text):
+        matches = list(_CITATION_NUMBER_RE.finditer(sentence))
+        if not matches:
+            continue
+        claim_embedding = None
+        for match in matches:
+            chunk_index = int(match.group(1)) - 1
+            if chunk_index < 0 or chunk_index >= len(chunk_docs):
+                continue
+            doc = chunk_docs[chunk_index]
+            citation_number = chunk_index + 1
+
+            highlight = None
+            quotes = quotes_by_citation.get(citation_number, [])
+            next_index = used_quote_index.get(citation_number, 0)
+            if next_index < len(quotes):
+                used_quote_index[citation_number] = next_index + 1
+                candidate = quotes[next_index]
+                if _normalize_for_match(candidate) in _normalize_for_match(doc):
+                    highlight = candidate
+
+            if highlight is None:
+                if chunk_index not in sentence_cache:
+                    doc_sentences = chunking.split_sentences(doc)
+                    doc_embeddings = (
+                        embeddings.embed_passages(doc_sentences) if len(doc_sentences) > 1 else None
+                    )
+                    sentence_cache[chunk_index] = (doc_sentences, doc_embeddings)
+                doc_sentences, doc_embeddings = sentence_cache[chunk_index]
+                if len(doc_sentences) == 1:
+                    highlight = doc_sentences[0]
+                elif doc_sentences:
+                    if claim_embedding is None:
+                        claim_embedding = embeddings.embed_query(sentence)
+                    best_index = max(
+                        range(len(doc_sentences)),
+                        key=lambda i: sum(
+                            a * b for a, b in zip(doc_embeddings[i], claim_embedding)
+                        ),
+                    )
+                    highlight = doc_sentences[best_index]
+
+            if highlight is not None:
+                occurrence_highlights[chunk_index].append(highlight)
+
+    return occurrence_highlights
+
+
 @app.post("/api/ask", response_model=AnswerOut)
 def ask(question: QuestionIn, request: Request, x_lang: str = Header(default=i18n.DEFAULT_LANG)):
     client_ip = request.client.host if request.client else "unknown"
@@ -861,16 +930,17 @@ def ask(question: QuestionIn, request: Request, x_lang: str = Header(default=i18
     raw_answer = llm.answer_question(question.question, llm_chunks, lang=x_lang)
     answer_text, quotes_by_citation = llm.parse_answer_and_quotes(raw_answer)
 
+    chunk_docs = [chunk_ref.text for chunk_ref in chunk_refs]
+    occurrence_highlights = _compute_occurrence_highlights(answer_text, chunk_docs, quotes_by_citation)
+
     for i, chunk_ref in enumerate(chunk_refs):
-        citation_number = i + 1
-        llm_quote = quotes_by_citation.get(citation_number)
-        # Baustein B: nur übernehmen, wenn es sich nachweislich um einen
-        # echten Ausschnitt aus genau diesem Chunk handelt (Schutz gegen
-        # Halluzination/Umformulierung) - sonst greift Baustein A.
-        if llm_quote and _normalize_for_match(llm_quote) in _normalize_for_match(chunk_ref.text):
-            chunk_ref.highlighted_text = llm_quote
-        else:
-            chunk_ref.highlighted_text = local_highlights[i]
+        # Letzter Ausweg: eine zurückgegebene Quelle, die im finalen
+        # Antworttext aus irgendeinem Grund gar nicht per [n] referenziert
+        # wird, bekommt trotzdem ein Highlight (gegen die Nutzerfrage
+        # gescort) statt gar keins.
+        chunk_ref.highlighted_texts = occurrence_highlights[i] or (
+            [local_highlights[i]] if local_highlights[i] else []
+        )
 
     return AnswerOut(answer=answer_text, sources=chunk_refs)
 

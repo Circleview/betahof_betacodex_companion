@@ -886,6 +886,12 @@ body:not(.chat-started) #question-form {
     margin-top: 0;
   }
 
+  /* Auf schmalen Bildschirmen wird die Fußzeile sonst zu eng - der
+     GitHub-Link ist der verzichtbarste Eintrag und weicht zuerst. */
+  .footer-github-link {
+    display: none;
+  }
+
   /* Nur auf Mobile: Papierflieger-Icon statt Textbutton, spart Platz in
      der Eingabezeile - am Desktop bleibt der Textbutton unverändert. */
   .send-label {

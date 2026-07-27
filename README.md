@@ -133,9 +133,40 @@ Begründung: Es kommt auf Sprachqualität und einen schlanken Start an. Die Embe
 
 ---
 
-## 9. Status: Schritt 0 (Durchstich) – umgesetzt (v0.1)
+## 9. Versionshistorie
 
-Der vertikale Durchstich läuft. Umgesetzt wurde:
+Kurzüberblick über die wichtigsten Ausbaustufen (neueste zuerst). Reine
+Fix-Batches zwischen zwei Ausbaustufen (z. B. `v0.16.1`–`v0.16.5`) sind hier
+nicht einzeln aufgeführt – Details dazu stehen in den jeweiligen
+Commit-/Tag-Nachrichten in Git.
+
+| Version | Wesentliche Änderungen |
+|---|---|
+| v0.18 | Zitat-Qualität: Satzgrenzen-bewusstes Chunking, lokales Satz-Highlighting, KI-Zitat mit Verifikation gegen Halluzination, Re-Indizierung bestehender Quellen |
+| v0.17 | Autor:innen-Profile (Foto, Vita, Website, Social Links) inkl. Umbenennen-Funktion |
+| v0.16 | Echtes Login-System (Magic-Link, ausschließlich per Einladung) + zentrierter Chat-Startzustand |
+| v0.15 | Spam-/Bot-Schutz, YouTube-Import als Fließtext, YouTube-Duplikat-Erkennung |
+| v0.14 | Konversationsansicht: Quellen-Sidebar, Bearbeiten-Zugriff direkt aus dem Chat, Sprach-Politur |
+| v0.13 | Mehrfach-Autoren pro Quelle |
+| v0.12 | Mobile-First-Überarbeitung + Website-Grundlagen-Fixes |
+| v0.11 | Frage-Antwort-Bereich zu Chat-Dialog umgebaut |
+| v0.10 | PDF-Öffnen, Timeline-/Broken-Link-Fixes, sofortiger URL-Recheck |
+| v0.9 | Zweisprachige (DE/EN) KI-Zusammenfassungen, Timeline-Fix, Autor-Sekundärsortierung |
+| v0.7 | Markdown-Formatierung beim Import, Icon-Feinschliff, Footer |
+| v0.6 | KI-Zusammenfassung beim Import läuft im Hintergrund |
+| v0.5 | Magic-Button für nachträgliche KI-Zusammenfassung + Lösch-Widerruf-Fix |
+| v0.4 | Bearbeiten-Panel-Bugfixes, Lösch-UX, Grid-Layout, Label-Klarstellungen |
+| v0.3 | Admin-Volltextzugriff, Markdown-Editor, Audio-Import, natürlichere Antworten |
+| v0.2 | Rollen, i18n (DE/EN), KI-Zusammenfassungen, PDF-/YouTube-Import, Löschen mit Undo |
+| v0.1 | Vertikaler Durchstich: Text-Import, Frage-Antwort mit Quellenangabe |
+
+Die aktuell laufende Version steht im Footer der Anwendung selbst
+(`GET /api/version`, per `git describe --tags` ermittelt – kein manuelles
+Versions-File zu pflegen).
+
+### Ausgangspunkt (v0.1) im Detail
+
+Der vertikale Durchstich lief mit folgendem Funktionsumfang:
 
 - **Import** über ein Textfeld (Copy/Paste) mit Feldern für Titel, Autor, Datum, URL (`POST /api/sources`)
 - **Chunking** mit `tiktoken` (cl100k_base), 900 Tokens pro Chunk, 130 Tokens Überlappung (`app/chunking.py`); jeder Chunk trägt Quell-ID, Titel, Autor, Datum, URL, Position als Metadaten
@@ -171,11 +202,11 @@ Danach `http://127.0.0.1:8000/` im Browser öffnen. Ohne gültigen `ANTHROPIC_AP
 Damit während laufender Weiterentwicklung immer eine funktionierende Version zum Testen bereitsteht, gibt es zwei Instanzen nebeneinander:
 
 - **Dev** (`Beta-Kodex - Wissenspartner/`, Port 8000): der aktive Arbeitsstand, kann jederzeit kurzzeitig instabil sein (Server-Neustarts während der Entwicklung).
-- **Stabil** (`Beta-Kodex - Wissenspartner (stabil)/`, Port 8001): ein separates [Git Worktree](https://git-scm.com/docs/git-worktree), das auf dem jeweils letzten getaggten Stand steht (aktuell `v0.2`), mit eigenem venv und eigener `.env`-Kopie. Wird nur bei erreichten, getesteten Meilensteinen aktualisiert:
+- **Stabil** (`Beta-Kodex - Wissenspartner (stabil)/`, Port 8001): ein separates [Git Worktree](https://git-scm.com/docs/git-worktree), das auf dem jeweils letzten getaggten Stand steht (siehe Versionshistorie, Abschnitt 9, für den aktuellen Tag), mit eigenem venv und eigener `.env`-Kopie. Wird nur bei erreichten, getesteten Meilensteinen aktualisiert:
   ```bash
   cd "Beta-Kodex - Wissenspartner (stabil)"
   git fetch origin --tags
-  git checkout v0.3          # jeweils aktueller Tag
+  git checkout v0.18         # jeweils aktueller Tag
   ./venv/bin/pip install -r requirements.txt   # falls sich Abhängigkeiten geändert haben
   # Server neu starten
   ```
@@ -198,8 +229,8 @@ git config core.hooksPath scripts/git-hooks
 ./venv/bin/pytest -v
 ```
 
-### Noch offen / nicht Teil dieses Schritts
+### Noch offen (siehe Backlog, Abschnitt 7)
 
-- Weitere Importarten (PDF, YouTube) – Text und URL (Blogposts/Artikel) sind umgesetzt
-- Design/UI-Politur (laut Backlog erst nach dem funktionierenden Kern)
-- Nutzer-/Rechtemanagement (siehe Backlog, Abschnitt 7)
+PDF-/YouTube-Import, Design/UI-Politur und echtes Nutzer-/Rechtemanagement
+sind inzwischen umgesetzt (siehe Versionshistorie, Abschnitt 9) - offen sind
+weiterhin die in Abschnitt 7 gelisteten Backlog-Themen.

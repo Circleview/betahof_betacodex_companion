@@ -50,7 +50,7 @@ class ChunkRef(BaseModel):
     position: int
     text: str
     summary: Optional[str] = None
-    highlighted_text: Optional[str] = None
+    highlighted_texts: list[str] = []
 
 
 class AnswerOut(BaseModel):

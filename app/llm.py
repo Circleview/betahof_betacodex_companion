@@ -19,7 +19,7 @@ Regeln:
 ---QUOTES---
 [1]: "wörtliches Zitat, Zeichen für Zeichen wie im Textausschnitt"
 [2]: "wörtliches Zitat, Zeichen für Zeichen wie im Textausschnitt"
-  Nur für tatsächlich verwendete Nummern, ein Zitat pro Nummer, wortwörtlich aus dem jeweiligen Textausschnitt übernommen (keine Umformulierung) - auch wenn die Antwort selbst den Inhalt umformuliert.
+  Nur für tatsächlich verwendete Nummern, wortwörtlich aus dem jeweiligen Textausschnitt übernommen (keine Umformulierung) - auch wenn die Antwort selbst den Inhalt umformuliert. Wird dieselbe Quellenzahl [n] mehrfach für UNTERSCHIEDLICHE Aussagen verwendet, gib die [n]-Zeile mehrfach aus - einmal pro Verwendung, in der Reihenfolge, in der sie in der Antwort vorkommen, jeweils mit dem zu genau dieser Aussage passenden Zitat.
 """,
     "en": """You are a very experienced BetaCodex advisor. You answer questions EXCLUSIVELY based on the text excerpts provided to you.
 
@@ -35,7 +35,7 @@ Rules:
 ---QUOTES---
 [1]: "verbatim quote, character-for-character as in the text excerpt"
 [2]: "verbatim quote, character-for-character as in the text excerpt"
-  Only for numbers actually used, one quote per number, taken word-for-word from that excerpt (no paraphrasing) - even if the answer itself paraphrases the content.
+  Taken word-for-word from that excerpt (no paraphrasing) - even if the answer itself paraphrases the content. If the same citation number [n] is used multiple times for DIFFERENT statements, output the [n] line multiple times - once per use, in the order they appear in the answer, each with the quote matching that specific statement.
 """,
 }
 
@@ -43,21 +43,26 @@ _QUOTES_MARKER = "---QUOTES---"
 _QUOTE_LINE_RE = re.compile(r'^\[(\d+)\]:\s*"(.+)"\s*$', re.MULTILINE)
 
 
-def parse_answer_and_quotes(raw: str) -> tuple[str, dict[int, str]]:
+def parse_answer_and_quotes(raw: str) -> tuple[str, dict[int, list[str]]]:
     """Trennt die für Nutzer:innen sichtbare Antwort vom angehängten
     Zitat-Block. Fehlt der Block (z.B. bei einfachen Test-Fakes, die nur
     einen Antworttext liefern), wird ein leeres Dict zurückgegeben - der
-    Aufrufer fällt dann auf das lokale Satz-Highlighting zurück."""
+    Aufrufer fällt dann auf das lokale Satz-Highlighting zurück.
+
+    Eine Quellenzahl [n] kann mehrfach im Block auftauchen, wenn sie im
+    Antworttext mehrfach für unterschiedliche Aussagen zitiert wurde - die
+    Zitate werden dann in Auftrittsreihenfolge gesammelt (siehe
+    app/main.py, das pro Vorkommen das jeweils nächste Zitat entnimmt).
+    """
     marker_index = raw.find(_QUOTES_MARKER)
     if marker_index == -1:
         return raw.strip(), {}
 
     answer = raw[:marker_index].strip()
     quotes_block = raw[marker_index + len(_QUOTES_MARKER) :]
-    quotes = {
-        int(match.group(1)): match.group(2).strip()
-        for match in _QUOTE_LINE_RE.finditer(quotes_block)
-    }
+    quotes: dict[int, list[str]] = {}
+    for match in _QUOTE_LINE_RE.finditer(quotes_block):
+        quotes.setdefault(int(match.group(1)), []).append(match.group(2).strip())
     return answer, quotes
 
 DEFAULT_LANG = "de"
