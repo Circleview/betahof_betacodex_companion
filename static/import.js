@@ -119,6 +119,7 @@ let currentSourceList = [];
 let currentDisplayedSources = [];
 let activeEditId = null;
 let pendingUploadId = null;
+let pendingUploadType = null; // 'pdf' | 'audio'
 let currentSortMode = 'author';
 const pendingDeletions = new Map();
 const unreachableSourceIds = new Set();
@@ -151,7 +152,139 @@ function updateSourceManagementVisibility() {
     importBereich.classList.add('hidden');
     urlPopover.classList.add('hidden');
     filePopover.classList.add('hidden');
+    stopJobsPolling();
+  } else {
+    startJobsPolling();
   }
+}
+
+// Grobe Stufen-zu-Füllstand-Zuordnung fürs Fortschritts-Icon - die OpenAI-
+// Transkriptions-API liefert kein echtes Fortschritts-Signal, daher kein
+// exakter Prozentsatz, nur eine Annäherung je Verarbeitungsschritt.
+const JOB_STAGE_FRACTIONS = { transcribe: 0.3, chunking: 0.8, indexing: 0.95 };
+const JOBS_RING_CIRCUMFERENCE = 56.5;
+let jobsPollTimer = null;
+
+function jobStepLabel(job) {
+  const key = {
+    transcribe: 'import.processingStepTranscribe',
+    chunking: 'import.processingStepChunking',
+    indexing: 'import.processingStepIndexing',
+  }[job.processing_step];
+  return t(key || 'import.processingStepPending');
+}
+
+function renderJobsIcon(jobs) {
+  const typJobsBtn = document.getElementById('typ-jobs');
+  const countBadge = document.getElementById('jobs-icon-count');
+  const progressCircle = document.getElementById('jobs-icon-progress');
+
+  if (!jobs.length) {
+    typJobsBtn.classList.add('hidden');
+    document.getElementById('jobs-popover').classList.add('hidden');
+    return;
+  }
+  typJobsBtn.classList.remove('hidden');
+  typJobsBtn.classList.toggle('has-error', jobs.some((job) => job.processing_status === 'error'));
+
+  const activeJob = jobs.find((job) => job.processing_status === 'running') || jobs[0];
+  const fraction = JOB_STAGE_FRACTIONS[activeJob.processing_step] || 0.05;
+  progressCircle.setAttribute('stroke-dashoffset', String(JOBS_RING_CIRCUMFERENCE * (1 - fraction)));
+
+  countBadge.textContent = String(jobs.length);
+  countBadge.classList.toggle('hidden', jobs.length <= 1);
+}
+
+function renderJobsList(jobs) {
+  const list = document.getElementById('jobs-list');
+  list.innerHTML = '';
+  jobs.forEach((job) => {
+    const li = document.createElement('li');
+    const title = document.createElement('span');
+    title.className = 'jobs-list-title';
+    title.textContent = job.title;
+    li.appendChild(title);
+
+    if (job.processing_status === 'error') {
+      const errorText = document.createElement('p');
+      errorText.className = 'jobs-list-error';
+      errorText.textContent = job.processing_error || '';
+      li.appendChild(errorText);
+
+      const retryBtn = document.createElement('button');
+      retryBtn.type = 'button';
+      retryBtn.className = 'link-button';
+      retryBtn.textContent = t('import.reprocessButton');
+      retryBtn.addEventListener('click', async () => {
+        retryBtn.disabled = true;
+        try {
+          await fetch(`/api/sources/${job.id}/reprocess`, { method: 'POST', headers: devUserHeaders() });
+          await fetchImportJobs();
+          loadSources();
+        } finally {
+          retryBtn.disabled = false;
+        }
+      });
+      li.appendChild(retryBtn);
+    } else {
+      const step = document.createElement('span');
+      step.className = 'jobs-list-step';
+      step.textContent = jobStepLabel(job);
+      li.appendChild(step);
+    }
+    list.appendChild(li);
+  });
+}
+
+let previousJobIds = new Set();
+
+async function fetchImportJobs() {
+  if (!hasPflegerRole()) return;
+  try {
+    const res = await fetch('/api/import-jobs', { headers: devUserHeaders() });
+    if (!res.ok) return;
+    const jobs = await res.json();
+    renderJobsIcon(jobs);
+    renderJobsList(jobs);
+
+    // Die "Wird verarbeitet..."-Markierung an der Quellen-Zeile stammt aus
+    // dem zuletzt geladenen Quellen-Snapshot (allSources) - ohne diesen
+    // gezielten Refresh bliebe sie stehen, bis die Seite manuell neu
+    // geladen wird, selbst wenn der Job längst fertig ist. Nur bei
+    // TATSÄCHLICHER Änderung der Job-Menge neu laden (nicht bei jedem
+    // Poll-Takt) und dabei die URL-Erreichbarkeits-Prüfung überspringen -
+    // sonst käme die bereits einmal behobene Performance-Falle zurück
+    // (Flut gleichzeitiger Checks bei jedem Neuladen).
+    const currentJobIds = new Set(jobs.map((job) => job.id));
+    const jobsChanged =
+      currentJobIds.size !== previousJobIds.size ||
+      [...currentJobIds].some((id) => !previousJobIds.has(id));
+    previousJobIds = currentJobIds;
+    if (jobsChanged) {
+      loadSources({ skipUrlHealthCheck: true });
+    }
+  } catch (err) {
+    // Stille Hintergrund-Aktualisierung - der nächste Poll-Takt versucht
+    // es einfach erneut, keine Fehlermeldung nötig.
+  }
+}
+
+function startJobsPolling() {
+  if (jobsPollTimer) return;
+  fetchImportJobs();
+  // Erstes und bisher einziges Polling im Projekt (siehe README/Kommentar
+  // hier bewusst) - kein Vorbild für generelle Live-Aktualisierungen,
+  // sondern gezielt für den Import-Warteschlangen-Status.
+  jobsPollTimer = setInterval(fetchImportJobs, 3000);
+}
+
+function stopJobsPolling() {
+  if (jobsPollTimer) {
+    clearInterval(jobsPollTimer);
+    jobsPollTimer = null;
+  }
+  document.getElementById('typ-jobs').classList.add('hidden');
+  document.getElementById('jobs-popover').classList.add('hidden');
 }
 
 function showForm() {
@@ -161,6 +294,22 @@ function showForm() {
   // Sonst stand nach einem erfolgreichen Import und direktem Anlegen der
   // nächsten Quelle noch die alte Erfolgsmeldung unter dem Formular.
   document.getElementById('import-status').textContent = '';
+}
+
+function setTextFieldPendingAudio(pending) {
+  document.getElementById('text-field-label').classList.toggle('hidden', pending);
+  document.getElementById('text').required = !pending;
+  document.getElementById('audio-text-pending-hint').classList.toggle('hidden', !pending);
+}
+
+// Die meisten Audio-Direktlinks (z.B. die eigentliche mp3-Datei) stammen von
+// einer Website/einem Blogbeitrag, der die Folge einbettet - dieses Feld
+// existiert im Datenmodell schon lange (listen_url, siehe Bearbeiten-
+// Formular), fehlte aber im Neu-anlegen-Formular. Wird nur bei erkannter
+// Audio-Quelle eingeblendet, damit der/die Quellen-Pfleger:in die
+// zugehörige Anhör-Seite gleich mit erfassen kann.
+function setListenUrlFieldVisible(visible) {
+  document.getElementById('listen-url-label').classList.toggle('hidden', !visible);
 }
 
 function fillForm({
@@ -176,10 +325,14 @@ function fillForm({
   document.getElementById('url').value = url;
   document.getElementById('text').value = text;
   document.getElementById('restricted').checked = restricted;
+  document.getElementById('listen-url').value = '';
+  setTextFieldPendingAudio(false);
+  setListenUrlFieldVisible(false);
 }
 
 document.getElementById('typ-text').addEventListener('click', () => {
   pendingUploadId = null;
+  pendingUploadType = null;
   fillForm({});
   showForm();
 });
@@ -201,9 +354,17 @@ document.getElementById('typ-file').addEventListener('click', () => {
   document.getElementById('upload-status').textContent = '';
 });
 
+document.getElementById('typ-jobs').addEventListener('click', () => {
+  importBereich.classList.add('hidden');
+  urlPopover.classList.add('hidden');
+  filePopover.classList.add('hidden');
+  document.getElementById('jobs-popover').classList.toggle('hidden');
+});
+
 document.getElementById('popover-load').addEventListener('click', async () => {
   const url = document.getElementById('popover-url').value.trim();
   const status = document.getElementById('popover-status');
+  const loadBtn = document.getElementById('popover-load');
   if (!url) {
     status.textContent = t('import.pleaseEnterUrl');
     return;
@@ -213,7 +374,9 @@ document.getElementById('popover-load').addEventListener('click', async () => {
     status.textContent = t('import.urlAlreadyExists', { title: existing.title });
     return;
   }
-  status.textContent = t('import.loadingExtracting');
+  loadBtn.disabled = true;
+  loadBtn.textContent = t('import.loadingExtracting');
+  status.textContent = '';
   try {
     const res = await fetch('/api/extract-url', {
       method: 'POST',
@@ -226,7 +389,16 @@ document.getElementById('popover-load').addEventListener('click', async () => {
     }
     const data = await res.json();
     pendingUploadId = null;
+    pendingUploadType = null;
     if (!data.extracted) {
+      if (data.is_audio) {
+        status.textContent = t('import.audioTranscriptionPending');
+        fillForm({ title: data.title, url });
+        showForm();
+        setTextFieldPendingAudio(true);
+        setListenUrlFieldVisible(true);
+        return;
+      }
       status.textContent = t('import.extractionEmpty');
       fillForm({ url });
       showForm();
@@ -234,10 +406,23 @@ document.getElementById('popover-load').addEventListener('click', async () => {
     }
     fillForm({ title: data.title, authors: data.authors, date: data.date, url, text: data.text });
     showForm();
+    setListenUrlFieldVisible(data.is_audio);
   } catch (err) {
     status.textContent = t('common.errorPrefix') + err.message;
+  } finally {
+    loadBtn.disabled = false;
+    loadBtn.textContent = t('import.loadButton');
   }
 });
+
+const AUDIO_UPLOAD_EXTENSIONS = ['.mp3', '.wav', '.m4a', '.ogg', '.flac', '.aac', '.mp4', '.mpeg', '.mpga', '.webm'];
+const AUDIO_UPLOAD_MAX_BYTES = 25 * 1024 * 1024;
+
+function isAudioUploadFile(file) {
+  if (file.type && file.type.startsWith('audio/')) return true;
+  const name = file.name.toLowerCase();
+  return AUDIO_UPLOAD_EXTENSIONS.some((ext) => name.endsWith(ext));
+}
 
 document.getElementById('popover-upload').addEventListener('click', async () => {
   const fileInput = document.getElementById('popover-file');
@@ -247,11 +432,14 @@ document.getElementById('popover-upload').addEventListener('click', async () => 
     status.textContent = t('import.pleaseChooseFile');
     return;
   }
-  status.textContent = t('import.uploadingExtracting');
+  const isAudio = isAudioUploadFile(file);
+  status.textContent = isAudio && file.size > AUDIO_UPLOAD_MAX_BYTES
+    ? t('import.uploadingExtractingLargeAudio')
+    : t('import.uploadingExtracting');
   try {
     const formData = new FormData();
     formData.append('file', file);
-    const res = await fetch('/api/extract-pdf-upload', {
+    const res = await fetch(isAudio ? '/api/extract-audio-upload' : '/api/extract-pdf-upload', {
       method: 'POST',
       headers: { 'X-Lang': getLang() },
       body: formData,
@@ -262,14 +450,25 @@ document.getElementById('popover-upload').addEventListener('click', async () => 
     }
     const data = await res.json();
     pendingUploadId = data.upload_id;
+    pendingUploadType = isAudio ? 'audio' : 'pdf';
     if (!data.extracted) {
+      if (isAudio) {
+        status.textContent = t('import.audioTranscriptionPending');
+        fillForm({ title: data.title });
+        showForm();
+        setTextFieldPendingAudio(true);
+        setListenUrlFieldVisible(true);
+        return;
+      }
       status.textContent = t('import.extractionEmpty');
-      fillForm({});
+      fillForm({ title: data.title });
       showForm();
+      setListenUrlFieldVisible(isAudio);
       return;
     }
     fillForm({ title: data.title, authors: data.authors, date: data.date, text: data.text });
     showForm();
+    setListenUrlFieldVisible(isAudio);
   } catch (err) {
     status.textContent = t('common.errorPrefix') + err.message;
   }
@@ -487,6 +686,17 @@ function buildEditPanel(s, options = {}) {
   const listenUrlInput = listenUrlField.input;
   if (s.has_audio) {
     form.appendChild(listenUrlField.label);
+
+    const audioPreviewLabel = document.createElement('label');
+    const audioPreviewText = document.createElement('span');
+    audioPreviewText.textContent = t('import.audioPreviewLabel');
+    const audioPlayer = document.createElement('audio');
+    audioPlayer.controls = true;
+    audioPlayer.className = 'audio-preview-player';
+    audioPlayer.src = `/api/sources/${s.id}/audio`;
+    audioPreviewLabel.appendChild(audioPreviewText);
+    audioPreviewLabel.appendChild(audioPlayer);
+    form.appendChild(audioPreviewLabel);
   }
 
   const textInput = field('import.fieldText', 'text', s.text, 'textarea');
@@ -576,6 +786,8 @@ function buildEditPanel(s, options = {}) {
   const actionsRow = document.createElement('div');
   actionsRow.className = 'edit-panel-actions';
 
+  let submitBtn = null;
+
   if (pendingDeletion) {
     const noticeRow = document.createElement('div');
     noticeRow.className = 'source-row-top';
@@ -607,7 +819,7 @@ function buildEditPanel(s, options = {}) {
   } else {
     const primaryActions = document.createElement('div');
 
-    const submitBtn = document.createElement('button');
+    submitBtn = document.createElement('button');
     submitBtn.type = 'submit';
     submitBtn.textContent = t('import.updateButton');
     primaryActions.appendChild(submitBtn);
@@ -641,7 +853,9 @@ function buildEditPanel(s, options = {}) {
   if (!pendingDeletion) {
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
-      status.textContent = t('import.updating');
+      submitBtn.disabled = true;
+      submitBtn.textContent = t('import.updating');
+      status.textContent = '';
       try {
         const res = await fetch(`/api/sources/${s.id}`, {
           method: 'PUT',
@@ -670,6 +884,8 @@ function buildEditPanel(s, options = {}) {
         loadAuthors();
       } catch (err) {
         status.textContent = t('common.errorPrefix') + err.message;
+        submitBtn.disabled = false;
+        submitBtn.textContent = t('import.updateButton');
       }
     });
   }
@@ -808,14 +1024,27 @@ function highlightTermsInElement(container, keyTerms) {
     parts.forEach((part) => {
       const isTerm = keyTerms.some((term) => term.toLowerCase() === part.toLowerCase());
       if (isTerm) {
-        const btn = document.createElement('button');
-        btn.type = 'button';
-        btn.className = 'term-link';
-        const strong = document.createElement('strong');
-        strong.textContent = part;
-        btn.appendChild(strong);
-        btn.addEventListener('click', () => filterByTerm(part));
-        frag.appendChild(btn);
+        // Eine Hervorhebung, die einer bereits erfassten Autor:in entspricht,
+        // bleibt ein klickbarer Link (Sprung ins Autor:innen-Profil) - alle
+        // anderen Begriffe sind reine, nicht anklickbare Hervorhebungen
+        // (fett/schwarz), damit sie nicht fälschlich wie Autor:innen-Links
+        // aussehen, obwohl es nur allgemeine Schlagworte sind.
+        const matchingAuthor = allAuthors.find((a) => a.name.toLowerCase() === part.toLowerCase());
+        if (matchingAuthor) {
+          const btn = document.createElement('button');
+          btn.type = 'button';
+          btn.className = 'term-link';
+          const strong = document.createElement('strong');
+          strong.textContent = part;
+          btn.appendChild(strong);
+          btn.addEventListener('click', () => filterByAuthor(matchingAuthor.name));
+          frag.appendChild(btn);
+        } else {
+          const strong = document.createElement('strong');
+          strong.className = 'term-highlight';
+          strong.textContent = part;
+          frag.appendChild(strong);
+        }
       } else if (part) {
         frag.appendChild(document.createTextNode(part));
       }
@@ -836,6 +1065,25 @@ function isFilterActive() {
   return !document.getElementById('source-filter-status').classList.contains('hidden');
 }
 
+// Heuristik: Nachname = letztes Wort des Namens (keine getrennten Vor-/
+// Nachname-Felder im Datenmodell). Für die alphabetische Autor:innen-
+// Sortierung soll "Günther Adam" unter "A" einsortiert werden, nicht unter
+// "G" - deckt sich mit gängiger bibliografischer Praxis.
+function getSurname(name) {
+  const parts = name.trim().split(/\s+/);
+  return parts[parts.length - 1];
+}
+
+// In der Autor:innen-Sortierung steht bei einer Quelle mit mehreren
+// Autor:innen immer die Person voran, deren Nachname gerade die aktuelle
+// Sektion bestimmt (__sortAuthor) - z.B. taucht "Günther Adam, Christa
+// Bernd" unter "A" auf, aber "Christa Bernd, Günther Adam" unter "B".
+function authorsForDisplay(s) {
+  if (!s.__sortAuthor || !s.authors || s.authors.length <= 1) return s.authors || [];
+  const rest = s.authors.filter((name) => name !== s.__sortAuthor);
+  return [s.__sortAuthor, ...rest];
+}
+
 function sortSources(sources) {
   // In einer bereits gefilterten Ansicht (z.B. "nach Autor:in gefiltert")
   // ist die Liste schon auf die relevanten Quellen eingeschränkt - hier NICHT
@@ -852,23 +1100,51 @@ function sortSources(sources) {
     return copy;
   }
 
-  // Autor-Modus: eine Quelle mit mehreren Autor:innen bekommt einen Eintrag
-  // PRO Autor (__sortAuthor), damit sie unter jedem ihrer Autor:innen als
-  // eigene Sektion erscheint. Quellen ganz ohne Autor bleiben ein Eintrag.
+  // Autor:innen-Häufigkeit VOR dem Expandieren ermitteln: eine eigene
+  // Zwischenüberschrift (siehe renderSourceList) bekommt nur, wer mehr als
+  // eine Quelle hat - nur für DIESE Autor:innen lohnt sich ein eigener
+  // Eintrag pro Person. Hätten wir für JEDE Autor:in expandiert, würde eine
+  // Quelle mit mehreren Autor:innen, die alle nur genau diese eine Quelle
+  // haben, mehrfach optisch identisch untereinander erscheinen - ohne dass
+  // irgendwo eine Überschrift den Grund dafür erklärt.
+  const authorSourceCounts = new Map();
+  sources.forEach((s) => {
+    (s.authors || []).forEach((name) => {
+      const key = normalizeAuthor(name);
+      authorSourceCounts.set(key, (authorSourceCounts.get(key) || 0) + 1);
+    });
+  });
+
+  // Autor-Modus: eine Quelle bekommt einen Eintrag PRO Autor:in MIT eigener
+  // Überschrift, damit sie unter jeder solchen Sektion auffindbar ist. Hat
+  // KEINE ihrer Autor:innen mehr als diese eine Quelle, bleibt es bei einem
+  // einzigen Eintrag (einsortiert nach dem alphabetisch ersten Nachnamen).
+  // Quellen ganz ohne Autor bleiben ebenfalls ein Eintrag.
   const expanded = [];
   sources.forEach((s) => {
-    if (s.authors && s.authors.length) {
-      s.authors.forEach((authorName) => {
+    const sourceAuthors = s.authors || [];
+    if (!sourceAuthors.length) {
+      expanded.push({ ...s, __sortAuthor: null });
+      return;
+    }
+    const headedAuthors = sourceAuthors.filter(
+      (name) => (authorSourceCounts.get(normalizeAuthor(name)) || 0) > 1
+    );
+    if (headedAuthors.length) {
+      headedAuthors.forEach((authorName) => {
         expanded.push({ ...s, __sortAuthor: authorName });
       });
     } else {
-      expanded.push({ ...s, __sortAuthor: null });
+      const bySurname = [...sourceAuthors].sort((a, b) =>
+        getSurname(a).toLowerCase().localeCompare(getSurname(b).toLowerCase())
+      );
+      expanded.push({ ...s, __sortAuthor: bySurname[0] });
     }
   });
 
   expanded.sort((a, b) => {
-    const authorA = (a.__sortAuthor || '￿').toLowerCase();
-    const authorB = (b.__sortAuthor || '￿').toLowerCase();
+    const authorA = getSurname(a.__sortAuthor || '￿').toLowerCase();
+    const authorB = getSurname(b.__sortAuthor || '￿').toLowerCase();
     if (authorA !== authorB) return authorA.localeCompare(authorB);
     if (!a.date && !b.date) return a.title.localeCompare(b.title);
     if (!a.date) return 1;
@@ -1046,6 +1322,7 @@ function renderSourceList(sources, options = {}) {
 
     const citationUrl = s.listen_url || s.url;
     const hasDetails = !!s.summary;
+    const isProcessing = !!s.processing_status;
 
     const textSpan = document.createElement('span');
     if (hasDetails) {
@@ -1067,7 +1344,7 @@ function renderSourceList(sources, options = {}) {
       textSpan.append(`${s.title} – `);
     }
     if (s.authors && s.authors.length) {
-      s.authors.forEach((name, index) => {
+      authorsForDisplay(s).forEach((name, index) => {
         if (index > 0) textSpan.append(', ');
         const authorBtn = document.createElement('button');
         authorBtn.type = 'button';
@@ -1084,6 +1361,13 @@ function renderSourceList(sources, options = {}) {
       const badge = document.createElement('span');
       badge.className = 'restricted-badge';
       badge.textContent = t('common.restrictedBadge');
+      textSpan.appendChild(document.createTextNode(' '));
+      textSpan.appendChild(badge);
+    }
+    if (isProcessing) {
+      const badge = document.createElement('span');
+      badge.className = 'restricted-badge';
+      badge.textContent = t('import.processingBadge');
       textSpan.appendChild(document.createTextNode(' '));
       textSpan.appendChild(badge);
     }
@@ -1126,7 +1410,12 @@ function renderSourceList(sources, options = {}) {
       const editBtn = document.createElement('button');
       editBtn.type = 'button';
       editBtn.className = 'icon-button';
-      const editLabel = t('common.editSource');
+      // Solange die Quelle noch verarbeitet wird, würde ein manueller Edit
+      // vom später eintreffenden Transkript überschrieben - deshalb für
+      // GENAU diese eine Quelle deaktiviert, alle anderen bleiben normal
+      // bearbeitbar (das ist ja gerade der Zweck der Hintergrund-Verarbeitung).
+      editBtn.disabled = isProcessing;
+      const editLabel = isProcessing ? t('import.editDisabledWhileProcessing') : t('common.editSource');
       editBtn.title = editLabel;
       editBtn.setAttribute('aria-label', editLabel);
       editBtn.innerHTML = EDIT_ICON;
@@ -1661,7 +1950,9 @@ function buildAuthorEditPanel(a) {
 
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
-    status.textContent = t('import.updating');
+    submitBtn.disabled = true;
+    submitBtn.textContent = t('import.updating');
+    status.textContent = '';
     try {
       let currentName = a.name;
       const newName = nameInput.value.trim();
@@ -1697,6 +1988,8 @@ function buildAuthorEditPanel(a) {
       await loadAuthors();
     } catch (err) {
       status.textContent = t('common.errorPrefix') + err.message;
+      submitBtn.disabled = false;
+      submitBtn.textContent = t('import.updateButton');
     }
   });
 
@@ -1724,9 +2017,11 @@ document.getElementById('source-form').addEventListener('submit', async (e) => {
     authors: getCreateAuthorValues(),
     date: document.getElementById('date').value || null,
     url: document.getElementById('url').value || null,
+    listen_url: document.getElementById('listen-url').value || null,
     text: document.getElementById('text').value,
     restricted: document.getElementById('restricted').checked,
-    pdf_upload_id: pendingUploadId,
+    pdf_upload_id: pendingUploadType === 'pdf' ? pendingUploadId : null,
+    audio_upload_id: pendingUploadType === 'audio' ? pendingUploadId : null,
   };
   const status = document.getElementById('import-status');
   if (payload.url) {
@@ -1736,7 +2031,10 @@ document.getElementById('source-form').addEventListener('submit', async (e) => {
       return;
     }
   }
-  status.textContent = t('import.importing');
+  const submitButton = document.getElementById('import-submit-button');
+  submitButton.disabled = true;
+  submitButton.textContent = t('import.importing');
+  status.textContent = '';
   try {
     const res = await fetch('/api/sources', {
       method: 'POST',
@@ -1749,12 +2047,20 @@ document.getElementById('source-form').addEventListener('submit', async (e) => {
     }
     const data = await res.json();
     status.textContent = t('import.importedStatus', { title: data.title, count: data.chunk_count });
+    if (data.processing_status) {
+      // Sofort abrufen statt bis zum nächsten Poll-Takt zu warten - das
+      // neue Status-Icon soll direkt nach dem Anlegen sichtbar sein.
+      fetchImportJobs();
+    }
     document.getElementById('source-form').reset();
     // form.reset() setzt bei den dynamisch erzeugten Autoren-Feldern nur den
     // Wert zurück, entfernt aber keine per "+" hinzugefügten Extra-Zeilen -
     // hier explizit auf ein einzelnes leeres Feld zurücksetzen.
     renderCreateAuthorDateRow([], '');
     pendingUploadId = null;
+    pendingUploadType = null;
+    setTextFieldPendingAudio(false);
+    setListenUrlFieldVisible(false);
     importBereich.classList.add('hidden');
     // Die URL-Eingabe im "Von URL importieren"-Popover gehört NICHT zu
     // #source-form (separates Formular für /api/extract-url) und wurde
@@ -1766,6 +2072,9 @@ document.getElementById('source-form').addEventListener('submit', async (e) => {
     loadAuthors();
   } catch (err) {
     status.textContent = t('common.errorPrefix') + err.message;
+  } finally {
+    submitButton.disabled = false;
+    submitButton.textContent = t('import.importButton');
   }
 });
 

@@ -1,15 +1,21 @@
+import subprocess
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+from app import extraction
 from app.extraction import (
     _extract_youtube,
     _parse_markdown_extraction,
     _split_authors,
+    _transcribe_chunk,
     download_audio_bytes,
     download_pdf_bytes,
     extract_from_url,
     extract_pdf,
     looks_like_audio,
     looks_like_pdf,
+    split_audio_file,
+    transcribe_audio,
 )
 
 
@@ -307,9 +313,18 @@ def test_download_audio_bytes_returns_none_on_error():
         assert download_audio_bytes("https://example.org/episode.mp3") is None
 
 
-def test_extract_from_url_routes_audio_to_manual_fallback():
-    result = extract_from_url("https://example.org/podcast/folge-42-ueber-dezentralisierung.mp3")
+def test_extract_from_url_routes_audio_to_manual_fallback_without_downloading():
+    # Transkription kann Minuten dauern und darf deshalb NICHT bei der
+    # Vorschau (extract_from_url) passieren, sondern erst als Hintergrund-
+    # Job nach dem Anlegen der Quelle (app/main.py:
+    # _process_audio_transcription) - hier darf also gar nicht erst
+    # heruntergeladen/transkribiert werden.
+    with patch("app.extraction.download_audio_bytes") as mock_download, \
+         patch("app.extraction.transcribe_audio") as mock_transcribe:
+        result = extract_from_url("https://example.org/podcast/folge-42-ueber-dezentralisierung.mp3")
 
+    mock_download.assert_not_called()
+    mock_transcribe.assert_not_called()
     assert result["extracted"] is False
     assert result["text"] == ""
     assert result["title"] == "Folge 42 ueber dezentralisierung"
@@ -381,3 +396,130 @@ def test_extract_youtube_handles_transcript_fetch_failure():
         result = _extract_youtube("https://www.youtube.com/watch?v=abc123")
 
     assert result["extracted"] is False
+
+
+def _fake_diarized_result(pairs):
+    segments = []
+    for speaker, text in pairs:
+        segment = MagicMock()
+        segment.speaker = speaker
+        segment.text = text
+        segments.append(segment)
+    result = MagicMock()
+    result.segments = segments
+    return result
+
+
+def test_transcribe_chunk_uses_diarize_model_and_formats_speakers():
+    client = MagicMock()
+    client.audio.transcriptions.create.return_value = _fake_diarized_result(
+        [("A", "Hallo zusammen."), ("B", "Hallo, schön hier zu sein."), ("A", "Wie geht's dir?")]
+    )
+    with patch.object(extraction, "_get_openai_client", return_value=client):
+        text = _transcribe_chunk(b"fake-mp3-bytes", "episode.mp3")
+
+    assert text == "Sprecher 1: Hallo zusammen.\n\nSprecher 2: Hallo, schön hier zu sein.\n\nSprecher 1: Wie geht's dir?"
+    kwargs = client.audio.transcriptions.create.call_args.kwargs
+    assert kwargs["model"] == "gpt-4o-transcribe-diarize"
+    assert kwargs["response_format"] == "diarized_json"
+    assert kwargs["chunking_strategy"] == "auto"
+
+
+def test_transcribe_chunk_falls_back_to_whisper_for_flac():
+    client = MagicMock()
+    client.audio.transcriptions.create.return_value = "Ein einfaches Transkript."
+    with patch.object(extraction, "_get_openai_client", return_value=client):
+        text = _transcribe_chunk(b"fake-flac-bytes", "aufnahme.flac")
+
+    assert text == "Ein einfaches Transkript."
+    kwargs = client.audio.transcriptions.create.call_args.kwargs
+    assert kwargs["model"] == "whisper-1"
+    assert kwargs["response_format"] == "text"
+
+
+def test_transcribe_chunk_returns_empty_string_on_error():
+    client = MagicMock()
+    client.audio.transcriptions.create.side_effect = RuntimeError("boom")
+    with patch.object(extraction, "_get_openai_client", return_value=client):
+        text = _transcribe_chunk(b"fake-bytes", "episode.mp3")
+
+    assert text == ""
+
+
+def test_split_audio_file_returns_original_path_when_under_limit(tmp_path):
+    audio_path = tmp_path / "small.mp3"
+    audio_path.write_bytes(b"x" * 100)
+
+    with patch("app.extraction.subprocess.run") as mock_run:
+        result = split_audio_file(audio_path, max_bytes=1000)
+
+    assert result == [audio_path]
+    mock_run.assert_not_called()
+
+
+def test_split_audio_file_splits_when_over_limit(tmp_path):
+    audio_path = tmp_path / "big.mp3"
+    audio_path.write_bytes(b"x" * 2000)
+    split_dir = tmp_path / "split"
+    split_dir.mkdir()
+
+    def fake_run(cmd, **kwargs):
+        (split_dir / "chunk_000.mp3").write_bytes(b"a")
+        (split_dir / "chunk_001.mp3").write_bytes(b"b")
+        return MagicMock()
+
+    with patch("app.extraction._audio_duration_seconds", return_value=120.0), \
+         patch("app.extraction.tempfile.mkdtemp", return_value=str(split_dir)), \
+         patch("app.extraction.subprocess.run", side_effect=fake_run) as mock_run:
+        result = split_audio_file(audio_path, max_bytes=1000)
+
+    assert mock_run.called
+    assert sorted(p.name for p in result) == ["chunk_000.mp3", "chunk_001.mp3"]
+
+
+def test_split_audio_file_returns_original_on_ffmpeg_failure(tmp_path):
+    audio_path = tmp_path / "big.mp3"
+    audio_path.write_bytes(b"x" * 2000)
+
+    with patch("app.extraction._audio_duration_seconds", return_value=120.0), \
+         patch("app.extraction.subprocess.run", side_effect=subprocess.CalledProcessError(1, "ffmpeg")):
+        result = split_audio_file(audio_path, max_bytes=1000)
+
+    assert result == [audio_path]
+
+
+def test_split_audio_file_returns_original_when_duration_unknown(tmp_path):
+    audio_path = tmp_path / "big.mp3"
+    audio_path.write_bytes(b"x" * 2000)
+
+    with patch("app.extraction._audio_duration_seconds", return_value=None):
+        result = split_audio_file(audio_path, max_bytes=1000)
+
+    assert result == [audio_path]
+
+
+def test_transcribe_audio_returns_single_chunk_text_unchanged(tmp_path):
+    audio_path = tmp_path / "episode.mp3"
+    audio_path.write_bytes(b"fake-bytes")
+
+    with patch.object(extraction, "split_audio_file", return_value=[audio_path]), \
+         patch.object(extraction, "_transcribe_chunk", return_value="Nur ein Teil."):
+        text = transcribe_audio(audio_path)
+
+    assert text == "Nur ein Teil."
+
+
+def test_transcribe_audio_concatenates_multiple_segments_with_part_markers(tmp_path):
+    split_dir = tmp_path / "split"
+    split_dir.mkdir()
+    chunk_a = split_dir / "chunk_000.mp3"
+    chunk_b = split_dir / "chunk_001.mp3"
+    chunk_a.write_bytes(b"a")
+    chunk_b.write_bytes(b"b")
+
+    with patch.object(extraction, "split_audio_file", return_value=[chunk_a, chunk_b]), \
+         patch.object(extraction, "_transcribe_chunk", side_effect=["Text A", "Text B"]):
+        text = transcribe_audio(tmp_path / "original.mp3")
+
+    assert text == "--- Teil 1 ---\n\nText A\n\n--- Teil 2 ---\n\nText B"
+    assert not split_dir.exists()

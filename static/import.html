@@ -30,14 +30,18 @@
     <label><span data-i18n="import.fieldUrl"></span>
       <input type="url" id="url">
     </label>
-    <label><span data-i18n="import.fieldText"></span>
+    <label id="listen-url-label" class="hidden"><span data-i18n="import.fieldListenUrl"></span>
+      <input type="url" id="listen-url">
+    </label>
+    <label id="text-field-label"><span data-i18n="import.fieldText"></span>
       <textarea id="text" rows="10" required></textarea>
     </label>
+    <p id="audio-text-pending-hint" class="hidden" data-i18n="import.audioTextPendingHint"></p>
     <label class="checkbox-label">
       <input type="checkbox" id="restricted">
       <span data-i18n="import.restrictedLabel"></span>
     </label>
-    <button type="submit" data-i18n="import.importButton"></button>
+    <button type="submit" id="import-submit-button" data-i18n="import.importButton"></button>
   </form>
   <p id="import-status"></p>
 </section>
@@ -98,10 +102,26 @@
           <div id="file-popover" class="popover hidden">
             <div class="popover-arrow"></div>
             <label><span data-i18n="import.fileFieldLabel"></span>
-              <input type="file" id="popover-file" accept="application/pdf">
+              <input type="file" id="popover-file" accept="application/pdf,audio/mpeg,audio/wav,audio/x-m4a,audio/mp4,audio/flac,audio/ogg,.mp3,.wav,.m4a,.flac,.ogg,.aac">
             </label>
             <button type="button" id="popover-upload" data-i18n="import.uploadButton"></button>
             <p id="upload-status"></p>
+          </div>
+        </div>
+        <div class="quelltyp-item--anchor">
+          <button type="button" id="typ-jobs" class="circle-button circle-button--sm hidden" data-i18n-title="import.jobsIconTitle">
+            <svg id="jobs-icon-ring" viewBox="0 0 24 24" width="20" height="20">
+              <circle cx="12" cy="12" r="9" fill="none" stroke="var(--color-border)" stroke-width="3"></circle>
+              <circle id="jobs-icon-progress" cx="12" cy="12" r="9" fill="none" stroke="var(--color-accent)"
+                stroke-width="3" stroke-linecap="round" stroke-dasharray="56.5" stroke-dashoffset="56.5"
+                transform="rotate(-90 12 12)"></circle>
+            </svg>
+            <span id="jobs-icon-count" class="jobs-icon-count hidden"></span>
+          </button>
+
+          <div id="jobs-popover" class="popover hidden">
+            <div class="popover-arrow"></div>
+            <ul id="jobs-list"></ul>
           </div>
         </div>
       </div>

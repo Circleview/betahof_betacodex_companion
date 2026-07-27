@@ -363,6 +363,12 @@ textarea {
   accent-color: var(--color-accent);
 }
 
+.audio-preview-player {
+  display: block;
+  width: 100%;
+  margin-top: 0.35rem;
+}
+
 .markup-toolbar-row {
   display: flex;
   align-items: center;
@@ -418,6 +424,11 @@ button[type="submit"], #popover-load, #popover-upload {
 
 button[type="submit"]:hover, #popover-load:hover, #popover-upload:hover {
   background: var(--color-accent-hover);
+}
+
+button[type="submit"]:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .restricted-badge {
@@ -1087,6 +1098,11 @@ body:not(.chat-started) #question-form {
   text-decoration: underline;
 }
 
+.term-highlight {
+  color: var(--color-text);
+  font-weight: 700;
+}
+
 .source-open-link {
   display: inline-flex;
   vertical-align: middle;
@@ -1243,6 +1259,15 @@ body:not(.chat-started) #question-form {
   color: var(--color-accent);
 }
 
+.icon-button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.icon-button:disabled:hover {
+  color: var(--color-text-muted);
+}
+
 @media (hover: hover) and (pointer: fine) {
   .icon-button {
     opacity: 0;
@@ -1302,6 +1327,68 @@ body:not(.chat-started) #question-form {
 
 .warning-icon:hover {
   color: var(--color-warning);
+}
+
+#typ-jobs {
+  position: relative;
+}
+
+#typ-jobs.has-error #jobs-icon-progress {
+  stroke: var(--color-warning);
+}
+
+.jobs-icon-count {
+  position: absolute;
+  top: -0.2rem;
+  right: -0.2rem;
+  min-width: 1.1rem;
+  height: 1.1rem;
+  padding: 0 0.2rem;
+  border-radius: 999px;
+  background: var(--color-accent);
+  color: #fff;
+  font-size: 0.65rem;
+  font-weight: 700;
+  line-height: 1.1rem;
+  text-align: center;
+}
+
+#jobs-popover {
+  min-width: 260px;
+  max-width: 320px;
+}
+
+#jobs-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 260px;
+  overflow-y: auto;
+}
+
+#jobs-list li {
+  padding: 0.5rem 0;
+  border-bottom: 1px solid var(--color-border);
+}
+
+#jobs-list li:last-child {
+  border-bottom: none;
+}
+
+.jobs-list-title {
+  font-weight: 600;
+  display: block;
+}
+
+.jobs-list-step {
+  color: var(--color-text-muted);
+  font-size: 0.85rem;
+}
+
+.jobs-list-error {
+  color: var(--color-warning);
+  font-size: 0.85rem;
+  margin: 0.2rem 0;
 }
 
 /* Ohne explizite Spalten-Zuweisung landet das Bearbeiten-Panel im Grid der
@@ -1636,7 +1723,13 @@ details a {
 }
 
 .hidden {
-  display: none;
+  /* !important bewusst: .hidden ist eine generelle "immer ausblenden"-
+     Utility-Klasse, die mit beliebigen anderen Klassen kombiniert wird
+     (z.B. .circle-button setzt selbst display:flex) - ohne !important
+     gewinnt bei gleicher Spezifität die spätere Regel im Stylesheet,
+     unabhängig vom Inhalt (siehe Bug: #typ-jobs blieb trotz .hidden
+     sichtbar, weil .circle-button weiter unten steht). */
+  display: none !important;
 }
 
 .quelltyp-buttons {

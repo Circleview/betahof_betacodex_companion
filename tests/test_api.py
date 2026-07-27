@@ -39,6 +39,7 @@ def client(tmp_path, monkeypatch):
     monkeypatch.setattr(main_module, "PDF_DIR", tmp_path / "pdfs")
     monkeypatch.setattr(main_module, "PDF_UPLOAD_STAGING_DIR", tmp_path / "pdf_uploads")
     monkeypatch.setattr(main_module, "AUDIO_DIR", tmp_path / "audio")
+    monkeypatch.setattr(main_module, "AUDIO_UPLOAD_STAGING_DIR", tmp_path / "audio_uploads")
 
     monkeypatch.setattr(vectorstore, "DB_PATH", tmp_path / "chroma")
     monkeypatch.setattr(vectorstore, "_client", None)
@@ -114,6 +115,116 @@ def test_add_source_creates_chunks(client):
 
 def test_add_source_rejects_empty_text(client):
     response = client.post("/api/sources", json={"title": "Leer", "text": "   "})
+    assert response.status_code == 400
+
+
+def _create_deferred_audio_source(client, monkeypatch, title="Podcast-Folge", url="https://cdn.example.org/episode.mp3"):
+    """Legt eine Audio-URL-Quelle mit leerem Text an, OHNE dass der
+    eingeplante Hintergrund-Job dabei wirklich läuft. Wichtig: der
+    TestClient führt BackgroundTasks SYNCHRON aus, noch bevor client.post()
+    zurückkehrt - ohne diesen No-Op-Stub würde jeder Aufruf hier einen
+    ECHTEN, unbeabsichtigten Aufruf von extraction.transcribe_audio (und
+    damit einen echten API-Call) auslösen."""
+    monkeypatch.setattr(extraction, "looks_like_audio", lambda u: True)
+    monkeypatch.setattr(extraction, "download_audio_bytes", lambda u: b"fake-mp3-bytes")
+
+    # Nur WÄHREND dieses einen Requests stubben, danach sofort wieder auf
+    # die echte Funktion zurücksetzen - sonst würde auch ein späterer
+    # Reprocess-Aufruf im selben Test lautlos den No-Op statt der echten
+    # Verarbeitung einplanen.
+    real_process = main_module._process_audio_transcription
+    monkeypatch.setattr(main_module, "_process_audio_transcription", lambda *a, **kw: None)
+    response = client.post("/api/sources", json={"title": title, "text": "", "url": url})
+    monkeypatch.setattr(main_module, "_process_audio_transcription", real_process)
+    return response
+
+
+def test_add_source_defers_audio_url_with_missing_text(client, monkeypatch):
+    response = _create_deferred_audio_source(client, monkeypatch)
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["text"] == ""
+    assert data["chunk_count"] == 0
+    assert data["processing_status"] == "pending"
+
+
+def test_process_audio_transcription_fills_text_and_indexes(client, monkeypatch):
+    create_res = _create_deferred_audio_source(client, monkeypatch)
+    source_id = create_res.json()["id"]
+
+    monkeypatch.setattr(extraction, "transcribe_audio", lambda path: "Nachträglich transkribierter Text.")
+    main_module._process_audio_transcription(source_id)
+
+    sources = client.get("/api/sources").json()
+    entry = next(s for s in sources if s["id"] == source_id)
+    assert entry["text"] == "Nachträglich transkribierter Text."
+    assert entry["chunk_count"] > 0
+    assert entry["processing_status"] is None
+
+    answer = client.post("/api/ask", json={"question": "Was steht in der Folge?"})
+    assert answer.status_code == 200
+
+
+def test_process_audio_transcription_marks_error_when_transcription_fails(client, monkeypatch):
+    create_res = _create_deferred_audio_source(client, monkeypatch)
+    source_id = create_res.json()["id"]
+
+    monkeypatch.setattr(extraction, "transcribe_audio", lambda path: "")
+    main_module._process_audio_transcription(source_id)
+
+    sources = client.get("/api/sources").json()
+    entry = next(s for s in sources if s["id"] == source_id)
+    assert entry["processing_status"] == "error"
+    assert entry["processing_error"]
+
+
+def test_import_jobs_lists_pending_and_error_but_not_done(client, monkeypatch):
+    pending_res = _create_deferred_audio_source(
+        client, monkeypatch, title="Läuft noch", url="https://cdn.example.org/a.mp3"
+    )
+    pending_id = pending_res.json()["id"]
+
+    done_res = _create_deferred_audio_source(
+        client, monkeypatch, title="Fertig", url="https://cdn.example.org/b.mp3"
+    )
+    done_id = done_res.json()["id"]
+    monkeypatch.setattr(extraction, "transcribe_audio", lambda path: "Text.")
+    main_module._process_audio_transcription(done_id)
+
+    jobs = client.get("/api/import-jobs").json()
+    job_ids = {job["id"] for job in jobs}
+    assert pending_id in job_ids
+    assert done_id not in job_ids
+
+
+def test_reprocess_source_retries_and_can_then_succeed(client, monkeypatch):
+    create_res = _create_deferred_audio_source(client, monkeypatch)
+    source_id = create_res.json()["id"]
+
+    monkeypatch.setattr(extraction, "transcribe_audio", lambda path: "")
+    main_module._process_audio_transcription(source_id)
+    assert client.get("/api/sources").json()[0]["processing_status"] == "error"
+
+    # Reprocess plant den Job über BackgroundTasks neu ein - im TestClient
+    # läuft der dabei sofort mit, deshalb hier VORHER auf ein erfolgreiches
+    # Transkript umstellen, um den vollen Erfolgspfad zu prüfen.
+    monkeypatch.setattr(extraction, "transcribe_audio", lambda path: "Beim zweiten Versuch erfolgreich.")
+    response = client.post(f"/api/sources/{source_id}/reprocess")
+    assert response.status_code == 200
+
+    sources = client.get("/api/sources").json()
+    entry = next(s for s in sources if s["id"] == source_id)
+    assert entry["processing_status"] is None
+    assert entry["processing_error"] is None
+    assert entry["text"] == "Beim zweiten Versuch erfolgreich."
+
+
+def test_reprocess_source_without_audio_file_returns_400(client):
+    create_res = client.post("/api/sources", json={"title": "Quelle", "text": "Text."})
+    source_id = create_res.json()["id"]
+
+    response = client.post(f"/api/sources/{source_id}/reprocess")
     assert response.status_code == 400
 
 
@@ -385,6 +496,7 @@ def test_extract_url_endpoint_returns_extracted_fields(client, monkeypatch):
             "extracted": True,
         },
     )
+    monkeypatch.setattr(extraction, "looks_like_audio", lambda url: False)
 
     response = client.post("/api/extract-url", json={"url": "https://example.org/blogpost"})
 
@@ -393,6 +505,7 @@ def test_extract_url_endpoint_returns_extracted_fields(client, monkeypatch):
     assert data["title"] == "Extrahierter Titel"
     assert data["date"] == "2024-02-02"
     assert data["extracted"] is True
+    assert data["is_audio"] is False
 
 
 def test_extract_url_endpoint_reports_failed_extraction(client, monkeypatch):
@@ -401,11 +514,26 @@ def test_extract_url_endpoint_reports_failed_extraction(client, monkeypatch):
         "extract_from_url",
         lambda url: {"title": "", "authors": [], "date": "", "text": "", "extracted": False},
     )
+    monkeypatch.setattr(extraction, "looks_like_audio", lambda url: False)
 
     response = client.post("/api/extract-url", json={"url": "https://example.org/nicht-lesbar"})
 
     assert response.status_code == 200
     assert response.json()["extracted"] is False
+
+
+def test_extract_url_endpoint_reports_is_audio_true_for_audio_url(client, monkeypatch):
+    monkeypatch.setattr(
+        extraction,
+        "extract_from_url",
+        lambda url: {"title": "Folge 1", "authors": [], "date": "", "text": "", "extracted": False},
+    )
+    monkeypatch.setattr(extraction, "looks_like_audio", lambda url: True)
+
+    response = client.post("/api/extract-url", json={"url": "https://cdn.example.org/episode.mp3"})
+
+    assert response.status_code == 200
+    assert response.json()["is_audio"] is True
 
 
 def test_add_source_registers_author(client):
@@ -1220,6 +1348,98 @@ def test_add_source_with_pdf_upload_id_persists_file(client, monkeypatch):
     sources = client.get("/api/sources").json()
     entry = next(s for s in sources if s["id"] == source_id)
     assert entry["has_pdf"] is True
+
+
+def test_extract_audio_upload_returns_immediately_without_transcribing(client, monkeypatch):
+    # Transkription kann Minuten dauern und läuft deshalb erst als
+    # Hintergrund-Job nach dem Anlegen der Quelle - die Upload-Vorschau
+    # darf transcribe_audio gar nicht erst aufrufen.
+    def _fail_if_called(*args, **kwargs):
+        raise AssertionError("transcribe_audio darf beim Upload-Preview nicht aufgerufen werden")
+
+    monkeypatch.setattr(extraction, "transcribe_audio", _fail_if_called)
+
+    response = client.post(
+        "/api/extract-audio-upload",
+        files={"file": ("episode.mp3", b"fake-mp3-bytes", "audio/mpeg")},
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["title"] == "Episode"
+    assert data["text"] == ""
+    assert data["extracted"] is False
+    assert data["upload_id"]
+
+
+def test_extract_audio_upload_without_role_is_forbidden(anon_client):
+    response = anon_client.post(
+        "/api/extract-audio-upload",
+        files={"file": ("episode.mp3", b"fake-mp3-bytes", "audio/mpeg")},
+    )
+    assert response.status_code == 403
+
+
+def test_add_source_with_audio_upload_id_persists_file(client, monkeypatch):
+    monkeypatch.setattr(extraction, "transcribe_audio", lambda path: "Transkribierter Text.")
+    upload_res = client.post(
+        "/api/extract-audio-upload",
+        files={"file": ("episode.mp3", b"fake-mp3-bytes", "audio/mpeg")},
+    )
+    upload_id = upload_res.json()["upload_id"]
+
+    create_res = client.post(
+        "/api/sources",
+        json={"title": "Aus Audio", "text": "Transkribierter Text.", "audio_upload_id": upload_id},
+    )
+
+    source_id = create_res.json()["id"]
+    stored = list(main_module.AUDIO_DIR.glob(f"{source_id}.*"))
+    assert len(stored) == 1
+    assert stored[0].read_bytes() == b"fake-mp3-bytes"
+    assert not list(main_module.AUDIO_UPLOAD_STAGING_DIR.glob(f"{upload_id}.*"))
+
+    sources = client.get("/api/sources").json()
+    entry = next(s for s in sources if s["id"] == source_id)
+    assert entry["has_audio"] is True
+
+
+def test_get_source_audio_returns_file_content(client, monkeypatch):
+    monkeypatch.setattr(extraction, "transcribe_audio", lambda path: "Transkribierter Text.")
+    upload_res = client.post(
+        "/api/extract-audio-upload",
+        files={"file": ("episode.mp3", b"fake-mp3-bytes", "audio/mpeg")},
+    )
+    upload_id = upload_res.json()["upload_id"]
+    create_res = client.post(
+        "/api/sources",
+        json={"title": "Aus Audio", "text": "Transkribierter Text.", "audio_upload_id": upload_id},
+    )
+    source_id = create_res.json()["id"]
+
+    response = client.get(f"/api/sources/{source_id}/audio")
+
+    assert response.status_code == 200
+    assert response.content == b"fake-mp3-bytes"
+    assert response.headers["content-type"] == "audio/mpeg"
+
+
+def test_get_source_audio_requires_pfleger_role(client, anon_client):
+    create_res = client.post("/api/sources", json={"title": "Quelle", "text": "Text."})
+    source_id = create_res.json()["id"]
+
+    response = anon_client.get(f"/api/sources/{source_id}/audio")
+
+    assert response.status_code == 403
+
+
+def test_get_source_audio_returns_404_without_audio_file(client):
+    create_res = client.post("/api/sources", json={"title": "Quelle", "text": "Text."})
+    source_id = create_res.json()["id"]
+
+    response = client.get(f"/api/sources/{source_id}/audio")
+
+    assert response.status_code == 404
 
 
 def test_source_without_pdf_reports_has_pdf_false(client):

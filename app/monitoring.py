@@ -3,9 +3,21 @@ import urllib.request
 
 TIMEOUT_SECONDS = 5
 
+# Manche Server (Bot-/Hotlink-Schutz) lehnen Requests ohne "Accept"-Header
+# mit HTTP 406 ab, selbst mit plausiblem User-Agent - ein echter Browser
+# schickt diesen Header immer mit (siehe gleiches Problem/Fix in
+# app/extraction.py:_REQUEST_HEADERS).
+_REQUEST_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Chrome/120.0 Safari/537.36"
+    ),
+    "Accept": "*/*",
+}
+
 
 def _request(url: str, method: str) -> dict:
-    req = urllib.request.Request(url, method=method, headers={"User-Agent": "Mozilla/5.0"})
+    req = urllib.request.Request(url, method=method, headers=_REQUEST_HEADERS)
     with urllib.request.urlopen(req, timeout=TIMEOUT_SECONDS) as resp:
         return {"reachable": resp.status < 400, "status_code": resp.status}
 

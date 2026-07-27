@@ -1,11 +1,27 @@
 import io
 import re
+import shutil
+import subprocess
+import tempfile
 import urllib.request
+from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 import trafilatura
+from openai import OpenAI
 from pypdf import PdfReader
 from youtube_transcript_api import YouTubeTranscriptApi
+
+# Manche Server (Bot-/Hotlink-Schutz, z.B. bei WordPress-gehosteten Podcast-
+# Medien) lehnen Requests ohne "Accept"-Header mit HTTP 406 ab, selbst mit
+# plausiblem User-Agent - ein echter Browser schickt diesen Header immer mit.
+_REQUEST_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Chrome/120.0 Safari/537.36"
+    ),
+    "Accept": "*/*",
+}
 
 
 def _split_authors(raw: str) -> list[str]:
@@ -38,7 +54,7 @@ def _extract_video_id(url: str) -> str | None:
 
 def _fetch_youtube_metadata(url: str) -> dict:
     try:
-        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+        req = urllib.request.Request(url, headers=_REQUEST_HEADERS)
         with urllib.request.urlopen(req, timeout=10) as resp:
             html = resp.read().decode("utf-8", errors="ignore")
     except Exception:
@@ -92,7 +108,7 @@ def looks_like_audio(url: str) -> bool:
     if path.endswith(AUDIO_EXTENSIONS):
         return True
     try:
-        req = urllib.request.Request(url, method="HEAD", headers={"User-Agent": "Mozilla/5.0"})
+        req = urllib.request.Request(url, method="HEAD", headers=_REQUEST_HEADERS)
         with urllib.request.urlopen(req, timeout=10) as resp:
             return resp.headers.get("Content-Type", "").lower().startswith("audio/")
     except Exception:
@@ -101,7 +117,7 @@ def looks_like_audio(url: str) -> bool:
 
 def download_audio_bytes(url: str) -> bytes | None:
     try:
-        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+        req = urllib.request.Request(url, headers=_REQUEST_HEADERS)
         with urllib.request.urlopen(req, timeout=60) as resp:
             return resp.read()
     except Exception:
@@ -117,6 +133,11 @@ def _guess_title_from_url(url: str) -> str:
 
 
 def _extract_audio(url: str) -> dict:
+    """Liefert nur den aus der URL geratenen Titel, ohne Download/
+    Transkription - Audio-Transkription kann mehrere Minuten dauern und
+    läuft deshalb ausschließlich als Hintergrund-Job NACH dem Anlegen der
+    Quelle (siehe app/main.py: _process_audio_transcription), damit die
+    Vorschau (POST /api/extract-url) schnell bleibt."""
     return {
         "title": _guess_title_from_url(url),
         "authors": [],
@@ -126,11 +147,143 @@ def _extract_audio(url: str) -> dict:
     }
 
 
+# Von gpt-4o-transcribe-diarize unterstützte Formate (Sprechererkennung).
+# flac/ogg sind zwar Teil von AUDIO_EXTENSIONS (Wiedergabe/Speicherung),
+# aber von diesem Modell nicht unterstützt - dafür Fallback auf whisper-1
+# (Transkription ohne Sprecher-Label, siehe _transcribe_chunk).
+_DIARIZE_EXTENSIONS = (".mp3", ".mp4", ".mpeg", ".mpga", ".m4a", ".wav", ".webm")
+
+AUDIO_UPLOAD_MAX_BYTES = 25 * 1024 * 1024
+
+_openai_client = None
+
+
+def _get_openai_client() -> OpenAI:
+    global _openai_client
+    if _openai_client is None:
+        _openai_client = OpenAI()
+    return _openai_client
+
+
+def _format_diarized_text(result) -> str:
+    speaker_labels: dict[str, str] = {}
+    lines = []
+    for segment in result.segments:
+        label = speaker_labels.setdefault(segment.speaker, f"Sprecher {len(speaker_labels) + 1}")
+        text = segment.text.strip()
+        if text:
+            lines.append(f"{label}: {text}")
+    return "\n\n".join(lines)
+
+
+def _transcribe_chunk(data: bytes, filename: str) -> str:
+    """Transkribiert eine einzelne Audiodatei (muss innerhalb des
+    OpenAI-Größenlimits liegen, siehe AUDIO_UPLOAD_MAX_BYTES). Gibt bei
+    jedem Fehler (API-Fehler, nicht unterstütztes Format, fehlender Key,
+    Netzwerkfehler) einen leeren String zurück statt zu crashen - gleiche
+    defensive Konvention wie download_audio_bytes/looks_like_audio."""
+    extension = Path(filename).suffix.lower()
+    client = _get_openai_client()
+    try:
+        if extension in _DIARIZE_EXTENSIONS:
+            result = client.audio.transcriptions.create(
+                model="gpt-4o-transcribe-diarize",
+                file=(filename, data),
+                response_format="diarized_json",
+                chunking_strategy="auto",
+            )
+            return _format_diarized_text(result)
+
+        result = client.audio.transcriptions.create(
+            model="whisper-1",
+            file=(filename, data),
+            response_format="text",
+        )
+        return str(result).strip()
+    except Exception:
+        return ""
+
+
+def _audio_duration_seconds(path: Path) -> float | None:
+    try:
+        completed = subprocess.run(
+            ["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", str(path)],
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=True,
+        )
+        return float(completed.stdout.strip())
+    except Exception:
+        return None
+
+
+def split_audio_file(path: Path, max_bytes: int = AUDIO_UPLOAD_MAX_BYTES) -> list[Path]:
+    """Zerlegt eine Audiodatei in verlustfreie Zeit-Abschnitte, falls sie
+    über max_bytes liegt (sonst wird der Originalpfad unverändert
+    zurückgegeben, ohne ffmpeg aufzurufen). Die Segment-Dauer wird grob aus
+    Dateigröße/Gesamtdauer geschätzt, mit Sicherheitsmarge (70% des Limits),
+    damit übliche Sprach-Bitraten sicher darunter bleiben."""
+    size = path.stat().st_size
+    if size <= max_bytes:
+        return [path]
+
+    duration = _audio_duration_seconds(path)
+    if not duration:
+        return [path]
+
+    bytes_per_second = size / duration
+    segment_seconds = max(int((max_bytes * 0.7) / bytes_per_second), 30)
+
+    output_dir = Path(tempfile.mkdtemp(prefix="audio_split_"))
+    pattern = output_dir / f"chunk_%03d{path.suffix}"
+    try:
+        subprocess.run(
+            [
+                "ffmpeg", "-i", str(path),
+                "-f", "segment", "-segment_time", str(segment_seconds),
+                "-c", "copy", "-reset_timestamps", "1",
+                str(pattern),
+            ],
+            capture_output=True,
+            timeout=600,
+            check=True,
+        )
+    except Exception:
+        return [path]
+
+    segments = sorted(output_dir.glob(f"chunk_*{path.suffix}"))
+    return segments or [path]
+
+
+def transcribe_audio(path: Path) -> str:
+    """Transkribiert eine Audiodatei beliebiger Größe: Dateien über dem
+    OpenAI-Limit werden zuerst per split_audio_file() in Abschnitte
+    aufgeteilt, jeder Abschnitt einzeln transkribiert und die Ergebnisse zu
+    einem zusammenhängenden Text verkettet. Sprecher-Nummerierung wird pro
+    Abschnitt neu vergeben (keine Kontinuität über Abschnittsgrenzen
+    hinweg möglich)."""
+    segments = split_audio_file(path)
+    is_split = len(segments) > 1 or (segments and segments[0] != path)
+    texts = []
+    for segment_path in segments:
+        text = _transcribe_chunk(segment_path.read_bytes(), segment_path.name)
+        if text:
+            texts.append(text)
+
+    if is_split:
+        shutil.rmtree(segments[0].parent, ignore_errors=True)
+
+    if len(texts) <= 1:
+        return texts[0] if texts else ""
+    return "\n\n".join(f"--- Teil {i + 1} ---\n\n{text}" for i, text in enumerate(texts))
+
+
 def looks_like_pdf(url: str) -> bool:
     if url.lower().split("?")[0].endswith(".pdf"):
         return True
     try:
-        req = urllib.request.Request(url, method="HEAD", headers={"User-Agent": "Mozilla/5.0"})
+        req = urllib.request.Request(url, method="HEAD", headers=_REQUEST_HEADERS)
         with urllib.request.urlopen(req, timeout=10) as resp:
             return "application/pdf" in resp.headers.get("Content-Type", "").lower()
     except Exception:
@@ -139,7 +292,7 @@ def looks_like_pdf(url: str) -> bool:
 
 def download_pdf_bytes(url: str) -> bytes | None:
     try:
-        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+        req = urllib.request.Request(url, headers=_REQUEST_HEADERS)
         with urllib.request.urlopen(req, timeout=30) as resp:
             return resp.read()
     except Exception:

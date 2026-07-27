@@ -11,6 +11,7 @@ class SourceIn(BaseModel):
     listen_url: Optional[str] = None
     text: str
     pdf_upload_id: Optional[str] = None
+    audio_upload_id: Optional[str] = None
     restricted: bool = False
     summary: Optional[str] = None
     key_terms: Optional[list[str]] = None
@@ -31,6 +32,17 @@ class SourceOut(BaseModel):
     key_terms: list[str] = []
     has_pdf: bool = False
     has_audio: bool = False
+    processing_status: Optional[str] = None
+    processing_step: Optional[str] = None
+    processing_error: Optional[str] = None
+
+
+class ImportJobOut(BaseModel):
+    id: str
+    title: str
+    processing_status: str
+    processing_step: Optional[str] = None
+    processing_error: Optional[str] = None
 
 
 class QuestionIn(BaseModel):
@@ -131,6 +143,7 @@ class ExtractedSource(BaseModel):
     date: str
     text: str
     extracted: bool
+    is_audio: bool = False
 
 
 class ExtractedUpload(ExtractedSource):

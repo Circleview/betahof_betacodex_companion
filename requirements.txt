@@ -12,3 +12,4 @@ trafilatura
 youtube-transcript-api
 pypdf
 python-multipart
+openai

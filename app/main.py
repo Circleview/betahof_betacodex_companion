@@ -2,6 +2,8 @@ import json
 import os
 import re
 import subprocess
+import tempfile
+import threading
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -42,6 +44,7 @@ from app.models import (
     ChunkRef,
     ExtractedSource,
     ExtractedUpload,
+    ImportJobOut,
     InviteIn,
     MessageOut,
     QuestionIn,
@@ -94,6 +97,7 @@ STATIC_DIR = BASE_DIR / "static"
 PDF_DIR = DATA_DIR / "pdfs"
 PDF_UPLOAD_STAGING_DIR = DATA_DIR / "pdf_uploads"
 AUDIO_DIR = DATA_DIR / "audio"
+AUDIO_UPLOAD_STAGING_DIR = DATA_DIR / "audio_uploads"
 
 DATA_DIR.mkdir(exist_ok=True)
 users.ensure_bootstrap_admin(os.environ.get("SYSTEM_ADMIN_EMAIL", ""))
@@ -226,6 +230,32 @@ def _delete_audio_file(source_id: str) -> None:
         existing.unlink()
 
 
+def _guess_title_from_filename(filename: str) -> str:
+    stem = Path(filename).stem
+    stem = re.sub(r"[-_]+", " ", stem).strip()
+    return stem.capitalize() if stem else ""
+
+
+def _consume_audio_upload(source_id: str, upload_id: str) -> None:
+    matches = list(AUDIO_UPLOAD_STAGING_DIR.glob(f"{upload_id}.*"))
+    if not matches:
+        return
+    staged_path = matches[0]
+    AUDIO_DIR.mkdir(parents=True, exist_ok=True)
+    _delete_audio_file(source_id)
+    staged_path.replace(AUDIO_DIR / f"{source_id}{staged_path.suffix}")
+
+
+_AUDIO_MEDIA_TYPES = {
+    ".mp3": "audio/mpeg",
+    ".wav": "audio/wav",
+    ".m4a": "audio/mp4",
+    ".ogg": "audio/ogg",
+    ".flac": "audio/flac",
+    ".aac": "audio/aac",
+}
+
+
 def _store_chunks(
     source_id: str, source: SourceIn, chunks: list[str], chunk_embeddings: list[list[float]]
 ) -> int:
@@ -282,6 +312,116 @@ def _generate_summary_background(source_id: str, text: str) -> None:
     _register_all_terms(source_id, sources[source_id])
 
 
+def _is_deferred_audio_import(source: SourceIn) -> bool:
+    """Audio-Transkription kann mehrere Minuten dauern - für diesen Fall
+    wird die Quelle sofort mit leerem Text angelegt und der Text erst
+    später per Hintergrund-Job (_process_audio_transcription) ergänzt,
+    statt den Anlege-Request darauf warten zu lassen. Spiegelt dieselbe
+    URL-vs-Upload-Priorität wie weiter unten in add_source (URL hat
+    Vorrang vor audio_upload_id, wenn beides gesetzt ist)."""
+    if source.text.strip() or source.pdf_upload_id:
+        return False
+    if source.url:
+        return extraction.looks_like_audio(source.url)
+    return bool(source.audio_upload_id)
+
+
+# Serialisiert nur den kurzen "chunken + in Chroma schreiben"-Abschnitt
+# von _process_audio_transcription - app/vectorstore.py hat selbst keine
+# Locks, zwei gleichzeitig fertig werdende Hintergrund-Jobs könnten sich
+# sonst beim Schreiben in die Vektor-DB in die Quere kommen. Download und
+# Transkription laufen weiterhin unabhängig/parallel im Thread-Pool.
+_vectorstore_write_lock = threading.Lock()
+
+
+def _process_audio_transcription(source_id: str, lang: str = i18n.DEFAULT_LANG) -> None:
+    """Hintergrund-Job (siehe add_source): transkribiert eine bereits
+    angelegte, aber noch textlose Audio-Quelle und chunkt/indiziert sie
+    danach. Die Audiodatei liegt zu diesem Zeitpunkt schon in AUDIO_DIR
+    (add_source lädt/speichert sie synchron, nur die Transkription selbst
+    ist der langsame Teil)."""
+    sources = _load_sources()
+    if source_id not in sources:
+        return
+    sources[source_id]["processing_status"] = "running"
+    sources[source_id]["processing_step"] = "transcribe"
+    _save_sources(sources)
+
+    audio_path = _existing_audio_file(source_id)
+    text = extraction.transcribe_audio(audio_path) if audio_path else ""
+
+    sources = _load_sources()
+    if source_id not in sources:
+        return
+    if not text:
+        sources[source_id]["processing_status"] = "error"
+        sources[source_id]["processing_step"] = None
+        sources[source_id]["processing_error"] = i18n.get_message("audio_transcription_failed", lang)
+        _save_sources(sources)
+        return
+
+    sources[source_id]["processing_step"] = "chunking"
+    _save_sources(sources)
+    chunks = chunking.chunk_text(text)
+    if not chunks:
+        sources[source_id]["processing_status"] = "error"
+        sources[source_id]["processing_step"] = None
+        sources[source_id]["processing_error"] = i18n.get_message("no_chunks", lang)
+        _save_sources(sources)
+        return
+
+    sources[source_id]["processing_step"] = "indexing"
+    _save_sources(sources)
+    chunk_embeddings = embeddings.embed_passages(chunks)
+
+    entry = sources[source_id]
+    source_stub = SourceIn(
+        title=entry["title"],
+        authors=entry.get("authors", []),
+        date=entry.get("date"),
+        url=entry.get("url"),
+        listen_url=entry.get("listen_url"),
+        text=text,
+        restricted=entry.get("restricted", False),
+    )
+
+    with _vectorstore_write_lock:
+        vectorstore.delete_source_chunks(source_id)
+        chunk_count = _store_chunks(source_id, source_stub, chunks, chunk_embeddings)
+
+        sources = _load_sources()
+        if source_id not in sources:
+            return
+        sources[source_id]["text"] = text
+        sources[source_id]["chunk_count"] = chunk_count
+        sources[source_id]["processing_status"] = None
+        sources[source_id]["processing_step"] = None
+        sources[source_id]["processing_error"] = None
+        _save_sources(sources)
+
+    _generate_summary_background(source_id, text)
+
+
+def _recover_interrupted_processing_jobs() -> None:
+    """Nach einem Server-Neustart läuft kein Hintergrund-Job mehr, dessen
+    Quelle noch auf "running" steht - kein Auto-Resume (unklar, wie weit
+    er kam), stattdessen klar als Fehler markieren, damit ein Re-Import
+    bewusst manuell angestoßen wird (siehe POST /.../reprocess)."""
+    sources = _load_sources()
+    changed = False
+    for entry in sources.values():
+        if entry.get("processing_status") == "running":
+            entry["processing_status"] = "error"
+            entry["processing_step"] = None
+            entry["processing_error"] = i18n.get_message("processing_interrupted", i18n.DEFAULT_LANG)
+            changed = True
+    if changed:
+        _save_sources(sources)
+
+
+_recover_interrupted_processing_jobs()
+
+
 def _reindex_all_sources() -> None:
     """Chunked/embedded jede vorhandene Quelle neu (z.B. nach einer
     Änderung an `chunking.chunk_text()`) - `sources.json` selbst bleibt
@@ -323,11 +463,16 @@ def add_source(
     _user: str = Depends(require_role(users.QUELLEN_PFLEGER)),
     x_lang: str = Header(default=i18n.DEFAULT_LANG),
 ):
-    chunks, chunk_embeddings = _prepare_chunks(source, x_lang)
+    deferred_audio = _is_deferred_audio_import(source)
+
+    chunk_count = 0
+    if not deferred_audio:
+        chunks, chunk_embeddings = _prepare_chunks(source, x_lang)
 
     source_id = str(uuid.uuid4())
     imported_at = datetime.now(timezone.utc).isoformat()
-    chunk_count = _store_chunks(source_id, source, chunks, chunk_embeddings)
+    if not deferred_audio:
+        chunk_count = _store_chunks(source_id, source, chunks, chunk_embeddings)
 
     sources = _load_sources()
     sources[source_id] = {
@@ -339,12 +484,15 @@ def add_source(
         "listen_url": source.listen_url,
         "imported_at": imported_at,
         "chunk_count": chunk_count,
-        "text": source.text.strip(),
+        "text": "" if deferred_audio else source.text.strip(),
         "restricted": source.restricted,
         "summary_de": "",
         "summary_en": "",
         "key_terms_de": [],
         "key_terms_en": [],
+        "processing_status": "pending" if deferred_audio else None,
+        "processing_step": None,
+        "processing_error": None,
     }
     _save_sources(sources)
     for name in source.authors:
@@ -352,13 +500,21 @@ def add_source(
         authors.register_author(name, source_id)
         if is_new_author:
             background_tasks.add_task(_generate_author_bio_background, name, x_lang)
-    background_tasks.add_task(_generate_summary_background, source_id, source.text.strip())
 
     if source.pdf_upload_id:
         _consume_pdf_upload(source_id, source.pdf_upload_id)
     else:
         _sync_pdf_file_from_url(source_id, source.url)
+
+    if not source.url and source.audio_upload_id:
+        _consume_audio_upload(source_id, source.audio_upload_id)
+    else:
         _sync_audio_file_from_url(source_id, source.url)
+
+    if deferred_audio:
+        background_tasks.add_task(_process_audio_transcription, source_id, x_lang)
+    else:
+        background_tasks.add_task(_generate_summary_background, source_id, source.text.strip())
 
     return _to_source_out(sources[source_id], can_view_full_text=True, lang=x_lang)
 
@@ -422,6 +578,10 @@ def update_source(
         _consume_pdf_upload(source_id, source.pdf_upload_id)
     elif not metadata_only:
         _sync_pdf_file_from_url(source_id, source.url)
+
+    if not source.url and source.audio_upload_id:
+        _consume_audio_upload(source_id, source.audio_upload_id)
+    elif not metadata_only:
         _sync_audio_file_from_url(source_id, source.url)
 
     return _to_source_out(sources[source_id], can_view_full_text=True, lang=x_lang)
@@ -734,6 +894,61 @@ def get_source_pdf(
     return FileResponse(pdf_path, media_type="application/pdf")
 
 
+@app.get("/api/sources/{source_id}/audio")
+def get_source_audio(
+    source_id: str,
+    _user: str = Depends(require_role(users.QUELLEN_PFLEGER)),
+    x_lang: str = Header(default=i18n.DEFAULT_LANG),
+):
+    sources = _load_sources()
+    if source_id not in sources:
+        raise HTTPException(404, i18n.get_message("source_not_found", x_lang))
+
+    audio_path = _existing_audio_file(source_id)
+    if not audio_path:
+        raise HTTPException(404, i18n.get_message("source_not_found", x_lang))
+
+    media_type = _AUDIO_MEDIA_TYPES.get(audio_path.suffix.lower(), "application/octet-stream")
+    return FileResponse(audio_path, media_type=media_type)
+
+
+@app.get("/api/import-jobs", response_model=list[ImportJobOut])
+def list_import_jobs(_user: str = Depends(require_role(users.QUELLEN_PFLEGER))):
+    sources = _load_sources()
+    return [
+        ImportJobOut(
+            id=source_id,
+            title=entry.get("title", ""),
+            processing_status=entry["processing_status"],
+            processing_step=entry.get("processing_step"),
+            processing_error=entry.get("processing_error"),
+        )
+        for source_id, entry in sources.items()
+        if entry.get("processing_status")
+    ]
+
+
+@app.post("/api/sources/{source_id}/reprocess", response_model=MessageOut)
+def reprocess_source(
+    source_id: str,
+    background_tasks: BackgroundTasks,
+    _user: str = Depends(require_role(users.QUELLEN_PFLEGER)),
+    x_lang: str = Header(default=i18n.DEFAULT_LANG),
+):
+    sources = _load_sources()
+    if source_id not in sources:
+        raise HTTPException(404, i18n.get_message("source_not_found", x_lang))
+    if not _existing_audio_file(source_id):
+        raise HTTPException(400, i18n.get_message("no_audio_file", x_lang))
+
+    sources[source_id]["processing_status"] = "pending"
+    sources[source_id]["processing_step"] = None
+    sources[source_id]["processing_error"] = None
+    _save_sources(sources)
+    background_tasks.add_task(_process_audio_transcription, source_id, x_lang)
+    return MessageOut(detail=i18n.get_message("reprocess_started", x_lang))
+
+
 @app.post("/api/sources/{source_id}/generate-summary", response_model=SummaryOut)
 def generate_source_summary(
     source_id: str,
@@ -772,10 +987,32 @@ def extract_pdf_upload(
     return ExtractedUpload(**result, upload_id=upload_id)
 
 
+@app.post("/api/extract-audio-upload", response_model=ExtractedUpload)
+def extract_audio_upload(
+    file: UploadFile = File(...),
+    _user: str = Depends(require_role(users.QUELLEN_PFLEGER)),
+):
+    # Transkribiert bewusst NICHT hier - kann mehrere Minuten dauern und
+    # läuft stattdessen als Hintergrund-Job nach dem Anlegen der Quelle
+    # (siehe _process_audio_transcription), damit die Vorschau schnell bleibt.
+    data = file.file.read()
+    extension = _audio_extension(file.filename or "")
+
+    upload_id = str(uuid.uuid4())
+    AUDIO_UPLOAD_STAGING_DIR.mkdir(parents=True, exist_ok=True)
+    staged_path = AUDIO_UPLOAD_STAGING_DIR / f"{upload_id}{extension}"
+    staged_path.write_bytes(data)
+
+    title = _guess_title_from_filename(file.filename or "")
+
+    return ExtractedUpload(title=title, authors=[], date="", text="", extracted=False, upload_id=upload_id)
+
+
 @app.post("/api/extract-url", response_model=ExtractedSource)
 def extract_url(payload: UrlIn, _user: str = Depends(require_role(users.QUELLEN_PFLEGER))):
     result = extraction.extract_from_url(payload.url)
-    return ExtractedSource(**result)
+    is_audio = extraction.looks_like_audio(payload.url)
+    return ExtractedSource(**result, is_audio=is_audio)
 
 
 def _normalize_for_match(text: str) -> str:
