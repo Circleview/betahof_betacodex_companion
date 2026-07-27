@@ -119,6 +119,7 @@
   "import.generateSummaryFailed": "Generieren fehlgeschlagen.",
   "import.sortByAuthor": "Nach Autor:in sortieren",
   "import.sortByDate": "Nach Veröffentlichungsdatum sortieren",
+  "import.jumpToLetterTitle": "Zu Nachnamen mit \"{letter}\" springen",
   "import.reindexSourcesTitle": "Alle Quellen neu indizieren (Chunking aktualisieren)",
   "import.reindexing": "Neu-Indizierung wird gestartet …",
   "import.reindexFailed": "Neu-Indizierung fehlgeschlagen.",

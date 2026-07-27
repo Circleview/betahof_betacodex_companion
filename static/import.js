@@ -1239,6 +1239,68 @@ function authorsForDisplay(s) {
   return [s.__sortAuthor, ...rest];
 }
 
+// Backlog #65: Alphabet-Sprungleiste - nur in der Autor:innen-Sortierung
+// sinnvoll (in der Datums-Ansicht/gefiltert gibt es keine alphabetische
+// Ordnung nach Nachnamen) und nur für Buchstaben klickbar, zu denen es
+// tatsächlich mindestens eine Quelle gibt.
+const JUMP_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
+
+function updateAlphabetJumpBar(sorted) {
+  const bar = document.getElementById('alphabet-jump-bar');
+  if (!bar) return;
+  if (currentSortMode !== 'author' || isFilterActive()) {
+    bar.classList.add('hidden');
+    bar.replaceChildren();
+    return;
+  }
+
+  const availableLetters = new Set();
+  sorted.forEach((s) => {
+    const surname = getSurname(s.__sortAuthor || '');
+    if (surname) availableLetters.add(surname[0].toUpperCase());
+  });
+
+  bar.classList.toggle('hidden', availableLetters.size === 0);
+  bar.replaceChildren();
+  JUMP_ALPHABET.forEach((letter) => {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'alphabet-jump-btn';
+    btn.textContent = letter;
+    if (availableLetters.has(letter)) {
+      const label = t('import.jumpToLetterTitle', { letter });
+      btn.title = label;
+      btn.setAttribute('aria-label', label);
+      btn.addEventListener('click', () => jumpToLetter(letter));
+    } else {
+      btn.disabled = true;
+    }
+    bar.appendChild(btn);
+  });
+}
+
+// Springt zur ersten Quelle, deren Autor:in-Nachname mit "letter" beginnt.
+// Liegt dieser Eintrag jenseits der aktuell per Infinite Scroll (Backlog
+// #57) geladenen Seite, wird die sichtbare Menge erst erweitert (analog
+// ensureSourceVisible bei Deep-Links) - sonst würde der Sprung ins Leere
+// laufen, weil die Zeile noch gar nicht im DOM existiert.
+function jumpToLetter(letter) {
+  const sorted = sortSources(currentSourceList);
+  const index = sorted.findIndex((s) => getSurname(s.__sortAuthor || '').toUpperCase().startsWith(letter));
+  if (index < 0) return;
+
+  if (index >= visibleSourceCount) {
+    visibleSourceCount = index + 1;
+    renderSourceList(currentSourceList);
+  }
+
+  requestAnimationFrame(() => {
+    document
+      .querySelector(`#source-list [data-row-index="${index}"]`)
+      ?.scrollIntoView({ block: 'start', behavior: 'smooth' });
+  });
+}
+
 function sortSources(sources) {
   // In einer bereits gefilterten Ansicht (z.B. "nach Autor:in gefiltert")
   // ist die Liste schon auf die relevanten Quellen eingeschränkt - hier NICHT
@@ -1398,6 +1460,7 @@ function renderSourceList(sources, options = {}) {
   currentSourceList = sources;
   const sorted = sortSources(sources);
   currentDisplayedSources = sorted;
+  updateAlphabetJumpBar(sorted);
   const list = document.getElementById('source-list');
   list.innerHTML = '';
   let lastMonthYear = null;
@@ -1425,7 +1488,7 @@ function renderSourceList(sources, options = {}) {
   };
 
   const visible = sorted.slice(0, visibleSourceCount);
-  visible.forEach((s) => {
+  visible.forEach((s, rowIndex) => {
     if (currentSortMode === 'date' && !pendingDeletions.has(s.id)) {
       const key = monthYearKey(s.date);
       if (key !== lastMonthYear) {
@@ -1472,6 +1535,11 @@ function renderSourceList(sources, options = {}) {
       li.classList.add('source-row--after-author-group');
     }
     li.dataset.sourceId = s.id;
+    // Backlog #65: eindeutiges Sprungziel für die Alphabet-Leiste - anders
+    // als data-source-id (mehrdeutig, wenn eine Quelle im Autor:innen-Modus
+    // mehrfach expandiert erscheint) trifft der Index in der sortierten
+    // Liste immer genau DIESE eine Zeile.
+    li.dataset.rowIndex = String(rowIndex);
 
     const header = document.createElement('div');
     header.className = 'source-row-header';
@@ -1674,7 +1742,7 @@ function scrollToFilteredResults() {
 let activeFilter = null;
 
 async function applyAuthorFilter(name) {
-  const res = await fetch('/api/authors');
+  const res = await fetch('/api/authors', { headers: { 'X-Lang': getLang() } });
   const authorEntries = await res.json();
   const match = authorEntries.find((a) => normalizeAuthor(a.name) === normalizeAuthor(name));
   const ids = match ? match.source_ids : [];
@@ -1737,6 +1805,11 @@ document.getElementById('source-filter-clear').addEventListener('click', () => {
   filteredAuthorEntry = null;
   authorPanelEditMode = false;
   renderAuthorInfoPanel();
+  // Symmetrisch zu filterByAuthor/filterByTerm (die per scrollToFilteredResults
+  // an den Anfang der Liste scrollen) - sonst bleibt der Blick z.B. nach einem
+  // Sprung über die Alphabet-Leiste zu einer weit unten stehenden Person
+  // irgendwo mitten in der jetzt wieder vollständigen Liste hängen.
+  scrollToFilteredResults();
 });
 
 document.getElementById('sort-author').addEventListener('click', () => setSortMode('author'));
@@ -1801,7 +1874,7 @@ async function loadSources({ skipUrlHealthCheck = false } = {}) {
 }
 
 async function loadAuthors() {
-  const res = await fetch('/api/authors');
+  const res = await fetch('/api/authors', { headers: { 'X-Lang': getLang() } });
   allAuthors = await res.json();
   renderAuthorList();
 

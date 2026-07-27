@@ -119,6 +119,7 @@
   "import.generateSummaryFailed": "Generation failed.",
   "import.sortByAuthor": "Sort by author",
   "import.sortByDate": "Sort by publication date",
+  "import.jumpToLetterTitle": "Jump to surnames starting with \"{letter}\"",
   "import.reindexSourcesTitle": "Reindex all sources (refresh chunking)",
   "import.reindexing": "Starting reindexing …",
   "import.reindexFailed": "Reindexing failed.",

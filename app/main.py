@@ -500,7 +500,7 @@ def add_source(
         is_new_author = _find_author(name) is None
         authors.register_author(name, source_id)
         if is_new_author:
-            background_tasks.add_task(_generate_author_bio_background, name, x_lang)
+            background_tasks.add_task(_generate_author_bio_background, name)
 
     if source.pdf_upload_id:
         _consume_pdf_upload(source_id, source.pdf_upload_id)
@@ -570,7 +570,7 @@ def update_source(
         is_new_author = " ".join(name.strip().split()).lower() not in existing_author_keys
         authors.register_author(name, source_id)
         if is_new_author:
-            background_tasks.add_task(_generate_author_bio_background, name, x_lang)
+            background_tasks.add_task(_generate_author_bio_background, name)
 
     if source.summary is not None or source.key_terms is not None:
         _register_all_terms(source_id, sources[source_id])
@@ -618,11 +618,26 @@ def list_sources(
     return [_to_source_out(entry, can_view_full_text, x_lang) for entry in sources.values()]
 
 
+def _resolve_profile_for_lang(profile: dict, lang: str) -> dict:
+    # API-seitig bleibt "bio"/"bio_ai_generated" ein einzelnes, sprach-
+    # aufgelöstes Feld (wie summary_{lang} bei Quellen) - nur die Speicherung
+    # in author_profiles.py ist bilingual (bio_de/bio_en), damit Frontend und
+    # Wire-Format unverändert einfach bleiben.
+    return {
+        "bio": profile.get(f"bio_{lang}", ""),
+        "bio_ai_generated": profile.get(f"bio_ai_generated_{lang}", False),
+        "photo_url": profile.get("photo_url", ""),
+        "website": profile.get("website", ""),
+        "social_links": profile.get("social_links", []),
+    }
+
+
 @app.get("/api/authors", response_model=list[AuthorOut])
-def list_authors():
+def list_authors(x_lang: str = Header(default=i18n.DEFAULT_LANG)):
+    lang = x_lang if x_lang in ("de", "en") else i18n.DEFAULT_LANG
     entries = authors.list_authors()
     for entry in entries:
-        entry.update(author_profiles.get_profile(entry["name"]))
+        entry.update(_resolve_profile_for_lang(author_profiles.get_profile(entry["name"]), lang))
     return entries
 
 
@@ -646,22 +661,9 @@ def _collect_author_bio_texts(matching: dict, lang: str) -> list[str]:
     return texts
 
 
-def _generate_author_bio_background(name: str, lang: str) -> None:
-    # Wird für jede neu im System auftauchende Person angestoßen (siehe
-    # add_source/update_source) - jede:r Autor:in soll von Anfang an eine
-    # Vita haben, statt leer zu starten. Läuft im Hintergrund wie die
-    # Quellen-Zusammenfassung, damit der Import nicht auf den KI-Aufruf
-    # warten muss.
-    matching = _find_author(name)
-    if matching is None:
+def _generate_author_bio_one_lang(name: str, matching: dict, lang: str) -> None:
+    if author_profiles.get_profile(matching["name"])[f"bio_{lang}"]:
         return
-    # Schreibt absichtlich nur eine LEERE Vita - so bleibt der Aufruf
-    # idempotent (und überschreibt nie eine bereits vorhandene, ggf. von
-    # Hand gepflegte Vita), selbst wenn update_source eine Person kurzzeitig
-    # fälschlich als "neu" einstuft (siehe dortiger Kommentar).
-    if author_profiles.get_profile(matching["name"])["bio"]:
-        return
-    lang = lang if lang in ("de", "en") else i18n.DEFAULT_LANG
     texts = _collect_author_bio_texts(matching, lang)
     bio = summarization.generate_author_bio(matching["name"], texts, lang)
     # Erneute Prüfung unmittelbar vor dem Schreiben: der KI-Aufruf oben
@@ -669,8 +671,22 @@ def _generate_author_bio_background(name: str, lang: str) -> None:
     # pflegen"-Panel (Backlog #86) bereits eine von Hand eingegebene Vita
     # gespeichert haben. Ohne diese zweite Prüfung würde die spätere KI-Vita
     # die gerade erst gespeicherte manuelle Vita kommentarlos überschreiben.
-    if bio and not author_profiles.get_profile(matching["name"])["bio"]:
-        author_profiles.set_profile(name, bio=bio, bio_ai_generated=True)
+    if bio and not author_profiles.get_profile(matching["name"])[f"bio_{lang}"]:
+        author_profiles.set_profile(name, **{f"bio_{lang}": bio, f"bio_ai_generated_{lang}": True})
+
+
+def _generate_author_bio_background(name: str) -> None:
+    # Wird für jede neu im System auftauchende Person angestoßen (siehe
+    # add_source/update_source) - jede:r Autor:in soll von Anfang an eine
+    # Vita in BEIDEN Sprachen haben (analog summary_de/summary_en bei
+    # Quellen), statt nur in der beim Import gerade aktiven UI-Sprache.
+    # Läuft im Hintergrund wie die Quellen-Zusammenfassung, damit der Import
+    # nicht auf die KI-Aufrufe warten muss.
+    matching = _find_author(name)
+    if matching is None:
+        return
+    _generate_author_bio_one_lang(name, matching, "de")
+    _generate_author_bio_one_lang(name, matching, "en")
 
 
 @app.put("/api/authors/{name}", response_model=AuthorOut)
@@ -684,16 +700,21 @@ def update_author_profile(
     if matching is None:
         raise HTTPException(404, i18n.get_message("author_not_found", x_lang))
 
+    lang = x_lang if x_lang in ("de", "en") else i18n.DEFAULT_LANG
+    # Die Vita-Eingabe im Bearbeiten-Formular bezieht sich immer auf die
+    # gerade aktive UI-Sprache (X-Lang) - wer auf Deutsch pflegt, editiert die
+    # deutsche Vita, ohne dass die App zwei separate Felder anzeigen muss.
+    bio_kwargs = {f"bio_{lang}": profile.bio} if profile.bio is not None else {}
     author_profiles.set_profile(
         name,
-        bio=profile.bio,
         photo_url=profile.photo_url,
         website=profile.website,
         social_links=[link.model_dump() for link in profile.social_links]
         if profile.social_links is not None
         else None,
+        **bio_kwargs,
     )
-    matching.update(author_profiles.get_profile(name))
+    matching.update(_resolve_profile_for_lang(author_profiles.get_profile(name), lang))
     return matching
 
 
@@ -754,7 +775,8 @@ def rename_author_endpoint(
     updated = _find_author(new_name)
     if updated is None:
         raise HTTPException(404, i18n.get_message("author_not_found", x_lang))
-    updated.update(author_profiles.get_profile(new_name))
+    lang = x_lang if x_lang in ("de", "en") else i18n.DEFAULT_LANG
+    updated.update(_resolve_profile_for_lang(author_profiles.get_profile(new_name), lang))
     return updated
 
 
@@ -771,7 +793,7 @@ def generate_author_bio_endpoint(
     lang = x_lang if x_lang in ("de", "en") else i18n.DEFAULT_LANG
     texts = _collect_author_bio_texts(matching, lang)
     bio = summarization.generate_author_bio(matching["name"], texts, lang)
-    author_profiles.set_profile(name, bio=bio, bio_ai_generated=True)
+    author_profiles.set_profile(name, **{f"bio_{lang}": bio, f"bio_ai_generated_{lang}": True})
     return BioOut(bio=bio)
 
 

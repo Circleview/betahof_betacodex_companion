@@ -393,6 +393,84 @@ function renderSidebarSources() {
 // Login-Status, ohne dass eine neue Antwort nötig ist.
 onAuthChange(() => renderSidebarSources());
 
+// Backlog-Fix: eine begonnene Konversation soll erhalten bleiben, wenn
+// z.B. über einen Autor:innen-/Zitat-Link kurz in die Quellenverwaltung
+// gesprungen und danach per Browser-Zurück (oder erneutem Aufruf von "/")
+// hierher zurückgekehrt wird. sessionStorage statt localStorage, weil die
+// Konversation nur für die Dauer dieses Tabs gelten soll - ein neuer Tab
+// oder ein Neustart des Browsers beginnt bewusst wieder leer.
+const CONVERSATION_STORAGE_KEY = 'conversationHistory';
+
+function loadConversationHistory() {
+  try {
+    const raw = sessionStorage.getItem(CONVERSATION_STORAGE_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch (err) {
+    return [];
+  }
+}
+
+function saveConversationHistory() {
+  try {
+    sessionStorage.setItem(CONVERSATION_STORAGE_KEY, JSON.stringify(conversationHistory));
+  } catch (err) {
+    // z.B. sessionStorage voll oder deaktiviert (privates Fenster u.ä.) -
+    // die Konversation bleibt dann nur für die laufende Seitenansicht
+    // erhalten, ohne dass das die Nutzung sonst beeinträchtigt.
+  }
+}
+
+const conversationHistory = loadConversationHistory();
+
+// Gemeinsame Rendering-Logik für eine Antwort-Bubble - sowohl für eine
+// gerade eingetroffene Antwort als auch beim Wiederherstellen der
+// gespeicherten Konversation nach einem Seitenwechsel.
+function renderAnswerBubble(bubble, answer, sources) {
+  bubble.innerHTML = renderMarkdown(answer);
+  makeCitationsClickable(bubble, sources);
+  extractCitedSources(bubble, sources).forEach((s) => {
+    conversationCitedSources.set(s.chunk_id, s);
+  });
+}
+
+function restoreConversationHistory() {
+  if (conversationHistory.length === 0) return;
+  document.body.classList.add('chat-started');
+  questionInput.placeholder = t('index.questionPlaceholderContinue');
+  conversationHistory.forEach(({ question, answer, sources }) => {
+    const { message: userMessage, bubble: userBubble } = buildChatMessage('user');
+    userBubble.textContent = question;
+    chatMessages.appendChild(userMessage);
+
+    const { message: assistantMessage, bubble: assistantBubble } = buildChatMessage('assistant');
+    chatMessages.appendChild(assistantMessage);
+    renderAnswerBubble(assistantBubble, answer, sources);
+  });
+  renderSidebarSources();
+  // Ohne "smooth"/Verzögerung: beim Wiederherstellen soll die Ansicht
+  // sofort am letzten Stand sein, kein sichtbares Hochscrollen von oben.
+  chatMessages.lastElementChild?.scrollIntoView({ block: 'end' });
+}
+
+restoreConversationHistory();
+
+// Robuster gegen transiente Netzwerkfehler (z.B. Safaris "TypeError: Load
+// failed" bei kurzem Verbindungsabbruch/Tab-Wechsel im Hintergrund) - fetch()
+// wirft in diesem Fall VOR jeder Antwort, unabhängig vom Server. Ein einziger
+// automatischer, kurz verzögerter Retry reicht für den typischen Kurzausfall;
+// echte HTTP-Fehlerantworten (res.ok === false) lösen KEINEN Retry aus, da
+// fetch() dafür normal auflöst statt zu werfen - die landen unverändert im
+// bestehenden !res.ok-Zweig unten.
+async function fetchWithRetry(url, options, retries = 1, delayMs = 600) {
+  try {
+    return await fetch(url, options);
+  } catch (err) {
+    if (retries <= 0) throw err;
+    await new Promise((resolve) => setTimeout(resolve, delayMs));
+    return fetchWithRetry(url, options, retries - 1, delayMs);
+  }
+}
+
 document.getElementById('question-form').addEventListener('submit', async (e) => {
   e.preventDefault();
   const question = questionInput.value.trim();
@@ -426,7 +504,7 @@ document.getElementById('question-form').addEventListener('submit', async (e) =>
   chatMessages.appendChild(assistantMessage);
 
   try {
-    const res = await fetch('/api/ask', {
+    const res = await fetchWithRetry('/api/ask', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-Lang': getLang() },
       body: JSON.stringify({ question, top_k: 5, turnstile_token: getTurnstileToken() }),
@@ -440,12 +518,10 @@ document.getElementById('question-form').addEventListener('submit', async (e) =>
       throw new Error(err.detail || t('index.askError'));
     }
     const data = await res.json();
-    assistantBubble.innerHTML = renderMarkdown(data.answer);
-    makeCitationsClickable(assistantBubble, data.sources);
-    extractCitedSources(assistantBubble, data.sources).forEach((s) => {
-      conversationCitedSources.set(s.chunk_id, s);
-    });
+    renderAnswerBubble(assistantBubble, data.answer, data.sources);
     renderSidebarSources();
+    conversationHistory.push({ question, answer: data.answer, sources: data.sources });
+    saveConversationHistory();
   } catch (err) {
     assistantBubble.textContent = t('common.errorPrefix') + err.message;
   }

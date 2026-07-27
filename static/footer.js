@@ -161,23 +161,24 @@ function renderFooter() {
   taglineSpan.className = 'footer-tagline';
   taglineSpan.textContent = t('index.tagline');
 
-  const versionSpan = document.createElement('span');
-  versionSpan.id = 'footer-version';
-  versionSpan.className = 'footer-version';
-  versionSpan.textContent = currentVersion;
+  // GitHub-Link und Versionsnummer sind zu einem Link zusammengefasst -
+  // sichtbarer Text ist die Version, das Ziel ist dasselbe Repo wie beim
+  // vorherigen separaten "GitHub"-Link. Bleibt (anders als der frühere
+  // .footer-github-link) auch auf schmalen Bildschirmen sichtbar, da die
+  // Versionsnummer nicht verzichtbar ist.
+  const versionLink = buildLink(
+    'https://github.com/Circleview/betahof_betacodex_companion',
+    currentVersion,
+    'footer-version'
+  );
+  versionLink.id = 'footer-version';
+  versionLink.title = t('footer.github');
 
   footer.replaceChildren(
     taglineSpan,
     buildFeedbackWidget(),
     buildLink('https://betacodex.org', 'betacodex.org'),
-    // Auf schmalen Bildschirmen wird's sonst zu eng - dieser Link darf als
-    // erstes weichen (siehe .footer-github-link in style.css).
-    buildLink(
-      'https://github.com/Circleview/betahof_betacodex_companion',
-      t('footer.github'),
-      'footer-github-link'
-    ),
-    versionSpan,
+    versionLink,
     buildLink('https://www.betahof.de/beratung/', 'Beta Hof'),
     buildLink('https://www.betahof.de/impressum/', t('footer.impressum')),
   );

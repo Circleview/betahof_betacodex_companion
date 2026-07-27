@@ -137,6 +137,11 @@ header h1 {
 .auth-widget {
   position: relative;
   display: inline-flex;
+  /* Auf Mobile wird .popover zu position:static (siehe @media (max-width:
+     480px) weiter unten) und damit zu einem normalen Flex-Item dieses
+     Containers - ohne column stünde das Popover fälschlich NEBEN statt
+     UNTER dem Auth-Button. Auf Desktop (position:absolute) wirkungslos. */
+  flex-direction: column;
 }
 
 .auth-widget-button--active {
@@ -897,12 +902,6 @@ body:not(.chat-started) #question-form {
     margin-top: 0;
   }
 
-  /* Auf schmalen Bildschirmen wird die Fußzeile sonst zu eng - der
-     GitHub-Link ist der verzichtbarste Eintrag und weicht zuerst. */
-  .footer-github-link {
-    display: none;
-  }
-
   /* Nur auf Mobile: Papierflieger-Icon statt Textbutton, spart Platz in
      der Eingabezeile - am Desktop bleibt der Textbutton unverändert. */
   .send-label {
@@ -1184,6 +1183,38 @@ body:not(.chat-started) #question-form {
   border-color: var(--color-accent);
   color: var(--color-accent);
   background: var(--color-accent-tint);
+}
+
+/* Backlog #65: Alphabet-Sprungleiste - nur in der Autor:innen-Sortierung
+   sichtbar (siehe updateAlphabetJumpBar in import.js). */
+.alphabet-jump-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  margin-bottom: 1rem;
+}
+
+.alphabet-jump-btn {
+  min-width: 1.6rem;
+  padding: 0.15rem 0.3rem;
+  border: none;
+  background: none;
+  color: var(--color-accent);
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  border-radius: 3px;
+}
+
+.alphabet-jump-btn:hover {
+  color: var(--color-accent-hover);
+  background: var(--color-accent-tint);
+}
+
+.alphabet-jump-btn:disabled {
+  color: var(--color-text-muted);
+  opacity: 0.4;
+  cursor: default;
 }
 
 /* Timeline-Ansicht: CSS-Grid mit drei Spuren (Label / Zeitlinie / Inhalt).
@@ -1777,6 +1808,11 @@ details a {
 .quelltyp-item--anchor {
   position: relative;
   display: flex;
+  /* Auf Mobile wird .popover zu position:static (siehe @media (max-width:
+     480px) weiter unten) und damit zu einem normalen Flex-Item dieses
+     Containers - ohne column stünde das Popover fälschlich NEBEN statt
+     UNTER dem Icon-Button. Auf Desktop (position:absolute) wirkungslos. */
+  flex-direction: column;
 }
 
 .circle-button {
@@ -1920,6 +1956,11 @@ details a {
 .footer-feedback {
   position: relative;
   display: inline-flex;
+  /* Auf Mobile wird .popover zu position:static (siehe @media (max-width:
+     480px) weiter unten) und damit zu einem normalen Flex-Item dieses
+     Containers - ohne column stünde das Popover fälschlich NEBEN statt
+     UNTER dem Feedback-Link. Auf Desktop (position:absolute) wirkungslos. */
+  flex-direction: column;
 }
 
 .footer-feedback > .link-button {

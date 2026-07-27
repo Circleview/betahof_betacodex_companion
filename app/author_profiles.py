@@ -4,17 +4,45 @@ from pathlib import Path
 BASE_DIR = Path(__file__).resolve().parent.parent
 AUTHOR_PROFILES_FILE = BASE_DIR / "data" / "author_profiles.json"
 
-_EMPTY_PROFILE = {"bio": "", "photo_url": "", "website": "", "social_links": [], "bio_ai_generated": False}
+_EMPTY_PROFILE = {
+    "bio_de": "",
+    "bio_en": "",
+    "bio_ai_generated_de": False,
+    "bio_ai_generated_en": False,
+    "photo_url": "",
+    "website": "",
+    "social_links": [],
+}
 
 
 def _normalize(name: str) -> str:
     return " ".join(name.strip().split()).lower()
 
 
+def _migrate_entry(entry: dict) -> dict:
+    # Vor Backlog "bilinguale Vita" gab es nur ein einzelnes bio-Feld (Sprache
+    # je nachdem, welche UI-Sprache beim Schreiben/Generieren aktiv war). Beim
+    # Umstieg auf getrennte bio_de/bio_en wird der bestehende Text als
+    # deutsche Vita übernommen (DEFAULT_LANG ist "de") - die englische Vita
+    # bleibt bewusst leer, statt geraten/mitübersetzt zu werden, und muss
+    # einmalig neu generiert werden.
+    if "bio_de" in entry or "bio_en" in entry:
+        return entry
+    if "bio" not in entry:
+        return entry
+    migrated = dict(entry)
+    migrated["bio_de"] = migrated.pop("bio", "")
+    migrated["bio_ai_generated_de"] = migrated.pop("bio_ai_generated", False)
+    migrated.setdefault("bio_en", "")
+    migrated.setdefault("bio_ai_generated_en", False)
+    return migrated
+
+
 def _load() -> dict:
-    if AUTHOR_PROFILES_FILE.exists():
-        return json.loads(AUTHOR_PROFILES_FILE.read_text())
-    return {}
+    if not AUTHOR_PROFILES_FILE.exists():
+        return {}
+    raw = json.loads(AUTHOR_PROFILES_FILE.read_text())
+    return {key: _migrate_entry(entry) for key, entry in raw.items()}
 
 
 def _save(profiles: dict) -> None:
@@ -25,17 +53,21 @@ def _save(profiles: dict) -> None:
 def get_profile(name: str) -> dict:
     profiles = _load()
     entry = profiles.get(_normalize(name))
-    return dict(entry) if entry is not None else dict(_EMPTY_PROFILE)
+    if entry is None:
+        return dict(_EMPTY_PROFILE)
+    return {**_EMPTY_PROFILE, **entry}
 
 
 def set_profile(
     name: str,
     *,
-    bio: str | None = None,
+    bio_de: str | None = None,
+    bio_en: str | None = None,
     photo_url: str | None = None,
     website: str | None = None,
     social_links: list[dict] | None = None,
-    bio_ai_generated: bool | None = None,
+    bio_ai_generated_de: bool | None = None,
+    bio_ai_generated_en: bool | None = None,
 ) -> dict:
     # Komplett unabhängig von app/authors.py (bewusst kein Import von dort) -
     # die automatisch abgeleitete Registry löscht einen Autor-Eintrag samt
@@ -44,17 +76,23 @@ def set_profile(
     # Links) darf davon nicht betroffen sein.
     profiles = _load()
     key = _normalize(name)
-    entry = profiles.get(key) or dict(_EMPTY_PROFILE)
-    if bio is not None:
+    entry = {**_EMPTY_PROFILE, **(profiles.get(key) or {})}
+    if bio_de is not None:
         # Ändert sich der Vita-Text durch einen normalen (manuellen) Aufruf
-        # ohne explizites bio_ai_generated, gilt er ab jetzt als von einer
+        # ohne explizites bio_ai_generated_*, gilt er ab jetzt als von einer
         # Person verfasst/überarbeitet - das "generate-bio"-Endpoint setzt
-        # bio_ai_generated=True explizit und überschreibt das direkt danach.
-        if bio != entry.get("bio", ""):
-            entry["bio_ai_generated"] = False
-        entry["bio"] = bio
-    if bio_ai_generated is not None:
-        entry["bio_ai_generated"] = bio_ai_generated
+        # bio_ai_generated_* explizit und überschreibt das direkt danach.
+        if bio_de != entry.get("bio_de", ""):
+            entry["bio_ai_generated_de"] = False
+        entry["bio_de"] = bio_de
+    if bio_en is not None:
+        if bio_en != entry.get("bio_en", ""):
+            entry["bio_ai_generated_en"] = False
+        entry["bio_en"] = bio_en
+    if bio_ai_generated_de is not None:
+        entry["bio_ai_generated_de"] = bio_ai_generated_de
+    if bio_ai_generated_en is not None:
+        entry["bio_ai_generated_en"] = bio_ai_generated_en
     if photo_url is not None:
         entry["photo_url"] = photo_url
     if website is not None:

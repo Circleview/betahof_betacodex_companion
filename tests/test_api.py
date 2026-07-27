@@ -1246,6 +1246,71 @@ def test_update_author_profile_clears_ai_flag_when_bio_text_changes(client, monk
     assert response.json()["bio_ai_generated"] is False
 
 
+def test_list_authors_resolves_bio_per_language(client, monkeypatch):
+    # Backlog-Fix: die Vita ist seit der Sprachumschaltung bilingual
+    # gespeichert (bio_de/bio_en) - GET /api/authors muss je nach X-Lang die
+    # jeweils passende Sprachversion (plus deren eigenes bio_ai_generated-Flag)
+    # zurückgeben, nicht immer dieselbe.
+    client.post("/api/sources", json={"title": "Quelle", "authors": ["Jane Doe"], "text": "Text."})
+    client.put(
+        "/api/authors/Jane Doe", json={"bio": "Deutsche Vita."}, headers={"X-Lang": "de"}
+    )
+    client.put(
+        "/api/authors/Jane Doe", json={"bio": "English bio."}, headers={"X-Lang": "en"}
+    )
+
+    listed_de = next(a for a in client.get("/api/authors", headers={"X-Lang": "de"}).json() if a["name"] == "Jane Doe")
+    listed_en = next(a for a in client.get("/api/authors", headers={"X-Lang": "en"}).json() if a["name"] == "Jane Doe")
+
+    assert listed_de["bio"] == "Deutsche Vita."
+    assert listed_en["bio"] == "English bio."
+
+
+def test_update_author_profile_writes_only_current_language_bio(client):
+    client.post("/api/sources", json={"title": "Quelle", "authors": ["Jane Doe"], "text": "Text."})
+
+    client.put("/api/authors/Jane Doe", json={"bio": "Deutsche Vita."}, headers={"X-Lang": "de"})
+    response = client.put("/api/authors/Jane Doe", json={"bio": "English bio."}, headers={"X-Lang": "en"})
+
+    assert response.json()["bio"] == "English bio."
+    listed_de = next(a for a in client.get("/api/authors", headers={"X-Lang": "de"}).json() if a["name"] == "Jane Doe")
+    assert listed_de["bio"] == "Deutsche Vita."
+
+
+def test_generate_author_bio_endpoint_writes_only_current_language(client, monkeypatch):
+    client.post("/api/sources", json={"title": "Quelle", "authors": ["Jane Doe"], "text": "Text."})
+    monkeypatch.setattr(
+        summarization,
+        "generate_author_bio",
+        lambda name, texts, lang="de": f"Vita ({lang}).",
+    )
+
+    client.post("/api/authors/Jane Doe/generate-bio", headers={"X-Lang": "en"})
+
+    listed_de = next(a for a in client.get("/api/authors", headers={"X-Lang": "de"}).json() if a["name"] == "Jane Doe")
+    listed_en = next(a for a in client.get("/api/authors", headers={"X-Lang": "en"}).json() if a["name"] == "Jane Doe")
+    assert listed_de["bio"] == ""
+    assert listed_en["bio"] == "Vita (en)."
+    assert listed_en["bio_ai_generated"] is True
+
+
+def test_generate_author_bio_background_generates_both_languages(client, monkeypatch):
+    calls = []
+    monkeypatch.setattr(
+        summarization,
+        "generate_author_bio",
+        lambda name, texts, lang="de": calls.append(lang) or f"Vita ({lang}).",
+    )
+
+    client.post("/api/sources", json={"title": "Quelle", "authors": ["Jane Doe"], "text": "Text."})
+
+    assert sorted(calls) == ["de", "en"]
+    listed_de = next(a for a in client.get("/api/authors", headers={"X-Lang": "de"}).json() if a["name"] == "Jane Doe")
+    listed_en = next(a for a in client.get("/api/authors", headers={"X-Lang": "en"}).json() if a["name"] == "Jane Doe")
+    assert listed_de["bio"] == "Vita (de)."
+    assert listed_en["bio"] == "Vita (en)."
+
+
 def test_generate_author_bio_requires_pfleger_role(client, anon_client):
     client.post("/api/sources", json={"title": "Quelle", "authors": ["Jane Doe"], "text": "Text."})
 
@@ -1293,6 +1358,10 @@ def test_generate_author_bio_background_does_not_overwrite_bio_saved_during_ai_c
 
 
 def test_add_source_does_not_regenerate_bio_for_already_known_author(client, monkeypatch):
+    # Seit der bilingualen Vita wird pro neuer Person zweimal generiert
+    # (einmal je Sprache, siehe _generate_author_bio_background) - die
+    # zweite Quelle mit derselben, bereits bekannten Person darf aber
+    # keinen weiteren Aufruf auslösen.
     calls = []
     monkeypatch.setattr(
         summarization,
@@ -1303,7 +1372,7 @@ def test_add_source_does_not_regenerate_bio_for_already_known_author(client, mon
     client.post("/api/sources", json={"title": "Erste Quelle", "authors": ["Jane Doe"], "text": "Text."})
     client.post("/api/sources", json={"title": "Zweite Quelle", "authors": ["Jane Doe"], "text": "Text."})
 
-    assert calls == ["Jane Doe"]
+    assert calls == ["Jane Doe", "Jane Doe"]
 
 
 def test_add_source_does_not_generate_bio_for_empty_author_name(client, monkeypatch):
@@ -1337,7 +1406,7 @@ def test_update_source_auto_generates_bio_only_for_newly_added_author(client, mo
         json={"title": "Quelle", "authors": ["Jane Doe", "Neue Person"], "text": "Text."},
     )
 
-    assert calls == ["Neue Person"]
+    assert calls == ["Neue Person", "Neue Person"]
 
 
 def test_update_source_does_not_treat_authors_sole_source_edit_as_new(client, monkeypatch):
