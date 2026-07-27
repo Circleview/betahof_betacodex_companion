@@ -117,6 +117,15 @@ let allSources = [];
 // jedem Re-Render erneut expandieren (Quelle erscheint dann mehrfach).
 let currentSourceList = [];
 let currentDisplayedSources = [];
+// Backlog #57: die Quellenliste wird nicht komplett auf einmal ins DOM
+// gerendert, sondern nur die ersten SOURCES_PAGE_SIZE Einträge - beim
+// Erreichen des Listenendes (IntersectionObserver auf einem Sentinel-Element,
+// siehe renderSourceList) wächst visibleSourceCount um eine weitere Seite.
+// Die Daten selbst (allSources) sind weiterhin komplett geladen - es geht
+// hier nur um die Menge an gleichzeitig existierenden DOM-Knoten.
+const SOURCES_PAGE_SIZE = 20;
+let visibleSourceCount = SOURCES_PAGE_SIZE;
+let sourceListObserver = null;
 let activeEditId = null;
 let pendingUploadId = null;
 let pendingUploadType = null; // 'pdf' | 'audio'
@@ -124,6 +133,25 @@ let currentSortMode = 'author';
 const pendingDeletions = new Map();
 const unreachableSourceIds = new Set();
 const expandedSourceIds = new Set();
+
+// Wird bei jedem Wechsel auf eine inhaltlich NEUE Liste aufgerufen (neuer
+// Filter, Filter aufgehoben) - nicht aber bei einem bloßen Re-Render der
+// gleichen Ansicht (Auf-/Zuklappen, Bearbeiten, Neuladen nach einer Änderung),
+// damit die Scroll-/Lade-Position dabei nicht unnötig auf die erste Seite
+// zurückspringt.
+function resetSourcePagination() {
+  visibleSourceCount = SOURCES_PAGE_SIZE;
+}
+
+// Stellt sicher, dass eine bestimmte Quelle (z.B. per Deep-Link direkt im
+// Bearbeiten-Modus geöffnet) unabhängig von ihrer Position in der sortierten
+// Liste bereits im sichtbaren, paginierten Bereich liegt.
+function ensureSourceVisible(sourceId) {
+  const index = sortSources(currentSourceList).findIndex((s) => s.id === sourceId);
+  if (index >= 0) {
+    visibleSourceCount = Math.max(visibleSourceCount, index + 1);
+  }
+}
 
 let allAuthors = [];
 // Das aktuell nach Filter angezeigte Autor:innen-Profil (nur gesetzt, wenn
@@ -1396,7 +1424,8 @@ function renderSourceList(sources, options = {}) {
     list.appendChild(el);
   };
 
-  sorted.forEach((s) => {
+  const visible = sorted.slice(0, visibleSourceCount);
+  visible.forEach((s) => {
     if (currentSortMode === 'date' && !pendingDeletions.has(s.id)) {
       const key = monthYearKey(s.date);
       if (key !== lastMonthYear) {
@@ -1574,6 +1603,28 @@ function renderSourceList(sources, options = {}) {
     // (::after) wirklich bis zur letzten Zeile durchläuft.
     list.style.setProperty('--timeline-row-end', String(gridRow + 1));
   }
+
+  // Backlog #57: solange noch mehr Einträge als aktuell gerendert vorhanden
+  // sind, ein unsichtbares Sentinel-Element ans Listenende hängen - kommt es
+  // beim Scrollen in den sichtbaren Bereich, wird die nächste Seite
+  // nachgeladen (d.h. neu gerendert, die Daten liegen ja bereits vor).
+  sourceListObserver?.disconnect();
+  if (sorted.length > visible.length) {
+    const sentinel = document.createElement('li');
+    sentinel.className = 'source-list-sentinel';
+    list.appendChild(sentinel);
+    sourceListObserver = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) {
+          sourceListObserver.disconnect();
+          visibleSourceCount += SOURCES_PAGE_SIZE;
+          renderSourceList(currentSourceList, options);
+        }
+      },
+      { rootMargin: '400px' }
+    );
+    sourceListObserver.observe(sentinel);
+  }
 }
 
 async function checkUrlHealth(sources) {
@@ -1645,6 +1696,7 @@ async function applyAuthorFilter(name) {
 
 async function filterByAuthor(name) {
   activeFilter = { type: 'author', value: name };
+  resetSourcePagination();
   await applyAuthorFilter(name);
   scrollToFilteredResults();
 }
@@ -1672,12 +1724,14 @@ async function applyTermFilter(term) {
 
 async function filterByTerm(term) {
   activeFilter = { type: 'term', value: term };
+  resetSourcePagination();
   await applyTermFilter(term);
   scrollToFilteredResults();
 }
 
 document.getElementById('source-filter-clear').addEventListener('click', () => {
   activeFilter = null;
+  resetSourcePagination();
   document.getElementById('source-filter-status').classList.add('hidden');
   renderSourceList(allSources);
   filteredAuthorEntry = null;
@@ -2274,6 +2328,7 @@ loadAuthors();
 const deepLinkEditId = new URLSearchParams(window.location.search).get('edit');
 if (deepLinkEditId && hasPflegerRole() && allSources.some((s) => s.id === deepLinkEditId)) {
   activeEditId = deepLinkEditId;
+  ensureSourceVisible(deepLinkEditId);
   renderSourceList(currentSourceList);
   requestAnimationFrame(() => {
     document

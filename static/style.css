@@ -1025,6 +1025,19 @@ body:not(.chat-started) #question-form {
   padding-top: 0;
 }
 
+/* Backlog #57: unsichtbares Sentinel-Element am Listenende, das per
+   IntersectionObserver das Nachladen der nächsten Seite auslöst - overschreibt
+   die generische li-Randlinie/-Polsterung, damit es nicht wie eine leere
+   Trennzeile aussieht; grid-column sorgt in der Timeline-Ansicht (CSS-Grid)
+   dafür, dass es nicht versehentlich in die Label-Spalte einsortiert wird. */
+#source-list li.source-list-sentinel {
+  padding: 0;
+  margin: 0;
+  border-bottom: none;
+  height: 1px;
+  grid-column: 1 / -1;
+}
+
 .source-row-header {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
