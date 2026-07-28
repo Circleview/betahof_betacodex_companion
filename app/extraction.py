@@ -300,8 +300,13 @@ def download_pdf_bytes(url: str) -> bytes | None:
         return None
 
 
-def _parse_pdf_date(raw: str | None) -> str:
-    if not raw:
+def _parse_pdf_date(raw) -> str:
+    # Bei PDFs mit beschädigter/nicht standardkonformer Xref-Tabelle (pypdf
+    # loggt dann "Ignoring wrong pointing object ...") liefert meta.get(...)
+    # gelegentlich ein unaufgelöstes IndirectObject statt eines Strings -
+    # ohne diese Prüfung crashte re.match mit TypeError und riss den
+    # gesamten Extraktions-Request (inkl. Seitentext) mit sich.
+    if not raw or not isinstance(raw, str):
         return ""
     match = re.match(r"D:(\d{4})(\d{2})(\d{2})", raw)
     if not match:

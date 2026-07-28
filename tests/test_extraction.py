@@ -217,6 +217,24 @@ def test_extract_pdf_handles_no_extractable_text():
     assert result["extracted"] is False
 
 
+def test_extract_pdf_handles_unresolved_creation_date():
+    # Regressionstest: bei PDFs mit beschädigter Xref-Tabelle (reales
+    # Beispiel: betacodex.org-Whitepaper mit vielen "Ignoring wrong pointing
+    # object"-Warnungen von pypdf) liefert meta.get("/CreationDate")
+    # gelegentlich ein IndirectObject statt eines Strings - das crashte
+    # _parse_pdf_date mit TypeError und riss den gesamten Extraktions-Request
+    # mit sich, obwohl der eigentliche Seitentext problemlos lesbar war.
+    reader = _fake_pdf_reader(
+        title="Ein PDF", author="Jane Doe", creation_date=object(), pages_text=["Seite eins."]
+    )
+    with patch("app.extraction.PdfReader", return_value=reader):
+        result = extract_pdf(b"fake-bytes")
+
+    assert result["extracted"] is True
+    assert result["date"] == ""
+    assert result["text"] == "Seite eins."
+
+
 def test_looks_like_pdf_detects_extension():
     assert looks_like_pdf("https://example.org/paper.pdf") is True
     assert looks_like_pdf("https://example.org/paper.pdf?x=1") is True
