@@ -1208,7 +1208,8 @@ def logout():
 @app.get("/api/auth/whoami", response_model=WhoAmIOut)
 def whoami(request: Request):
     email = _get_current_user_email(request)
-    return WhoAmIOut(email=email, roles=users.get_roles(email))
+    user = users.get_user(email) if email else None
+    return WhoAmIOut(email=email, roles=users.get_roles(email), name=user["name"] if user else None)
 
 
 @app.get("/api/auth/users", response_model=list[AdminUserOut])

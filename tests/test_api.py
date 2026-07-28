@@ -1235,7 +1235,7 @@ def test_ask_uses_requested_language(client, monkeypatch):
 def test_whoami_reports_anonymous_by_default(anon_client):
     response = anon_client.get("/api/auth/whoami")
     assert response.status_code == 200
-    assert response.json() == {"email": None, "roles": []}
+    assert response.json() == {"email": None, "roles": [], "name": None}
 
 
 def test_whoami_reports_logged_in_user(client):
@@ -1244,6 +1244,14 @@ def test_whoami_reports_logged_in_user(client):
     data = response.json()
     assert data["email"] == PFLEGER
     assert data["roles"] == [users.QUELLEN_PFLEGER]
+    assert data["name"] is None
+
+
+def test_whoami_reports_name_when_set(client):
+    users.set_name(PFLEGER, "Lena Pflegerin")
+    response = client.get("/api/auth/whoami")
+    assert response.status_code == 200
+    assert response.json()["name"] == "Lena Pflegerin"
 
 
 def test_request_link_returns_generic_message_for_unknown_email(anon_client):

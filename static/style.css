@@ -1005,7 +1005,12 @@ body:not(.chat-started) #question-form {
 
   header {
     align-items: flex-start;
-    padding-bottom: 0.85rem;
+    /* Fix: padding-bottom hier eigens etwas größer als margin-bottom - der
+       absolut positionierte Nutzername unter dem Login-Icon
+       (.auth-username-label) braucht diesen zusätzlichen Platz, sonst landet
+       er auf der border-bottom-Trennlinie statt (wie am Desktop) klar
+       darüber. */
+    padding-bottom: 1.6rem;
     margin-bottom: 0.85rem;
   }
 

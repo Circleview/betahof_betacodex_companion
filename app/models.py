@@ -93,6 +93,7 @@ class UpdateUserNameIn(BaseModel):
 class WhoAmIOut(BaseModel):
     email: Optional[str] = None
     roles: list[str] = []
+    name: Optional[str] = None
 
 
 class AdminUserOut(BaseModel):

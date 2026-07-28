@@ -30,8 +30,16 @@ const ROLE_LABEL_KEYS = {
   system_admin: 'auth.roleSystemAdmin',
 };
 
-let currentUser = { email: null, roles: [] };
+let currentUser = { email: null, roles: [], name: null };
 const listeners = [];
+
+// Backlog #98 folgend: wo immer der/die eingeloggte User:in selbst
+// dargestellt wird (Label unter dem Icon, Popover, Tooltip), den
+// gepflegten Namen bevorzugen - fehlt er (noch), wie bisher auf die
+// E-Mail zurückfallen.
+function currentUserDisplayName() {
+  return currentUser.name || currentUser.email;
+}
 
 function roleLabel(role) {
   return t(ROLE_LABEL_KEYS[role] || role);
@@ -55,7 +63,7 @@ function notifyAuthChanged() {
 
 async function refreshCurrentUser() {
   const res = await fetch('/api/auth/whoami');
-  currentUser = res.ok ? await res.json() : { email: null, roles: [] };
+  currentUser = res.ok ? await res.json() : { email: null, roles: [], name: null };
 }
 
 const PENCIL_ICON =
@@ -244,7 +252,7 @@ function buildLoggedInPanel() {
   const wrapper = document.createElement('div');
 
   const info = document.createElement('p');
-  info.textContent = `${t('auth.loggedInAs')}: ${currentUser.email}`;
+  info.textContent = `${t('auth.loggedInAs')}: ${currentUserDisplayName()}`;
   wrapper.appendChild(info);
 
   const statusRow = document.createElement('div');
@@ -334,7 +342,7 @@ function renderWidget(showExpiredNotice) {
   button.className = 'icon-button auth-widget-button';
   if (currentUser.email) button.classList.add('auth-widget-button--active');
   const title = currentUser.email
-    ? `${t('auth.iconTitle')} (${currentUser.email})`
+    ? `${t('auth.iconTitle')} (${currentUserDisplayName()})`
     : t('auth.iconTitle');
   button.title = title;
   button.setAttribute('aria-label', title);
@@ -347,7 +355,7 @@ function renderWidget(showExpiredNotice) {
     // die anderen Icons daneben zu verschieben.
     const usernameLabel = document.createElement('span');
     usernameLabel.className = 'auth-username-label';
-    usernameLabel.textContent = currentUser.email.split('@')[0];
+    usernameLabel.textContent = currentUser.name || currentUser.email.split('@')[0];
     container.appendChild(usernameLabel);
   }
 
