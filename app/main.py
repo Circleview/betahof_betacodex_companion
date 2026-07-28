@@ -1209,7 +1209,7 @@ def logout():
 def whoami(request: Request):
     email = _get_current_user_email(request)
     user = users.get_user(email) if email else None
-    return WhoAmIOut(email=email, roles=users.get_roles(email), name=user["name"] if user else None)
+    return WhoAmIOut(email=email, roles=users.get_roles(email), name=user.get("name") if user else None)
 
 
 @app.get("/api/auth/users", response_model=list[AdminUserOut])

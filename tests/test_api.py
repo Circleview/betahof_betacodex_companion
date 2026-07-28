@@ -1,4 +1,5 @@
 import concurrent.futures
+import json
 import threading
 import time
 
@@ -1252,6 +1253,19 @@ def test_whoami_reports_name_when_set(client):
     response = client.get("/api/auth/whoami")
     assert response.status_code == 200
     assert response.json()["name"] == "Lena Pflegerin"
+
+
+def test_whoami_tolerates_legacy_user_entry_without_name_key(client):
+    # Reale Produktions-Daten (Stable, vor #98) enthalten Einträge ganz ohne
+    # "name"-Schlüssel, nicht nur mit name=None - direktes user["name"] hätte
+    # dort einen KeyError geworfen (2026-07-29 auf Stable aufgetreten).
+    raw = json.loads(users.USERS_FILE.read_text())
+    del raw[PFLEGER]["name"]
+    users.USERS_FILE.write_text(json.dumps(raw))
+
+    response = client.get("/api/auth/whoami")
+    assert response.status_code == 200
+    assert response.json()["name"] is None
 
 
 def test_request_link_returns_generic_message_for_unknown_email(anon_client):
