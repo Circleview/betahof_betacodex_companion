@@ -83,6 +83,11 @@ class RequestLinkIn(BaseModel):
 class InviteIn(BaseModel):
     email: str
     role: str
+    name: Optional[str] = None
+
+
+class UpdateUserNameIn(BaseModel):
+    name: str
 
 
 class WhoAmIOut(BaseModel):
@@ -92,10 +97,18 @@ class WhoAmIOut(BaseModel):
 
 class AdminUserOut(BaseModel):
     email: str
+    name: Optional[str] = None
     roles: list[str]
     status: str
     invited_at: Optional[str] = None
     last_login_at: Optional[str] = None
+
+
+class AuditLogEntryOut(BaseModel):
+    timestamp: str
+    actor_email: str
+    action: str
+    target_label: str
 
 
 class MessageOut(BaseModel):

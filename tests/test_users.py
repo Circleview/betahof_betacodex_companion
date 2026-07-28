@@ -98,6 +98,41 @@ def test_ensure_bootstrap_admin_does_nothing_when_empty(tmp_path, monkeypatch):
     assert users.list_users() == []
 
 
+def test_invite_user_stores_name(tmp_path, monkeypatch):
+    _isolate(tmp_path, monkeypatch)
+
+    entry = users.invite_user(
+        "lena@test.local", users.QUELLEN_PFLEGER, invited_by="root@test.local", name="Lena Beispiel"
+    )
+
+    assert entry["name"] == "Lena Beispiel"
+    assert users.get_user("lena@test.local")["name"] == "Lena Beispiel"
+
+
+def test_invite_user_without_name_defaults_to_none(tmp_path, monkeypatch):
+    _isolate(tmp_path, monkeypatch)
+
+    entry = users.invite_user("lena@test.local", users.QUELLEN_PFLEGER, invited_by="root@test.local")
+
+    assert entry["name"] is None
+
+
+def test_set_name_updates_existing_user(tmp_path, monkeypatch):
+    _isolate(tmp_path, monkeypatch)
+    users.invite_user("lena@test.local", users.QUELLEN_PFLEGER, invited_by="root@test.local")
+
+    entry = users.set_name("lena@test.local", "Lena Beispiel")
+
+    assert entry["name"] == "Lena Beispiel"
+    assert users.get_user("lena@test.local")["name"] == "Lena Beispiel"
+
+
+def test_set_name_returns_none_for_unknown_user(tmp_path, monkeypatch):
+    _isolate(tmp_path, monkeypatch)
+
+    assert users.set_name("does-not-exist@test.local", "Jemand") is None
+
+
 def test_load_ignores_legacy_entries_without_valid_email_or_roles(tmp_path, monkeypatch):
     _isolate(tmp_path, monkeypatch)
     users.USERS_FILE.parent.mkdir(parents=True, exist_ok=True)

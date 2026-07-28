@@ -304,6 +304,57 @@ header h1 {
   border-bottom: 1px solid var(--color-border);
 }
 
+.auth-user-name-form {
+  display: flex;
+  gap: 0.4rem;
+  margin-top: 0.25rem;
+  /* Ohne width:100% nimmt das Formular als Kind von .auth-user-name-row
+     (selbst ein Flex-Container) nur so viel Breite wie nötig ein, statt die
+     volle Popover-Breite auszufüllen. */
+  width: 100%;
+}
+
+.auth-user-name-form input {
+  flex: 1;
+  min-width: 0;
+  margin-top: 0;
+  font-size: 0.85rem;
+  padding: 0.3rem 0.5rem;
+}
+
+.auth-user-name-form button {
+  flex: 0 0 auto;
+}
+
+.auth-user-name-row {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-top: 0.25rem;
+}
+
+.auth-user-name-display {
+  font-style: italic;
+}
+
+/* Eigene, immer sichtbare Variante statt .icon-button - dessen Ausblenden-
+   bis-Hover-Verhalten ist an #source-list gekoppelt (siehe dort) und würde
+   diesen Stift sonst dauerhaft unsichtbar machen. */
+.auth-edit-name-btn {
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  padding: 0.15rem;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+}
+
+.auth-edit-name-btn:hover {
+  color: var(--color-accent);
+}
+
 .lang-switcher {
   font-size: 0.8rem;
   color: var(--color-text-muted);
@@ -1585,6 +1636,19 @@ body:not(.chat-started) #question-form {
   display: flex;
   flex-direction: column;
   gap: 0.6rem;
+  margin-bottom: 0.9rem;
+}
+
+/* Fix: das "Autorenprofil pflegen"-Panel des ERSTEN Autors sitzt direkt in
+   .author-fields (zwischen .field-row und .author-extra-rows) und hatte
+   keinen margin-bottom - die nächste Autor:innen-Zeile klebte dadurch direkt
+   an der Box, statt den sonst üblichen Zeilenabstand einzuhalten (0.9rem,
+   wie bei .field-row). Bewusst NICHT pauschal auf .new-author-profile
+   gesetzt: bei einer 2./3. Person sitzt dasselbe Panel innerhalb von
+   .author-extra-row-group, wo der Flex-gap des umgebenden
+   .author-extra-rows bereits für konsistenten Abstand sorgt - ein
+   zusätzlicher margin-bottom dort würde die Lücke verdoppeln. */
+.author-fields > .new-author-profile {
   margin-bottom: 0.9rem;
 }
 

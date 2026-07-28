@@ -60,7 +60,7 @@ def has_role(email: str | None, role: str) -> bool:
     return SYSTEM_ADMIN in roles or role in roles
 
 
-def invite_user(email: str, role: str, invited_by: str) -> dict:
+def invite_user(email: str, role: str, invited_by: str, name: str | None = None) -> dict:
     email = _normalize_email(email)
     users = _load()
     now = datetime.now(timezone.utc).isoformat()
@@ -68,6 +68,7 @@ def invite_user(email: str, role: str, invited_by: str) -> dict:
     if entry is None:
         entry = {
             "email": email,
+            "name": (name or "").strip() or None,
             "roles": [],
             "status": "invited",
             "invited_by": invited_by,
@@ -76,6 +77,22 @@ def invite_user(email: str, role: str, invited_by: str) -> dict:
         }
     if role not in entry["roles"]:
         entry["roles"].append(role)
+    users[email] = entry
+    _save(users)
+    return entry
+
+
+def set_name(email: str, name: str) -> dict | None:
+    """Backlog #98: nachträgliches Setzen/Ändern des Namens - eigene
+    Funktion statt Wiederverwendung von invite_user(), da das Setzen eines
+    Namens (durch user_admin) unabhängig von einer (erneuten) Rollen-
+    Einladung sein soll."""
+    email = _normalize_email(email)
+    users = _load()
+    entry = users.get(email)
+    if entry is None:
+        return None
+    entry["name"] = name.strip() or None
     users[email] = entry
     _save(users)
     return entry

@@ -17,6 +17,7 @@ from fastapi.staticfiles import StaticFiles
 load_dotenv()
 
 from app import (
+    audit,
     auth,
     author_profiles,
     authors,
@@ -37,6 +38,7 @@ from app import (
 from app.models import (
     AdminUserOut,
     AnswerOut,
+    AuditLogEntryOut,
     AuthorOut,
     AuthorProfileIn,
     BioOut,
@@ -56,6 +58,7 @@ from app.models import (
     SummaryOut,
     TermOut,
     TurnstileConfigOut,
+    UpdateUserNameIn,
     UrlCheckOut,
     UrlIn,
     VersionOut,
@@ -775,6 +778,7 @@ def add_source(
     else:
         sources = _load_sources()
         entry = sources[source_id]
+    audit.log_action(_user, "source_created", entry.get("title", source_id))
     return _to_source_out(entry, can_view_full_text=True, lang=x_lang)
 
 
@@ -845,6 +849,7 @@ def update_source(
     elif not metadata_only:
         _sync_audio_file_from_url(source_id, source.url)
 
+    audit.log_action(_user, "source_updated", sources[source_id].get("title", source_id))
     return _to_source_out(sources[source_id], can_view_full_text=True, lang=x_lang)
 
 
@@ -859,10 +864,12 @@ def delete_source(
         if source_id not in sources:
             raise HTTPException(404, i18n.get_message("source_not_found", x_lang))
 
+        title = sources[source_id].get("title", source_id)
         with _vectorstore_write_lock:
             vectorstore.delete_source_chunks(source_id)
         del sources[source_id]
         _save_sources(sources)
+    audit.log_action(_user, "source_deleted", title)
     authors.unregister_source(source_id)
     terms.unregister_source(source_id)
     _delete_pdf_file(source_id)
@@ -977,6 +984,7 @@ def update_author_profile(
         **bio_kwargs,
     )
     matching.update(_resolve_profile_for_lang(author_profiles.get_profile(name), lang))
+    audit.log_action(_user, "author_profile_updated", matching["name"])
     return matching
 
 
@@ -1040,6 +1048,7 @@ def rename_author_endpoint(
         raise HTTPException(404, i18n.get_message("author_not_found", x_lang))
     lang = x_lang if x_lang in ("de", "en") else i18n.DEFAULT_LANG
     updated.update(_resolve_profile_for_lang(author_profiles.get_profile(new_name), lang))
+    audit.log_action(_user, "author_renamed", f"{old_name} → {new_name}")
     return updated
 
 
@@ -1057,6 +1066,7 @@ def generate_author_bio_endpoint(
     texts = _collect_author_bio_texts(matching, lang)
     bio = summarization.generate_author_bio(matching["name"], texts, lang)
     author_profiles.set_profile(name, **{f"bio_{lang}": bio, f"bio_ai_generated_{lang}": True})
+    audit.log_action(_user, "author_bio_generated", matching["name"])
     return BioOut(bio=bio)
 
 
@@ -1162,11 +1172,29 @@ def invite_user(
         raise HTTPException(403, i18n.get_message("invite_role_forbidden", x_lang))
 
     email = payload.email.strip().lower()
-    entry = users.invite_user(email, payload.role, invited_by=current_user)
+    entry = users.invite_user(email, payload.role, invited_by=current_user, name=payload.name)
     token = auth.create_magic_link_token(email, auth.INVITE_LINK_MAX_AGE_SECONDS)
     link_url = str(request.base_url) + f"api/auth/verify?token={token}"
     mail.send_invite_email(email, link_url, payload.role, x_lang)
     return entry
+
+
+@app.put("/api/auth/users/{email}/name", response_model=AdminUserOut)
+def set_user_name(
+    email: str,
+    payload: UpdateUserNameIn,
+    _user: str = Depends(require_role(users.USER_ADMIN)),
+    x_lang: str = Header(default=i18n.DEFAULT_LANG),
+):
+    entry = users.set_name(email, payload.name)
+    if entry is None:
+        raise HTTPException(404, i18n.get_message("user_not_found", x_lang))
+    return entry
+
+
+@app.get("/api/audit-log", response_model=list[AuditLogEntryOut])
+def get_audit_log(_user: str = Depends(require_role(users.QUELLEN_PFLEGER))):
+    return audit.list_entries()
 
 
 @app.get("/api/sources/{source_id}/check-url", response_model=UrlCheckOut)
@@ -1260,7 +1288,9 @@ def reprocess_source(
         sources[source_id]["processing_status"] = "pending"
         sources[source_id]["processing_step"] = None
         sources[source_id]["processing_error"] = None
+        title = sources[source_id].get("title", source_id)
         _save_sources(sources)
+    audit.log_action(_user, "source_reprocessed", title)
     background_tasks.add_task(job, source_id, x_lang)
     return MessageOut(detail=i18n.get_message("reprocess_started", x_lang))
 
@@ -1288,9 +1318,11 @@ def generate_source_summary(
         sources[source_id]["summary_en"] = result["en"]["summary"]
         sources[source_id]["key_terms_de"] = result["de"]["key_terms"]
         sources[source_id]["key_terms_en"] = result["en"]["key_terms"]
+        title = sources[source_id].get("title", source_id)
         _save_sources(sources)
         _register_all_terms(source_id, sources[source_id])
 
+    audit.log_action(_user, "source_summary_generated", title)
     lang = x_lang if x_lang in ("de", "en") else i18n.DEFAULT_LANG
     return SummaryOut(summary=result[lang]["summary"], key_terms=result[lang]["key_terms"])
 

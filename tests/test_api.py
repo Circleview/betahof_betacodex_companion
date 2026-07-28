@@ -6,6 +6,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app import (
+    audit,
     auth,
     author_profiles,
     authors,
@@ -54,6 +55,7 @@ def client(tmp_path, monkeypatch):
     monkeypatch.setattr(author_profiles, "AUTHOR_PROFILES_FILE", tmp_path / "author_profiles.json")
     monkeypatch.setattr(users, "USERS_FILE", tmp_path / "users.json")
     monkeypatch.setattr(terms, "TERMS_FILE", tmp_path / "terms.json")
+    monkeypatch.setattr(audit, "AUDIT_LOG_FILE", tmp_path / "audit_log.json")
 
     monkeypatch.setattr(embeddings, "embed_passages", lambda texts: [[1.0, 0.0] for _ in texts])
     monkeypatch.setattr(embeddings, "embed_query", lambda text: [1.0, 0.0])
@@ -1215,6 +1217,79 @@ def test_list_invited_users_returns_entries_for_admin(anon_client):
     assert response.status_code == 200
     emails = {u["email"] for u in response.json()}
     assert "new@test.local" in emails
+
+
+def test_invite_stores_optional_name(anon_client):
+    login(anon_client, "admin@test.local", users.USER_ADMIN)
+
+    response = anon_client.post(
+        "/api/auth/invite",
+        json={"email": "new@test.local", "role": users.QUELLEN_PFLEGER, "name": "Nora Neu"},
+    )
+
+    assert response.status_code == 201
+    assert response.json()["name"] == "Nora Neu"
+
+
+def test_set_user_name_updates_existing_user(anon_client):
+    login(anon_client, "admin@test.local", users.USER_ADMIN)
+    anon_client.post("/api/auth/invite", json={"email": "new@test.local", "role": users.QUELLEN_PFLEGER})
+
+    response = anon_client.put("/api/auth/users/new@test.local/name", json={"name": "Nora Neu"})
+
+    assert response.status_code == 200
+    assert response.json()["name"] == "Nora Neu"
+    emails = {u["email"]: u["name"] for u in anon_client.get("/api/auth/users").json()}
+    assert emails["new@test.local"] == "Nora Neu"
+
+
+def test_set_user_name_requires_user_admin(anon_client):
+    login(anon_client, "someone@test.local", users.QUELLEN_PFLEGER)
+
+    response = anon_client.put("/api/auth/users/someone@test.local/name", json={"name": "X"})
+
+    assert response.status_code == 403
+
+
+def test_set_user_name_returns_404_for_unknown_user(anon_client):
+    login(anon_client, "admin@test.local", users.USER_ADMIN)
+
+    response = anon_client.put("/api/auth/users/nope@test.local/name", json={"name": "X"})
+
+    assert response.status_code == 404
+
+
+def test_audit_log_records_source_created(client):
+    client.post("/api/sources", json={"title": "Auditierte Quelle", "text": "Text."})
+
+    response = client.get("/api/audit-log")
+
+    assert response.status_code == 200
+    entries = response.json()
+    assert any(
+        e["action"] == "source_created" and e["target_label"] == "Auditierte Quelle" and e["actor_email"] == PFLEGER
+        for e in entries
+    )
+
+
+def test_audit_log_records_source_update_and_delete(client):
+    create_res = client.post("/api/sources", json={"title": "Zu ändern", "text": "Text."})
+    source_id = create_res.json()["id"]
+
+    client.put(f"/api/sources/{source_id}", json={"title": "Geändert", "text": "Neuer Text."})
+    client.delete(f"/api/sources/{source_id}")
+
+    actions = [e["action"] for e in client.get("/api/audit-log").json()]
+    assert "source_updated" in actions
+    assert "source_deleted" in actions
+
+
+def test_audit_log_requires_quellen_pfleger(anon_client):
+    login(anon_client, "someone@test.local")
+
+    response = anon_client.get("/api/audit-log")
+
+    assert response.status_code == 403
 
 
 def test_delete_source_removes_it(client):
