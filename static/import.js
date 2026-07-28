@@ -1528,11 +1528,26 @@ function buildAuthorMarker(name) {
   return li;
 }
 
+// ToDo: Anzahl der importierten Quellen in der Überschrift - bewusst NICHT
+// aus dem sources-Parameter von renderSourceList() abgeleitet, da der dort
+// gelegentlich eine gefilterte Teilmenge ist (Autor:innen-/Begriffs-Filter,
+// Alphabet-Sprungziele) - stattdessen immer aus der vollständigen
+// allSources-Liste, abzüglich Quellen, die gerade im Lösch-Countdown stehen
+// (siehe pendingDeletions/scheduleDeletion) und damit für die Nutzer:in
+// bereits als gelöscht gelten.
+function updateImportedSourcesCount() {
+  const countEl = document.getElementById('imported-sources-count');
+  if (!countEl) return;
+  const count = allSources.filter((s) => !pendingDeletions.has(s.id)).length;
+  countEl.textContent = `(${count})`;
+}
+
 function renderSourceList(sources, options = {}) {
   currentSourceList = sources;
   const sorted = sortSources(sources);
   currentDisplayedSources = sorted;
   updateAlphabetJumpBar(sorted);
+  updateImportedSourcesCount();
   const list = document.getElementById('source-list');
   list.innerHTML = '';
   let lastMonthYear = null;
@@ -2461,6 +2476,13 @@ document.getElementById('source-form').addEventListener('submit', async (e) => {
     setTextFieldPending(false, null);
     setListenUrlFieldVisible(false);
     importBereich.classList.add('hidden');
+    // Fix: das Anlege-Formular (#import-bereich) steht im Markup VOR der
+    // Quelltyp-Leiste/Quellenliste - fällt es nach dem Import weg, rutscht
+    // der bisherige Scroll-Inhalt ohne Gegenmaßnahme einfach nach oben
+    // nach, sodass man plötzlich mitten in der Liste statt an den
+    // "Neue Quelle anlegen"-Buttons landet. Zurück nach oben scrollen, damit
+    // direkt die nächste Quelle angelegt werden kann.
+    window.scrollTo({ top: 0, behavior: 'smooth' });
     // Die URL-Eingabe im "Von URL importieren"-Popover gehört NICHT zu
     // #source-form (separates Formular für /api/extract-url) und wurde
     // daher vom obigen reset() nicht mit geleert - beim nächsten Import
