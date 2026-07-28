@@ -2055,6 +2055,34 @@ function buildAuthorBioSection(a) {
   return container;
 }
 
+// ToDo: Plattform anhand der URL automatisch erkennen (siehe urlInput-Handler
+// in buildRow weiter unten), statt sie manuell eintippen zu müssen - Werte
+// sind bewusst identisch zu den Optionen in #social-platform-suggestions
+// (import.html), damit Autovervollständigung und Auto-Erkennung übereinstimmen.
+// Mastodon ist föderiert (beliebige Instanz-Domains) - "mastodon" im
+// Hostnamen ist nur eine Best-effort-Heuristik, keine vollständige Erkennung.
+const SOCIAL_PLATFORM_HOSTS = [
+  { pattern: /(^|\.)linkedin\.com$/, platform: 'LinkedIn' },
+  { pattern: /(^|\.)(twitter|x)\.com$/, platform: 'X (Twitter)' },
+  { pattern: /(^|\.)instagram\.com$/, platform: 'Instagram' },
+  { pattern: /(^|\.)(facebook|fb)\.com$/, platform: 'Facebook' },
+  { pattern: /(^|\.)(youtube\.com|youtu\.be)$/, platform: 'YouTube' },
+  { pattern: /mastodon/, platform: 'Mastodon' },
+  { pattern: /(^|\.)bsky\.app$/, platform: 'Bluesky' },
+  { pattern: /(^|\.)tiktok\.com$/, platform: 'TikTok' },
+];
+
+function detectSocialPlatform(url) {
+  let hostname;
+  try {
+    hostname = new URL(url).hostname.toLowerCase();
+  } catch {
+    return '';
+  }
+  const match = SOCIAL_PLATFORM_HOSTS.find(({ pattern }) => pattern.test(hostname));
+  return match ? match.platform : '';
+}
+
 function buildSocialLinksField(initialLinks) {
   const wrapper = document.createElement('div');
   wrapper.className = 'social-links-field';
@@ -2123,6 +2151,14 @@ function buildSocialLinksField(initialLinks) {
     urlInput.className = 'social-url-input';
     urlInput.placeholder = t('import.socialUrlPlaceholder');
     urlInput.value = (link && link.url) || '';
+    urlInput.addEventListener('input', () => {
+      // Nie ein bereits gefülltes Plattform-Feld überschreiben (z.B. von
+      // Hand korrigierte Angabe) - gleiche Konvention wie bei KI-generierten
+      // Feldern im Rest des Formulars.
+      if (platformInput.value.trim()) return;
+      const detected = detectSocialPlatform(urlInput.value.trim());
+      if (detected) platformInput.value = detected;
+    });
 
     row.appendChild(platformInput);
     row.appendChild(urlInput);
