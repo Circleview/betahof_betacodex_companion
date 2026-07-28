@@ -342,7 +342,10 @@ input, textarea {
   width: 100%;
   margin-top: 0.35rem;
   font-family: inherit;
-  font-size: 0.95rem;
+  /* Mind. 16px, sonst zoomen iOS Safari & viele Android-Browser beim Fokus
+     automatisch hinein (Auslöser war das neue Suchfeld, Fix gilt aber
+     global - jedes Eingabefeld unter 16px hätte denselben Effekt). */
+  font-size: 1rem;
   color: var(--color-text);
   background: var(--color-bg);
   border: 1px solid var(--color-border);
@@ -1202,6 +1205,25 @@ body:not(.chat-started) #question-form {
 .section-heading-actions .sort-toolbar {
   padding-left: 1.25rem;
   border-left: 1px solid var(--color-border);
+}
+
+.section-heading-actions .search-toolbar {
+  padding-left: 1.25rem;
+  border-left: 1px solid var(--color-border);
+}
+
+/* Backlog #94, zweiter Anlauf: statt eines Popovers (auf Mobile unpraktikabel,
+   auf Desktop schwer sauber am rechts sitzenden Icon auszurichten, siehe
+   git-Historie dieser Datei) klappt hier ein Suchbereich in voller Breite
+   auf, der die Alphabet-Sprungleiste ersetzt (siehe searchBarOpen in
+   import.js) - robust bei jeder Bildschirmbreite, da kein absolut
+   positioniertes Element mit fester Breite involviert ist. */
+.search-bar {
+  margin-bottom: 1rem;
+}
+
+.search-bar label {
+  margin-bottom: 0;
 }
 
 .sort-toolbar {

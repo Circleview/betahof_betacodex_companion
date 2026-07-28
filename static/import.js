@@ -130,6 +130,10 @@ let activeEditId = null;
 let pendingUploadId = null;
 let pendingUploadType = null; // 'pdf' | 'audio'
 let currentSortMode = 'author';
+// Backlog #94: kein Popover (auf Mobile unpraktikabel, siehe git-Historie)
+// - stattdessen klappt dieser Bereich unterhalb der Icon-Leiste auf und
+// ersetzt dabei die Alphabet-Sprungleiste (siehe updateAlphabetJumpBar).
+let searchBarOpen = false;
 const pendingDeletions = new Map();
 const unreachableSourceIds = new Set();
 const expandedSourceIds = new Set();
@@ -381,9 +385,20 @@ document.getElementById('typ-text').addEventListener('click', () => {
   showForm();
 });
 
+// Wird von den Popover-Buttons (url/file/jobs) mitverwendet, damit sich der
+// Suchbereich schließt, sobald eine andere Aktion in der Icon-Leiste
+// gestartet wird - analog dazu, dass diese sich gegenseitig schließen.
+function closeSearchBar() {
+  if (!searchBarOpen) return;
+  searchBarOpen = false;
+  document.getElementById('search-bar').classList.add('hidden');
+  renderSourceList(currentSourceList);
+}
+
 document.getElementById('typ-url').addEventListener('click', () => {
   importBereich.classList.add('hidden');
   filePopover.classList.add('hidden');
+  closeSearchBar();
   urlPopover.classList.toggle('hidden');
   document.getElementById('popover-status').textContent = '';
   if (!urlPopover.classList.contains('hidden')) {
@@ -399,6 +414,7 @@ document.getElementById('typ-url').addEventListener('click', () => {
 document.getElementById('typ-file').addEventListener('click', () => {
   importBereich.classList.add('hidden');
   urlPopover.classList.add('hidden');
+  closeSearchBar();
   filePopover.classList.toggle('hidden');
   document.getElementById('upload-status').textContent = '';
 });
@@ -407,7 +423,20 @@ document.getElementById('typ-jobs').addEventListener('click', () => {
   importBereich.classList.add('hidden');
   urlPopover.classList.add('hidden');
   filePopover.classList.add('hidden');
+  closeSearchBar();
   document.getElementById('jobs-popover').classList.toggle('hidden');
+});
+
+document.getElementById('typ-search').addEventListener('click', () => {
+  urlPopover.classList.add('hidden');
+  filePopover.classList.add('hidden');
+  document.getElementById('jobs-popover').classList.add('hidden');
+  searchBarOpen = !searchBarOpen;
+  document.getElementById('search-bar').classList.toggle('hidden', !searchBarOpen);
+  renderSourceList(currentSourceList);
+  if (searchBarOpen) {
+    document.getElementById('search-input').focus();
+  }
 });
 
 document.getElementById('popover-load').addEventListener('click', async () => {
@@ -1328,7 +1357,7 @@ const JUMP_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
 function updateAlphabetJumpBar(sorted) {
   const bar = document.getElementById('alphabet-jump-bar');
   if (!bar) return;
-  if (currentSortMode !== 'author' || isFilterActive()) {
+  if (searchBarOpen || currentSortMode !== 'author' || isFilterActive()) {
     bar.classList.add('hidden');
     bar.replaceChildren();
     return;
@@ -1924,20 +1953,69 @@ async function filterByTerm(term) {
   scrollToFilteredResults();
 }
 
-document.getElementById('source-filter-clear').addEventListener('click', () => {
+// Backlog #94: Volltextsuche - anders als bei Autor/Begriff kein Backend-
+// Aufruf nötig, allSources ist bereits vollständig (inkl. Volltext) im
+// Speicher geladen, daher direkte, sofortige Filterung pro Tastenanschlag.
+function normalizeSearch(value) {
+  return (value || '').toLowerCase();
+}
+
+function sourceMatchesSearch(source, query) {
+  const q = normalizeSearch(query);
+  if (!q) return true;
+  const haystacks = [
+    source.title,
+    source.text,
+    source.summary,
+    (source.authors || []).join(' '),
+    (source.key_terms || []).join(' '),
+  ];
+  return haystacks.some((h) => normalizeSearch(h).includes(q));
+}
+
+function applySearchFilter(query) {
+  document.getElementById('source-filter-label').textContent = t('import.filteredBySearch');
+  document.getElementById('source-filter-name').textContent = query;
+  document.getElementById('source-filter-status').classList.remove('hidden');
+  renderSourceList(allSources.filter((s) => sourceMatchesSearch(s, query)));
+
+  filteredAuthorEntry = null;
+  authorPanelEditMode = false;
+  renderAuthorInfoPanel();
+}
+
+function searchSources(query) {
+  activeFilter = { type: 'search', value: query };
+  resetSourcePagination();
+  applySearchFilter(query);
+}
+
+// scroll=false beim Leeren des Suchfelds während des Tippens - die Ansicht
+// soll dabei nicht plötzlich unter der noch fokussierten, oben in der
+// Kopfzeile sitzenden Suchbox wegspringen (anders als beim expliziten
+// Klick auf "Alle anzeigen", wo ein Sprung an den Listenanfang erwartet wird).
+function clearSourceFilter({ scroll = true } = {}) {
   activeFilter = null;
   resetSourcePagination();
   document.getElementById('source-filter-status').classList.add('hidden');
+  document.getElementById('search-input').value = '';
   renderSourceList(allSources);
   filteredAuthorEntry = null;
   authorPanelEditMode = false;
   renderAuthorInfoPanel();
-  // Symmetrisch zu filterByAuthor/filterByTerm (die per scrollToFilteredResults
-  // an den Anfang der Liste scrollen) - sonst bleibt der Blick z.B. nach einem
-  // Sprung über die Alphabet-Leiste zu einer weit unten stehenden Person
-  // irgendwo mitten in der jetzt wieder vollständigen Liste hängen.
-  scrollToFilteredResults();
+  if (scroll) scrollToFilteredResults();
+}
+
+document.getElementById('search-input').addEventListener('input', (e) => {
+  const query = e.target.value.trim();
+  if (!query) {
+    clearSourceFilter({ scroll: false });
+    return;
+  }
+  searchSources(query);
 });
+
+document.getElementById('source-filter-clear').addEventListener('click', () => clearSourceFilter());
 
 document.getElementById('sort-author').addEventListener('click', () => setSortMode('author'));
 document.getElementById('sort-date').addEventListener('click', () => setSortMode('date'));
@@ -1983,6 +2061,8 @@ async function loadSources({ skipUrlHealthCheck = false } = {}) {
     await applyAuthorFilter(activeFilter.value);
   } else if (activeFilter?.type === 'term') {
     await applyTermFilter(activeFilter.value);
+  } else if (activeFilter?.type === 'search') {
+    applySearchFilter(activeFilter.value);
   } else {
     renderSourceList(allSources);
     filteredAuthorEntry = null;

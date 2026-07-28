@@ -150,6 +150,14 @@
           </svg>
         </button>
       </div>
+      <div class="search-toolbar">
+        <button type="button" id="typ-search" class="circle-button circle-button--sm" data-i18n-title="import.searchIconTitle">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="11" cy="11" r="7"></circle>
+            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+          </svg>
+        </button>
+      </div>
       <div id="reindex-bereich" class="hidden">
         <button type="button" id="reindex-sources-btn" class="sort-button" data-i18n-title="import.reindexSourcesTitle">
           <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -168,6 +176,11 @@
       <span id="source-filter-label"></span> <strong id="source-filter-name"></strong>
       &ndash; <button type="button" id="source-filter-clear" class="link-button" data-i18n="import.showAll"></button>
     </p>
+    <div id="search-bar" class="search-bar hidden">
+      <label><span data-i18n="import.searchPopoverLabel"></span>
+        <input type="search" id="search-input" data-i18n-placeholder="import.searchPlaceholder">
+      </label>
+    </div>
     <div id="alphabet-jump-bar" class="alphabet-jump-bar hidden"></div>
     <ul id="source-list"></ul>
   </div>
