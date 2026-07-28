@@ -441,6 +441,52 @@ def test_audio_transcriptions_are_processed_sequentially_not_concurrently(client
         assert entry["processing_status"] is None
 
 
+def test_recover_interrupted_processing_jobs_marks_running_as_error(client):
+    source_id = client.post("/api/sources", json={"title": "Quelle", "text": "Text."}).json()["id"]
+    sources = main_module._load_sources()
+    sources[source_id]["processing_status"] = "running"
+    sources[source_id]["processing_step"] = "transcribe"
+    main_module._save_sources(sources)
+
+    main_module._recover_interrupted_processing_jobs()
+
+    entry = next(s for s in client.get("/api/sources").json() if s["id"] == source_id)
+    assert entry["processing_status"] == "error"
+    assert entry["processing_error"]
+
+
+def test_recover_interrupted_processing_jobs_requeues_pending_audio(client, monkeypatch):
+    """Backlog #113 (Ergänzung): die In-Memory-Warteschlange überlebt einen
+    Serverneustart nicht - eine noch nicht begonnene ("pending") Audio-
+    Transkription muss beim (hier simulierten) Neustart automatisch neu
+    eingereiht werden, statt für immer unbemerkt auf "pending" stehen zu
+    bleiben."""
+    create_res = _create_deferred_audio_source(client, monkeypatch)
+    source_id = create_res.json()["id"]
+    assert client.get("/api/sources").json()[0]["processing_status"] == "pending"
+
+    monkeypatch.setattr(extraction, "transcribe_audio", lambda path: "Nach Neustart erfolgreich transkribiert.")
+    main_module._recover_interrupted_processing_jobs()
+    main_module._audio_transcription_queue.join()
+
+    entry = next(s for s in client.get("/api/sources").json() if s["id"] == source_id)
+    assert entry["text"] == "Nach Neustart erfolgreich transkribiert."
+    assert entry["processing_status"] is None
+
+
+def test_recover_interrupted_processing_jobs_ignores_pending_pdf(client, monkeypatch):
+    """Abgrenzung zum Audio-Fall oben: eine pending PDF-Quelle wird NICHT
+    automatisch neu eingereiht (Backlog #113 betrifft ausschließlich Audio-
+    Transkriptionen, siehe Kommentar bei _audio_transcription_queue)."""
+    create_res = _create_deferred_pdf_source(client, monkeypatch)
+    source_id = create_res.json()["id"]
+
+    main_module._recover_interrupted_processing_jobs()
+
+    entry = next(s for s in client.get("/api/sources").json() if s["id"] == source_id)
+    assert entry["processing_status"] == "pending"
+
+
 def test_reprocess_source_without_audio_file_returns_400(client):
     create_res = client.post("/api/sources", json={"title": "Quelle", "text": "Text."})
     source_id = create_res.json()["id"]

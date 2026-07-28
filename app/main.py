@@ -579,18 +579,31 @@ def _recover_interrupted_processing_jobs() -> None:
     """Nach einem Server-Neustart läuft kein Hintergrund-Job mehr, dessen
     Quelle noch auf "running" steht - kein Auto-Resume (unklar, wie weit
     er kam), stattdessen klar als Fehler markieren, damit ein Re-Import
-    bewusst manuell angestoßen wird (siehe POST /.../reprocess)."""
+    bewusst manuell angestoßen wird (siehe POST /.../reprocess).
+
+    Audio-Quellen, die noch auf "pending" stehen (Backlog #113: warten in
+    _audio_transcription_queue, bevor sie überhaupt angefangen haben),
+    werden dagegen automatisch neu eingereiht - die In-Memory-Warteschlange
+    selbst überlebt einen Neustart nicht, ohne dies blieben sie sonst
+    unbemerkt für immer auf "pending" stehen, statt (wie vor #113) zeitnah
+    von selbst dranzukommen. PDF-Texterkennung ist hiervon nicht betroffen
+    (siehe #113-Kommentar bei _audio_transcription_queue)."""
+    pending_audio_ids: list[str] = []
     with _sources_write_lock:
         sources = _load_sources()
         changed = False
-        for entry in sources.values():
+        for source_id, entry in sources.items():
             if entry.get("processing_status") == "running":
                 entry["processing_status"] = "error"
                 entry["processing_step"] = None
                 entry["processing_error"] = i18n.get_message("processing_interrupted", i18n.DEFAULT_LANG)
                 changed = True
+            elif entry.get("processing_status") == "pending" and _existing_audio_file(source_id):
+                pending_audio_ids.append(source_id)
         if changed:
             _save_sources(sources)
+    for source_id in pending_audio_ids:
+        _audio_transcription_queue.put((source_id, i18n.DEFAULT_LANG))
 
 
 _recover_interrupted_processing_jobs()
