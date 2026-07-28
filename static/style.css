@@ -2176,6 +2176,12 @@ details a {
   #jobs-popover {
     display: none !important;
   }
+
+  /* Fix: "Alle Quellen neu indizieren" ist ein seltener Wartungs-Button
+     für Quellen-Admins am Schreibtisch - auf Mobile bewusst ausgeblendet. */
+  #reindex-bereich {
+    display: none !important;
+  }
 }
 
 .popover label {
