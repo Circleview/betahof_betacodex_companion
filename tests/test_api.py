@@ -1,3 +1,5 @@
+import time
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -117,6 +119,108 @@ def test_add_source_creates_chunks(client):
 def test_add_source_rejects_empty_text(client):
     response = client.post("/api/sources", json={"title": "Leer", "text": "   "})
     assert response.status_code == 400
+
+
+def test_add_source_returns_pending_when_embedding_is_slow(client, monkeypatch):
+    # Fix: sehr große Dateien (viele Chunks -> langes lokales Embedding)
+    # blockierten bisher den kompletten Request. Timeout künstlich sehr klein
+    # setzen und embed_passages künstlich verzögern, um den "Datei zu groß"-
+    # Fall ohne echtes Warten zu simulieren.
+    monkeypatch.setattr(main_module, "SLOW_IMPORT_TIMEOUT_SECONDS", 0.05)
+
+    def slow_embed(chunks):
+        time.sleep(0.3)
+        return [[0.0, 0.0, 0.0] for _ in chunks]
+
+    monkeypatch.setattr(embeddings, "embed_passages", slow_embed)
+
+    response = client.post(
+        "/api/sources", json={"title": "Große Quelle", "text": "Ein langer Beispieltext."}
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["processing_status"] == "pending"
+    assert data["text"] == ""
+    assert data["chunk_count"] == 0
+
+    time.sleep(0.5)
+    entry = next(s for s in client.get("/api/sources").json() if s["id"] == data["id"])
+    assert entry["processing_status"] is None
+    assert entry["chunk_count"] > 0
+    assert entry["text"] == "Ein langer Beispieltext."
+
+
+def test_add_source_slow_import_still_generates_summary(client, monkeypatch):
+    monkeypatch.setattr(main_module, "SLOW_IMPORT_TIMEOUT_SECONDS", 0.05)
+    monkeypatch.setattr(
+        embeddings,
+        "embed_passages",
+        lambda chunks: (time.sleep(0.3), [[0.0, 0.0, 0.0] for _ in chunks])[1],
+    )
+    monkeypatch.setattr(
+        summarization,
+        "generate_bilingual_summary",
+        lambda text: {
+            "de": {"summary": "Zusammenfassung nach langsamem Import.", "key_terms": ["X"]},
+            "en": {"summary": "Summary after slow import.", "key_terms": ["X"]},
+        },
+    )
+
+    response = client.post("/api/sources", json={"title": "Quelle", "text": "Text."})
+    source_id = response.json()["id"]
+
+    time.sleep(0.5)
+    entry = next(s for s in client.get("/api/sources").json() if s["id"] == source_id)
+    assert entry["summary"] == "Zusammenfassung nach langsamem Import."
+
+
+def test_add_source_marks_error_when_slow_embedding_fails(client, monkeypatch):
+    monkeypatch.setattr(main_module, "SLOW_IMPORT_TIMEOUT_SECONDS", 0.05)
+
+    def slow_failing_embed(chunks):
+        time.sleep(0.3)
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(embeddings, "embed_passages", slow_failing_embed)
+
+    response = client.post("/api/sources", json={"title": "Quelle", "text": "Text."})
+    source_id = response.json()["id"]
+    assert response.json()["processing_status"] == "pending"
+
+    time.sleep(0.5)
+    entry = next(s for s in client.get("/api/sources").json() if s["id"] == source_id)
+    assert entry["processing_status"] == "error"
+    assert entry["processing_error"]
+
+
+def test_add_source_slow_import_appears_in_import_jobs(client, monkeypatch):
+    monkeypatch.setattr(main_module, "SLOW_IMPORT_TIMEOUT_SECONDS", 0.05)
+    monkeypatch.setattr(
+        embeddings,
+        "embed_passages",
+        lambda chunks: (time.sleep(1), [[0.0, 0.0, 0.0] for _ in chunks])[1],
+    )
+
+    response = client.post("/api/sources", json={"title": "Große Quelle", "text": "Text."})
+    source_id = response.json()["id"]
+
+    jobs = client.get("/api/import-jobs").json()
+    assert source_id in {job["id"] for job in jobs}
+    time.sleep(1.2)
+
+
+def test_add_source_fast_embedding_failure_still_raises_immediately(client, monkeypatch):
+    # Läuft die Einbettung SCHNELL, aber fehlerhaft, soll add_source weiterhin
+    # sofort mit einem Fehler antworten statt ihn stillschweigend in die
+    # Warteschlange zu schieben (nur echte Zeitüberschreitung führt zum
+    # asynchronen Pfad, siehe test_add_source_marks_error_when_slow_embedding_fails).
+    monkeypatch.setattr(
+        embeddings, "embed_passages", lambda chunks: (_ for _ in ()).throw(RuntimeError("boom"))
+    )
+
+    with pytest.raises(RuntimeError):
+        client.post("/api/sources", json={"title": "Quelle", "text": "Text."})
 
 
 def _create_deferred_audio_source(client, monkeypatch, title="Podcast-Folge", url="https://cdn.example.org/episode.mp3"):

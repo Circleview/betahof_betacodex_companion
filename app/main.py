@@ -181,7 +181,17 @@ def _load_sources() -> dict:
 
 
 def _save_sources(sources: dict) -> None:
-    SOURCES_FILE.write_text(json.dumps(sources, ensure_ascii=False, indent=2))
+    # Atomar schreiben (Temp-Datei + Rename statt direktem write_text):
+    # write_text() truncatet die Datei zuerst und schreibt dann - liest ein
+    # anderer Thread währenddessen (siehe _finish_synchronous_import, das
+    # jetzt parallel zum Request-Thread auf sources.json zugreift), bekommt
+    # er eine leere/unvollständige Datei und _load_sources() crasht mit
+    # JSONDecodeError. os.replace() ist auf POSIX-Systemen atomar - ein
+    # gleichzeitiger Leser sieht immer entweder die alte oder die neue
+    # vollständige Version, nie einen Zwischenzustand.
+    tmp_path = SOURCES_FILE.with_suffix(".json.tmp")
+    tmp_path.write_text(json.dumps(sources, ensure_ascii=False, indent=2))
+    tmp_path.replace(SOURCES_FILE)
 
 
 def _prepare_chunks(source: SourceIn, lang: str) -> tuple[list[str], list[list[float]]]:
@@ -539,6 +549,97 @@ def reindex_sources(
     return MessageOut(detail=i18n.get_message("reindex_started", x_lang))
 
 
+# Fix: Embedding (lokales Modell, CPU-gebunden) kann bei sehr großen Texten
+# (viele hundert Chunks) mehrere Sekunden dauern - bisher blockierte
+# add_source in diesem Fall den kompletten Request. Statt IMMER zu warten,
+# wird nur noch bis zu diesem Timeout gewartet; dauert es länger, antwortet
+# add_source sofort mit processing_status="pending" (siehe unten) - exakt
+# dieselbe Warteschlangen-Logik wie bei Audio-Transkription/PDF-OCR.
+SLOW_IMPORT_TIMEOUT_SECONDS = 5
+
+
+def _create_pending_source(source_id: str, source: SourceIn, imported_at: str) -> None:
+    sources = _load_sources()
+    sources[source_id] = {
+        "id": source_id,
+        "title": source.title,
+        "authors": source.authors,
+        "date": source.date,
+        "url": source.url,
+        "listen_url": source.listen_url,
+        "imported_at": imported_at,
+        "chunk_count": 0,
+        "text": "",
+        "restricted": source.restricted,
+        "summary_de": "",
+        "summary_en": "",
+        "key_terms_de": [],
+        "key_terms_en": [],
+        "processing_status": "pending",
+        "processing_step": None,
+        "processing_error": None,
+    }
+    _save_sources(sources)
+
+
+def _finish_synchronous_import(
+    source_id: str,
+    source: SourceIn,
+    chunks: list[str],
+    text: str,
+    outcome: dict,
+    done_event: threading.Event,
+) -> None:
+    """Läuft immer in einem eigenen Thread (siehe add_source): embedded und
+    speichert eine Quelle, deren Text bereits vollständig vorliegt (normaler
+    Text-/URL-Import oder eine PDF mit direkt extrahierbarer Text-Ebene -
+    NICHT der Audio-Transkriptions-/PDF-OCR-Pfad, dafür siehe
+    _process_audio_transcription/_process_pdf_ocr). Aktualisiert sources.json
+    unabhängig davon, ob add_source noch synchron auf done_event wartet
+    (Regelfall, meist deutlich unter SLOW_IMPORT_TIMEOUT_SECONDS) oder wegen
+    Zeitüberschreitung bei einer sehr großen Datei bereits mit
+    processing_status="pending" geantwortet hat - kein Sonderfall nötig, die
+    Quelle existiert in sources.json in beiden Fällen schon (siehe
+    _create_pending_source), bevor dieser Thread gestartet wird."""
+    sources = _load_sources()
+    if source_id not in sources:
+        done_event.set()
+        return
+    sources[source_id]["processing_step"] = "indexing"
+    _save_sources(sources)
+
+    try:
+        chunk_embeddings = embeddings.embed_passages(chunks)
+        with _vectorstore_write_lock:
+            chunk_count = _store_chunks(source_id, source, chunks, chunk_embeddings)
+    except Exception as exc:
+        outcome["error"] = exc
+        sources = _load_sources()
+        if source_id in sources:
+            sources[source_id]["processing_status"] = "error"
+            sources[source_id]["processing_step"] = None
+            sources[source_id]["processing_error"] = str(exc)
+            _save_sources(sources)
+        done_event.set()
+        return
+
+    outcome["chunk_count"] = chunk_count
+    sources = _load_sources()
+    if source_id in sources:
+        sources[source_id]["text"] = text
+        sources[source_id]["chunk_count"] = chunk_count
+        sources[source_id]["processing_status"] = None
+        sources[source_id]["processing_step"] = None
+        sources[source_id]["processing_error"] = None
+        _save_sources(sources)
+    # Muss NACH dem Speichern des Ergebnisses, aber VOR der (potenziell
+    # mehrere Sekunden dauernden) Zusammenfassung gesetzt werden - eine noch
+    # wartende add_source-Anfrage soll durch die Zusammenfassung nicht
+    # zusätzlich blockiert werden, die läuft komplett unabhängig weiter.
+    done_event.set()
+    _generate_summary_background(source_id, text)
+
+
 @app.post("/api/sources", response_model=SourceOut)
 def add_source(
     source: SourceIn,
@@ -550,36 +651,36 @@ def add_source(
     deferred_pdf = _is_deferred_pdf_import(source)
     deferred = deferred_audio or deferred_pdf
 
-    chunk_count = 0
+    text = source.text.strip()
+    chunks: list[str] = []
     if not deferred:
-        chunks, chunk_embeddings = _prepare_chunks(source, x_lang)
+        # Validierung + reines Chunking sind schnell und laufen deshalb immer
+        # synchron - nur das anschließende Embedding kann bei sehr großen
+        # Texten mehrere Sekunden dauern (siehe slow_import unten).
+        if not text:
+            raise HTTPException(400, i18n.get_message("text_empty", x_lang))
+        chunks = chunking.chunk_text(text)
+        if not chunks:
+            raise HTTPException(400, i18n.get_message("no_chunks", x_lang))
 
     source_id = str(uuid.uuid4())
     imported_at = datetime.now(timezone.utc).isoformat()
-    if not deferred:
-        chunk_count = _store_chunks(source_id, source, chunks, chunk_embeddings)
+    _create_pending_source(source_id, source, imported_at)
 
-    sources = _load_sources()
-    sources[source_id] = {
-        "id": source_id,
-        "title": source.title,
-        "authors": source.authors,
-        "date": source.date,
-        "url": source.url,
-        "listen_url": source.listen_url,
-        "imported_at": imported_at,
-        "chunk_count": chunk_count,
-        "text": "" if deferred else source.text.strip(),
-        "restricted": source.restricted,
-        "summary_de": "",
-        "summary_en": "",
-        "key_terms_de": [],
-        "key_terms_en": [],
-        "processing_status": "pending" if deferred else None,
-        "processing_step": None,
-        "processing_error": None,
-    }
-    _save_sources(sources)
+    slow_import = False
+    if not deferred:
+        outcome: dict = {}
+        done_event = threading.Event()
+        threading.Thread(
+            target=_finish_synchronous_import,
+            args=(source_id, source, chunks, text, outcome, done_event),
+            daemon=True,
+        ).start()
+        finished = done_event.wait(SLOW_IMPORT_TIMEOUT_SECONDS)
+        if finished and "error" in outcome:
+            raise outcome["error"]
+        slow_import = not finished
+
     for name in source.authors:
         is_new_author = _find_author(name) is None
         authors.register_author(name, source_id)
@@ -600,10 +701,41 @@ def add_source(
         background_tasks.add_task(_process_audio_transcription, source_id, x_lang)
     elif deferred_pdf:
         background_tasks.add_task(_process_pdf_ocr, source_id, x_lang)
-    else:
-        background_tasks.add_task(_generate_summary_background, source_id, source.text.strip())
+    # deferred=False, fertig ODER slow_import: _finish_synchronous_import
+    # stößt die Zusammenfassung in JEDEM Fall bereits selbst an, sobald der
+    # Hintergrund-Thread mit Embedding/Speichern fertig ist - hier nichts
+    # zusätzlich einplanen (sonst liefe die Zusammenfassung doppelt).
 
-    return _to_source_out(sources[source_id], can_view_full_text=True, lang=x_lang)
+    if not deferred and not slow_import:
+        # Bewusst NICHT nochmal von der Platte lesen: _finish_synchronous_import
+        # läuft nach done_event.set() im selben Thread sofort mit der
+        # Zusammenfassung weiter - ein erneutes _load_sources() hier würde
+        # in einem echten Nebenläufigkeits-Wettlauf gelegentlich schon die
+        # fertige Zusammenfassung sehen, obwohl add_source() sie laut Vertrag
+        # (siehe Tests) nie synchron zurückgeben soll.
+        entry = {
+            "id": source_id,
+            "title": source.title,
+            "authors": source.authors,
+            "date": source.date,
+            "url": source.url,
+            "listen_url": source.listen_url,
+            "imported_at": imported_at,
+            "chunk_count": outcome["chunk_count"],
+            "text": text,
+            "restricted": source.restricted,
+            "summary_de": "",
+            "summary_en": "",
+            "key_terms_de": [],
+            "key_terms_en": [],
+            "processing_status": None,
+            "processing_step": None,
+            "processing_error": None,
+        }
+    else:
+        sources = _load_sources()
+        entry = sources[source_id]
+    return _to_source_out(entry, can_view_full_text=True, lang=x_lang)
 
 
 @app.put("/api/sources/{source_id}", response_model=SourceOut)
