@@ -82,6 +82,45 @@ h3 {
   flex-shrink: 0;
 }
 
+/* Backlog #58 (A11y): für Tastatur-/Screenreader-Nutzung - unsichtbar bis
+   die Nutzer:in per Tab dorthin fokussiert, dann oben links sichtbar. */
+.skip-link {
+  position: absolute;
+  top: -40px;
+  left: 0.5rem;
+  z-index: 100;
+  background: var(--color-accent);
+  color: #fff;
+  padding: 0.6rem 1rem;
+  border-radius: var(--radius);
+  text-decoration: none;
+  font-weight: 700;
+  transition: top 0.15s ease;
+}
+
+.skip-link:focus {
+  top: 0.5rem;
+}
+
+/* Backlog #58: gebrandete 404-Seite statt Starlettes/FastAPIs nacktem
+   Standard-"Not Found" - wird von Starlette automatisch für jeden nicht
+   gefundenen statischen Pfad ausgeliefert (siehe StaticFiles html=True). */
+.error-page {
+  max-width: 32rem;
+  margin: 4rem auto;
+  padding: 0 1.5rem;
+  text-align: center;
+}
+
+.error-page h2 {
+  margin-bottom: 0.75rem;
+}
+
+.error-page p {
+  color: var(--color-text-muted);
+  margin-bottom: 1.5rem;
+}
+
 header {
   display: flex;
   flex-wrap: wrap;

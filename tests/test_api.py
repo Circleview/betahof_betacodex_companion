@@ -1932,3 +1932,26 @@ def test_delete_source_removes_audio_file(client, monkeypatch):
     client.delete(f"/api/sources/{source_id}")
 
     assert not list(main_module.AUDIO_DIR.glob(f"{source_id}.*"))
+
+
+def test_security_headers_include_csp(client):
+    response = client.get("/api/version")
+
+    assert "Content-Security-Policy" in response.headers
+    assert "default-src 'self'" in response.headers["Content-Security-Policy"]
+    assert response.headers["X-Content-Type-Options"] == "nosniff"
+
+
+def test_unknown_static_path_returns_branded_404_page(client):
+    response = client.get("/this-page-does-not-exist")
+
+    assert response.status_code == 404
+    assert "text/html" in response.headers["content-type"]
+    assert 'data-i18n="error404.heading"' in response.text
+
+
+def test_api_404_still_returns_json(client):
+    response = client.get("/api/this-route-does-not-exist")
+
+    assert response.status_code == 404
+    assert response.headers["content-type"].startswith("application/json")

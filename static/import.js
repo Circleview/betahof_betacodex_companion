@@ -594,6 +594,10 @@ function buildNewAuthorProfilePanel() {
   photoFieldRow.appendChild(photoUrlInput);
   const photoPreview = document.createElement('img');
   photoPreview.className = 'author-photo-preview';
+  // Anders als beim Bearbeiten-Panel eines bestehenden Profils ist der Name
+  // hier noch nicht final (wird gerade erst getippt) - deshalb ein
+  // generisches Alt statt a.name.
+  photoPreview.alt = t('import.newAuthorPhotoPreviewAlt');
   photoPreview.hidden = true;
   photoPreview.addEventListener('error', () => {
     photoPreview.hidden = true;

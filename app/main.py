@@ -125,12 +125,33 @@ APP_VERSION = _get_version()
 app = FastAPI(title="BetaCodex Wissensassistent")
 
 
+# Backlog #58: einzige externe Host, die die App tatsächlich als Ressource
+# einbindet, ist Cloudflare Turnstile (Skript + das von ihm erzeugte iFrame).
+# img-src erlaubt bewusst beliebige https-Quellen, weil Autor:innen-Fotos
+# (photo_url) frei eingetragene externe URLs sind - eine engere Regel würde
+# dieses bestehende Feature brechen. Keine Inline-Skripte nötig (siehe
+# init-footer.js), daher script-src ohne 'unsafe-inline'.
+CONTENT_SECURITY_POLICY = (
+    "default-src 'self'; "
+    "script-src 'self' https://challenges.cloudflare.com; "
+    "style-src 'self'; "
+    "img-src 'self' data: https:; "
+    "font-src 'self'; "
+    "connect-src 'self' https://challenges.cloudflare.com; "
+    "frame-src https://challenges.cloudflare.com; "
+    "base-uri 'self'; "
+    "form-action 'self'; "
+    "frame-ancestors 'none'"
+)
+
+
 @app.middleware("http")
 async def add_security_headers(request: Request, call_next):
     response = await call_next(request)
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    response.headers["Content-Security-Policy"] = CONTENT_SECURITY_POLICY
     return response
 
 
@@ -1240,6 +1261,18 @@ class NoCacheStaticFiles(StaticFiles):
         response = super().file_response(*args, **kwargs)
         response.headers["Cache-Control"] = "no-cache"
         return response
+
+
+# Backlog #58: die branded 404.html (siehe unten, StaticFiles html=True liefert
+# sie automatisch für jeden nicht gefundenen Pfad) soll NUR für echte
+# Browser-Navigation greifen, nicht für einen falsch getippten/nicht (mehr)
+# existierenden /api/-Pfad - der muss weiterhin JSON liefern, weil das
+# Frontend überall err.detail aus der Antwort liest. Ohne dieses Catch-all
+# würde ein unbekannter /api/-Pfad sonst ebenfalls bei der StaticFiles-
+# Route landen und fälschlich HTML statt JSON bekommen.
+@app.api_route("/api/{full_path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH"], include_in_schema=False)
+async def api_not_found(full_path: str):
+    raise HTTPException(404, "Not Found")
 
 
 app.mount("/", NoCacheStaticFiles(directory=str(STATIC_DIR), html=True), name="static")

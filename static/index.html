@@ -4,15 +4,22 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="description" content="KI-Wissensassistent, der Fragen ausschließlich aus geprüften Beta-Kodex-Quellen beantwortet – mit Quellenverweis.">
+<meta property="og:title" content="BetaCodex Companion">
+<meta property="og:description" content="KI-Wissensassistent, der Fragen ausschließlich aus geprüften Beta-Kodex-Quellen beantwortet – mit Quellenverweis.">
+<meta property="og:type" content="website">
+<meta property="og:image" content="/icons/apple-touch-icon.png">
+<meta name="twitter:card" content="summary">
 <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#1c1c1c" media="(prefers-color-scheme: dark)">
 <link rel="icon" type="image/png" href="/icons/favicon.png">
 <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+<link rel="manifest" href="/manifest.json">
 <title>BetaCodex Companion</title>
 <link rel="stylesheet" href="/style.css">
 <script src="https://challenges.cloudflare.com/turnstile/v0/api.js?onload=onTurnstileLoad&render=explicit" async defer></script>
 </head>
 <body>
+<a href="#frage-bereich" class="skip-link" data-i18n="common.skipToContent"></a>
 <header>
   <h1><span class="brand-dot" aria-hidden="true"></span><span data-i18n="index.brandName"></span></h1>
   <div class="header-actions">
@@ -29,7 +36,7 @@
   </div>
 </header>
 
-<section id="frage-bereich">
+<section id="frage-bereich" tabindex="-1">
   <aside id="sources-sidebar">
     <h3 data-i18n="index.usedSourcesHeading"></h3>
     <ol id="sidebar-sources-list"></ol>
@@ -53,9 +60,6 @@
 <footer class="site-footer" id="site-footer"></footer>
 
 <script type="module" src="/question.js"></script>
-<script type="module">
-  import { initFooter } from '/footer.js';
-  initFooter();
-</script>
+<script type="module" src="/init-footer.js"></script>
 </body>
 </html>

@@ -1,0 +1,13 @@
+{
+  "name": "BetaCodex Companion",
+  "short_name": "BetaCodex",
+  "description": "KI-Wissensassistent, der Fragen ausschließlich aus geprüften Beta-Kodex-Quellen beantwortet.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#ffffff",
+  "icons": [
+    { "src": "/icons/favicon.png", "sizes": "32x32", "type": "image/png" },
+    { "src": "/icons/apple-touch-icon.png", "sizes": "256x256", "type": "image/png" }
+  ]
+}

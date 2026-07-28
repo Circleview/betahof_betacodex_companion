@@ -4,10 +4,16 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="description" content="Quellenverwaltung für den BetaCodex Companion – Import, Bearbeitung und Pflege der kuratierten Wissensbasis.">
+<meta property="og:title" content="Quellen verwalten – BetaCodex Companion">
+<meta property="og:description" content="Quellenverwaltung für den BetaCodex Companion – Import, Bearbeitung und Pflege der kuratierten Wissensbasis.">
+<meta property="og:type" content="website">
+<meta property="og:image" content="/icons/apple-touch-icon.png">
+<meta name="twitter:card" content="summary">
 <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#1c1c1c" media="(prefers-color-scheme: dark)">
 <link rel="icon" type="image/png" href="/icons/favicon.png">
 <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+<link rel="manifest" href="/manifest.json">
 <title>Quellen verwalten &ndash; BetaCodex Companion</title>
 <link rel="stylesheet" href="/style.css">
 <!-- Fürs Feedback-Popover im Footer (Backlog #85) - window.onTurnstileLoad
@@ -16,6 +22,7 @@
 <script src="https://challenges.cloudflare.com/turnstile/v0/api.js?onload=onTurnstileLoad&render=explicit" async defer></script>
 </head>
 <body>
+<a href="#quellen-liste-bereich" class="skip-link" data-i18n="common.skipToContent"></a>
 <header>
   <h1><span class="brand-dot" aria-hidden="true"></span><span data-i18n="import.title"></span></h1>
   <div class="header-actions">
@@ -63,7 +70,7 @@
   <option value="TikTok"></option>
 </datalist>
 
-<section id="quellen-liste-bereich">
+<section id="quellen-liste-bereich" tabindex="-1">
   <div class="section-heading-row">
     <h3 data-i18n="import.importedSourcesHeading"></h3>
     <div class="section-heading-actions">
@@ -176,9 +183,6 @@
 <footer class="site-footer" id="site-footer"></footer>
 
 <script type="module" src="/import.js"></script>
-<script type="module">
-  import { initFooter } from '/footer.js';
-  initFooter();
-</script>
+<script type="module" src="/init-footer.js"></script>
 </body>
 </html>
