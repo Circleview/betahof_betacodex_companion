@@ -189,13 +189,14 @@ function updateSourceManagementVisibility() {
 // Grobe Stufen-zu-Füllstand-Zuordnung fürs Fortschritts-Icon - die OpenAI-
 // Transkriptions-API liefert kein echtes Fortschritts-Signal, daher kein
 // exakter Prozentsatz, nur eine Annäherung je Verarbeitungsschritt.
-const JOB_STAGE_FRACTIONS = { transcribe: 0.3, chunking: 0.8, indexing: 0.95 };
+const JOB_STAGE_FRACTIONS = { transcribe: 0.3, ocr: 0.3, chunking: 0.8, indexing: 0.95 };
 const JOBS_RING_CIRCUMFERENCE = 56.5;
 let jobsPollTimer = null;
 
 function jobStepLabel(job) {
   const key = {
     transcribe: 'import.processingStepTranscribe',
+    ocr: 'import.processingStepOcr',
     chunking: 'import.processingStepChunking',
     indexing: 'import.processingStepIndexing',
   }[job.processing_step];
@@ -324,10 +325,22 @@ function showForm() {
   document.getElementById('import-status').textContent = '';
 }
 
-function setTextFieldPendingAudio(pending) {
+// hintElementId wählt den passenden Hinweistext (Audio-Transkription vs.
+// PDF-Texterkennung, siehe #audio-text-pending-hint/#pdf-text-pending-hint)
+// - der jeweils andere Hinweis wird dabei stets mitversteckt, damit nach
+// einem Wechsel zwischen Audio- und PDF-Upload nicht beide gleichzeitig
+// sichtbar bleiben.
+function setTextFieldPending(pending, hintElementId) {
   document.getElementById('text-field-label').classList.toggle('hidden', pending);
   document.getElementById('text').required = !pending;
-  document.getElementById('audio-text-pending-hint').classList.toggle('hidden', !pending);
+  document.getElementById('audio-text-pending-hint').classList.toggle(
+    'hidden',
+    !(pending && hintElementId === 'audio-text-pending-hint')
+  );
+  document.getElementById('pdf-text-pending-hint').classList.toggle(
+    'hidden',
+    !(pending && hintElementId === 'pdf-text-pending-hint')
+  );
 }
 
 // Die meisten Audio-Direktlinks (z.B. die eigentliche mp3-Datei) stammen von
@@ -354,7 +367,7 @@ function fillForm({
   document.getElementById('text').value = text;
   document.getElementById('restricted').checked = restricted;
   document.getElementById('listen-url').value = '';
-  setTextFieldPendingAudio(false);
+  setTextFieldPending(false, null);
   setListenUrlFieldVisible(false);
 }
 
@@ -423,8 +436,18 @@ document.getElementById('popover-load').addEventListener('click', async () => {
         status.textContent = t('import.audioTranscriptionPending');
         fillForm({ title: data.title, url });
         showForm();
-        setTextFieldPendingAudio(true);
+        setTextFieldPending(true, 'audio-text-pending-hint');
         setListenUrlFieldVisible(true);
+        return;
+      }
+      if (data.is_pdf) {
+        // Gescannte PDF ohne Text-Ebene (siehe extraction.extract_pdf) -
+        // Text-Feld analog zur Audio-Transkription entschärfen, Text wird
+        // nach dem Anlegen per Hintergrund-Job (KI-OCR) ergänzt.
+        status.textContent = '';
+        fillForm({ title: data.title, url });
+        showForm();
+        setTextFieldPending(true, 'pdf-text-pending-hint');
         return;
       }
       status.textContent = t('import.extractionEmpty');
@@ -484,14 +507,18 @@ document.getElementById('popover-upload').addEventListener('click', async () => 
         status.textContent = t('import.audioTranscriptionPending');
         fillForm({ title: data.title });
         showForm();
-        setTextFieldPendingAudio(true);
+        setTextFieldPending(true, 'audio-text-pending-hint');
         setListenUrlFieldVisible(true);
         return;
       }
-      status.textContent = t('import.extractionEmpty');
+      // Hochgeladene PDF ohne Text-Ebene (siehe extraction.extract_pdf) -
+      // Text-Feld analog zur Audio-Transkription entschärfen, Text wird
+      // nach dem Anlegen per Hintergrund-Job (KI-OCR) ergänzt.
+      status.textContent = '';
       fillForm({ title: data.title });
       showForm();
-      setListenUrlFieldVisible(isAudio);
+      setTextFieldPending(true, 'pdf-text-pending-hint');
+      setListenUrlFieldVisible(false);
       return;
     }
     fillForm({ title: data.title, authors: data.authors, date: data.date, text: data.text });
@@ -559,10 +586,13 @@ function buildFieldLabelWithId(labelKey, id, value, type) {
 // Aufklappbarer Bereich unterhalb eines Autor:innen-Feldes, der nur bei
 // einer noch nicht erfassten Person sichtbar wird (siehe attachNewAuthorToggle
 // weiter unten) - dieselben Felder wie im bestehenden Autor:innen-Profil
-// (buildAuthorEditPanel), ohne den KI-Vita-Button: es gibt zu diesem
-// Zeitpunkt noch keine gespeicherten Quellen dieser Person, aus denen sich
-// eine Vita generieren ließe.
-function buildNewAuthorProfilePanel() {
+// (buildAuthorEditPanel). Die Person ist noch nicht als Autor:in registriert,
+// es gibt also keine gespeicherten Quellen, aus denen sich per bestehendem
+// /generate-bio-Endpunkt eine Vita generieren ließe - der KI-Vita-Button
+// nutzt deshalb /api/authors/generate-bio-preview mit dem gerade im Formular
+// stehenden Titel/Text der aktuellen Quelle als Grundlage (nameInput/
+// getSourceText werden von attachNewAuthorToggle übergeben).
+function buildNewAuthorProfilePanel(nameInput, getSourceText) {
   const details = document.createElement('details');
   details.className = 'new-author-profile hidden';
 
@@ -618,6 +648,13 @@ function buildNewAuthorProfilePanel() {
   body.appendChild(socialLabel);
 
   const bioInput = fieldRow('import.fieldBio', 'textarea');
+  const bioStatus = document.createElement('p');
+  bioStatus.className = 'edit-status';
+  body.appendChild(bioStatus);
+  const bioMagicButtons = [];
+  const triggerGenerateBioPreview = () =>
+    generateAuthorBioPreview(nameInput.value.trim(), getSourceText(), bioInput, bioStatus, bioMagicButtons);
+  bioMagicButtons.push(addMagicButton(bioInput, triggerGenerateBioPreview, 'import.generateBioTitle'));
 
   function getProfileValues() {
     return {
@@ -644,20 +681,27 @@ function buildNewAuthorProfilePanel() {
 // Autoren-Zeilen darunter ergänzen (jede mit eigenem "+"), ab der zweiten
 // Zeile zusätzlich mit einem "-"-Icon zum Entfernen.
 //
-// enableNewAuthorProfile: nur im Neu-anlegen-Formular aktiviert (siehe
-// renderCreateAuthorDateRow) - zeigt unter einer noch nicht erfassten
-// Person "Autorenprofil pflegen" an (Backlog #86). Im Bearbeiten-Formular
-// bewusst deaktiviert: dort gäbe es aktuell keine Stelle, die eingegebene
-// Profildaten für einen neu hinzugefügten Co-Autor auch tatsächlich
-// speichert - eine sichtbare, aber wirkungslose Eingabe wäre schlimmer als
-// gar keine.
-function buildAuthorFields(authorId, authorValues, dateId, dateValue, enableNewAuthorProfile = false) {
+// enableNewAuthorProfile: zeigt unter einer noch nicht erfassten Person
+// "Autorenprofil pflegen" an (Backlog #86) - sowohl im Neu-anlegen- als auch
+// im Bearbeiten-Formular (siehe renderCreateAuthorDateRow bzw. der Aufruf in
+// buildEditPanel). Beide Formulare speichern die Profildaten nach dem
+// erfolgreichen POST/PUT der Quelle direkt per PUT /api/authors/{name} -
+// funktioniert in beiden Fällen, weil sowohl add_source als auch
+// update_source neu hinzugefügte Autor:innen bereits synchron registrieren.
+function buildAuthorFields(
+  authorId,
+  authorValues,
+  dateId,
+  dateValue,
+  enableNewAuthorProfile = false,
+  getSourceText = () => ''
+) {
   const values = authorValues && authorValues.length ? authorValues : [''];
   const profileEntries = [];
 
   function attachNewAuthorToggle(input, container) {
     if (!enableNewAuthorProfile) return;
-    const { details, getProfileValues, hasAnyValue } = buildNewAuthorProfilePanel();
+    const { details, getProfileValues, hasAnyValue } = buildNewAuthorProfilePanel(input, getSourceText);
     container.appendChild(details);
     profileEntries.push({ input, getProfileValues, hasAnyValue });
 
@@ -818,11 +862,24 @@ function buildEditPanel(s, options = {}) {
   const titleInput = field('import.fieldTitle', 'title', s.title, 'text');
   titleInput.required = true;
 
+  // Lazy statt direkt gebunden: titleInput/textInput existieren an dieser
+  // Stelle noch nicht (werden erst weiter unten deklariert) - der Getter wird
+  // aber erst beim Klick auf den KI-Vita-Button ausgewertet, zu diesem
+  // Zeitpunkt sind beide Variablen bereits zugewiesen.
+  const getSourceText = () => `${titleInput.value}: ${textInput.value}`;
   const {
     wrapper: authorFieldsWrapper,
     dateInput,
     getAuthorValues,
-  } = buildAuthorFields(`edit-author-${s.id}`, s.authors, `edit-date-${s.id}`, s.date);
+    getNewAuthorProfiles,
+  } = buildAuthorFields(
+    `edit-author-${s.id}`,
+    s.authors,
+    `edit-date-${s.id}`,
+    s.date,
+    true,
+    getSourceText
+  );
   form.appendChild(authorFieldsWrapper);
 
   const urlField = buildFieldLabel('import.fieldUrl', 'url', s.url, 'url');
@@ -1037,6 +1094,17 @@ function buildEditPanel(s, options = {}) {
         if (!res.ok) {
           const err = await res.json().catch(() => ({}));
           throw new Error(err.detail || t('import.updateFailed'));
+        }
+        // update_source registriert neu hinzugefügte Autor:innen synchron
+        // (authors.register_author), daher kann das Profil direkt im
+        // Anschluss per PUT gespeichert werden - identisch zum Anlegen-Formular.
+        const newAuthorProfiles = getNewAuthorProfiles();
+        for (const [name, profile] of Object.entries(newAuthorProfiles)) {
+          await fetch(`/api/authors/${encodeURIComponent(name)}`, {
+            method: 'PUT',
+            headers: devUserHeaders(),
+            body: JSON.stringify(profile),
+          }).catch(() => {});
         }
         activeEditId = null;
         loadSources();
@@ -2059,6 +2127,37 @@ async function generateAuthorBio(name, bioInput, statusEl, buttons) {
   }
 }
 
+// Für Co-Autor:innen, die gerade erst im Formular eingetragen wurden (siehe
+// buildNewAuthorProfilePanel) - anders als generateAuthorBio gibt es noch
+// keine registrierte Person mit indizierten Quellen, deshalb der eigene
+// Endpunkt mit Name+aktuellem Quellentext statt Name-in-URL.
+async function generateAuthorBioPreview(name, text, bioInput, statusEl, buttons) {
+  buttons.forEach((b) => {
+    b.disabled = true;
+  });
+  statusEl.textContent = t('import.generatingBio');
+  try {
+    const res = await fetch('/api/authors/generate-bio-preview', {
+      method: 'POST',
+      headers: devUserHeaders(),
+      body: JSON.stringify({ name, text }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || t('import.generateBioFailed'));
+    }
+    const data = await res.json();
+    if (!bioInput.value.trim()) bioInput.value = data.bio;
+    statusEl.textContent = '';
+  } catch (err) {
+    statusEl.textContent = t('common.errorPrefix') + err.message;
+  } finally {
+    buttons.forEach((b) => {
+      b.disabled = false;
+    });
+  }
+}
+
 function buildAuthorInfoView(a) {
   const wrapper = document.createElement('div');
   wrapper.className = 'author-info-view';
@@ -2327,7 +2426,7 @@ document.getElementById('source-form').addEventListener('submit', async (e) => {
     renderCreateAuthorDateRow([], '');
     pendingUploadId = null;
     pendingUploadType = null;
-    setTextFieldPendingAudio(false);
+    setTextFieldPending(false, null);
     setListenUrlFieldVisible(false);
     importBereich.classList.add('hidden');
     // Die URL-Eingabe im "Von URL importieren"-Popover gehört NICHT zu
@@ -2363,7 +2462,9 @@ function renderCreateAuthorDateRow(overrideAuthorValues, overrideDateValue) {
   const target = existingAuthor
     ? existingAuthor.closest('.author-fields')
     : document.getElementById('create-author-date-row');
-  const built = buildAuthorFields('author', authorValues, 'date', dateValue, true);
+  const getSourceText = () =>
+    `${document.getElementById('title').value}: ${document.getElementById('text').value}`;
+  const built = buildAuthorFields('author', authorValues, 'date', dateValue, true, getSourceText);
   target.replaceWith(built.wrapper);
   getCreateAuthorValues = built.getAuthorValues;
   getCreateNewAuthorProfiles = built.getNewAuthorProfiles;

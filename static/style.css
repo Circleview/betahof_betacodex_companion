@@ -83,11 +83,17 @@ h3 {
 }
 
 /* Backlog #58 (A11y): für Tastatur-/Screenreader-Nutzung - unsichtbar bis
-   die Nutzer:in per Tab dorthin fokussiert, dann oben links sichtbar. */
+   die Nutzer:in per Tab dorthin fokussiert, dann oben links sichtbar.
+   translateY(-100%) statt eines festen top-Pixelwerts, weil ein fester Wert
+   (z.B. -40px) kleiner als die tatsächliche gerenderte Höhe des Links sein
+   kann (Padding + Zeilenhöhe) - dann ragt ein Stück permanent ins Bild,
+   genau der Bug, der hier zuerst passiert ist. Die eigene Höhe ist dagegen
+   immer korrekt, unabhängig von Text/Padding/Schriftgröße. */
 .skip-link {
   position: absolute;
-  top: -40px;
+  top: 0;
   left: 0.5rem;
+  transform: translateY(-100%);
   z-index: 100;
   background: var(--color-accent);
   color: #fff;
@@ -95,11 +101,11 @@ h3 {
   border-radius: var(--radius);
   text-decoration: none;
   font-weight: 700;
-  transition: top 0.15s ease;
+  transition: transform 0.15s ease;
 }
 
 .skip-link:focus {
-  top: 0.5rem;
+  transform: translateY(0);
 }
 
 /* Backlog #58: gebrandete 404-Seite statt Starlettes/FastAPIs nacktem
@@ -1542,9 +1548,13 @@ body:not(.chat-started) #question-form {
   display: flex;
   align-items: center;
   gap: 0.3rem;
-  /* Gleiche Breite wie das erste Autorenfeld, das sich per .field-row
-     (flex:1 + 1rem gap) die Zeile mit dem Datumsfeld teilt. */
-  max-width: calc(50% - 0.5rem);
+  /* KEIN eigenes max-width mehr - die Breitenbegrenzung übernimmt bereits
+     der umschließende .author-extra-row-group (siehe dort). Beide Regeln
+     mit demselben calc(50% - 0.5rem) hätten sich sonst verdoppelt: die
+     zweite Berechnung bezieht sich auf die Breite des bereits halbierten
+     Wrappers, wodurch am Ende nur ~25% statt 50% übrig blieben - genau der
+     Bug, der hier gemeldet wurde. */
+  width: 100%;
 }
 
 .author-extra-row .author-input {
@@ -1555,14 +1565,25 @@ body:not(.chat-started) #question-form {
 
 /* Backlog #86: hüllt eine Autor:innen-Eingabezeile und das dazugehörige,
    optionale "Autorenprofil pflegen"-Panel gemeinsam ein, damit "+"/"-"
-   beide zusammen verschieben/entfernen (siehe buildExtraRow in import.js). */
+   beide zusammen verschieben/entfernen (siehe buildExtraRow in import.js).
+   Gleiche Breite wie das erste Autorenfeld, das sich per .field-row
+   (flex:1 + 1rem gap) die Zeile mit dem Datumsfeld teilt. */
 .author-extra-row-group {
   max-width: calc(50% - 0.5rem);
 }
 
 .new-author-profile {
   margin-top: 0.5rem;
+  padding: 0.5rem 0.8rem;
   font-size: 0.9rem;
+  /* Dünner Rahmen + farbliche Akzentuierung, damit sichtbar wird, wo dieses
+     Panel (und damit die Felder für die gerade aufgeklappte Person) endet -
+     ohne die Akzentuierung ging die Grenze zwischen Autorenfeld und
+     Formular-Rest visuell verloren. */
+  border: 1px solid var(--color-border);
+  border-left: 3px solid var(--color-accent);
+  border-radius: 6px;
+  background: var(--color-accent-tint);
 }
 
 .new-author-profile-body {

@@ -129,6 +129,11 @@ class BioOut(BaseModel):
     bio: str
 
 
+class AuthorBioPreviewIn(BaseModel):
+    name: str
+    text: str
+
+
 class RenameAuthorIn(BaseModel):
     new_name: str
 
@@ -150,6 +155,7 @@ class ExtractedSource(BaseModel):
     text: str
     extracted: bool
     is_audio: bool = False
+    is_pdf: bool = False
 
 
 class ExtractedUpload(ExtractedSource):

@@ -279,6 +279,78 @@ def test_extract_from_url_reports_failure_when_pdf_download_fails():
     assert result["extracted"] is False
 
 
+def _fake_anthropic_message(text):
+    block = MagicMock()
+    block.text = text
+    message = MagicMock()
+    message.content = [block]
+    return message
+
+
+def test_render_pdf_pages_to_images_returns_one_png_per_page():
+    import fitz
+
+    doc = fitz.open()
+    doc.new_page()
+    doc.new_page()
+    data = doc.tobytes()
+    doc.close()
+
+    images = extraction._render_pdf_pages_to_images(data)
+
+    assert len(images) == 2
+    assert all(img.startswith(b"\x89PNG") for img in images)
+
+
+def test_ocr_page_returns_transcribed_text():
+    client = MagicMock()
+    client.messages.create.return_value = _fake_anthropic_message("Erkannter Seitentext.")
+    with patch.object(extraction, "_get_anthropic_client", return_value=client):
+        text = extraction._ocr_page(b"fake-png-bytes")
+
+    assert text == "Erkannter Seitentext."
+    kwargs = client.messages.create.call_args.kwargs
+    assert kwargs["model"] == extraction._OCR_MODEL_NAME
+    content_block = kwargs["messages"][0]["content"][0]
+    assert content_block["type"] == "image"
+
+
+def test_ocr_page_returns_empty_string_on_error():
+    client = MagicMock()
+    client.messages.create.side_effect = RuntimeError("boom")
+    with patch.object(extraction, "_get_anthropic_client", return_value=client):
+        text = extraction._ocr_page(b"fake-png-bytes")
+
+    assert text == ""
+
+
+def test_ocr_pdf_with_ai_concatenates_page_texts():
+    with (
+        patch.object(extraction, "_render_pdf_pages_to_images", return_value=[b"page1", b"page2"]),
+        patch.object(extraction, "_ocr_page", side_effect=["Seite eins.", "Seite zwei."]),
+    ):
+        text = extraction.ocr_pdf_with_ai(b"fake-pdf-bytes")
+
+    assert text == "Seite eins.\n\nSeite zwei."
+
+
+def test_ocr_pdf_with_ai_skips_pages_without_text():
+    with (
+        patch.object(extraction, "_render_pdf_pages_to_images", return_value=[b"page1", b"page2"]),
+        patch.object(extraction, "_ocr_page", side_effect=["Seite eins.", ""]),
+    ):
+        text = extraction.ocr_pdf_with_ai(b"fake-pdf-bytes")
+
+    assert text == "Seite eins."
+
+
+def test_ocr_pdf_with_ai_returns_empty_string_when_rendering_fails():
+    with patch.object(extraction, "_render_pdf_pages_to_images", side_effect=RuntimeError("boom")):
+        text = extraction.ocr_pdf_with_ai(b"not-a-pdf")
+
+    assert text == ""
+
+
 def test_looks_like_audio_detects_extension():
     assert looks_like_audio("https://example.org/episode.mp3") is True
     assert looks_like_audio("https://example.org/episode.mp3?x=1") is True

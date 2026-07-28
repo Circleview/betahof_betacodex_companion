@@ -11,5 +11,6 @@ httpx
 trafilatura
 youtube-transcript-api
 pypdf
+pymupdf
 python-multipart
 openai

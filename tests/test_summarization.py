@@ -160,6 +160,85 @@ def test_generate_bilingual_summary_returns_empty_for_blank_text():
     assert result == {"de": {"summary": "", "key_terms": []}, "en": {"summary": "", "key_terms": []}}
 
 
+def _fake_tool_block(tool_input):
+    block = MagicMock()
+    block.type = "tool_use"
+    block.input = tool_input
+    return block
+
+
+def test_generate_bilingual_summary_retries_once_when_one_language_is_empty():
+    # Regressionstest: beim Import einer per KI-OCR erkannten PDF lieferte
+    # ein einzelner Aufruf eine valide Tool-Antwort mit gefüllter englischer,
+    # aber leerer deutscher Zusammenfassung - obwohl beide Felder im
+    # Tool-Schema als Pflichtfelder deklariert sind. Ein erneuter Aufruf mit
+    # demselben Text lieferte sofort eine vollständige Antwort.
+    incomplete = MagicMock()
+    incomplete.content = [
+        _fake_tool_block(
+            {
+                "summary_de": "",
+                "summary_en": "English summary.",
+                "key_terms_de": [],
+                "key_terms_en": ["Term"],
+            }
+        )
+    ]
+    complete = MagicMock()
+    complete.content = [
+        _fake_tool_block(
+            {
+                "summary_de": "Deutsche Zusammenfassung.",
+                "summary_en": "English summary.",
+                "key_terms_de": ["Begriff"],
+                "key_terms_en": ["Term"],
+            }
+        )
+    ]
+    client = MagicMock()
+    client.messages.create.side_effect = [incomplete, complete]
+    with patch.object(summarization, "_get_client", return_value=client):
+        result = summarization.generate_bilingual_summary("Ein langer Quelltext.")
+
+    assert client.messages.create.call_count == 2
+    assert result == {
+        "de": {"summary": "Deutsche Zusammenfassung.", "key_terms": ["Begriff"]},
+        "en": {"summary": "English summary.", "key_terms": ["Term"]},
+    }
+
+
+def test_generate_bilingual_summary_does_not_retry_when_already_complete():
+    client = _fake_tool_client(
+        {
+            "summary_de": "Deutsche Zusammenfassung.",
+            "summary_en": "English summary.",
+            "key_terms_de": ["Begriff"],
+            "key_terms_en": ["Term"],
+        }
+    )
+    with patch.object(summarization, "_get_client", return_value=client):
+        summarization.generate_bilingual_summary("Ein langer Quelltext.")
+
+    assert client.messages.create.call_count == 1
+
+
+def test_generate_bilingual_summary_keeps_retry_result_even_if_still_incomplete():
+    still_incomplete = MagicMock()
+    still_incomplete.content = [
+        _fake_tool_block(
+            {"summary_de": "", "summary_en": "English summary.", "key_terms_de": [], "key_terms_en": ["Term"]}
+        )
+    ]
+    client = MagicMock()
+    client.messages.create.side_effect = [still_incomplete, still_incomplete]
+    with patch.object(summarization, "_get_client", return_value=client):
+        result = summarization.generate_bilingual_summary("Ein langer Quelltext.")
+
+    assert client.messages.create.call_count == 2
+    assert result["en"]["summary"] == "English summary."
+    assert result["de"]["summary"] == ""
+
+
 def test_generate_author_bio_returns_plain_text_response():
     client = _fake_client("Eine kurze Vita.")
     with patch.object(summarization, "_get_client", return_value=client):

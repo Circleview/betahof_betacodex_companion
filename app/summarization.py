@@ -24,8 +24,12 @@ BILINGUAL_SYSTEM_PROMPT = """Du erstellst eine sachliche Zusammenfassung von ung
 BIO_SYSTEM_PROMPTS = {
     "de": """Du schreibst eine kurze, sachliche Vita (ca. 60-80 Wörter) für eine Autorin/einen Autor, basierend auf den Titeln und Zusammenfassungen ihrer/seiner Quellen.
 
+Ergänze das gerne um dein eigenes Allgemeinwissen über diese Person (z. B. Wirken, weitere Werke, Rolle/Organisation) - beschränke dich nicht nur auf den gegebenen Text. Erfinde dabei aber keine nicht überprüfbaren Details; wenn du die Person nicht kennst, bleib beim gegebenen Text.
+
 Antworte AUSSCHLIESSLICH mit dem Vita-Text selbst - ohne Anführungszeichen, ohne Markdown, ohne Überschrift, ohne weiteren Text.""",
     "en": """You write a short, factual bio (approximately 60-80 words) for an author, based on the titles and summaries of their sources.
+
+Feel free to also draw on your own general knowledge about this person (e.g. their body of work, other publications, role/organization) - don't limit yourself to only the given text. Don't invent unverifiable details, though; if you don't know the person, stick to the given text.
 
 Reply EXCLUSIVELY with the bio text itself - no quotation marks, no markdown, no heading, no other text.""",
 }
@@ -111,16 +115,11 @@ def generate_summary(text: str, lang: str = DEFAULT_LANG) -> dict:
         return {"summary": "", "key_terms": []}
 
 
-def generate_bilingual_summary(text: str) -> dict:
-    text = text.strip()
-    empty = {"de": {"summary": "", "key_terms": []}, "en": {"summary": "", "key_terms": []}}
-    if not text:
-        return empty
-
+def _call_bilingual_summary_tool(text: str) -> dict | None:
     try:
         data = _call_tool(BILINGUAL_SYSTEM_PROMPT, _BILINGUAL_SUMMARY_TOOL, text[:MAX_INPUT_CHARS])
         if not data:
-            return empty
+            return None
         return {
             "de": {
                 "summary": (data.get("summary_de") or "").strip(),
@@ -132,7 +131,28 @@ def generate_bilingual_summary(text: str) -> dict:
             },
         }
     except Exception:
+        return None
+
+
+def generate_bilingual_summary(text: str) -> dict:
+    text = text.strip()
+    empty = {"de": {"summary": "", "key_terms": []}, "en": {"summary": "", "key_terms": []}}
+    if not text:
         return empty
+
+    result = _call_bilingual_summary_tool(text)
+    # Vereinzelt liefert das Modell in einem Aufruf zwar eine valide
+    # Tool-Antwort, lässt darin aber eine der beiden (laut Schema
+    # verpflichtenden) Sprachen leer, während die andere korrekt gefüllt ist
+    # - beobachtet beim Import einer per KI-OCR erkannten PDF, wo summary_en
+    # gefüllt war, summary_de aber leer blieb, obwohl ein erneuter Aufruf mit
+    # demselben Text sofort eine vollständige deutsche Zusammenfassung
+    # lieferte. Ein einziger Retry behebt das in der Praxis zuverlässig.
+    if result and (not result["de"]["summary"] or not result["en"]["summary"]):
+        retry = _call_bilingual_summary_tool(text)
+        if retry:
+            result = retry
+    return result or empty
 
 
 def generate_author_bio(name: str, texts: list[str], lang: str = DEFAULT_LANG) -> str:

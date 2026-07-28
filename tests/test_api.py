@@ -167,6 +167,25 @@ def test_process_audio_transcription_fills_text_and_indexes(client, monkeypatch)
     assert answer.status_code == 200
 
 
+def test_process_audio_transcription_triggers_summary_generation(client, monkeypatch):
+    create_res = _create_deferred_audio_source(client, monkeypatch)
+    source_id = create_res.json()["id"]
+
+    monkeypatch.setattr(extraction, "transcribe_audio", lambda path: "Nachträglich transkribierter Text.")
+    monkeypatch.setattr(
+        summarization,
+        "generate_bilingual_summary",
+        lambda text: {
+            "de": {"summary": "Zusammenfassung nach Transkription.", "key_terms": ["Podcast"]},
+            "en": {"summary": "Summary after transcription.", "key_terms": ["Podcast"]},
+        },
+    )
+    main_module._process_audio_transcription(source_id)
+
+    entry = next(s for s in client.get("/api/sources").json() if s["id"] == source_id)
+    assert entry["summary"] == "Zusammenfassung nach Transkription."
+
+
 def test_process_audio_transcription_marks_error_when_transcription_fails(client, monkeypatch):
     create_res = _create_deferred_audio_source(client, monkeypatch)
     source_id = create_res.json()["id"]
@@ -227,6 +246,104 @@ def test_reprocess_source_without_audio_file_returns_400(client):
 
     response = client.post(f"/api/sources/{source_id}/reprocess")
     assert response.status_code == 400
+
+
+def _create_deferred_pdf_source(client, monkeypatch, title="Gescanntes PDF", url="https://cdn.example.org/scan.pdf"):
+    """Legt eine PDF-URL-Quelle mit leerem Text an (gescannte PDF ohne
+    Text-Ebene, siehe extraction.extract_pdf), OHNE dass der eingeplante
+    Hintergrund-Job dabei wirklich läuft - gleiches Muster wie
+    _create_deferred_audio_source."""
+    monkeypatch.setattr(extraction, "looks_like_audio", lambda u: False)
+    monkeypatch.setattr(extraction, "looks_like_pdf", lambda u: True)
+    monkeypatch.setattr(extraction, "download_pdf_bytes", lambda u: b"fake-pdf-bytes")
+
+    real_process = main_module._process_pdf_ocr
+    monkeypatch.setattr(main_module, "_process_pdf_ocr", lambda *a, **kw: None)
+    response = client.post("/api/sources", json={"title": title, "text": "", "url": url})
+    monkeypatch.setattr(main_module, "_process_pdf_ocr", real_process)
+    return response
+
+
+def test_add_source_defers_scanned_pdf_url_with_missing_text(client, monkeypatch):
+    response = _create_deferred_pdf_source(client, monkeypatch)
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["text"] == ""
+    assert data["chunk_count"] == 0
+    assert data["processing_status"] == "pending"
+
+
+def test_process_pdf_ocr_fills_text_and_indexes(client, monkeypatch):
+    create_res = _create_deferred_pdf_source(client, monkeypatch)
+    source_id = create_res.json()["id"]
+
+    monkeypatch.setattr(extraction, "ocr_pdf_with_ai", lambda data: "Per KI erkannter Seitentext.")
+    main_module._process_pdf_ocr(source_id)
+
+    sources = client.get("/api/sources").json()
+    entry = next(s for s in sources if s["id"] == source_id)
+    assert entry["text"] == "Per KI erkannter Seitentext."
+    assert entry["chunk_count"] > 0
+    assert entry["processing_status"] is None
+
+    answer = client.post("/api/ask", json={"question": "Was steht im Scan?"})
+    assert answer.status_code == 200
+
+
+def test_process_pdf_ocr_triggers_summary_generation(client, monkeypatch):
+    # Fix: die Zusammenfassung wurde bisher nur bei normalem Text-Import und
+    # nach Audio-Transkription automatisch angestoßen, nicht nach PDF-OCR -
+    # beide Hintergrund-Jobs laufen über denselben _run_deferred_text_extraction-
+    # Ablauf, der _generate_summary_background am Ende aufruft.
+    create_res = _create_deferred_pdf_source(client, monkeypatch)
+    source_id = create_res.json()["id"]
+
+    monkeypatch.setattr(extraction, "ocr_pdf_with_ai", lambda data: "Per KI erkannter Seitentext.")
+    monkeypatch.setattr(
+        summarization,
+        "generate_bilingual_summary",
+        lambda text: {
+            "de": {"summary": "Zusammenfassung nach Texterkennung.", "key_terms": ["Scan"]},
+            "en": {"summary": "Summary after text recognition.", "key_terms": ["Scan"]},
+        },
+    )
+    main_module._process_pdf_ocr(source_id)
+
+    entry = next(s for s in client.get("/api/sources").json() if s["id"] == source_id)
+    assert entry["summary"] == "Zusammenfassung nach Texterkennung."
+
+
+def test_process_pdf_ocr_marks_error_when_ocr_fails(client, monkeypatch):
+    create_res = _create_deferred_pdf_source(client, monkeypatch)
+    source_id = create_res.json()["id"]
+
+    monkeypatch.setattr(extraction, "ocr_pdf_with_ai", lambda data: "")
+    main_module._process_pdf_ocr(source_id)
+
+    sources = client.get("/api/sources").json()
+    entry = next(s for s in sources if s["id"] == source_id)
+    assert entry["processing_status"] == "error"
+    assert entry["processing_error"]
+
+
+def test_reprocess_source_picks_pdf_job_when_no_audio_file(client, monkeypatch):
+    create_res = _create_deferred_pdf_source(client, monkeypatch)
+    source_id = create_res.json()["id"]
+
+    monkeypatch.setattr(extraction, "ocr_pdf_with_ai", lambda data: "")
+    main_module._process_pdf_ocr(source_id)
+    assert client.get("/api/sources").json()[0]["processing_status"] == "error"
+
+    monkeypatch.setattr(extraction, "ocr_pdf_with_ai", lambda data: "Beim zweiten Versuch erfolgreich.")
+    response = client.post(f"/api/sources/{source_id}/reprocess")
+    assert response.status_code == 200
+
+    sources = client.get("/api/sources").json()
+    entry = next(s for s in sources if s["id"] == source_id)
+    assert entry["processing_status"] is None
+    assert entry["processing_error"] is None
+    assert entry["text"] == "Beim zweiten Versuch erfolgreich."
 
 
 def test_list_sources_returns_imported_sources(client):
@@ -591,6 +708,21 @@ def test_extract_url_endpoint_reports_is_audio_true_for_audio_url(client, monkey
 
     assert response.status_code == 200
     assert response.json()["is_audio"] is True
+
+
+def test_extract_url_endpoint_reports_is_pdf_true_for_pdf_url(client, monkeypatch):
+    monkeypatch.setattr(
+        extraction,
+        "extract_from_url",
+        lambda url: {"title": "Scan", "authors": [], "date": "", "text": "", "extracted": False},
+    )
+    monkeypatch.setattr(extraction, "looks_like_audio", lambda url: False)
+    monkeypatch.setattr(extraction, "looks_like_pdf", lambda url: True)
+
+    response = client.post("/api/extract-url", json={"url": "https://cdn.example.org/scan.pdf"})
+
+    assert response.status_code == 200
+    assert response.json()["is_pdf"] is True
 
 
 def test_add_source_registers_author(client):
@@ -1322,6 +1454,48 @@ def test_generate_author_bio_requires_pfleger_role(client, anon_client):
 def test_generate_author_bio_unknown_author_returns_404(client):
     response = client.post("/api/authors/Does Not Exist/generate-bio")
     assert response.status_code == 404
+
+
+def test_generate_author_bio_preview_works_for_unregistered_author(client, monkeypatch):
+    # Backlog #86: KI-Vita-Vorschlag für eine gerade erst im Formular
+    # eingetragene, noch nicht gespeicherte Person - _find_author kennt sie
+    # noch nicht, der Vorschlag stützt sich stattdessen auf den aktuell im
+    # Formular stehenden Text.
+    monkeypatch.setattr(
+        summarization,
+        "generate_author_bio",
+        lambda name, texts, lang="de": f"Vita für {name} aus: {texts[0]}",
+    )
+
+    response = client.post(
+        "/api/authors/generate-bio-preview",
+        json={"name": "Neue Person", "text": "Titel: Zusammenfassung."},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["bio"] == "Vita für Neue Person aus: Titel: Zusammenfassung."
+
+
+def test_generate_author_bio_preview_does_not_persist_profile(client, monkeypatch):
+    monkeypatch.setattr(
+        summarization, "generate_author_bio", lambda name, texts, lang="de": "KI-Vita."
+    )
+
+    client.post(
+        "/api/authors/generate-bio-preview",
+        json={"name": "Neue Person", "text": "Text."},
+    )
+
+    assert all(a["name"] != "Neue Person" for a in client.get("/api/authors").json())
+
+
+def test_generate_author_bio_preview_requires_pfleger_role(anon_client):
+    response = anon_client.post(
+        "/api/authors/generate-bio-preview",
+        json={"name": "Neue Person", "text": "Text."},
+    )
+
+    assert response.status_code == 403
 
 
 def test_add_source_auto_generates_bio_for_new_author(client, monkeypatch):

@@ -1,3 +1,4 @@
+import base64
 import io
 import re
 import shutil
@@ -335,6 +336,87 @@ def extract_pdf(data: bytes) -> dict:
         "text": text,
         "extracted": bool(text),
     }
+
+
+# Für PDFs ohne eingebettete Text-Ebene (typischerweise ältere, gescannte
+# Quellen - extract_pdf() liefert dafür text="" zurück, siehe oben). Nutzt
+# denselben Anthropic-Client/dasselbe Modell wie app/summarization.py statt
+# eines separaten OCR-Anbieters, da bereits eine funktionierende
+# API-Key-Konfiguration dafür existiert.
+_OCR_MODEL_NAME = "claude-haiku-4-5-20251001"
+
+_OCR_SYSTEM_PROMPT = """Du transkribierst den sichtbaren Text einer gescannten Buch-/Artikelseite exakt und vollständig, ohne eigene Ergänzungen, Kommentare oder Zusammenfassungen.
+
+Antworte AUSSCHLIESSLICH mit dem erkannten Text - keine Einleitung, keine Beschreibung des Layouts, keine Anführungszeichen. Enthält die Seite keinen lesbaren Fließtext (z.B. leere Seite, reines Bild/Diagramm ohne Text), antworte mit einem leeren String."""
+
+_anthropic_client = None
+
+
+def _get_anthropic_client():
+    global _anthropic_client
+    if _anthropic_client is None:
+        import anthropic
+
+        _anthropic_client = anthropic.Anthropic()
+    return _anthropic_client
+
+
+def _render_pdf_pages_to_images(data: bytes, dpi: int = 150) -> list[bytes]:
+    import fitz  # PyMuPDF
+
+    doc = fitz.open(stream=data, filetype="pdf")
+    try:
+        zoom = dpi / 72
+        matrix = fitz.Matrix(zoom, zoom)
+        return [page.get_pixmap(matrix=matrix).tobytes("png") for page in doc]
+    finally:
+        doc.close()
+
+
+def _ocr_page(image_bytes: bytes) -> str:
+    """Transkribiert eine einzelne Seite. Gibt bei jedem Fehler (API-Fehler,
+    fehlender Key, Netzwerkfehler) einen leeren String zurück statt zu
+    crashen - gleiche defensive Konvention wie _transcribe_chunk."""
+    client = _get_anthropic_client()
+    try:
+        message = client.messages.create(
+            model=_OCR_MODEL_NAME,
+            max_tokens=4096,
+            system=_OCR_SYSTEM_PROMPT,
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "image",
+                            "source": {
+                                "type": "base64",
+                                "media_type": "image/png",
+                                "data": base64.b64encode(image_bytes).decode(),
+                            },
+                        },
+                        {"type": "text", "text": "Transkribiere den Text dieser Seite."},
+                    ],
+                }
+            ],
+        )
+        return message.content[0].text.strip()
+    except Exception:
+        return ""
+
+
+def ocr_pdf_with_ai(data: bytes) -> str:
+    """Texterkennung per KI-Vision für gescannte PDFs ohne Text-Ebene (siehe
+    extract_pdf()). Rendert jede Seite als Bild und lässt das Modell den
+    sichtbaren Text transkribieren - kann pro Seite mehrere Sekunden dauern,
+    läuft deshalb als Hintergrund-Job (siehe _process_pdf_ocr in
+    app/main.py) statt die Vorschau/das Anlegen der Quelle zu blockieren."""
+    try:
+        pages = _render_pdf_pages_to_images(data)
+    except Exception:
+        return ""
+    texts = [_ocr_page(page) for page in pages]
+    return "\n\n".join(t for t in texts if t)
 
 
 def _parse_markdown_extraction(raw: str) -> dict:

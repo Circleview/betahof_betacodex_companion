@@ -40,6 +40,7 @@ from app.models import (
     AuthorOut,
     AuthorProfileIn,
     BioOut,
+    AuthorBioPreviewIn,
     RenameAuthorIn,
     ChunkRef,
     ExtractedSource,
@@ -222,6 +223,11 @@ def _delete_pdf_file(source_id: str) -> None:
         pdf_path.unlink()
 
 
+def _existing_pdf_file(source_id: str) -> Path | None:
+    pdf_path = PDF_DIR / f"{source_id}.pdf"
+    return pdf_path if pdf_path.exists() else None
+
+
 def _audio_extension(url: str) -> str:
     suffix = Path(urlsplit(url).path).suffix.lower()
     return suffix if suffix in extraction.AUDIO_EXTENSIONS else ".mp3"
@@ -348,6 +354,21 @@ def _is_deferred_audio_import(source: SourceIn) -> bool:
     return bool(source.audio_upload_id)
 
 
+def _is_deferred_pdf_import(source: SourceIn) -> bool:
+    """PDF-Texterkennung per KI-Vision (siehe extraction.ocr_pdf_with_ai)
+    kann pro Seite mehrere Sekunden dauern - für PDFs ohne extrahierbare
+    Text-Ebene (typischerweise ältere, gescannte Quellen; extract_pdf()
+    liefert dafür schon in der Vorschau leeren Text) wird die Quelle
+    deshalb sofort mit leerem Text angelegt und der Text erst später per
+    Hintergrund-Job (_process_pdf_ocr) ergänzt - analog zu
+    _is_deferred_audio_import."""
+    if source.text.strip():
+        return False
+    if source.pdf_upload_id:
+        return True
+    return bool(source.url) and extraction.looks_like_pdf(source.url)
+
+
 # Serialisiert nur den kurzen "chunken + in Chroma schreiben"-Abschnitt
 # von _process_audio_transcription - app/vectorstore.py hat selbst keine
 # Locks, zwei gleichzeitig fertig werdende Hintergrund-Jobs könnten sich
@@ -356,21 +377,28 @@ def _is_deferred_audio_import(source: SourceIn) -> bool:
 _vectorstore_write_lock = threading.Lock()
 
 
-def _process_audio_transcription(source_id: str, lang: str = i18n.DEFAULT_LANG) -> None:
-    """Hintergrund-Job (siehe add_source): transkribiert eine bereits
-    angelegte, aber noch textlose Audio-Quelle und chunkt/indiziert sie
-    danach. Die Audiodatei liegt zu diesem Zeitpunkt schon in AUDIO_DIR
-    (add_source lädt/speichert sie synchron, nur die Transkription selbst
-    ist der langsame Teil)."""
+def _run_deferred_text_extraction(
+    source_id: str,
+    lang: str,
+    initial_step: str,
+    compute_text,
+    failure_i18n_key: str,
+) -> None:
+    """Gemeinsamer Ablauf für Hintergrund-Jobs, die den Text einer bereits
+    angelegten, aber noch textlosen Quelle nachträglich berechnen (Audio-
+    Transkription per _process_audio_transcription, PDF-Texterkennung per
+    _process_pdf_ocr) und ihn danach chunken/indizieren. initial_step
+    markiert die erste, quellenspezifische Verarbeitungsstufe
+    ("transcribe"/"ocr"), compute_text liefert bei Erfolg den erkannten
+    Text, sonst einen leeren String."""
     sources = _load_sources()
     if source_id not in sources:
         return
     sources[source_id]["processing_status"] = "running"
-    sources[source_id]["processing_step"] = "transcribe"
+    sources[source_id]["processing_step"] = initial_step
     _save_sources(sources)
 
-    audio_path = _existing_audio_file(source_id)
-    text = extraction.transcribe_audio(audio_path) if audio_path else ""
+    text = compute_text()
 
     sources = _load_sources()
     if source_id not in sources:
@@ -378,7 +406,7 @@ def _process_audio_transcription(source_id: str, lang: str = i18n.DEFAULT_LANG) 
     if not text:
         sources[source_id]["processing_status"] = "error"
         sources[source_id]["processing_step"] = None
-        sources[source_id]["processing_error"] = i18n.get_message("audio_transcription_failed", lang)
+        sources[source_id]["processing_error"] = i18n.get_message(failure_i18n_key, lang)
         _save_sources(sources)
         return
 
@@ -422,6 +450,39 @@ def _process_audio_transcription(source_id: str, lang: str = i18n.DEFAULT_LANG) 
         _save_sources(sources)
 
     _generate_summary_background(source_id, text)
+
+
+def _process_audio_transcription(source_id: str, lang: str = i18n.DEFAULT_LANG) -> None:
+    """Hintergrund-Job (siehe add_source): transkribiert eine bereits
+    angelegte, aber noch textlose Audio-Quelle. Die Audiodatei liegt zu
+    diesem Zeitpunkt schon in AUDIO_DIR (add_source lädt/speichert sie
+    synchron, nur die Transkription selbst ist der langsame Teil)."""
+    audio_path = _existing_audio_file(source_id)
+    _run_deferred_text_extraction(
+        source_id,
+        lang,
+        initial_step="transcribe",
+        compute_text=lambda: extraction.transcribe_audio(audio_path) if audio_path else "",
+        failure_i18n_key="audio_transcription_failed",
+    )
+
+
+def _process_pdf_ocr(source_id: str, lang: str = i18n.DEFAULT_LANG) -> None:
+    """Hintergrund-Job (siehe add_source): erkennt per KI-Vision den Text
+    einer bereits angelegten, aber noch textlosen PDF-Quelle ohne
+    extrahierbare Text-Ebene (typischerweise ältere, gescannte Dateien -
+    siehe extraction.ocr_pdf_with_ai). Die PDF-Datei liegt zu diesem
+    Zeitpunkt schon in PDF_DIR (add_source speichert sie synchron, nur die
+    Texterkennung selbst ist der langsame Teil) - analog zu
+    _process_audio_transcription."""
+    pdf_path = _existing_pdf_file(source_id)
+    _run_deferred_text_extraction(
+        source_id,
+        lang,
+        initial_step="ocr",
+        compute_text=lambda: extraction.ocr_pdf_with_ai(pdf_path.read_bytes()) if pdf_path else "",
+        failure_i18n_key="pdf_ocr_failed",
+    )
 
 
 def _recover_interrupted_processing_jobs() -> None:
@@ -486,14 +547,16 @@ def add_source(
     x_lang: str = Header(default=i18n.DEFAULT_LANG),
 ):
     deferred_audio = _is_deferred_audio_import(source)
+    deferred_pdf = _is_deferred_pdf_import(source)
+    deferred = deferred_audio or deferred_pdf
 
     chunk_count = 0
-    if not deferred_audio:
+    if not deferred:
         chunks, chunk_embeddings = _prepare_chunks(source, x_lang)
 
     source_id = str(uuid.uuid4())
     imported_at = datetime.now(timezone.utc).isoformat()
-    if not deferred_audio:
+    if not deferred:
         chunk_count = _store_chunks(source_id, source, chunks, chunk_embeddings)
 
     sources = _load_sources()
@@ -506,13 +569,13 @@ def add_source(
         "listen_url": source.listen_url,
         "imported_at": imported_at,
         "chunk_count": chunk_count,
-        "text": "" if deferred_audio else source.text.strip(),
+        "text": "" if deferred else source.text.strip(),
         "restricted": source.restricted,
         "summary_de": "",
         "summary_en": "",
         "key_terms_de": [],
         "key_terms_en": [],
-        "processing_status": "pending" if deferred_audio else None,
+        "processing_status": "pending" if deferred else None,
         "processing_step": None,
         "processing_error": None,
     }
@@ -535,6 +598,8 @@ def add_source(
 
     if deferred_audio:
         background_tasks.add_task(_process_audio_transcription, source_id, x_lang)
+    elif deferred_pdf:
+        background_tasks.add_task(_process_pdf_ocr, source_id, x_lang)
     else:
         background_tasks.add_task(_generate_summary_background, source_id, source.text.strip())
 
@@ -818,6 +883,25 @@ def generate_author_bio_endpoint(
     return BioOut(bio=bio)
 
 
+@app.post("/api/authors/generate-bio-preview", response_model=BioOut)
+def generate_author_bio_preview_endpoint(
+    payload: AuthorBioPreviewIn,
+    _user: str = Depends(require_role(users.QUELLEN_PFLEGER)),
+    x_lang: str = Header(default=i18n.DEFAULT_LANG),
+):
+    # Für Co-Autor:innen, die gerade erst im Formular eingetragen wurden und
+    # noch nicht als Autor:in registriert sind (siehe _find_author) - die
+    # Quelle selbst ist noch nicht gespeichert, es gibt also noch keine
+    # indizierten Texte, aus denen _collect_author_bio_texts schöpfen könnte.
+    # Nutzt stattdessen den gerade im Formular eingegebenen Text als einziges
+    # Quellenmaterial. Schreibt bewusst NICHTS in author_profiles.json - reine
+    # Vorschau, die Persistierung passiert erst nach dem Speichern der Quelle
+    # über den bestehenden PUT-/api/authors/{name}-Weg.
+    lang = x_lang if x_lang in ("de", "en") else i18n.DEFAULT_LANG
+    bio = summarization.generate_author_bio(payload.name, [payload.text], lang)
+    return BioOut(bio=bio)
+
+
 @app.get("/api/terms", response_model=list[TermOut])
 def list_terms():
     return terms.list_terms()
@@ -987,14 +1071,19 @@ def reprocess_source(
     sources = _load_sources()
     if source_id not in sources:
         raise HTTPException(404, i18n.get_message("source_not_found", x_lang))
-    if not _existing_audio_file(source_id):
-        raise HTTPException(400, i18n.get_message("no_audio_file", x_lang))
+
+    if _existing_audio_file(source_id):
+        job = _process_audio_transcription
+    elif _existing_pdf_file(source_id):
+        job = _process_pdf_ocr
+    else:
+        raise HTTPException(400, i18n.get_message("no_processing_file", x_lang))
 
     sources[source_id]["processing_status"] = "pending"
     sources[source_id]["processing_step"] = None
     sources[source_id]["processing_error"] = None
     _save_sources(sources)
-    background_tasks.add_task(_process_audio_transcription, source_id, x_lang)
+    background_tasks.add_task(job, source_id, x_lang)
     return MessageOut(detail=i18n.get_message("reprocess_started", x_lang))
 
 
@@ -1061,7 +1150,8 @@ def extract_audio_upload(
 def extract_url(payload: UrlIn, _user: str = Depends(require_role(users.QUELLEN_PFLEGER))):
     result = extraction.extract_from_url(payload.url)
     is_audio = extraction.looks_like_audio(payload.url)
-    return ExtractedSource(**result, is_audio=is_audio)
+    is_pdf = extraction.looks_like_pdf(payload.url)
+    return ExtractedSource(**result, is_audio=is_audio, is_pdf=is_pdf)
 
 
 def _normalize_for_match(text: str) -> str:

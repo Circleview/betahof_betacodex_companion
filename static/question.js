@@ -369,6 +369,18 @@ const chatMessages = document.getElementById('chat-messages');
 const questionInput = document.getElementById('question');
 const sidebarSourcesList = document.getElementById('sidebar-sources-list');
 
+// Ersetzt die generische Browser-Standardmeldung ("Bitte füllen Sie dieses
+// Feld aus"/"Please fill out this field") für das required-Feld durch eine
+// zum Kontext passende Aufforderung. setCustomValidity muss vor dem nächsten
+// Validierungsversuch wieder geleert werden, sonst bliebe das Feld dauerhaft
+// ungültig, selbst nachdem etwas eingegeben wurde.
+questionInput.addEventListener('invalid', () => {
+  questionInput.setCustomValidity(t('index.emptyQuestionValidation'));
+});
+questionInput.addEventListener('input', () => {
+  questionInput.setCustomValidity('');
+});
+
 // Baut sich über die gesamte Konversation auf (chunk_id -> Quelle) - einmal
 // zitierte Quellen bleiben in der Sidebar stehen, auch wenn eine spätere
 // Antwort sie nicht erneut zitiert.
