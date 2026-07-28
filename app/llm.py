@@ -15,6 +15,7 @@ Regeln:
 - Formatiere die Antwort mit minimalem Markdown (fett für zentrale Begriffe, ggf. kurze Absätze), aber ohne Emojis.
 - Antworte IMMER in derselben Sprache, in der die Nutzerfrage gestellt wurde – unabhängig von der Sprache dieser Systemanweisung. Erkenne die Sprache der Frage selbstständig; sie kann von Deutsch oder Englisch abweichen.
 - Antworte präzise und ohne Floskeln.
+- Beginne den Antworttext NICHT mit dem Wort "Antwort" oder einer ähnlichen Meta-Einleitung (z. B. "Antwort:", "Meine Antwort:") - starte direkt mit dem inhaltlichen Text. Es ist ohnehin klar, dass es sich um eine Antwort handelt.
 - Füge nach der Antwort (durch eine Leerzeile getrennt) einen zusätzlichen Block hinzu, der für jede verwendete Quellenzahl [n] das wörtliche Satzzitat aus dem jeweiligen Textausschnitt angibt, auf das sich die Aussage stützt. Exaktes Format, unabhängig von der Antwortsprache:
 ---QUOTES---
 [1]: "wörtliches Zitat, Zeichen für Zeichen wie im Textausschnitt"
@@ -31,6 +32,7 @@ Rules:
 - Format the answer with minimal Markdown (bold for key terms, short paragraphs where helpful), but no emojis.
 - ALWAYS answer in the same language the user's question was asked in – regardless of the language of this system prompt. Detect the question's language yourself; it may be neither German nor English.
 - Answer precisely and without filler phrases.
+- Do NOT begin the answer text with the word "Answer" or a similar meta-introduction (e.g., "Answer:", "My answer:") - start directly with the substantive text. It's already clear that this is an answer.
 - After the answer (separated by a blank line), add an extra block that gives, for every citation number [n] you used, the exact verbatim sentence from that text excerpt the statement is based on. Exact format, regardless of the answer's language:
 ---QUOTES---
 [1]: "verbatim quote, character-for-character as in the text excerpt"
@@ -41,6 +43,17 @@ Rules:
 
 _QUOTES_MARKER = "---QUOTES---"
 _QUOTE_LINE_RE = re.compile(r'^\[(\d+)\]:\s*"(.+)"\s*$', re.MULTILINE)
+
+# Fix: Claude beginnt die Antwort trotz Prompt-Anweisung gelegentlich mit dem
+# überflüssigen Meta-Wort "Antwort"/"Answer" (z.B. "Antwort: ..." oder fett
+# "**Antwort:** ..."). Entfernt als Sicherheitsnetz unabhängig davon, ob sich
+# das Modell an die Anweisung hält - \b verhindert ein Verstümmeln von
+# "Antworten" (Plural, anderes Wort).
+_ANSWER_LABEL_PREFIX_RE = re.compile(r'^\*{0,2}(antwort|answer)\b[:.\-–]?\*{0,2}\s*', re.IGNORECASE)
+
+
+def _strip_answer_label(text: str) -> str:
+    return _ANSWER_LABEL_PREFIX_RE.sub("", text, count=1)
 
 
 def parse_answer_and_quotes(raw: str) -> tuple[str, dict[int, list[str]]]:
@@ -56,9 +69,9 @@ def parse_answer_and_quotes(raw: str) -> tuple[str, dict[int, list[str]]]:
     """
     marker_index = raw.find(_QUOTES_MARKER)
     if marker_index == -1:
-        return raw.strip(), {}
+        return _strip_answer_label(raw.strip()), {}
 
-    answer = raw[:marker_index].strip()
+    answer = _strip_answer_label(raw[:marker_index].strip())
     quotes_block = raw[marker_index + len(_QUOTES_MARKER) :]
     quotes: dict[int, list[str]] = {}
     for match in _QUOTE_LINE_RE.finditer(quotes_block):

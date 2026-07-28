@@ -20,6 +20,7 @@ from app import (
     ratelimit,
     summarization,
     terms,
+    tts,
     users,
     vectorstore,
 )
@@ -513,6 +514,50 @@ def test_ask_without_sources_returns_400(client):
     assert response.status_code == 400
 
 
+def test_speech_returns_audio_without_login(anon_client, monkeypatch):
+    monkeypatch.setattr(tts, "synthesize_speech", lambda text, lang="de": b"fake-mp3-bytes")
+
+    response = anon_client.post("/api/speech", json={"text": "Hallo Welt"})
+
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "audio/mpeg"
+    assert response.content == b"fake-mp3-bytes"
+
+
+def test_speech_passes_current_language_to_synthesize(anon_client, monkeypatch):
+    captured = {}
+
+    def fake_synthesize(text, lang="de"):
+        captured["text"] = text
+        captured["lang"] = lang
+        return b"audio"
+
+    monkeypatch.setattr(tts, "synthesize_speech", fake_synthesize)
+
+    response = anon_client.post(
+        "/api/speech", json={"text": "Hello"}, headers={"X-Lang": "en"}
+    )
+
+    assert response.status_code == 200
+    assert captured == {"text": "Hello", "lang": "en"}
+
+
+def test_speech_rejects_empty_text(anon_client):
+    response = anon_client.post("/api/speech", json={"text": "   "})
+    assert response.status_code == 400
+
+
+def test_speech_returns_502_when_synthesis_fails(anon_client, monkeypatch):
+    def raise_error(text, lang="de"):
+        raise tts.SpeechSynthesisError("boom")
+
+    monkeypatch.setattr(tts, "synthesize_speech", raise_error)
+
+    response = anon_client.post("/api/speech", json={"text": "Hallo"})
+
+    assert response.status_code == 502
+
+
 def test_ask_rejects_when_captcha_verification_fails(client, monkeypatch):
     client.post("/api/sources", json={"title": "Quelle", "text": "Ein Text."})
     monkeypatch.setattr(captcha, "verify_turnstile_token", lambda token, remote_ip=None: False)
@@ -691,7 +736,7 @@ def test_ask_uses_llm_quote_when_it_matches_the_chunk(client, monkeypatch):
         llm,
         "answer_question",
         lambda question, chunks, lang="de": (
-            "Antwort [1].\n\n---QUOTES---\n"
+            "Aussage [1].\n\n---QUOTES---\n"
             '[1]: "Der BetaCodex beschreibt Prinzipien dezentraler Organisation."\n'
         ),
     )
@@ -700,7 +745,7 @@ def test_ask_uses_llm_quote_when_it_matches_the_chunk(client, monkeypatch):
 
     assert response.status_code == 200
     data = response.json()
-    assert data["answer"] == "Antwort [1]."
+    assert data["answer"] == "Aussage [1]."
     assert data["sources"][0]["highlighted_texts"] == [
         "Der BetaCodex beschreibt Prinzipien dezentraler Organisation."
     ]

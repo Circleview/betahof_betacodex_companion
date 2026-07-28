@@ -115,6 +115,10 @@ class MessageOut(BaseModel):
     detail: str
 
 
+class SpeechIn(BaseModel):
+    text: str
+
+
 class SocialLink(BaseModel):
     platform: str
     url: str

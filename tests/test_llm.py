@@ -81,8 +81,45 @@ def test_parse_answer_and_quotes_returns_empty_dict_without_marker():
 
 
 def test_parse_answer_and_quotes_returns_empty_dict_for_empty_block():
-    raw = "Antwort ohne Belege.\n\n---QUOTES---\n"
+    raw = "Text ohne Belege.\n\n---QUOTES---\n"
     answer, quotes = llm.parse_answer_and_quotes(raw)
 
-    assert answer == "Antwort ohne Belege."
+    assert answer == "Text ohne Belege."
     assert quotes == {}
+
+
+def test_parse_answer_and_quotes_strips_leading_answer_label_german():
+    answer, _ = llm.parse_answer_and_quotes("Antwort: Der BetaCodex ist ein Organisationsmodell.")
+    assert answer == "Der BetaCodex ist ein Organisationsmodell."
+
+
+def test_parse_answer_and_quotes_strips_leading_answer_label_english():
+    answer, _ = llm.parse_answer_and_quotes("Answer: BetaCodex is an organizational model.")
+    assert answer == "BetaCodex is an organizational model."
+
+
+def test_parse_answer_and_quotes_strips_bold_leading_answer_label():
+    answer, _ = llm.parse_answer_and_quotes("**Antwort:** Der BetaCodex ist ein Organisationsmodell.")
+    assert answer == "Der BetaCodex ist ein Organisationsmodell."
+
+
+def test_parse_answer_and_quotes_strips_answer_label_without_punctuation():
+    answer, _ = llm.parse_answer_and_quotes("Antwort Der BetaCodex ist ein Organisationsmodell.")
+    assert answer == "Der BetaCodex ist ein Organisationsmodell."
+
+
+def test_parse_answer_and_quotes_does_not_strip_antworten_plural():
+    answer, _ = llm.parse_answer_and_quotes("Antworten auf komplexe Fragen erfordern Kontext.")
+    assert answer == "Antworten auf komplexe Fragen erfordern Kontext."
+
+
+def test_parse_answer_and_quotes_strips_answer_label_before_quote_block():
+    raw = (
+        'Antwort: Ein Flip ist ein Zustandswechsel [1].\n\n'
+        '---QUOTES---\n'
+        '[1]: "Any irritation can flip the system into the New state."\n'
+    )
+    answer, quotes = llm.parse_answer_and_quotes(raw)
+
+    assert answer == "Ein Flip ist ein Zustandswechsel [1]."
+    assert quotes == {1: ["Any irritation can flip the system into the New state."]}

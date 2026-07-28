@@ -2,6 +2,7 @@ import { initI18n, t, getLang } from '/i18n.js';
 import { renderMarkdown } from '/markdown.js';
 import { initAuth, hasRole, onAuthChange } from '/auth.js';
 import { createTurnstileWidget } from '/turnstile.js';
+import { createSpeechController, stripMarkdownForSpeech } from '/speech.js';
 
 // Spam-/Bot-Schutz für die Frage-Eingabe (Cloudflare Turnstile) - die
 // eigentliche Anbindung ist gemeinsames Modul (siehe turnstile.js), das auch
@@ -367,7 +368,84 @@ await initAuth();
 
 const chatMessages = document.getElementById('chat-messages');
 const questionInput = document.getElementById('question');
+const micButton = document.getElementById('mic-button');
 const sidebarSourcesList = document.getElementById('sidebar-sources-list');
+
+// Backlog #49: Sprachdialog. Eine per Mikrofon gestellte Frage wird
+// automatisch abgeschickt UND die Antwort automatisch vorgelesen (siehe
+// pendingViaVoice unten) - eine getippte Frage bleibt stumm, bekommt aber
+// pro Antwort ein Lautsprecher-Icon zum manuellen Vorlesen.
+let pendingViaVoice = false;
+// Zeigt an, welcher Lautsprecher-Button gerade "spricht" (manuell oder
+// automatisch) - wird von speechController per onSpeakingChange aktuell
+// gehalten, damit genau ein Icon gleichzeitig den "spricht"-Zustand zeigt
+// und ein Klick darauf zum Stoppen statt erneutem Start führt.
+let activeSpeakButton = null;
+
+const speechController = createSpeechController({
+  onTranscript: (transcript) => {
+    questionInput.value = transcript;
+    pendingViaVoice = true;
+    document.getElementById('question-form').requestSubmit();
+  },
+  onListeningChange: (listening) => {
+    micButton.classList.toggle('recording', listening);
+  },
+  onSpeakingChange: (speaking) => {
+    if (!activeSpeakButton) return;
+    activeSpeakButton.classList.toggle('speaking', speaking);
+    if (!speaking) activeSpeakButton = null;
+  },
+});
+
+micButton.classList.toggle('hidden', !speechController.supported);
+let isListening = false;
+micButton.addEventListener('click', () => {
+  if (isListening) {
+    speechController.stopListening();
+  } else {
+    speechController.startListening();
+  }
+  isListening = !isListening;
+});
+
+const SPEAKER_ICON =
+  '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" ' +
+  'stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
+  '<polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>' +
+  '<path d="M15.5 8.5a5 5 0 0 1 0 7"></path>' +
+  '<path d="M18.5 5.5a9 9 0 0 1 0 13"></path>' +
+  '</svg>';
+
+// Startet/stoppt das Vorlesen eines Textes und hält activeSpeakButton
+// aktuell - gemeinsamer Pfad für manuellen Klick UND automatisches
+// Vorlesen (pendingViaVoice), damit in beiden Fällen genau ein Icon den
+// "spricht"-Zustand zeigt und per Klick unterbrochen werden kann.
+function startSpeaking(button, text) {
+  if (activeSpeakButton && activeSpeakButton !== button) {
+    activeSpeakButton.classList.remove('speaking');
+  }
+  activeSpeakButton = button;
+  speechController.speak(text);
+}
+
+function attachSpeakButton(bubble, answer) {
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'speak-answer-btn';
+  btn.innerHTML = SPEAKER_ICON;
+  btn.title = t('index.speakAnswerTitle');
+  btn.setAttribute('aria-label', t('index.speakAnswerTitle'));
+  btn.addEventListener('click', () => {
+    if (activeSpeakButton === btn) {
+      speechController.stopSpeaking();
+      return;
+    }
+    startSpeaking(btn, stripMarkdownForSpeech(answer));
+  });
+  bubble.appendChild(btn);
+  return btn;
+}
 
 // Ersetzt die generische Browser-Standardmeldung ("Bitte füllen Sie dieses
 // Feld aus"/"Please fill out this field") für das required-Feld durch eine
@@ -443,6 +521,7 @@ function renderAnswerBubble(bubble, answer, sources) {
   extractCitedSources(bubble, sources).forEach((s) => {
     conversationCitedSources.set(s.chunk_id, s);
   });
+  return attachSpeakButton(bubble, answer);
 }
 
 function restoreConversationHistory() {
@@ -488,6 +567,13 @@ document.getElementById('question-form').addEventListener('submit', async (e) =>
   const question = questionInput.value.trim();
   if (!question) return;
 
+  // Sofort lesen+zurücksetzen (nicht erst nach der Antwort) - eine neue,
+  // während dieser Anfrage per Mikrofon gestartete Frage soll das Flag für
+  // IHRE EIGENE spätere Auswertung neu setzen können, ohne von diesem noch
+  // laufenden Request überschrieben zu werden.
+  const viaVoice = pendingViaVoice;
+  pendingViaVoice = false;
+
   // Schaltet vom zentrierten Startzustand (nur Eingabefeld) auf die volle
   // Ansicht (Sidebar + Nachrichtenverlauf) um, sobald die erste Frage
   // gestellt wird - siehe .chat-started in style.css.
@@ -530,10 +616,16 @@ document.getElementById('question-form').addEventListener('submit', async (e) =>
       throw new Error(err.detail || t('index.askError'));
     }
     const data = await res.json();
-    renderAnswerBubble(assistantBubble, data.answer, data.sources);
+    const speakBtn = renderAnswerBubble(assistantBubble, data.answer, data.sources);
     renderSidebarSources();
     conversationHistory.push({ question, answer: data.answer, sources: data.sources });
     saveConversationHistory();
+    // Backlog #49: nur bei per Mikrofon gestellten Fragen automatisch
+    // vorlesen - getippte Fragen bleiben stumm (mit dem Icon manuell
+    // vorlesbar, siehe attachSpeakButton).
+    if (viaVoice) {
+      startSpeaking(speakBtn, stripMarkdownForSpeech(data.answer));
+    }
   } catch (err) {
     assistantBubble.textContent = t('common.errorPrefix') + err.message;
   }

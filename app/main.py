@@ -32,6 +32,7 @@ from app import (
     ratelimit,
     summarization,
     terms,
+    tts,
     users,
     vectorstore,
 )
@@ -55,6 +56,7 @@ from app.models import (
     RequestLinkIn,
     SourceIn,
     SourceOut,
+    SpeechIn,
     SummaryOut,
     TermOut,
     TurnstileConfigOut,
@@ -141,6 +143,11 @@ CONTENT_SECURITY_POLICY = (
     "style-src 'self'; "
     "img-src 'self' data: https:; "
     "font-src 'self'; "
+    # blob: für die per URL.createObjectURL() erzeugte Audio-Blob-URL beim
+    # Abspielen der TTS-Antwort (Backlog #49, siehe static/speech.js) - ohne
+    # dieses Directive würde die strikte default-src-Regel das <audio>-
+    # Element sonst blockieren.
+    "media-src 'self' blob:; "
     "connect-src 'self' https://challenges.cloudflare.com; "
     "frame-src https://challenges.cloudflare.com; "
     "base-uri 'self'; "
@@ -1536,6 +1543,25 @@ def ask(question: QuestionIn, request: Request, x_lang: str = Header(default=i18
         )
 
     return AnswerOut(answer=answer_text, sources=chunk_refs)
+
+
+@app.post("/api/speech")
+def synthesize_speech(payload: SpeechIn, x_lang: str = Header(default=i18n.DEFAULT_LANG)):
+    # Bewusst ohne require_role (wie /api/ask öffentlich nutzbar) - das
+    # Vorlesen einer ohnehin öffentlich sichtbaren Antwort braucht keine
+    # Anmeldung. Kein Rate-Limiting hier: nur erreichbar über eine bereits
+    # erfolgreich beantwortete /api/ask-Anfrage, die selbst schon
+    # ratenbegrenzt/Captcha-geschützt ist.
+    text = payload.text.strip()
+    if not text:
+        raise HTTPException(400, i18n.get_message("speech_text_required", x_lang))
+
+    lang = x_lang if x_lang in ("de", "en") else i18n.DEFAULT_LANG
+    try:
+        audio = tts.synthesize_speech(text, lang=lang)
+    except tts.SpeechSynthesisError:
+        raise HTTPException(502, i18n.get_message("speech_synthesis_failed", x_lang))
+    return Response(content=audio, media_type="audio/mpeg")
 
 
 @app.post("/api/feedback", response_model=MessageOut)
