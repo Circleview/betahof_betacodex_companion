@@ -476,7 +476,11 @@ button[type="submit"]:hover, #popover-load:hover, #popover-upload:hover {
   background: var(--color-accent-hover);
 }
 
-button[type="submit"]:disabled {
+/* Fix: #popover-load/#popover-upload sind type="button", nicht
+   type="submit" - die :disabled-Regel griff deshalb nie, obwohl der Button
+   während "Lade und extrahiere..."/"Lade hoch und extrahiere..." per JS
+   korrekt deaktiviert wird (sah weiterhin voll aktiv/farbig aus). */
+button[type="submit"]:disabled, #popover-load:disabled, #popover-upload:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }
