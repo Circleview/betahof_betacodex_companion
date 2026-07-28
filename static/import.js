@@ -387,6 +387,11 @@ document.getElementById('typ-url').addEventListener('click', () => {
   urlPopover.classList.toggle('hidden');
   document.getElementById('popover-status').textContent = '';
   if (!urlPopover.classList.contains('hidden')) {
+    // Fix: stand sonst noch die URL eines vorherigen (auch fehlgeschlagenen
+    // oder abgebrochenen) Versuchs im Feld, wenn das Popover erneut geöffnet
+    // wurde - nicht nur nach einem tatsächlich abgeschlossenen Import (siehe
+    // das bestehende Leeren weiter unten im Submit-Handler).
+    document.getElementById('popover-url').value = '';
     document.getElementById('popover-url').focus();
   }
 });
@@ -2058,10 +2063,9 @@ function buildAuthorBioSection(a) {
   return container;
 }
 
-// ToDo: Plattform anhand der URL automatisch erkennen (siehe urlInput-Handler
-// in buildRow weiter unten), statt sie manuell eintippen zu müssen - Werte
-// sind bewusst identisch zu den Optionen in #social-platform-suggestions
-// (import.html), damit Autovervollständigung und Auto-Erkennung übereinstimmen.
+// Plattform anhand der URL automatisch erkennen (siehe urlInput-Handler in
+// buildRow weiter unten), statt sie manuell auswählen/eintippen zu müssen -
+// das frühere Auswahl-Dropdown (Datalist) wurde deshalb wieder entfernt.
 // Mastodon ist föderiert (beliebige Instanz-Domains) - "mastodon" im
 // Hostnamen ist nur eine Best-effort-Heuristik, keine vollständige Erkennung.
 const SOCIAL_PLATFORM_HOSTS = [
@@ -2144,7 +2148,12 @@ function buildSocialLinksField(initialLinks) {
     const platformInput = document.createElement('input');
     platformInput.type = 'text';
     platformInput.className = 'social-platform-input';
-    platformInput.setAttribute('list', 'social-platform-suggestions');
+    // Fix: kein list="..."-Dropdown mehr - die Plattform wird seit
+    // detectSocialPlatform() automatisch anhand der URL erkannt (siehe
+    // urlInput-Handler unten), eine manuelle Auswahl aus Vorschlägen ist
+    // damit für die abgedeckten Plattformen redundant. Feld bleibt trotzdem
+    // ein normales Textfeld für die manuelle Korrektur/Eingabe bei nicht
+    // erkannten URLs.
     platformInput.setAttribute('autocomplete', 'off');
     platformInput.placeholder = t('import.socialPlatformPlaceholder');
     platformInput.value = (link && link.platform) || '';
