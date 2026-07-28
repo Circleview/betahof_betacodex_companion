@@ -1765,6 +1765,38 @@ function renderSourceList(sources, options = {}) {
     );
     sourceListObserver.observe(sentinel);
   }
+
+  // Fix: die native Browser-Suche (Cmd/Strg+F) fand bisher nur Titel
+  // innerhalb der bereits gerenderten ersten Seite(n) - alles, was die
+  // Pagination (Backlog #57) noch nicht nachgeladen hatte, existierte
+  // schlicht nicht im DOM und lieferte 0 Treffer. Für jede noch nicht
+  // gerenderte Quelle hängen wir deshalb einen minimalen, mit
+  // hidden="until-found" versteckten Platzhalter an: Chrome/Edge können
+  // solche Elemente trotzdem durchsuchen und blenden sie bei einem Treffer
+  // automatisch ein (beforematch-Event), bevor sie zur Fundstelle scrollen.
+  // Der Platzhalter wird danach (leicht verzögert, um das synchrone
+  // Scrollen der Suche nicht zu stören) durch die vollwertige, interaktive
+  // Zeile ersetzt.
+  sorted.slice(visible.length).forEach((s) => {
+    const placeholder = document.createElement('li');
+    placeholder.setAttribute('hidden', 'until-found');
+    placeholder.textContent = `${s.title} ${authorsForDisplay(s).join(' ')}`;
+    placeholder.addEventListener(
+      'beforematch',
+      () => {
+        placeholder.removeAttribute('hidden');
+        setTimeout(() => {
+          const index = sortSources(currentSourceList).findIndex((entry) => entry.id === s.id);
+          if (index >= 0) {
+            visibleSourceCount = Math.max(visibleSourceCount, index + 1);
+          }
+          renderSourceList(currentSourceList, options);
+        }, 0);
+      },
+      { once: true }
+    );
+    list.appendChild(placeholder);
+  });
 }
 
 async function checkUrlHealth(sources) {
