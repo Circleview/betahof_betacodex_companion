@@ -206,6 +206,7 @@ function jobStepLabel(job) {
 function renderJobsIcon(jobs) {
   const typJobsBtn = document.getElementById('typ-jobs');
   const countBadge = document.getElementById('jobs-icon-count');
+  const warningBadge = document.getElementById('jobs-icon-warning');
   const progressCircle = document.getElementById('jobs-icon-progress');
 
   if (!jobs.length) {
@@ -214,7 +215,9 @@ function renderJobsIcon(jobs) {
     return;
   }
   typJobsBtn.classList.remove('hidden');
-  typJobsBtn.classList.toggle('has-error', jobs.some((job) => job.processing_status === 'error'));
+  const hasError = jobs.some((job) => job.processing_status === 'error');
+  typJobsBtn.classList.toggle('has-error', hasError);
+  warningBadge.classList.toggle('hidden', !hasError);
 
   const activeJob = jobs.find((job) => job.processing_status === 'running') || jobs[0];
   const fraction = JOB_STAGE_FRACTIONS[activeJob.processing_step] || 0.05;

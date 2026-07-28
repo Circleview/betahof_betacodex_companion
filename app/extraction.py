@@ -156,6 +156,37 @@ _DIARIZE_EXTENSIONS = (".mp3", ".mp4", ".mpeg", ".mpga", ".m4a", ".wav", ".webm"
 
 AUDIO_UPLOAD_MAX_BYTES = 25 * 1024 * 1024
 
+
+def _find_binary(name: str, fallback_paths: list[str]) -> str:
+    """shutil.which() findet ffmpeg/ffprobe nur, wenn deren Installationsort
+    (z.B. /opt/homebrew/bin bei Homebrew auf Apple Silicon) tatsächlich in
+    der PATH-Umgebungsvariable des laufenden Prozesses steht - das war hier
+    nicht der Fall, obwohl beide Programme installiert waren, wodurch
+    split_audio_file() jeden Aufteilungsversuch still übersprang. Bekannte
+    Standard-Installationsorte als Fallback, bevor einfach der nackte
+    Programmname an subprocess übergeben wird (der dann ggf. mit dem
+    ursprünglichen "nicht gefunden"-Fehler fehlschlägt, statt hier zu raten)."""
+    found = shutil.which(name)
+    if found:
+        return found
+    for path in fallback_paths:
+        if Path(path).exists():
+            return path
+    return name
+
+
+_FFMPEG_BIN = _find_binary("ffmpeg", ["/opt/homebrew/bin/ffmpeg", "/usr/local/bin/ffmpeg"])
+_FFPROBE_BIN = _find_binary("ffprobe", ["/opt/homebrew/bin/ffprobe", "/usr/local/bin/ffprobe"])
+
+# gpt-4o-transcribe-diarize lehnt Dateien über dieser Dauer unabhängig von
+# der Byte-Größe mit einem 400er ab ("audio duration X seconds is longer
+# than 1400 seconds") - eine ganz normale, unter AUDIO_UPLOAD_MAX_BYTES
+# liegende Episode (z.B. 20MB/24,5 Minuten) wurde dadurch bisher NIE
+# aufgeteilt und die Transkription schlug jedes Mal fehl. Etwas Marge unter
+# dem dokumentierten Limit (statt exakt 1400), falls die tatsächliche Dauer
+# durch Container-Rundung minimal höher geschätzt wird als von ffprobe.
+MAX_DIARIZE_DURATION_SECONDS = 1350
+
 _openai_client = None
 
 
@@ -208,7 +239,7 @@ def _transcribe_chunk(data: bytes, filename: str) -> str:
 def _audio_duration_seconds(path: Path) -> float | None:
     try:
         completed = subprocess.run(
-            ["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", str(path)],
+            [_FFPROBE_BIN, "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", str(path)],
             capture_output=True,
             text=True,
             timeout=30,
@@ -221,27 +252,37 @@ def _audio_duration_seconds(path: Path) -> float | None:
 
 def split_audio_file(path: Path, max_bytes: int = AUDIO_UPLOAD_MAX_BYTES) -> list[Path]:
     """Zerlegt eine Audiodatei in verlustfreie Zeit-Abschnitte, falls sie
-    über max_bytes liegt (sonst wird der Originalpfad unverändert
-    zurückgegeben, ohne ffmpeg aufzurufen). Die Segment-Dauer wird grob aus
-    Dateigröße/Gesamtdauer geschätzt, mit Sicherheitsmarge (70% des Limits),
-    damit übliche Sprach-Bitraten sicher darunter bleiben."""
+    über max_bytes ODER (bei einem für gpt-4o-transcribe-diarize
+    vorgesehenen Format, siehe _DIARIZE_EXTENSIONS) über
+    MAX_DIARIZE_DURATION_SECONDS liegt - sonst wird der Originalpfad
+    unverändert zurückgegeben, ohne ffmpeg aufzurufen. Die Segment-Dauer
+    wird grob aus Dateigröße/Gesamtdauer geschätzt, mit Sicherheitsmarge
+    (70% des Größenlimits) für übliche Sprach-Bitraten, zusätzlich gedeckelt
+    auf MAX_DIARIZE_DURATION_SECONDS."""
     size = path.stat().st_size
-    if size <= max_bytes:
-        return [path]
-
     duration = _audio_duration_seconds(path)
+    exceeds_size = size > max_bytes
+    exceeds_duration = (
+        path.suffix.lower() in _DIARIZE_EXTENSIONS
+        and duration is not None
+        and duration > MAX_DIARIZE_DURATION_SECONDS
+    )
+    if not exceeds_size and not exceeds_duration:
+        return [path]
     if not duration:
         return [path]
 
     bytes_per_second = size / duration
     segment_seconds = max(int((max_bytes * 0.7) / bytes_per_second), 30)
+    if path.suffix.lower() in _DIARIZE_EXTENSIONS:
+        segment_seconds = min(segment_seconds, MAX_DIARIZE_DURATION_SECONDS)
 
     output_dir = Path(tempfile.mkdtemp(prefix="audio_split_"))
     pattern = output_dir / f"chunk_%03d{path.suffix}"
     try:
         subprocess.run(
             [
-                "ffmpeg", "-i", str(path),
+                _FFMPEG_BIN, "-i", str(path),
                 "-f", "segment", "-segment_time", str(segment_seconds),
                 "-c", "copy", "-reset_timestamps", "1",
                 str(pattern),

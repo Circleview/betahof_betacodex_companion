@@ -540,7 +540,15 @@ def test_split_audio_file_returns_original_path_when_under_limit(tmp_path):
     audio_path = tmp_path / "small.mp3"
     audio_path.write_bytes(b"x" * 100)
 
-    with patch("app.extraction.subprocess.run") as mock_run:
+    # _audio_duration_seconds wird jetzt auch für Dateien unter dem
+    # Größenlimit aufgerufen (siehe MAX_DIARIZE_DURATION_SECONDS) - hier
+    # direkt gemockt, damit die anschließende subprocess.run-Prüfung
+    # eindeutig nur den (nicht stattfindenden) eigentlichen Aufteilungs-Aufruf
+    # betrifft, nicht den Dauer-Check selbst.
+    with (
+        patch("app.extraction._audio_duration_seconds", return_value=60.0),
+        patch("app.extraction.subprocess.run") as mock_run,
+    ):
         result = split_audio_file(audio_path, max_bytes=1000)
 
     assert result == [audio_path]
@@ -586,6 +594,72 @@ def test_split_audio_file_returns_original_when_duration_unknown(tmp_path):
         result = split_audio_file(audio_path, max_bytes=1000)
 
     assert result == [audio_path]
+
+
+def test_split_audio_file_splits_on_duration_even_when_under_size_limit(tmp_path):
+    # Regressionstest: gpt-4o-transcribe-diarize lehnt Dateien über
+    # MAX_DIARIZE_DURATION_SECONDS unabhängig von der Byte-Größe ab - eine
+    # reale, nur 20MB große, aber 24,5-minütige Episode blieb bisher
+    # unter AUDIO_UPLOAD_MAX_BYTES und wurde deshalb NIE aufgeteilt, obwohl
+    # die Transkription am separaten Dauerlimit scheiterte.
+    audio_path = tmp_path / "long-but-small.mp3"
+    audio_path.write_bytes(b"x" * 100)
+    split_dir = tmp_path / "split"
+    split_dir.mkdir()
+
+    def fake_run(cmd, **kwargs):
+        (split_dir / "chunk_000.mp3").write_bytes(b"a")
+        (split_dir / "chunk_001.mp3").write_bytes(b"b")
+        return MagicMock()
+
+    with (
+        patch("app.extraction._audio_duration_seconds", return_value=1468.0),
+        patch("app.extraction.tempfile.mkdtemp", return_value=str(split_dir)),
+        patch("app.extraction.subprocess.run", side_effect=fake_run) as mock_run,
+    ):
+        result = split_audio_file(audio_path, max_bytes=extraction.AUDIO_UPLOAD_MAX_BYTES)
+
+    assert mock_run.called
+    assert sorted(p.name for p in result) == ["chunk_000.mp3", "chunk_001.mp3"]
+
+
+def test_split_audio_file_ignores_duration_limit_for_non_diarize_extension(tmp_path):
+    # .flac läuft über whisper-1 (siehe _DIARIZE_EXTENSIONS), das keine
+    # gesonderte Dauergrenze hat - eine lange, aber kleine .flac-Datei soll
+    # deshalb NICHT allein wegen der Dauer aufgeteilt werden.
+    audio_path = tmp_path / "long-but-small.flac"
+    audio_path.write_bytes(b"x" * 100)
+
+    with (
+        patch("app.extraction._audio_duration_seconds", return_value=1468.0),
+        patch("app.extraction.subprocess.run") as mock_run,
+    ):
+        result = split_audio_file(audio_path, max_bytes=extraction.AUDIO_UPLOAD_MAX_BYTES)
+
+    assert result == [audio_path]
+    mock_run.assert_not_called()
+
+
+def test_find_binary_prefers_shutil_which(monkeypatch):
+    monkeypatch.setattr(extraction.shutil, "which", lambda name: f"/usr/bin/{name}")
+    assert extraction._find_binary("ffmpeg", ["/opt/homebrew/bin/ffmpeg"]) == "/usr/bin/ffmpeg"
+
+
+def test_find_binary_falls_back_to_known_install_paths(monkeypatch, tmp_path):
+    # Regressionstest: ffmpeg/ffprobe waren über Homebrew installiert, aber
+    # /opt/homebrew/bin fehlte in der PATH-Umgebungsvariable des laufenden
+    # Prozesses - shutil.which() fand die Programme deshalb nicht, obwohl sie
+    # vorhanden waren, und split_audio_file() übersprang jede Aufteilung
+    # lautlos (_audio_duration_seconds gab None zurück).
+    monkeypatch.setattr(extraction.shutil, "which", lambda name: None)
+    fallback = tmp_path / "ffmpeg"
+    fallback.write_text("")
+    assert extraction._find_binary("ffmpeg", [str(fallback)]) == str(fallback)
+
+
+def test_find_binary_returns_bare_name_when_nothing_found(monkeypatch):
+    monkeypatch.setattr(extraction.shutil, "which", lambda name: None)
+    assert extraction._find_binary("ffmpeg", ["/does/not/exist"]) == "ffmpeg"
 
 
 def test_transcribe_audio_returns_single_chunk_text_unchanged(tmp_path):

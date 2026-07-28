@@ -1442,6 +1442,24 @@ body:not(.chat-started) #question-form {
   text-align: center;
 }
 
+/* ToDo: schlägt eine Quelle in der Warteschlange fehl, soll das direkt am
+   Icon sichtbar sein, statt nur an der (dezenten) Ringfarbe erkennbar zu
+   sein - eigenes Warnzeichen-Badge unten rechts, analog zur Zahlen-Badge
+   oben rechts positioniert, damit sich beide bei Bedarf nicht überlappen. */
+.jobs-icon-warning {
+  position: absolute;
+  bottom: -0.2rem;
+  right: -0.2rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.1rem;
+  height: 1.1rem;
+  border-radius: 999px;
+  background: var(--color-warning);
+  color: #fff;
+}
+
 #jobs-popover {
   min-width: 260px;
   max-width: 320px;
