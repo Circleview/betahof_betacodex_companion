@@ -1,5 +1,6 @@
 import json
 import os
+import queue
 import re
 import subprocess
 import tempfile
@@ -540,6 +541,40 @@ def _process_pdf_ocr(source_id: str, lang: str = i18n.DEFAULT_LANG) -> None:
     )
 
 
+# Backlog #113: Audio-Transkriptionen liefen bisher völlig unbegrenzt
+# parallel (jeder add_source-Request startete sofort seinen eigenen
+# Hintergrund-Job) - beim gleichzeitigen Import vieler Audios (23 auf
+# einmal, realer Vorfall 2026-07-28) sendet das entsprechend viele
+# gleichzeitige, kostenpflichtige OpenAI-Aufrufe los und kann das Budget
+# aufbrauchen, bevor auch nur eine einzige Datei fertig transkribiert ist.
+# Ein einzelner Worker-Thread verarbeitet die Warteschlange strikt
+# nacheinander - eine noch nicht dran gekommene Quelle bleibt einfach auf
+# ihrem bereits bestehenden "pending"-Status (siehe _create_pending_source),
+# bis der Worker sie tatsächlich aufgreift und auf "running" setzt. PDF-
+# Texterkennung ist bewusst NICHT betroffen (nicht Teil des gemeldeten
+# Vorfalls, weiterhin über background_tasks wie zuvor).
+_audio_transcription_queue: "queue.Queue[tuple[str, str]]" = queue.Queue()
+
+
+def _audio_transcription_worker() -> None:
+    while True:
+        source_id, lang = _audio_transcription_queue.get()
+        try:
+            _process_audio_transcription(source_id, lang)
+        except Exception:
+            # Ein unerwarteter Fehler hier darf den Worker nicht beenden -
+            # sonst bliebe die gesamte restliche Warteschlange für den Rest
+            # der Prozess-Laufzeit stehen. _run_deferred_text_extraction
+            # fängt reguläre Fehler (z.B. OpenAI-Kontingent) bereits selbst
+            # ab und setzt "error" - dies ist nur das allerletzte Netz.
+            pass
+        finally:
+            _audio_transcription_queue.task_done()
+
+
+threading.Thread(target=_audio_transcription_worker, daemon=True).start()
+
+
 def _recover_interrupted_processing_jobs() -> None:
     """Nach einem Server-Neustart läuft kein Hintergrund-Job mehr, dessen
     Quelle noch auf "running" steht - kein Auto-Resume (unklar, wie weit
@@ -748,7 +783,11 @@ def add_source(
         _sync_audio_file_from_url(source_id, source.url)
 
     if deferred_audio:
-        background_tasks.add_task(_process_audio_transcription, source_id, x_lang)
+        # Backlog #113: bewusst NICHT über background_tasks (das würde sofort
+        # parallel zu allen anderen gerade laufenden Imports starten) -
+        # landet stattdessen in der Warteschlange, die _audio_transcription_
+        # worker strikt nacheinander abarbeitet.
+        _audio_transcription_queue.put((source_id, x_lang))
     elif deferred_pdf:
         background_tasks.add_task(_process_pdf_ocr, source_id, x_lang)
     # deferred=False, fertig ODER slow_import: _finish_synchronous_import
@@ -1285,11 +1324,8 @@ def reprocess_source(
         if source_id not in sources:
             raise HTTPException(404, i18n.get_message("source_not_found", x_lang))
 
-        if _existing_audio_file(source_id):
-            job = _process_audio_transcription
-        elif _existing_pdf_file(source_id):
-            job = _process_pdf_ocr
-        else:
+        is_audio = bool(_existing_audio_file(source_id))
+        if not is_audio and not _existing_pdf_file(source_id):
             raise HTTPException(400, i18n.get_message("no_processing_file", x_lang))
 
         sources[source_id]["processing_status"] = "pending"
@@ -1298,7 +1334,13 @@ def reprocess_source(
         title = sources[source_id].get("title", source_id)
         _save_sources(sources)
     audit.log_action(_user, "source_reprocessed", title)
-    background_tasks.add_task(job, source_id, x_lang)
+    if is_audio:
+        # Backlog #113: siehe add_source - auch ein erneuter Versuch reiht
+        # sich hinten in der Warteschlange ein, statt sofort parallel zu
+        # anderen laufenden Transkriptionen zu starten.
+        _audio_transcription_queue.put((source_id, x_lang))
+    else:
+        background_tasks.add_task(_process_pdf_ocr, source_id, x_lang)
     return MessageOut(detail=i18n.get_message("reprocess_started", x_lang))
 
 

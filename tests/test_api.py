@@ -276,21 +276,25 @@ def test_concurrent_add_source_calls_do_not_lose_data(client):
 
 def _create_deferred_audio_source(client, monkeypatch, title="Podcast-Folge", url="https://cdn.example.org/episode.mp3"):
     """Legt eine Audio-URL-Quelle mit leerem Text an, OHNE dass der
-    eingeplante Hintergrund-Job dabei wirklich läuft. Wichtig: der
-    TestClient führt BackgroundTasks SYNCHRON aus, noch bevor client.post()
-    zurückkehrt - ohne diesen No-Op-Stub würde jeder Aufruf hier einen
-    ECHTEN, unbeabsichtigten Aufruf von extraction.transcribe_audio (und
-    damit einen echten API-Call) auslösen."""
+    eingeplante Hintergrund-Job dabei wirklich läuft. Wichtig: seit Backlog
+    #113 landet der Job nicht mehr über BackgroundTasks (die der TestClient
+    synchron VOR der Rückkehr von client.post() ausführen würde), sondern in
+    main_module._audio_transcription_queue, die ein einziger, dauerhaft
+    laufender Worker-Thread abarbeitet - ohne den .join() unten könnte der
+    Worker den Eintrag ERST NACH dem Zurücksetzen des No-Op-Stubs abholen und
+    dabei einen echten, unbeabsichtigten Aufruf von extraction.transcribe_audio
+    auslösen."""
     monkeypatch.setattr(extraction, "looks_like_audio", lambda u: True)
     monkeypatch.setattr(extraction, "download_audio_bytes", lambda u: b"fake-mp3-bytes")
 
-    # Nur WÄHREND dieses einen Requests stubben, danach sofort wieder auf
-    # die echte Funktion zurücksetzen - sonst würde auch ein späterer
-    # Reprocess-Aufruf im selben Test lautlos den No-Op statt der echten
-    # Verarbeitung einplanen.
+    # Nur WÄHREND dieses einen Requests (inkl. des anschließenden .join())
+    # stubben, danach sofort wieder auf die echte Funktion zurücksetzen -
+    # sonst würde auch ein späterer Reprocess-Aufruf im selben Test lautlos
+    # den No-Op statt der echten Verarbeitung einplanen.
     real_process = main_module._process_audio_transcription
     monkeypatch.setattr(main_module, "_process_audio_transcription", lambda *a, **kw: None)
     response = client.post("/api/sources", json={"title": title, "text": "", "url": url})
+    main_module._audio_transcription_queue.join()
     monkeypatch.setattr(main_module, "_process_audio_transcription", real_process)
     return response
 
@@ -381,18 +385,60 @@ def test_reprocess_source_retries_and_can_then_succeed(client, monkeypatch):
     main_module._process_audio_transcription(source_id)
     assert client.get("/api/sources").json()[0]["processing_status"] == "error"
 
-    # Reprocess plant den Job über BackgroundTasks neu ein - im TestClient
-    # läuft der dabei sofort mit, deshalb hier VORHER auf ein erfolgreiches
-    # Transkript umstellen, um den vollen Erfolgspfad zu prüfen.
+    # Reprocess reiht den Job in _audio_transcription_queue ein (Backlog
+    # #113) statt ihn über BackgroundTasks synchron mitlaufen zu lassen -
+    # VORHER auf ein erfolgreiches Transkript umstellen und danach per
+    # .join() auf den Worker-Thread warten, um den vollen Erfolgspfad
+    # deterministisch zu prüfen.
     monkeypatch.setattr(extraction, "transcribe_audio", lambda path: "Beim zweiten Versuch erfolgreich.")
     response = client.post(f"/api/sources/{source_id}/reprocess")
     assert response.status_code == 200
+    main_module._audio_transcription_queue.join()
 
     sources = client.get("/api/sources").json()
     entry = next(s for s in sources if s["id"] == source_id)
     assert entry["processing_status"] is None
     assert entry["processing_error"] is None
     assert entry["text"] == "Beim zweiten Versuch erfolgreich."
+
+
+def test_audio_transcriptions_are_processed_sequentially_not_concurrently(client, monkeypatch):
+    """Backlog #113: mehrere gleichzeitig importierte Audios dürfen sich
+    beim Transkribieren nicht überholen - realer Vorfall am 2026-07-28, bei
+    dem 23 parallel gestartete Transkriptionen das OpenAI-Budget aufgebraucht
+    haben, bevor auch nur eine Datei fertig war."""
+    monkeypatch.setattr(extraction, "looks_like_audio", lambda u: True)
+    monkeypatch.setattr(extraction, "download_audio_bytes", lambda u: b"fake-mp3-bytes")
+
+    active = []
+    max_concurrent = []
+    lock = threading.Lock()
+
+    def fake_transcribe(path):
+        with lock:
+            active.append(1)
+            max_concurrent.append(len(active))
+        time.sleep(0.05)
+        with lock:
+            active.pop()
+        return "Transkribierter Text."
+
+    monkeypatch.setattr(extraction, "transcribe_audio", fake_transcribe)
+
+    source_ids = [
+        client.post(
+            "/api/sources",
+            json={"title": f"Folge {i}", "text": "", "url": f"https://cdn.example.org/{i}.mp3"},
+        ).json()["id"]
+        for i in range(5)
+    ]
+    main_module._audio_transcription_queue.join()
+
+    assert max(max_concurrent) == 1
+    for source_id in source_ids:
+        entry = next(s for s in client.get("/api/sources").json() if s["id"] == source_id)
+        assert entry["text"] == "Transkribierter Text."
+        assert entry["processing_status"] is None
 
 
 def test_reprocess_source_without_audio_file_returns_400(client):

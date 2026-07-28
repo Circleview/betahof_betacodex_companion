@@ -12,6 +12,16 @@ import { getLang } from '/i18n.js';
 //   oder der Cloud-Aufruf fehlschlägt - Sprachausgabe fällt nie ganz aus.
 const RECOGNITION_LANG_BY_LANG = { de: 'de-DE', en: 'en-US' };
 
+// Bewusste Entscheidung (2026-07-28): Safari/iOS implementiert die Web
+// Speech Recognition API bis heute grundsätzlich nicht (jeder Browser auf
+// iOS basiert auf WebKit, betrifft also alle iOS-Browser gleichermaßen) -
+// dort bleibt der Mikrofon-Button daher ausgeblendet (supported=false),
+// Tippen + Vorlesen der Antwort (TTS, unabhängig von STT) bleiben aber
+// nutzbar. Alternative wäre serverseitige Spracherkennung gewesen
+// (Aufnahme per MediaRecorder + Transkription z.B. über OpenAI, analog zum
+// bestehenden Audio-Import) - explizit NICHT umgesetzt, da das echte Kosten
+// pro gestellter Sprachfrage verursacht hätte; Aufwand/Kosten wurden dem
+// Nutzen (Mikrofon auch auf iPhone) nicht für gerechtfertigt gehalten.
 function getRecognitionCtor() {
   return window.SpeechRecognition || window.webkitSpeechRecognition || null;
 }
