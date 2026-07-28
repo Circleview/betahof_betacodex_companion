@@ -216,6 +216,7 @@ function renderJobsIcon(jobs) {
   if (!jobs.length) {
     typJobsBtn.classList.add('hidden');
     document.getElementById('jobs-popover').classList.add('hidden');
+    document.getElementById('jobs-bar').classList.add('hidden');
     return;
   }
   typJobsBtn.classList.remove('hidden');
@@ -231,8 +232,11 @@ function renderJobsIcon(jobs) {
   countBadge.classList.toggle('hidden', jobs.length <= 1);
 }
 
-function renderJobsList(jobs) {
-  const list = document.getElementById('jobs-list');
+// Befüllt EINE Ziel-Liste (Desktop-Popover ODER Mobile-Bar, siehe
+// renderJobsList) mit denselben Job-Einträgen inkl. Retry-Button - beide
+// Listen bleiben so immer synchron, unabhängig davon, welche gerade
+// sichtbar ist.
+function renderJobsListInto(list, jobs) {
   list.innerHTML = '';
   jobs.forEach((job) => {
     const li = document.createElement('li');
@@ -270,6 +274,11 @@ function renderJobsList(jobs) {
     }
     list.appendChild(li);
   });
+}
+
+function renderJobsList(jobs) {
+  renderJobsListInto(document.getElementById('jobs-list'), jobs);
+  renderJobsListInto(document.getElementById('jobs-bar-list'), jobs);
 }
 
 let previousJobIds = new Set();
@@ -321,6 +330,17 @@ function stopJobsPolling() {
   }
   document.getElementById('typ-jobs').classList.add('hidden');
   document.getElementById('jobs-popover').classList.add('hidden');
+  document.getElementById('jobs-bar').classList.add('hidden');
+}
+
+// Backlog: gleiche Bildschirmbreite, ab der .popover auf position:static
+// wechselt (siehe style.css) - unterhalb dieser Breite verschob das
+// Job-Popover als Flex-Item innerhalb der Icon-Leiste alle Icons sichtbar
+// (siehe .quelltyp-item--anchor), analog zum bereits gelösten Suchfeld-
+// Problem (#94). Deshalb dieselbe Lösung: auf Mobile ein eigener,
+// vollbreiter Bereich (#jobs-bar) statt des Popovers.
+function isMobileLayout() {
+  return window.matchMedia('(max-width: 480px)').matches;
 }
 
 function showForm() {
@@ -424,13 +444,24 @@ document.getElementById('typ-jobs').addEventListener('click', () => {
   urlPopover.classList.add('hidden');
   filePopover.classList.add('hidden');
   closeSearchBar();
-  document.getElementById('jobs-popover').classList.toggle('hidden');
+  if (isMobileLayout()) {
+    document.getElementById('jobs-popover').classList.add('hidden');
+    document.getElementById('jobs-bar').classList.toggle('hidden');
+  } else {
+    document.getElementById('jobs-bar').classList.add('hidden');
+    document.getElementById('jobs-popover').classList.toggle('hidden');
+  }
+});
+
+document.getElementById('jobs-bar-close').addEventListener('click', () => {
+  document.getElementById('jobs-bar').classList.add('hidden');
 });
 
 document.getElementById('typ-search').addEventListener('click', () => {
   urlPopover.classList.add('hidden');
   filePopover.classList.add('hidden');
   document.getElementById('jobs-popover').classList.add('hidden');
+  document.getElementById('jobs-bar').classList.add('hidden');
   searchBarOpen = !searchBarOpen;
   document.getElementById('search-bar').classList.toggle('hidden', !searchBarOpen);
   renderSourceList(currentSourceList);

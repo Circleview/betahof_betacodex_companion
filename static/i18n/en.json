@@ -55,6 +55,7 @@
   "import.typeUrlTitle": "URL",
   "import.typeFileTitle": "Upload PDF",
   "import.jobsIconTitle": "Import queue",
+  "import.closeButtonTitle": "Close",
   "import.processingBadge": "Processing...",
   "import.processingStepPending": "Queued",
   "import.processingStepTranscribe": "Transcribing",

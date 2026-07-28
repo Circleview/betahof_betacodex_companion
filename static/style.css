@@ -1338,6 +1338,62 @@ body:not(.chat-started) #question-form {
   margin-bottom: 0;
 }
 
+/* Job-Warteschlange auf Mobile: gleiches Prinzip wie .search-bar oben -
+   ein vollbreiter Bereich unterhalb der Icon-Leiste statt eines Popovers,
+   da dieses als position:static-Flex-Item (siehe @media max-width:480px
+   weiter unten) sonst alle Icons der Zeile beim Öffnen verschob. Auf
+   Desktop bleibt stattdessen #jobs-popover aktiv (siehe .jobs-bar
+   @media min-width:481px weiter unten sowie isMobileLayout() in
+   import.js). */
+.jobs-bar {
+  position: relative;
+  margin-bottom: 1rem;
+  padding: 1rem 2.5rem 1rem 1rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+}
+
+.jobs-bar-close {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--color-text-muted);
+  cursor: pointer;
+}
+
+.jobs-bar-close:hover {
+  color: var(--color-accent);
+}
+
+#jobs-bar-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+#jobs-bar-list li {
+  padding: 0.5rem 0;
+  border-bottom: 1px solid var(--color-border);
+}
+
+#jobs-bar-list li:last-child {
+  border-bottom: none;
+}
+
+@media (min-width: 481px) {
+  .jobs-bar {
+    display: none !important;
+  }
+}
+
 .sort-toolbar {
   display: flex;
   gap: 0.5rem;
@@ -2112,6 +2168,13 @@ details a {
 
   .popover-arrow {
     display: none;
+  }
+
+  /* Ersetzt hier durch #jobs-bar (siehe oben) - als position:static-Flex-
+     Item würde dieses Popover sonst weiterhin alle Icons der Zeile
+     verschieben. */
+  #jobs-popover {
+    display: none !important;
   }
 }
 

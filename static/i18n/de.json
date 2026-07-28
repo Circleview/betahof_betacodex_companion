@@ -55,6 +55,7 @@
   "import.typeUrlTitle": "URL",
   "import.typeFileTitle": "PDF hochladen",
   "import.jobsIconTitle": "Import-Warteschlange",
+  "import.closeButtonTitle": "Schließen",
   "import.processingBadge": "Wird verarbeitet...",
   "import.processingStepPending": "Wartet",
   "import.processingStepTranscribe": "Transkription läuft",
