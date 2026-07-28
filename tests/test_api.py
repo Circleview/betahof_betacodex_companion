@@ -1,3 +1,5 @@
+import concurrent.futures
+import threading
 import time
 
 import pytest
@@ -84,11 +86,33 @@ def client(tmp_path, monkeypatch):
     # scheinbar ausgeloggt.
     monkeypatch.setattr(main_module, "IS_DEV_ENVIRONMENT", True)
 
+    # add_source() startet für "langsame" Importe (siehe SLOW_IMPORT_TIMEOUT_SECONDS)
+    # einen ECHTEN Hintergrund-Thread (_finish_synchronous_import), der nach
+    # done_event.set() noch die Zusammenfassung anstößt. Ohne das folgende
+    # Tracking+Join könnte so ein Thread noch laufen, wenn monkeypatch am
+    # Testende SOURCES_FILE/DATA_DIR/... wieder auf die ECHTEN Produktionspfade
+    # zurücksetzt - der Thread würde dann versehentlich in die echten
+    # Nutzerdaten schreiben. Genau das ist bei der Entwicklung eines
+    # Concurrency-Tests real passiert (2026-07-28, sources.json verlor dabei
+    # den Großteil seines Inhalts). Deshalb: JEDEN in diesem Test gestarteten
+    # Thread einsammeln und vor dem restlichen Teardown fertig werden lassen.
+    started_threads: list[threading.Thread] = []
+    original_thread_start = threading.Thread.start
+
+    def tracking_start(self):
+        started_threads.append(self)
+        return original_thread_start(self)
+
+    monkeypatch.setattr(threading.Thread, "start", tracking_start)
+
     # Standard-Testrolle: Quellen-Pfleger:in, damit bestehende Tests nicht jeden
     # Request einzeln einloggen müssen.
     test_client = TestClient(main_module.app)
     login(test_client, PFLEGER, users.QUELLEN_PFLEGER)
-    return test_client
+    yield test_client
+
+    for t in started_threads:
+        t.join(timeout=10)
 
 
 @pytest.fixture
@@ -221,6 +245,30 @@ def test_add_source_fast_embedding_failure_still_raises_immediately(client, monk
 
     with pytest.raises(RuntimeError):
         client.post("/api/sources", json={"title": "Quelle", "text": "Text."})
+
+
+def test_concurrent_add_source_calls_do_not_lose_data(client):
+    # Regressionstest für ein reales Datenverlust-Vorkommnis (2026-07-28):
+    # sources.json fiel von 127 auf 3 Quellen, nachdem mehrere gleichzeitige
+    # Hintergrund-Threads (siehe _create_pending_source/_finish_synchronous_import)
+    # ohne Synchronisierung read-modify-write auf dieselbe Datei ausgeführt
+    # hatten - der jeweils zuletzt schreibende Thread überschrieb die
+    # Änderungen der anderen (Lost Update), zusätzlich verschärft durch einen
+    # gemeinsam genutzten Temp-Dateinamen in _save_sources() (siehe dort).
+    # Legt hier absichtlich viele Quellen ECHT PARALLEL an (ThreadPoolExecutor,
+    # kein Mock) und prüft, dass am Ende wirklich ALLE angekommen sind.
+    count = 20
+
+    def create_one(i):
+        return client.post("/api/sources", json={"title": f"Quelle {i}", "text": f"Text der Quelle {i}."})
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=count) as executor:
+        responses = list(executor.map(create_one, range(count)))
+
+    assert all(r.status_code == 200 for r in responses)
+    titles = {s["title"] for s in client.get("/api/sources").json()}
+    expected_titles = {f"Quelle {i}" for i in range(count)}
+    assert expected_titles <= titles
 
 
 def _create_deferred_audio_source(client, monkeypatch, title="Podcast-Folge", url="https://cdn.example.org/episode.mp3"):

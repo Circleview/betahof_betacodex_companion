@@ -184,12 +184,21 @@ def _save_sources(sources: dict) -> None:
     # Atomar schreiben (Temp-Datei + Rename statt direktem write_text):
     # write_text() truncatet die Datei zuerst und schreibt dann - liest ein
     # anderer Thread währenddessen (siehe _finish_synchronous_import, das
-    # jetzt parallel zum Request-Thread auf sources.json zugreift), bekommt
-    # er eine leere/unvollständige Datei und _load_sources() crasht mit
+    # parallel zum Request-Thread auf sources.json zugreift), bekommt er
+    # eine leere/unvollständige Datei und _load_sources() crasht mit
     # JSONDecodeError. os.replace() ist auf POSIX-Systemen atomar - ein
     # gleichzeitiger Leser sieht immer entweder die alte oder die neue
     # vollständige Version, nie einen Zwischenzustand.
-    tmp_path = SOURCES_FILE.with_suffix(".json.tmp")
+    #
+    # Der Temp-Dateiname MUSS je Aufruf eindeutig sein (siehe reales
+    # Datenverlust-Vorkommnis 2026-07-28): teilten sich zwei gleichzeitige
+    # Schreibvorgänge denselben Temp-Pfad, konnte Schreibvorgang B den
+    # Temp-Dateiinhalt von Schreibvorgang A überschreiben, BEVOR A
+    # umbenennt - A's replace() hätte dann B's (evtl. kleineren/älteren)
+    # Datensatz "gewonnen", nicht A's eigenen. Das atomare Rename schützt
+    # nur EINEN Schreiber vor kaputten Lesevorgängen, nicht mehrere
+    # Schreiber voreinander.
+    tmp_path = SOURCES_FILE.with_suffix(f".json.{os.getpid()}.{threading.get_ident()}.tmp")
     tmp_path.write_text(json.dumps(sources, ensure_ascii=False, indent=2))
     tmp_path.replace(SOURCES_FILE)
 
@@ -339,15 +348,16 @@ def _register_all_terms(source_id: str, entry: dict) -> None:
 
 def _generate_summary_background(source_id: str, text: str) -> None:
     result = summarization.generate_bilingual_summary(text)
-    sources = _load_sources()
-    if source_id not in sources:
-        return
-    sources[source_id]["summary_de"] = result["de"]["summary"]
-    sources[source_id]["summary_en"] = result["en"]["summary"]
-    sources[source_id]["key_terms_de"] = result["de"]["key_terms"]
-    sources[source_id]["key_terms_en"] = result["en"]["key_terms"]
-    _save_sources(sources)
-    _register_all_terms(source_id, sources[source_id])
+    with _sources_write_lock:
+        sources = _load_sources()
+        if source_id not in sources:
+            return
+        sources[source_id]["summary_de"] = result["de"]["summary"]
+        sources[source_id]["summary_en"] = result["en"]["summary"]
+        sources[source_id]["key_terms_de"] = result["de"]["key_terms"]
+        sources[source_id]["key_terms_en"] = result["en"]["key_terms"]
+        _save_sources(sources)
+        _register_all_terms(source_id, sources[source_id])
 
 
 def _is_deferred_audio_import(source: SourceIn) -> bool:
@@ -386,6 +396,17 @@ def _is_deferred_pdf_import(source: SourceIn) -> bool:
 # Transkription laufen weiterhin unabhängig/parallel im Thread-Pool.
 _vectorstore_write_lock = threading.Lock()
 
+# Schützt JEDEN read-modify-write-Zyklus auf sources.json (_load_sources()
+# ... _save_sources()), der aus einem Hintergrund-Thread heraus läuft
+# (Audio-Transkription, PDF-OCR, Zusammenfassung, Autor:innen-Vita, der neue
+# "langsamer Import"-Pfad). Ohne diesen Lock kann Thread A eine alte
+# Momentaufnahme lesen, während Thread B currently schreibt - A's spätere
+# _save_sources() überschreibt dann B's Änderung wieder (klassisches
+# Lost-Update). Genau das führte am 2026-07-28 zu massivem Datenverlust in
+# sources.json (127 auf 3 Quellen) - siehe auch die Absicherung gegen
+# denselben Temp-Dateinamen in _save_sources().
+_sources_write_lock = threading.Lock()
+
 
 def _run_deferred_text_extraction(
     source_id: str,
@@ -401,63 +422,77 @@ def _run_deferred_text_extraction(
     markiert die erste, quellenspezifische Verarbeitungsstufe
     ("transcribe"/"ocr"), compute_text liefert bei Erfolg den erkannten
     Text, sonst einen leeren String."""
-    sources = _load_sources()
-    if source_id not in sources:
-        return
-    sources[source_id]["processing_status"] = "running"
-    sources[source_id]["processing_step"] = initial_step
-    _save_sources(sources)
-
-    text = compute_text()
-
-    sources = _load_sources()
-    if source_id not in sources:
-        return
-    if not text:
-        sources[source_id]["processing_status"] = "error"
-        sources[source_id]["processing_step"] = None
-        sources[source_id]["processing_error"] = i18n.get_message(failure_i18n_key, lang)
-        _save_sources(sources)
-        return
-
-    sources[source_id]["processing_step"] = "chunking"
-    _save_sources(sources)
-    chunks = chunking.chunk_text(text)
-    if not chunks:
-        sources[source_id]["processing_status"] = "error"
-        sources[source_id]["processing_step"] = None
-        sources[source_id]["processing_error"] = i18n.get_message("no_chunks", lang)
-        _save_sources(sources)
-        return
-
-    sources[source_id]["processing_step"] = "indexing"
-    _save_sources(sources)
-    chunk_embeddings = embeddings.embed_passages(chunks)
-
-    entry = sources[source_id]
-    source_stub = SourceIn(
-        title=entry["title"],
-        authors=entry.get("authors", []),
-        date=entry.get("date"),
-        url=entry.get("url"),
-        listen_url=entry.get("listen_url"),
-        text=text,
-        restricted=entry.get("restricted", False),
-    )
-
-    with _vectorstore_write_lock:
-        vectorstore.delete_source_chunks(source_id)
-        chunk_count = _store_chunks(source_id, source_stub, chunks, chunk_embeddings)
-
+    with _sources_write_lock:
         sources = _load_sources()
         if source_id not in sources:
             return
-        sources[source_id]["text"] = text
-        sources[source_id]["chunk_count"] = chunk_count
-        sources[source_id]["processing_status"] = None
-        sources[source_id]["processing_step"] = None
-        sources[source_id]["processing_error"] = None
+        sources[source_id]["processing_status"] = "running"
+        sources[source_id]["processing_step"] = initial_step
         _save_sources(sources)
+
+    text = compute_text()
+
+    with _sources_write_lock:
+        sources = _load_sources()
+        if source_id not in sources:
+            return
+        if not text:
+            sources[source_id]["processing_status"] = "error"
+            sources[source_id]["processing_step"] = None
+            sources[source_id]["processing_error"] = i18n.get_message(failure_i18n_key, lang)
+            _save_sources(sources)
+            return
+
+        sources[source_id]["processing_step"] = "chunking"
+        _save_sources(sources)
+    chunks = chunking.chunk_text(text)
+    if not chunks:
+        with _sources_write_lock:
+            sources = _load_sources()
+            if source_id not in sources:
+                return
+            sources[source_id]["processing_status"] = "error"
+            sources[source_id]["processing_step"] = None
+            sources[source_id]["processing_error"] = i18n.get_message("no_chunks", lang)
+            _save_sources(sources)
+        return
+
+    with _sources_write_lock:
+        sources = _load_sources()
+        if source_id not in sources:
+            return
+        sources[source_id]["processing_step"] = "indexing"
+        _save_sources(sources)
+    chunk_embeddings = embeddings.embed_passages(chunks)
+
+    with _sources_write_lock:
+        sources = _load_sources()
+        if source_id not in sources:
+            return
+        entry = sources[source_id]
+        source_stub = SourceIn(
+            title=entry["title"],
+            authors=entry.get("authors", []),
+            date=entry.get("date"),
+            url=entry.get("url"),
+            listen_url=entry.get("listen_url"),
+            text=text,
+            restricted=entry.get("restricted", False),
+        )
+
+        with _vectorstore_write_lock:
+            vectorstore.delete_source_chunks(source_id)
+            chunk_count = _store_chunks(source_id, source_stub, chunks, chunk_embeddings)
+
+            sources = _load_sources()
+            if source_id not in sources:
+                return
+            sources[source_id]["text"] = text
+            sources[source_id]["chunk_count"] = chunk_count
+            sources[source_id]["processing_status"] = None
+            sources[source_id]["processing_step"] = None
+            sources[source_id]["processing_error"] = None
+            _save_sources(sources)
 
     _generate_summary_background(source_id, text)
 
@@ -500,16 +535,17 @@ def _recover_interrupted_processing_jobs() -> None:
     Quelle noch auf "running" steht - kein Auto-Resume (unklar, wie weit
     er kam), stattdessen klar als Fehler markieren, damit ein Re-Import
     bewusst manuell angestoßen wird (siehe POST /.../reprocess)."""
-    sources = _load_sources()
-    changed = False
-    for entry in sources.values():
-        if entry.get("processing_status") == "running":
-            entry["processing_status"] = "error"
-            entry["processing_step"] = None
-            entry["processing_error"] = i18n.get_message("processing_interrupted", i18n.DEFAULT_LANG)
-            changed = True
-    if changed:
-        _save_sources(sources)
+    with _sources_write_lock:
+        sources = _load_sources()
+        changed = False
+        for entry in sources.values():
+            if entry.get("processing_status") == "running":
+                entry["processing_status"] = "error"
+                entry["processing_step"] = None
+                entry["processing_error"] = i18n.get_message("processing_interrupted", i18n.DEFAULT_LANG)
+                changed = True
+        if changed:
+            _save_sources(sources)
 
 
 _recover_interrupted_processing_jobs()
@@ -559,27 +595,28 @@ SLOW_IMPORT_TIMEOUT_SECONDS = 5
 
 
 def _create_pending_source(source_id: str, source: SourceIn, imported_at: str) -> None:
-    sources = _load_sources()
-    sources[source_id] = {
-        "id": source_id,
-        "title": source.title,
-        "authors": source.authors,
-        "date": source.date,
-        "url": source.url,
-        "listen_url": source.listen_url,
-        "imported_at": imported_at,
-        "chunk_count": 0,
-        "text": "",
-        "restricted": source.restricted,
-        "summary_de": "",
-        "summary_en": "",
-        "key_terms_de": [],
-        "key_terms_en": [],
-        "processing_status": "pending",
-        "processing_step": None,
-        "processing_error": None,
-    }
-    _save_sources(sources)
+    with _sources_write_lock:
+        sources = _load_sources()
+        sources[source_id] = {
+            "id": source_id,
+            "title": source.title,
+            "authors": source.authors,
+            "date": source.date,
+            "url": source.url,
+            "listen_url": source.listen_url,
+            "imported_at": imported_at,
+            "chunk_count": 0,
+            "text": "",
+            "restricted": source.restricted,
+            "summary_de": "",
+            "summary_en": "",
+            "key_terms_de": [],
+            "key_terms_en": [],
+            "processing_status": "pending",
+            "processing_step": None,
+            "processing_error": None,
+        }
+        _save_sources(sources)
 
 
 def _finish_synchronous_import(
@@ -601,12 +638,13 @@ def _finish_synchronous_import(
     processing_status="pending" geantwortet hat - kein Sonderfall nötig, die
     Quelle existiert in sources.json in beiden Fällen schon (siehe
     _create_pending_source), bevor dieser Thread gestartet wird."""
-    sources = _load_sources()
-    if source_id not in sources:
-        done_event.set()
-        return
-    sources[source_id]["processing_step"] = "indexing"
-    _save_sources(sources)
+    with _sources_write_lock:
+        sources = _load_sources()
+        if source_id not in sources:
+            done_event.set()
+            return
+        sources[source_id]["processing_step"] = "indexing"
+        _save_sources(sources)
 
     try:
         chunk_embeddings = embeddings.embed_passages(chunks)
@@ -614,24 +652,26 @@ def _finish_synchronous_import(
             chunk_count = _store_chunks(source_id, source, chunks, chunk_embeddings)
     except Exception as exc:
         outcome["error"] = exc
-        sources = _load_sources()
-        if source_id in sources:
-            sources[source_id]["processing_status"] = "error"
-            sources[source_id]["processing_step"] = None
-            sources[source_id]["processing_error"] = str(exc)
-            _save_sources(sources)
+        with _sources_write_lock:
+            sources = _load_sources()
+            if source_id in sources:
+                sources[source_id]["processing_status"] = "error"
+                sources[source_id]["processing_step"] = None
+                sources[source_id]["processing_error"] = str(exc)
+                _save_sources(sources)
         done_event.set()
         return
 
     outcome["chunk_count"] = chunk_count
-    sources = _load_sources()
-    if source_id in sources:
-        sources[source_id]["text"] = text
-        sources[source_id]["chunk_count"] = chunk_count
-        sources[source_id]["processing_status"] = None
-        sources[source_id]["processing_step"] = None
-        sources[source_id]["processing_error"] = None
-        _save_sources(sources)
+    with _sources_write_lock:
+        sources = _load_sources()
+        if source_id in sources:
+            sources[source_id]["text"] = text
+            sources[source_id]["chunk_count"] = chunk_count
+            sources[source_id]["processing_status"] = None
+            sources[source_id]["processing_step"] = None
+            sources[source_id]["processing_error"] = None
+            _save_sources(sources)
     # Muss NACH dem Speichern des Ergebnisses, aber VOR der (potenziell
     # mehrere Sekunden dauernden) Zusammenfassung gesetzt werden - eine noch
     # wartende add_source-Anfrage soll durch die Zusammenfassung nicht
@@ -746,34 +786,36 @@ def update_source(
     _user: str = Depends(require_role(users.QUELLEN_PFLEGER)),
     x_lang: str = Header(default=i18n.DEFAULT_LANG),
 ):
-    sources = _load_sources()
-    if source_id not in sources:
-        raise HTTPException(404, i18n.get_message("source_not_found", x_lang))
+    with _sources_write_lock:
+        sources = _load_sources()
+        if source_id not in sources:
+            raise HTTPException(404, i18n.get_message("source_not_found", x_lang))
 
-    metadata_only = bool(sources[source_id].get("restricted")) and not source.text.strip()
+        metadata_only = bool(sources[source_id].get("restricted")) and not source.text.strip()
 
-    if not metadata_only:
-        chunks, chunk_embeddings = _prepare_chunks(source, x_lang)
-        vectorstore.delete_source_chunks(source_id)
-        chunk_count = _store_chunks(source_id, source, chunks, chunk_embeddings)
-        sources[source_id]["text"] = source.text.strip()
-        sources[source_id]["chunk_count"] = chunk_count
+        if not metadata_only:
+            chunks, chunk_embeddings = _prepare_chunks(source, x_lang)
+            with _vectorstore_write_lock:
+                vectorstore.delete_source_chunks(source_id)
+                chunk_count = _store_chunks(source_id, source, chunks, chunk_embeddings)
+            sources[source_id]["text"] = source.text.strip()
+            sources[source_id]["chunk_count"] = chunk_count
 
-    sources[source_id].update(
-        {
-            "title": source.title,
-            "authors": source.authors,
-            "date": source.date,
-            "url": source.url,
-            "listen_url": source.listen_url,
-            "restricted": source.restricted,
-        }
-    )
-    if source.summary is not None:
-        sources[source_id][f"summary_{x_lang}"] = source.summary
-    if source.key_terms is not None:
-        sources[source_id][f"key_terms_{x_lang}"] = source.key_terms
-    _save_sources(sources)
+        sources[source_id].update(
+            {
+                "title": source.title,
+                "authors": source.authors,
+                "date": source.date,
+                "url": source.url,
+                "listen_url": source.listen_url,
+                "restricted": source.restricted,
+            }
+        )
+        if source.summary is not None:
+            sources[source_id][f"summary_{x_lang}"] = source.summary
+        if source.key_terms is not None:
+            sources[source_id][f"key_terms_{x_lang}"] = source.key_terms
+        _save_sources(sources)
 
     # VOR unregister_source() erfassen: war dies die letzte Quelle einer
     # Person, würde unregister_source deren Registry-Eintrag kurzzeitig
@@ -812,13 +854,15 @@ def delete_source(
     _user: str = Depends(require_role(users.QUELLEN_PFLEGER)),
     x_lang: str = Header(default=i18n.DEFAULT_LANG),
 ):
-    sources = _load_sources()
-    if source_id not in sources:
-        raise HTTPException(404, i18n.get_message("source_not_found", x_lang))
+    with _sources_write_lock:
+        sources = _load_sources()
+        if source_id not in sources:
+            raise HTTPException(404, i18n.get_message("source_not_found", x_lang))
 
-    vectorstore.delete_source_chunks(source_id)
-    del sources[source_id]
-    _save_sources(sources)
+        with _vectorstore_write_lock:
+            vectorstore.delete_source_chunks(source_id)
+        del sources[source_id]
+        _save_sources(sources)
     authors.unregister_source(source_id)
     terms.unregister_source(source_id)
     _delete_pdf_file(source_id)
@@ -959,26 +1003,27 @@ def rename_author_endpoint(
     # Umbenennung muss deshalb in JEDER betroffenen Quelle nachvollzogen
     # werden, sonst würde die nächste Quellen-Bearbeitung (die authors.py
     # per unregister/register neu aufbaut) den alten Namen wiederherstellen.
-    sources = _load_sources()
-    for source_id in matching["source_ids"]:
-        source = sources.get(source_id)
-        if not source:
-            continue
-        updated_names = []
-        seen_keys = set()
-        for author_name in source.get("authors") or []:
-            candidate = (
-                new_name
-                if " ".join(author_name.strip().split()).lower() == old_key
-                else author_name
-            )
-            key = " ".join(candidate.strip().split()).lower()
-            if key in seen_keys:
+    with _sources_write_lock:
+        sources = _load_sources()
+        for source_id in matching["source_ids"]:
+            source = sources.get(source_id)
+            if not source:
                 continue
-            seen_keys.add(key)
-            updated_names.append(candidate)
-        source["authors"] = updated_names
-    _save_sources(sources)
+            updated_names = []
+            seen_keys = set()
+            for author_name in source.get("authors") or []:
+                candidate = (
+                    new_name
+                    if " ".join(author_name.strip().split()).lower() == old_key
+                    else author_name
+                )
+                key = " ".join(candidate.strip().split()).lower()
+                if key in seen_keys:
+                    continue
+                seen_keys.add(key)
+                updated_names.append(candidate)
+            source["authors"] = updated_names
+        _save_sources(sources)
 
     for source_id in matching["source_ids"]:
         source = sources.get(source_id)
@@ -1200,21 +1245,22 @@ def reprocess_source(
     _user: str = Depends(require_role(users.QUELLEN_PFLEGER)),
     x_lang: str = Header(default=i18n.DEFAULT_LANG),
 ):
-    sources = _load_sources()
-    if source_id not in sources:
-        raise HTTPException(404, i18n.get_message("source_not_found", x_lang))
+    with _sources_write_lock:
+        sources = _load_sources()
+        if source_id not in sources:
+            raise HTTPException(404, i18n.get_message("source_not_found", x_lang))
 
-    if _existing_audio_file(source_id):
-        job = _process_audio_transcription
-    elif _existing_pdf_file(source_id):
-        job = _process_pdf_ocr
-    else:
-        raise HTTPException(400, i18n.get_message("no_processing_file", x_lang))
+        if _existing_audio_file(source_id):
+            job = _process_audio_transcription
+        elif _existing_pdf_file(source_id):
+            job = _process_pdf_ocr
+        else:
+            raise HTTPException(400, i18n.get_message("no_processing_file", x_lang))
 
-    sources[source_id]["processing_status"] = "pending"
-    sources[source_id]["processing_step"] = None
-    sources[source_id]["processing_error"] = None
-    _save_sources(sources)
+        sources[source_id]["processing_status"] = "pending"
+        sources[source_id]["processing_step"] = None
+        sources[source_id]["processing_error"] = None
+        _save_sources(sources)
     background_tasks.add_task(job, source_id, x_lang)
     return MessageOut(detail=i18n.get_message("reprocess_started", x_lang))
 
@@ -1228,15 +1274,22 @@ def generate_source_summary(
     sources = _load_sources()
     if source_id not in sources:
         raise HTTPException(404, i18n.get_message("source_not_found", x_lang))
-
     text = sources[source_id].get("text", "")
+
+    # generate_bilingual_summary ist der langsame KI-Aufruf - die Momentaufnahme
+    # von oben deshalb NICHT für den späteren Schreibvorgang wiederverwenden
+    # (siehe _sources_write_lock-Kommentar), sondern direkt davor neu einlesen.
     result = summarization.generate_bilingual_summary(text)
-    sources[source_id]["summary_de"] = result["de"]["summary"]
-    sources[source_id]["summary_en"] = result["en"]["summary"]
-    sources[source_id]["key_terms_de"] = result["de"]["key_terms"]
-    sources[source_id]["key_terms_en"] = result["en"]["key_terms"]
-    _save_sources(sources)
-    _register_all_terms(source_id, sources[source_id])
+    with _sources_write_lock:
+        sources = _load_sources()
+        if source_id not in sources:
+            raise HTTPException(404, i18n.get_message("source_not_found", x_lang))
+        sources[source_id]["summary_de"] = result["de"]["summary"]
+        sources[source_id]["summary_en"] = result["en"]["summary"]
+        sources[source_id]["key_terms_de"] = result["de"]["key_terms"]
+        sources[source_id]["key_terms_en"] = result["en"]["key_terms"]
+        _save_sources(sources)
+        _register_all_terms(source_id, sources[source_id])
 
     lang = x_lang if x_lang in ("de", "en") else i18n.DEFAULT_LANG
     return SummaryOut(summary=result[lang]["summary"], key_terms=result[lang]["key_terms"])
