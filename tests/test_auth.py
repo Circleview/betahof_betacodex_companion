@@ -67,3 +67,41 @@ def test_magic_link_token_rejects_tampered_signature(monkeypatch):
     tampered = f"{body}.{'0' * len(signature)}"
 
     assert auth.verify_magic_link_token(tampered) is None
+
+
+def test_early_access_token_roundtrip():
+    token = auth.create_early_access_token()
+    assert auth.verify_early_access_token(token) is True
+
+
+def test_early_access_token_rejects_expired_token(monkeypatch):
+    import time
+
+    monkeypatch.setattr(time, "time", lambda: 1_000_000.0)
+    token = auth.create_early_access_token()
+
+    monkeypatch.setattr(time, "time", lambda: 1_000_000.0 + auth.EARLY_ACCESS_MAX_AGE_SECONDS + 1)
+    assert auth.verify_early_access_token(token) is False
+
+
+def test_early_access_token_rejects_tampered_signature():
+    token = auth.create_early_access_token()
+    body, _, signature = token.partition(".")
+    tampered = f"{body}.{'0' * len(signature)}"
+
+    assert auth.verify_early_access_token(tampered) is False
+
+
+def test_early_access_token_rejects_missing_or_malformed_input():
+    assert auth.verify_early_access_token(None) is False
+    assert auth.verify_early_access_token("") is False
+    assert auth.verify_early_access_token("not-a-valid-token") is False
+
+
+def test_early_access_token_rejects_session_token_from_different_flow():
+    # Ein gültig signiertes, aber inhaltlich anderes Token (z.B. ein normales
+    # Session-Cookie) darf nicht versehentlich als Early-Access-Freischaltung
+    # durchgehen - beide nutzen dieselbe _sign/_verify-Infrastruktur, aber
+    # unterschiedliche Payload-Felder.
+    session_token = auth.create_session_token("lena@test.local")
+    assert auth.verify_early_access_token(session_token) is False

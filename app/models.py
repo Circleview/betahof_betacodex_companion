@@ -75,6 +75,10 @@ class RequestLinkIn(BaseModel):
     email: str
 
 
+class EarlyAccessIn(BaseModel):
+    password: str
+
+
 class InviteIn(BaseModel):
     email: str
     role: str

@@ -1,3 +1,4 @@
+import hmac
 import json
 import os
 import queue
@@ -46,6 +47,7 @@ from app.models import (
     AuthorBioPreviewIn,
     RenameAuthorIn,
     ChunkRef,
+    EarlyAccessIn,
     ExtractedSource,
     ExtractedUpload,
     FeedbackIn,
@@ -168,6 +170,65 @@ async def add_security_headers(request: Request, call_next):
     # Meta-Tags) auch Nicht-HTML-Antworten ab. Vor dem eigentlichen Go-Live
     # bewusst wieder entfernen.
     response.headers["X-Robots-Tag"] = "noindex, nofollow, noarchive"
+    return response
+
+
+# Backlog #114: Pfade, die auch bei aktiver Early-Access-Sperre erreichbar
+# bleiben müssen - die Gate-Seite selbst, ihr JS, der Freischalt-Endpoint und
+# die für ihre Darstellung nötigen, bereits bestehenden statischen Assets.
+# Bewusst eine kleine, feste Liste statt eines Musters/Präfix-Checks - jeder
+# zusätzliche Eintrag hier ist eine bewusste Entscheidung, kein Nebeneffekt.
+_EARLY_ACCESS_EXEMPT_PATHS = {
+    "/early-access.html",
+    "/early-access.js",
+    "/api/early-access",
+    "/style.css",
+    "/i18n.js",
+    "/i18n/de.json",
+    "/i18n/en.json",
+}
+
+
+@app.middleware("http")
+async def enforce_early_access(request: Request, call_next):
+    # Bewusst pro Anfrage aus os.environ gelesen (nicht als Modul-Konstante
+    # beim Start zwischengespeichert) - analog zu captcha.verify_turnstile_token:
+    # ohne gesetzten Wert (Dev/Stabil) bleibt die Sperre inaktiv, die App
+    # funktioniert exakt wie zuvor. Erst auf dem künftigen Produktiv-Server,
+    # wo dieser Wert gesetzt wird, greift sie.
+    early_access_password = os.environ.get("EARLY_ACCESS_PASSWORD", "")
+    if early_access_password and request.url.path not in _EARLY_ACCESS_EXEMPT_PATHS:
+        if not auth.verify_early_access_token(request.cookies.get(auth.EARLY_ACCESS_COOKIE_NAME)):
+            return FileResponse(STATIC_DIR / "early-access.html")
+    return await call_next(request)
+
+
+@app.post("/api/early-access")
+def submit_early_access_password(
+    body: EarlyAccessIn, request: Request, x_lang: str = Header(default=i18n.DEFAULT_LANG)
+):
+    # Ein einziges, allen bekanntes Passwort ist ein klassisches Brute-Force-
+    # Ziel - deutlich strenger begrenzt als das allgemeine /api/ask-Limit
+    # (siehe ratelimit.is_rate_limited), eigener Schlüssel-Namensraum, damit
+    # sich beide Limits nicht gegenseitig beeinflussen.
+    client_ip = request.client.host if request.client else "unknown"
+    if ratelimit.is_rate_limited(f"early-access:{client_ip}", max_requests=5, window_seconds=300):
+        raise HTTPException(429, i18n.get_message("early_access_rate_limited", x_lang))
+
+    expected_password = os.environ.get("EARLY_ACCESS_PASSWORD", "")
+    if not expected_password or not hmac.compare_digest(body.password, expected_password):
+        raise HTTPException(401, i18n.get_message("early_access_wrong_password", x_lang))
+
+    response = Response(status_code=204)
+    response.set_cookie(
+        auth.EARLY_ACCESS_COOKIE_NAME,
+        auth.create_early_access_token(),
+        max_age=auth.EARLY_ACCESS_MAX_AGE_SECONDS,
+        httponly=True,
+        samesite="lax",
+        secure=not IS_DEV_ENVIRONMENT,
+        path="/",
+    )
     return response
 
 

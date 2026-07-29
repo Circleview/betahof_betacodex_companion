@@ -154,5 +154,11 @@
   "footer.feedbackSending": "Sende...",
   "footer.feedbackFailed": "Senden fehlgeschlagen.",
   "footer.impressum": "Impressum",
-  "footer.privacyPolicy": "Datenschutz"
+  "footer.privacyPolicy": "Datenschutz",
+
+  "earlyAccess.heading": "Geschlossener Testzugang",
+  "earlyAccess.body": "Diese Instanz von BetaCodex Companion ist aktuell nur für ausgewählte Tester:innen freigeschaltet. Bitte gib das dir mitgeteilte Passwort ein.",
+  "earlyAccess.passwordPlaceholder": "Passwort",
+  "earlyAccess.submitButton": "Freischalten",
+  "earlyAccess.genericError": "Freischaltung fehlgeschlagen"
 }

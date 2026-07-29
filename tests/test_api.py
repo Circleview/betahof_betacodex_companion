@@ -148,6 +148,80 @@ def anon_client(client):
     return TestClient(main_module.app)
 
 
+# Backlog #114: Early-Access-Passwort für die Produktivumgebung. Ohne
+# gesetztes EARLY_ACCESS_PASSWORD (Standardfall, entspricht Dev/Stabil) bleibt
+# die App komplett unangetastet - das deckt sich implizit mit ALLEN anderen
+# Tests in dieser Datei, die diesen Wert nie setzen. Die folgenden Tests
+# prüfen gezielt das Verhalten, wenn der Wert gesetzt ist.
+
+
+def test_early_access_inactive_by_default_leaves_app_fully_accessible(anon_client):
+    assert anon_client.get("/").status_code == 200
+    assert anon_client.get("/api/sources").status_code == 200
+
+
+def test_early_access_blocks_pages_when_password_set(anon_client, monkeypatch):
+    monkeypatch.setenv("EARLY_ACCESS_PASSWORD", "geheim123")
+
+    response = anon_client.get("/")
+
+    assert response.status_code == 200
+    assert 'id="early-access-form"' in response.text
+
+
+def test_early_access_exempts_gate_assets(anon_client, monkeypatch):
+    # Ohne diese Ausnahmen wuerde die Middleware auch fuer diese Assets die
+    # Gate-Seite (HTML) statt ihres eigentlichen Inhalts ausliefern - das
+    # Freischalt-Formular selbst waere dann funktionslos (kaputtes JS/CSS/i18n).
+    monkeypatch.setenv("EARLY_ACCESS_PASSWORD", "geheim123")
+
+    js_response = anon_client.get("/early-access.js")
+    assert js_response.status_code == 200
+    assert "early-access-form" in js_response.text
+    assert "<html" not in js_response.text.lower()
+
+    css_response = anon_client.get("/style.css")
+    assert css_response.status_code == 200
+    assert ".error-page" in css_response.text
+
+    i18n_response = anon_client.get("/i18n/de.json")
+    assert i18n_response.status_code == 200
+    assert i18n_response.json()["earlyAccess.heading"] == "Geschlossener Testzugang"
+
+
+def test_early_access_wrong_password_is_rejected(anon_client, monkeypatch):
+    monkeypatch.setenv("EARLY_ACCESS_PASSWORD", "geheim123")
+
+    response = anon_client.post("/api/early-access", json={"password": "falsch"})
+
+    assert response.status_code == 401
+
+
+def test_early_access_correct_password_unlocks_subsequent_requests(anon_client, monkeypatch):
+    monkeypatch.setenv("EARLY_ACCESS_PASSWORD", "geheim123")
+
+    unlock_response = anon_client.post("/api/early-access", json={"password": "geheim123"})
+    assert unlock_response.status_code == 204
+
+    # Dieselbe TestClient-Instanz behält das gesetzte Cookie über den
+    # nächsten Request hinweg bei - genau das Verhalten eines echten Browsers.
+    response = anon_client.get("/")
+    assert response.status_code == 200
+    assert 'id="early-access-form"' not in response.text
+
+
+def test_early_access_rate_limits_repeated_wrong_attempts(anon_client, monkeypatch):
+    monkeypatch.setenv("EARLY_ACCESS_PASSWORD", "geheim123")
+
+    for _ in range(5):
+        response = anon_client.post("/api/early-access", json={"password": "falsch"})
+        assert response.status_code == 401
+
+    response = anon_client.post("/api/early-access", json={"password": "falsch"})
+
+    assert response.status_code == 429
+
+
 def test_add_source_creates_chunks(client):
     response = client.post(
         "/api/sources",

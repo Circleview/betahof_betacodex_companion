@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow, noarchive">
+<meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#1c1c1c" media="(prefers-color-scheme: dark)">
+<link rel="icon" type="image/png" href="/icons/favicon.png">
+<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+<title>BetaCodex Companion</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<a href="#early-access-content" class="skip-link" data-i18n="common.skipToContent"></a>
+<header>
+  <h1><span class="brand-dot" aria-hidden="true"></span><span data-i18n="index.brandName"></span></h1>
+  <span id="lang-switcher" class="lang-switcher"></span>
+</header>
+
+<section id="early-access-content" class="error-page" tabindex="-1">
+  <h2 data-i18n="earlyAccess.heading"></h2>
+  <p data-i18n="earlyAccess.body"></p>
+  <form id="early-access-form" class="auth-login-form">
+    <input type="password" id="early-access-password" required autocomplete="off" data-i18n-placeholder="earlyAccess.passwordPlaceholder">
+    <button type="submit" data-i18n="earlyAccess.submitButton"></button>
+    <p class="auth-status" id="early-access-status"></p>
+  </form>
+</section>
+
+<script type="module" src="/early-access.js"></script>
+</body>
+</html>

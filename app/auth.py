@@ -12,6 +12,13 @@ SESSION_MAX_AGE_SECONDS = 30 * 24 * 3600
 LOGIN_LINK_MAX_AGE_SECONDS = 15 * 60
 INVITE_LINK_MAX_AGE_SECONDS = 7 * 24 * 3600
 
+# Backlog #114: unabhängig vom E-Mail-basierten Nutzerkonto-Login - ein
+# einziges, allen Tester:innen gemeinsames Passwort für den Zugriff auf die
+# Produktivumgebung vor dem öffentlichen Livegang. Lange Gültigkeit (90 Tage),
+# da es sich um eine einmalige Hürde handelt, keinen wiederkehrenden Login.
+EARLY_ACCESS_COOKIE_NAME = "early_access"
+EARLY_ACCESS_MAX_AGE_SECONDS = 90 * 24 * 3600
+
 # Ohne konfiguriertes SESSION_SECRET_KEY (z.B. lokale Entwicklung) wird
 # einmalig ein zufälliger Schlüssel fürs laufende Prozess erzeugt - Sessions
 # und offene Magic-Links überleben dann keinen Neustart, die App bleibt aber
@@ -61,6 +68,15 @@ def verify_session_token(token: str | None) -> str | None:
     if not payload:
         return None
     return payload.get("email")
+
+
+def create_early_access_token() -> str:
+    return _sign({"early_access": True, "exp": time.time() + EARLY_ACCESS_MAX_AGE_SECONDS})
+
+
+def verify_early_access_token(token: str | None) -> bool:
+    payload = _verify(token)
+    return bool(payload and payload.get("early_access"))
 
 
 def _prune_consumed_jti() -> None:
