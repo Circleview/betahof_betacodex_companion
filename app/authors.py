@@ -61,3 +61,15 @@ def list_authors() -> list[dict]:
         for entry in authors.values()
     ]
     return sorted(entries, key=lambda a: a["name"].lower())
+
+
+def find_mentioned(text: str) -> list[str]:
+    """Findet registrierte Autor:innen, deren vollständiger Name wörtlich in
+    text vorkommt (z.B. eine Chat-Frage) - Grundlage dafür, biografische
+    Fragen ("Wer ist X?") mit der gepflegten Autor:innen-Vita zu beantworten
+    statt nur mit inhaltlich unpassenden Quellen-Chunks (siehe app/main.py,
+    ask()). Bewusst simpler Substring-Abgleich (case-insensitive), kein
+    Fuzzy-Matching - ein zu großzügiger Treffer würde die strikte
+    Quellenbindung der Antwort unnötig aufweichen."""
+    text_lower = text.lower()
+    return [entry["name"] for entry in list_authors() if entry["name"].lower() in text_lower]

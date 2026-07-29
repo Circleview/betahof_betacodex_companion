@@ -37,6 +37,31 @@ def test_answer_question_falls_back_to_german_for_unknown_lang():
     assert client.messages.create.call_args.kwargs["system"] == llm.SYSTEM_PROMPTS["de"]
 
 
+def test_answer_question_appends_author_bios_as_unnumbered_section():
+    client = _fake_client("Antwort")
+    with patch.object(llm, "_get_client", return_value=client):
+        llm.answer_question(
+            "Wer ist Peter Pröll?",
+            [{"title": "T", "author": "A", "date": "D", "text": "Text"}],
+            author_bios=[{"name": "Peter Pröll", "bio": "Berater und Autor."}],
+        )
+
+    user_content = client.messages.create.call_args.kwargs["messages"][0]["content"]
+    assert "Autor:innen-Informationen" in user_content
+    assert "Peter Pröll: Berater und Autor." in user_content
+    # Die normale Chunk-Nummerierung [1] bleibt unberührt von der Vita.
+    assert "[1] (Quelle: T, A, D)" in user_content
+
+
+def test_answer_question_without_author_bios_omits_section():
+    client = _fake_client("Antwort")
+    with patch.object(llm, "_get_client", return_value=client):
+        llm.answer_question("Frage?", [{"title": "T", "author": "A", "date": "D", "text": "Text"}])
+
+    user_content = client.messages.create.call_args.kwargs["messages"][0]["content"]
+    assert "Autor:innen-Informationen" not in user_content
+
+
 def test_parse_answer_and_quotes_splits_answer_from_quote_block():
     raw = (
         'Ein Flip ist ein Zustandswechsel [1].\n\n'

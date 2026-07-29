@@ -62,7 +62,9 @@ def client(tmp_path, monkeypatch):
     monkeypatch.setattr(embeddings, "embed_passages", lambda texts: [[1.0, 0.0] for _ in texts])
     monkeypatch.setattr(embeddings, "embed_query", lambda text: [1.0, 0.0])
     monkeypatch.setattr(
-        llm, "answer_question", lambda question, chunks, lang="de": "Testantwort [1]."
+        llm,
+        "answer_question",
+        lambda question, chunks, lang="de", author_bios=None: "Testantwort [1].",
     )
     monkeypatch.setattr(
         summarization,
@@ -780,6 +782,59 @@ def test_ask_returns_answer_with_sources(client):
     assert data["sources"][0]["authors"] == ["Autor Y"]
 
 
+def test_ask_passes_author_bio_when_question_mentions_registered_author(client, monkeypatch):
+    # Bug vom 2026-07-29: "Wer ist X?"-Fragen fanden nie die gepflegte
+    # Autor:innen-Vita, da die Suche rein auf Chunk-Inhalten basiert und
+    # Autor:innen-Namen dort nie als durchsuchbarer Text vorkommen.
+    client.post(
+        "/api/sources",
+        json={
+            "title": "BetaCodex Quelle",
+            "authors": ["Peter Pröll"],
+            "text": "Der BetaCodex beschreibt Prinzipien dezentraler Organisation.",
+        },
+    )
+    author_profiles.set_profile("Peter Pröll", bio_de="Berater und Autor zum Beta-Kodex.")
+
+    captured = {}
+
+    def fake_answer(question, chunks, lang="de", author_bios=None):
+        captured["author_bios"] = author_bios
+        return "Testantwort [1]."
+
+    monkeypatch.setattr(llm, "answer_question", fake_answer)
+
+    client.post("/api/ask", json={"question": "Wer ist Peter Pröll?"})
+
+    assert captured["author_bios"] == [
+        {"name": "Peter Pröll", "bio": "Berater und Autor zum Beta-Kodex."}
+    ]
+
+
+def test_ask_passes_no_author_bio_when_question_does_not_mention_author(client, monkeypatch):
+    client.post(
+        "/api/sources",
+        json={
+            "title": "BetaCodex Quelle",
+            "authors": ["Peter Pröll"],
+            "text": "Der BetaCodex beschreibt Prinzipien dezentraler Organisation.",
+        },
+    )
+    author_profiles.set_profile("Peter Pröll", bio_de="Berater und Autor zum Beta-Kodex.")
+
+    captured = {}
+
+    def fake_answer(question, chunks, lang="de", author_bios=None):
+        captured["author_bios"] = author_bios
+        return "Testantwort [1]."
+
+    monkeypatch.setattr(llm, "answer_question", fake_answer)
+
+    client.post("/api/ask", json={"question": "Was beschreibt der BetaCodex?"})
+
+    assert captured["author_bios"] is None
+
+
 def test_ask_includes_source_summary(client):
     create_res = client.post(
         "/api/sources",
@@ -858,7 +913,7 @@ def test_ask_uses_llm_quote_when_it_matches_the_chunk(client, monkeypatch):
     monkeypatch.setattr(
         llm,
         "answer_question",
-        lambda question, chunks, lang="de": (
+        lambda question, chunks, lang="de", author_bios=None: (
             "Aussage [1].\n\n---QUOTES---\n"
             '[1]: "Der BetaCodex beschreibt Prinzipien dezentraler Organisation."\n'
         ),
@@ -886,7 +941,7 @@ def test_ask_falls_back_to_local_highlight_when_llm_quote_not_found_in_chunk(cli
     monkeypatch.setattr(
         llm,
         "answer_question",
-        lambda question, chunks, lang="de": (
+        lambda question, chunks, lang="de", author_bios=None: (
             "Antwort [1].\n\n---QUOTES---\n"
             '[1]: "Dieser Satz kommt in der Quelle so gar nicht vor."\n'
         ),
@@ -917,7 +972,7 @@ def test_ask_uses_different_highlight_per_occurrence_of_the_same_source(client, 
     monkeypatch.setattr(
         llm,
         "answer_question",
-        lambda question, chunks, lang="de": (
+        lambda question, chunks, lang="de", author_bios=None: (
             "Aussage A [1]. Aussage B [1].\n\n---QUOTES---\n"
             '[1]: "Der BetaCodex beschreibt Prinzipien dezentraler Organisation."\n'
             '[1]: "Teams organisieren sich in Zellen ohne zentrale Weisung."\n'
@@ -1250,7 +1305,7 @@ def test_role_required_message_in_english(anon_client):
 def test_ask_uses_requested_language(client, monkeypatch):
     captured = {}
 
-    def fake_answer(question, chunks, lang="de"):
+    def fake_answer(question, chunks, lang="de", author_bios=None):
         captured["lang"] = lang
         return "Answer"
 
@@ -2430,7 +2485,7 @@ def test_delete_source_removes_terms(client, monkeypatch):
 def test_listen_url_persists_and_appears_in_ask_citation(client, monkeypatch):
     captured = {}
 
-    def fake_answer(question, chunks, lang="de"):
+    def fake_answer(question, chunks, lang="de", author_bios=None):
         captured["lang"] = lang
         return "Testantwort [1]."
 

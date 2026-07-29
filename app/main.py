@@ -1641,7 +1641,23 @@ def ask(question: QuestionIn, request: Request, x_lang: str = Header(default=i18
         # dieselben Chunks/Embeddings, die wir gerade ohnehin verarbeiten.
         local_highlights.append(_best_local_sentence(doc, query_embedding))
 
-    raw_answer = llm.answer_question(question.question, llm_chunks, lang=x_lang)
+    # Backlog (2026-07-29): rein chunk-basierte Suche findet für biografische
+    # Fragen ("Wer ist X?") keine passenden Textausschnitte, da Autor:innen-
+    # Namen nur als Zitat-Metadatum, nicht als durchsuchbarer Inhalt indiziert
+    # sind - die gepflegte Vita (author_profiles) wurde dadurch nie genutzt.
+    # Erkennt hier stattdessen per Namensabgleich, ob die Frage eine
+    # registrierte Autor:in nennt, und reicht deren Vita zusätzlich an das
+    # Modell weiter (siehe llm.answer_question/author_bios).
+    bio_field = f"bio_{x_lang}" if x_lang in ("de", "en") else f"bio_{i18n.DEFAULT_LANG}"
+    author_bios = []
+    for name in authors.find_mentioned(question.question):
+        bio = author_profiles.get_profile(name).get(bio_field, "")
+        if bio:
+            author_bios.append({"name": name, "bio": bio})
+
+    raw_answer = llm.answer_question(
+        question.question, llm_chunks, lang=x_lang, author_bios=author_bios or None
+    )
     answer_text, quotes_by_citation = llm.parse_answer_and_quotes(raw_answer)
 
     chunk_docs = [chunk_ref.text for chunk_ref in chunk_refs]

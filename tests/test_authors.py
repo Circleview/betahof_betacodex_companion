@@ -93,3 +93,33 @@ def test_list_authors_sorted_alphabetically(tmp_path, monkeypatch):
 
     result = authors.list_authors()
     assert [a["name"] for a in result] == ["Anna Adler", "moritz mueller", "Zora Zeisig"]
+
+
+def test_find_mentioned_matches_full_name_case_insensitively(tmp_path, monkeypatch):
+    _isolate(tmp_path, monkeypatch)
+    authors.register_author("Peter Pröll", "source-1")
+
+    assert authors.find_mentioned("Wer ist peter pröll?") == ["Peter Pröll"]
+
+
+def test_find_mentioned_ignores_partial_first_name_only(tmp_path, monkeypatch):
+    _isolate(tmp_path, monkeypatch)
+    authors.register_author("Peter Pröll", "source-1")
+
+    assert authors.find_mentioned("Was denkt Peter über Führung?") == []
+
+
+def test_find_mentioned_returns_empty_list_without_match(tmp_path, monkeypatch):
+    _isolate(tmp_path, monkeypatch)
+    authors.register_author("Peter Pröll", "source-1")
+
+    assert authors.find_mentioned("Was ist der Beta-Kodex?") == []
+
+
+def test_find_mentioned_can_match_multiple_authors(tmp_path, monkeypatch):
+    _isolate(tmp_path, monkeypatch)
+    authors.register_author("Peter Pröll", "source-1")
+    authors.register_author("Niels Pfläging", "source-2")
+
+    result = authors.find_mentioned("Was verbindet Peter Pröll und Niels Pfläging?")
+    assert set(result) == {"Peter Pröll", "Niels Pfläging"}

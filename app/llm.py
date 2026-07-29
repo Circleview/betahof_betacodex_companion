@@ -16,6 +16,7 @@ Regeln:
 - Antworte IMMER in derselben Sprache, in der die Nutzerfrage gestellt wurde – unabhängig von der Sprache dieser Systemanweisung. Erkenne die Sprache der Frage selbstständig; sie kann von Deutsch oder Englisch abweichen.
 - Antworte präzise und ohne Floskeln.
 - Beginne den Antworttext NICHT mit dem Wort "Antwort" oder einer ähnlichen Meta-Einleitung (z. B. "Antwort:", "Meine Antwort:") - starte direkt mit dem inhaltlichen Text. Es ist ohnehin klar, dass es sich um eine Antwort handelt.
+- Falls unten zusätzlich ein Abschnitt "Autor:innen-Informationen" bereitgestellt wird: Diese Angaben stammen aus unserer eigenen, gepflegten Autor:innen-Datenbank (keine externe/erfundene Information) und dürfen für Fragen zur Person selbst genutzt werden (z. B. "Wer ist X?"). Da es sich nicht um nummerierte Textausschnitte handelt, brauchen darauf beruhende Aussagen KEIN [n]. Alle anderen Aussagen weiterhin wie gewohnt mit [n] kennzeichnen.
 - Füge nach der Antwort (durch eine Leerzeile getrennt) einen zusätzlichen Block hinzu, der für jede verwendete Quellenzahl [n] das wörtliche Satzzitat aus dem jeweiligen Textausschnitt angibt, auf das sich die Aussage stützt. Exaktes Format, unabhängig von der Antwortsprache:
 ---QUOTES---
 [1]: "wörtliches Zitat, Zeichen für Zeichen wie im Textausschnitt"
@@ -33,6 +34,7 @@ Rules:
 - ALWAYS answer in the same language the user's question was asked in – regardless of the language of this system prompt. Detect the question's language yourself; it may be neither German nor English.
 - Answer precisely and without filler phrases.
 - Do NOT begin the answer text with the word "Answer" or a similar meta-introduction (e.g., "Answer:", "My answer:") - start directly with the substantive text. It's already clear that this is an answer.
+- If an "Author information" section is provided below: this comes from our own curated author database (not external/invented information) and may be used to answer questions about the person themselves (e.g. "Who is X?"). Since it is not a numbered text excerpt, statements based on it need NO [n]. Continue to mark all other statements with [n] as usual.
 - After the answer (separated by a blank line), add an extra block that gives, for every citation number [n] you used, the exact verbatim sentence from that text excerpt the statement is based on. Exact format, regardless of the answer's language:
 ---QUOTES---
 [1]: "verbatim quote, character-for-character as in the text excerpt"
@@ -90,12 +92,29 @@ def _get_client() -> anthropic.Anthropic:
     return _client
 
 
-def answer_question(question: str, chunks: list[dict], lang: str = DEFAULT_LANG) -> str:
+_AUTHOR_INFO_HEADING = {"de": "Autor:innen-Informationen", "en": "Author information"}
+
+
+def answer_question(
+    question: str,
+    chunks: list[dict],
+    lang: str = DEFAULT_LANG,
+    author_bios: list[dict] | None = None,
+) -> str:
+    """author_bios: optionale Liste von {"name": str, "bio": str} - wird als
+    eigener, NICHT nummerierter Abschnitt angehängt (siehe SYSTEM_PROMPTS),
+    damit biografische Fragen ("Wer ist X?") aus der gepflegten Autor:innen-
+    Vita statt nur aus inhaltlich unpassenden Quellen-Chunks beantwortet
+    werden können (app/main.py, ask())."""
     lang = lang if lang in SYSTEM_PROMPTS else DEFAULT_LANG
     context = "\n\n".join(
         f"[{i + 1}] (Quelle: {c['title']}, {c['author']}, {c['date']})\n{c['text']}"
         for i, c in enumerate(chunks)
     )
+
+    if author_bios:
+        bios_text = "\n\n".join(f"{b['name']}: {b['bio']}" for b in author_bios)
+        context += f"\n\n{_AUTHOR_INFO_HEADING[lang]}:\n{bios_text}"
 
     client = _get_client()
     message = client.messages.create(
