@@ -190,6 +190,14 @@ class SummaryOut(BaseModel):
     key_terms: list[str]
 
 
+class KeyTermsPreviewIn(BaseModel):
+    text: str
+
+
+class KeyTermsOut(BaseModel):
+    key_terms: list[str]
+
+
 class VersionOut(BaseModel):
     version: str
 

@@ -239,6 +239,55 @@ def test_generate_bilingual_summary_keeps_retry_result_even_if_still_incomplete(
     assert result["de"]["summary"] == ""
 
 
+def test_extract_key_terms_returns_tool_result():
+    client = _fake_tool_client({"key_terms": ["BetaCodex", "Dezentralisierung"]})
+    with patch.object(summarization, "_get_client", return_value=client):
+        result = summarization.extract_key_terms("Eine von Hand geschriebene Zusammenfassung.")
+
+    assert result == ["BetaCodex", "Dezentralisierung"]
+
+
+def test_extract_key_terms_returns_empty_when_no_tool_use_block():
+    block = MagicMock()
+    block.type = "text"
+    client = MagicMock()
+    client.messages.create.return_value.content = [block]
+    with patch.object(summarization, "_get_client", return_value=client):
+        result = summarization.extract_key_terms("Text.")
+
+    assert result == []
+
+
+def test_extract_key_terms_returns_empty_on_api_error():
+    client = MagicMock()
+    client.messages.create.side_effect = RuntimeError("boom")
+    with patch.object(summarization, "_get_client", return_value=client):
+        result = summarization.extract_key_terms("Text.")
+
+    assert result == []
+
+
+def test_extract_key_terms_returns_empty_for_blank_text():
+    result = summarization.extract_key_terms("   ")
+    assert result == []
+
+
+def test_extract_key_terms_uses_english_prompt_when_requested():
+    client = _fake_tool_client({"key_terms": ["Term"]})
+    with patch.object(summarization, "_get_client", return_value=client):
+        summarization.extract_key_terms("Summary text.", lang="en")
+
+    assert client.messages.create.call_args.kwargs["system"] == summarization.KEY_TERMS_SYSTEM_PROMPTS["en"]
+
+
+def test_extract_key_terms_filters_blank_terms():
+    client = _fake_tool_client({"key_terms": ["Gut", "", "  "]})
+    with patch.object(summarization, "_get_client", return_value=client):
+        result = summarization.extract_key_terms("Text.")
+
+    assert result == ["Gut"]
+
+
 def test_generate_author_bio_returns_plain_text_response():
     client = _fake_client("Eine kurze Vita.")
     with patch.object(summarization, "_get_client", return_value=client):

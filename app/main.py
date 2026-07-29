@@ -53,6 +53,8 @@ from app.models import (
     FeedbackIn,
     ImportJobOut,
     InviteIn,
+    KeyTermsOut,
+    KeyTermsPreviewIn,
     MessageOut,
     QuestionIn,
     RequestLinkIn,
@@ -1264,6 +1266,24 @@ def generate_author_bio_preview_endpoint(
     lang = x_lang if x_lang in ("de", "en") else i18n.DEFAULT_LANG
     bio = summarization.generate_author_bio(payload.name, [payload.text], lang)
     return BioOut(bio=bio)
+
+
+@app.post("/api/sources/generate-key-terms-preview", response_model=KeyTermsOut)
+def generate_key_terms_preview_endpoint(
+    payload: KeyTermsPreviewIn,
+    _user: str = Depends(require_role(users.QUELLEN_PFLEGER)),
+    x_lang: str = Header(default=i18n.DEFAULT_LANG),
+):
+    # Backlog: Begriffsliste soll auch dann mit einer von Hand überarbeiteten
+    # Zusammenfassung synchron gehalten werden können, ohne deren Wortlaut
+    # anzutasten - leitet Schlagworte NUR aus dem gerade im Formular
+    # stehenden Zusammenfassungstext ab (payload.text), rührt weder die
+    # Zusammenfassung noch die gespeicherte Quelle an. Schreibt bewusst
+    # NICHTS - Persistierung passiert wie gewohnt erst über den bestehenden
+    # PUT-/api/sources/{id}-Weg. Analog zu /api/authors/generate-bio-preview.
+    lang = x_lang if x_lang in ("de", "en") else i18n.DEFAULT_LANG
+    key_terms = summarization.extract_key_terms(payload.text, lang)
+    return KeyTermsOut(key_terms=key_terms)
 
 
 @app.get("/api/terms", response_model=list[TermOut])

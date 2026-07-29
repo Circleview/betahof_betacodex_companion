@@ -1066,7 +1066,17 @@ function buildEditPanel(s, options = {}) {
     const triggerGenerate = () =>
       generateSummaryFields(s.id, summaryInput, keyTermsInput, status, magicButtons);
     magicButtons.push(addMagicButton(summaryInput, triggerGenerate));
-    magicButtons.push(addMagicButton(keyTermsInput, triggerGenerate));
+    // Eigener Button statt triggerGenerate: leitet Begriffe NUR aus dem
+    // aktuell im Feld darüber stehenden (ggf. von Hand überarbeiteten)
+    // Zusammenfassungstext ab und überschreibt sie unconditional - anders
+    // als triggerGenerate (regeneriert beide Felder aus dem rohen
+    // Quellentext, füllt aber nur leere Felder) hält das die Begriffsliste
+    // gezielt mit einer manuellen Textüberarbeitung synchron.
+    const triggerExtractKeyTerms = () =>
+      extractKeyTermsFromSummary(summaryInput, keyTermsInput, status, magicButtons);
+    magicButtons.push(
+      addMagicButton(keyTermsInput, triggerExtractKeyTerms, 'import.generateKeyTermsFromSummaryTitle')
+    );
   }
 
   if (pendingDeletion) {
@@ -1252,6 +1262,39 @@ async function generateSummaryFields(sourceId, summaryInput, keyTermsInput, stat
   }
 }
 
+// Anders als generateSummaryFields (regeneriert Zusammenfassung UND Begriffe
+// aus dem rohen Quellentext, füllt aber nur leere Felder): leitet Begriffe
+// gezielt aus dem AKTUELLEN Inhalt von summaryInput ab (auch wenn er gerade
+// von Hand überarbeitet und noch nicht gespeichert wurde) und überschreibt
+// keyTermsInput unconditional - das ist der ganze Zweck dieses eigenen
+// Buttons, siehe buildEditPanel.
+async function extractKeyTermsFromSummary(summaryInput, keyTermsInput, statusEl, buttons) {
+  buttons.forEach((b) => {
+    b.disabled = true;
+  });
+  statusEl.textContent = t('import.generatingKeyTerms');
+  try {
+    const res = await fetch('/api/sources/generate-key-terms-preview', {
+      method: 'POST',
+      headers: devUserHeaders(),
+      body: JSON.stringify({ text: summaryInput.value }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || t('import.generateKeyTermsFailed'));
+    }
+    const data = await res.json();
+    keyTermsInput.value = data.key_terms.join(', ');
+    statusEl.textContent = '';
+  } catch (err) {
+    statusEl.textContent = t('common.errorPrefix') + err.message;
+  } finally {
+    buttons.forEach((b) => {
+      b.disabled = false;
+    });
+  }
+}
+
 function scheduleDeletion(s) {
   const timeoutId = setTimeout(async () => {
     pendingDeletions.delete(s.id);
@@ -1338,10 +1381,12 @@ function highlightTermsInElement(container, keyTerms) {
       const isTerm = keyTerms.some((term) => term.toLowerCase() === part.toLowerCase());
       if (isTerm) {
         // Eine Hervorhebung, die einer bereits erfassten Autor:in entspricht,
-        // bleibt ein klickbarer Link (Sprung ins Autor:innen-Profil) - alle
-        // anderen Begriffe sind reine, nicht anklickbare Hervorhebungen
-        // (fett/schwarz), damit sie nicht fälschlich wie Autor:innen-Links
-        // aussehen, obwohl es nur allgemeine Schlagworte sind.
+        // bleibt ein klickbarer Link zum Autor:innen-Profil (auffällig,
+        // Akzentfarbe) - alle anderen Begriffe filtern beim Klick stattdessen
+        // die Quellenübersicht nach diesem Schlagwort (filterByTerm), bewusst
+        // OHNE Link-Optik (keine Akzentfarbe/Unterstreichung im Ruhezustand),
+        // damit allgemeine Schlagworte nicht fälschlich wie Autor:innen-Links
+        // aussehen - siehe .term-highlight-button in style.css.
         const matchingAuthor = allAuthors.find((a) => a.name.toLowerCase() === part.toLowerCase());
         if (matchingAuthor) {
           const btn = document.createElement('button');
@@ -1353,10 +1398,17 @@ function highlightTermsInElement(container, keyTerms) {
           btn.addEventListener('click', () => filterByAuthor(matchingAuthor.name));
           frag.appendChild(btn);
         } else {
+          const btn = document.createElement('button');
+          btn.type = 'button';
+          btn.className = 'term-highlight-button';
+          const title = t('import.filterByTermTitle', { term: part });
+          btn.title = title;
+          btn.setAttribute('aria-label', title);
           const strong = document.createElement('strong');
-          strong.className = 'term-highlight';
           strong.textContent = part;
-          frag.appendChild(strong);
+          btn.appendChild(strong);
+          btn.addEventListener('click', () => filterByTerm(part));
+          frag.appendChild(btn);
         }
       } else if (part) {
         frag.appendChild(document.createTextNode(part));

@@ -1337,6 +1337,26 @@ body:not(.chat-started) #question-form {
   font-weight: 700;
 }
 
+/* Klickbare Begriffs-Hervorhebung (filtert die Quellenübersicht nach diesem
+   Schlagwort) - bewusst optisch identisch zu .term-highlight (schwarz, kein
+   Unterstrich), NICHT wie .term-link in Akzentfarbe, damit ein allgemeines
+   Schlagwort nicht wie ein Autor:innen-Link aussieht. Der Unterstrich beim
+   Hover ist die einzige Erkennbarkeit, dass hier etwas klickbar ist. */
+.term-highlight-button {
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  color: var(--color-text);
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.term-highlight-button:hover {
+  text-decoration: underline;
+}
+
 .source-open-link {
   display: inline-flex;
   vertical-align: middle;

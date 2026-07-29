@@ -2114,6 +2114,54 @@ def test_generate_author_bio_preview_requires_pfleger_role(anon_client):
     assert response.status_code == 403
 
 
+def test_generate_key_terms_preview_derives_from_given_text(client, monkeypatch):
+    # Backlog: Begriffsliste soll aus dem aktuell im Formular stehenden
+    # (ggf. von Hand überarbeiteten) Zusammenfassungstext ableitbar sein,
+    # ohne die gespeicherte Quelle oder deren Zusammenfassung anzurühren.
+    monkeypatch.setattr(
+        summarization,
+        "extract_key_terms",
+        lambda text, lang="de": [f"Begriff aus: {text}"],
+    )
+
+    response = client.post(
+        "/api/sources/generate-key-terms-preview",
+        json={"text": "Eine von Hand geschriebene Zusammenfassung."},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["key_terms"] == ["Begriff aus: Eine von Hand geschriebene Zusammenfassung."]
+
+
+def test_generate_key_terms_preview_does_not_persist_anything(client, monkeypatch):
+    create_res = client.post("/api/sources", json={"title": "Quelle", "text": "Text."})
+    source_id = create_res.json()["id"]
+    client.put(
+        f"/api/sources/{source_id}",
+        json={"title": "Quelle", "text": "Text.", "summary": "Alte Zusammenfassung.", "key_terms": ["Alt"]},
+    )
+    monkeypatch.setattr(summarization, "extract_key_terms", lambda text, lang="de": ["Neu"])
+
+    client.post(
+        "/api/sources/generate-key-terms-preview",
+        json={"text": "Andere Zusammenfassung."},
+    )
+
+    stored = client.get("/api/sources").json()
+    source = next(s for s in stored if s["id"] == source_id)
+    assert source["summary"] == "Alte Zusammenfassung."
+    assert source["key_terms"] == ["Alt"]
+
+
+def test_generate_key_terms_preview_requires_pfleger_role(anon_client):
+    response = anon_client.post(
+        "/api/sources/generate-key-terms-preview",
+        json={"text": "Text."},
+    )
+
+    assert response.status_code == 403
+
+
 def test_add_source_auto_generates_bio_for_new_author(client, monkeypatch):
     monkeypatch.setattr(
         summarization, "generate_author_bio", lambda name, texts, lang="de": "Automatische Vita."

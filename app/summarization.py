@@ -21,6 +21,17 @@ BILINGUAL_SYSTEM_PROMPT = """Du erstellst eine sachliche Zusammenfassung von ung
 - "key_terms_de"/"key_terms_en": jeweils 3 bis 6 prägnante Begriffe/Namen aus dem Text (kurze Substantive/Eigennamen, keine ganzen Sätze) in der jeweiligen Sprache – für "key_terms_en" die übliche englische Entsprechung verwenden, falls gebräuchlich, sonst den Originalbegriff. Dienen als Schlagworte für Querverweise zu anderen Quellen.
 """
 
+KEY_TERMS_SYSTEM_PROMPTS = {
+    "de": """Du extrahierst prägnante Schlagworte aus dem folgenden, bereits fertigen Zusammenfassungstext und rufst dafür das bereitgestellte Werkzeug auf.
+
+- "key_terms": 3 bis 6 prägnante, im Text vorkommende Begriffe oder Namen (kurze Substantive/Eigennamen, keine ganzen Sätze), die als Schlagworte für Querverweise zu anderen Quellen dienen.
+""",
+    "en": """You extract salient tags from the following, already finished summary text and call the provided tool with the result.
+
+- "key_terms": 3 to 6 salient terms or names occurring in the text (short nouns/proper names, not full sentences), used as tags to cross-reference other sources.
+""",
+}
+
 BIO_SYSTEM_PROMPTS = {
     "de": """Du schreibst eine kurze, sachliche Vita (ca. 60-80 Wörter) für eine Autorin/einen Autor, basierend auf den Titeln und Zusammenfassungen ihrer/seiner Quellen.
 
@@ -49,6 +60,18 @@ _SUMMARY_TOOL = {
             "key_terms": {"type": "array", "items": {"type": "string"}},
         },
         "required": ["summary", "key_terms"],
+    },
+}
+
+_KEY_TERMS_TOOL = {
+    "name": "provide_key_terms",
+    "description": "Liefert die Schlagworte für den Text.",
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "key_terms": {"type": "array", "items": {"type": "string"}},
+        },
+        "required": ["key_terms"],
     },
 }
 
@@ -153,6 +176,28 @@ def generate_bilingual_summary(text: str) -> dict:
         if retry:
             result = retry
     return result or empty
+
+
+def extract_key_terms(text: str, lang: str = DEFAULT_LANG) -> list[str]:
+    """Leitet NUR Schlagworte aus einem bereits vorhandenen (ggf. von Hand
+    überarbeiteten) Zusammenfassungstext ab, ohne die Zusammenfassung selbst
+    neu zu erzeugen - Backlog: die Begriffsliste soll auch dann mit einer
+    manuell polierten Zusammenfassung synchron gehalten werden können, ohne
+    deren Wortlaut zu überschreiben (siehe generate_summary/
+    generate_bilingual_summary für die vollständige Neugenerierung inkl. der
+    Zusammenfassung selbst)."""
+    lang = lang if lang in KEY_TERMS_SYSTEM_PROMPTS else DEFAULT_LANG
+    text = text.strip()
+    if not text:
+        return []
+
+    try:
+        data = _call_tool(KEY_TERMS_SYSTEM_PROMPTS[lang], _KEY_TERMS_TOOL, text[:MAX_INPUT_CHARS])
+        if not data:
+            return []
+        return [t.strip() for t in data.get("key_terms") or [] if t and t.strip()]
+    except Exception:
+        return []
 
 
 def generate_author_bio(name: str, texts: list[str], lang: str = DEFAULT_LANG) -> str:
