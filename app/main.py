@@ -164,6 +164,11 @@ async def add_security_headers(request: Request, call_next):
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
     response.headers["Content-Security-Policy"] = CONTENT_SECURITY_POLICY
+    # Backlog #115: vor dem öffentlichen Livegang soll diese Instanz nicht in
+    # Suchmaschinen-/KI-Indizes auftauchen - deckt (anders als die HTML-
+    # Meta-Tags) auch Nicht-HTML-Antworten ab. Vor dem eigentlichen Go-Live
+    # bewusst wieder entfernen.
+    response.headers["X-Robots-Tag"] = "noindex, nofollow, noarchive"
     return response
 
 

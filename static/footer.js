@@ -174,6 +174,16 @@ function renderFooter() {
   versionLink.id = 'footer-version';
   versionLink.title = t('footer.github');
 
+  // Backlog #115: eigene, lokale Seite (nicht extern wie das Impressum) -
+  // beschreibt die Datenverarbeitung DIESER Anwendung, nicht die von
+  // Beta Hof allgemein. Zwei fest sprachige HTML-Dateien statt i18n-Keys,
+  // da eine Datenschutzerklärung als zusammenhängendes, korrektes Dokument
+  // gelesen werden muss statt aus einzeln übersetzten Fragmenten zu bestehen.
+  const privacyPolicyLink = buildLink(
+    getLang() === 'en' ? '/privacy.html' : '/datenschutz.html',
+    t('footer.privacyPolicy')
+  );
+
   footer.replaceChildren(
     taglineSpan,
     buildFeedbackWidget(),
@@ -181,6 +191,7 @@ function renderFooter() {
     versionLink,
     buildLink('https://www.betahof.de/beratung/', 'Beta Hof'),
     buildLink('https://www.betahof.de/impressum/', t('footer.impressum')),
+    privacyPolicyLink,
   );
 }
 

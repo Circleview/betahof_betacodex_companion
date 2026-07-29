@@ -1,0 +1,39 @@
+# Vor dem öffentlichen Livegang (Backlog #115): diese Instanz soll weder in
+# Suchmaschinen noch in KI-Trainings-/Retrieval-Crawlern auftauchen. Dies ist
+# nur eine Bitte an kooperative Crawler - der eigentliche, technisch wirksame
+# Schutz ist das separat geplante Early-Access-Passwort (Backlog #114).
+
+User-agent: *
+Disallow: /
+
+# Bekannte KI-/LLM-Crawler explizit benannt, falls sie den generellen
+# User-agent:*-Block ignorieren oder nur ihre eigene Regel respektieren.
+User-agent: GPTBot
+Disallow: /
+
+User-agent: ChatGPT-User
+Disallow: /
+
+User-agent: CCBot
+Disallow: /
+
+User-agent: ClaudeBot
+Disallow: /
+
+User-agent: anthropic-ai
+Disallow: /
+
+User-agent: Claude-Web
+Disallow: /
+
+User-agent: Google-Extended
+Disallow: /
+
+User-agent: Bytespider
+Disallow: /
+
+User-agent: PerplexityBot
+Disallow: /
+
+User-agent: Amazonbot
+Disallow: /
