@@ -744,12 +744,20 @@ def _process_pdf_ocr(source_id: str, lang: str = i18n.DEFAULT_LANG) -> None:
 # einmal, realer Vorfall 2026-07-28) sendet das entsprechend viele
 # gleichzeitige, kostenpflichtige OpenAI-Aufrufe los und kann das Budget
 # aufbrauchen, bevor auch nur eine einzige Datei fertig transkribiert ist.
-# Ein einzelner Worker-Thread verarbeitet die Warteschlange strikt
-# nacheinander - eine noch nicht dran gekommene Quelle bleibt einfach auf
-# ihrem bereits bestehenden "pending"-Status (siehe _create_pending_source),
-# bis der Worker sie tatsächlich aufgreift und auf "running" setzt. PDF-
-# Texterkennung ist bewusst NICHT betroffen (nicht Teil des gemeldeten
-# Vorfalls, weiterhin über background_tasks wie zuvor).
+#
+# Nachtrag: statt eines einzelnen Workers (strikt sequenziell) verarbeitet
+# eine kleine FESTE Anzahl an Workern dieselbe Warteschlange - Transkription
+# wird pro Audio-Minute abgerechnet, nicht pro gleichzeitiger Anfrage, die
+# GESAMTKOSTEN ändern sich durch Parallelität also nicht, nur die
+# Wanduhrzeit sinkt etwa um den Faktor AUDIO_TRANSCRIPTION_WORKER_COUNT.
+# Eine feste, kleine Zahl (statt wieder unbegrenzt) hält das ursprüngliche
+# Risiko (Budget-/Rate-Limit-Burst) weiterhin klein. Eine noch nicht dran
+# gekommene Quelle bleibt einfach auf ihrem bereits bestehenden "pending"-
+# Status (siehe _create_pending_source), bis einer der Worker sie
+# tatsächlich aufgreift und auf "running" setzt. PDF-Texterkennung ist
+# bewusst NICHT betroffen (nicht Teil des gemeldeten Vorfalls, weiterhin
+# über background_tasks wie zuvor).
+AUDIO_TRANSCRIPTION_WORKER_COUNT = 3
 _audio_transcription_queue: "queue.Queue[tuple[str, str]]" = queue.Queue()
 
 
@@ -769,7 +777,8 @@ def _audio_transcription_worker() -> None:
             _audio_transcription_queue.task_done()
 
 
-threading.Thread(target=_audio_transcription_worker, daemon=True).start()
+for _ in range(AUDIO_TRANSCRIPTION_WORKER_COUNT):
+    threading.Thread(target=_audio_transcription_worker, daemon=True).start()
 
 
 def _recover_interrupted_processing_jobs() -> None:

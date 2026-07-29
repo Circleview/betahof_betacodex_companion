@@ -528,11 +528,14 @@ def test_reprocess_source_retries_and_can_then_succeed(client, monkeypatch):
     assert entry["text"] == "Beim zweiten Versuch erfolgreich."
 
 
-def test_audio_transcriptions_are_processed_sequentially_not_concurrently(client, monkeypatch):
-    """Backlog #113: mehrere gleichzeitig importierte Audios dürfen sich
-    beim Transkribieren nicht überholen - realer Vorfall am 2026-07-28, bei
-    dem 23 parallel gestartete Transkriptionen das OpenAI-Budget aufgebraucht
-    haben, bevor auch nur eine Datei fertig war."""
+def test_audio_transcriptions_are_processed_with_bounded_concurrency(client, monkeypatch):
+    """Backlog #113 (Nachtrag): mehrere gleichzeitig importierte Audios
+    dürfen zwar parallel transkribiert werden (Gesamtkosten ändern sich
+    dadurch nicht, siehe Kommentar bei _audio_transcription_queue), aber NIE
+    mehr als AUDIO_TRANSCRIPTION_WORKER_COUNT gleichzeitig - der reale
+    Vorfall am 2026-07-28 (23 parallel gestartete Transkriptionen, Budget
+    aufgebraucht bevor auch nur eine Datei fertig war) darf sich nicht in
+    abgeschwächter Form wiederholen."""
     monkeypatch.setattr(extraction, "looks_like_audio", lambda u: True)
     monkeypatch.setattr(extraction, "download_audio_bytes", lambda u: b"fake-mp3-bytes")
 
@@ -556,11 +559,11 @@ def test_audio_transcriptions_are_processed_sequentially_not_concurrently(client
             "/api/sources",
             json={"title": f"Folge {i}", "text": "", "url": f"https://cdn.example.org/{i}.mp3"},
         ).json()["id"]
-        for i in range(5)
+        for i in range(8)
     ]
     main_module._audio_transcription_queue.join()
 
-    assert max(max_concurrent) == 1
+    assert max(max_concurrent) <= main_module.AUDIO_TRANSCRIPTION_WORKER_COUNT
     for source_id in source_ids:
         entry = next(s for s in client.get("/api/sources").json() if s["id"] == source_id)
         assert entry["text"] == "Transkribierter Text."
