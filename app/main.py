@@ -31,6 +31,7 @@ from app import (
     llm,
     mail,
     monitoring,
+    question_log,
     ratelimit,
     summarization,
     terms,
@@ -57,6 +58,7 @@ from app.models import (
     KeyTermsPreviewIn,
     MessageOut,
     QuestionIn,
+    QuestionLogEntryOut,
     RequestLinkIn,
     SourceIn,
     SourceOut,
@@ -1557,6 +1559,11 @@ def get_audit_log(_user: str = Depends(require_role(users.QUELLEN_PFLEGER))):
     return [_with_actor_name(entry) for entry in audit.list_entries()]
 
 
+@app.get("/api/question-log", response_model=list[QuestionLogEntryOut])
+def get_question_log(_user: str = Depends(require_role(users.QUELLEN_PFLEGER))):
+    return question_log.list_entries()
+
+
 def _restore_deleted_source(source_id: str, x_lang: str) -> None:
     """Rückgängig-machen einer Löschung (Backlog #99): der Rohdatensatz und
     eine angehängte PDF-/Audio-Datei waren nie weg (siehe delete_source) -
@@ -2011,6 +2018,17 @@ def ask(question: QuestionIn, request: Request, x_lang: str = Header(default=i18
         raise HTTPException(429, i18n.get_message("rate_limited", x_lang))
     if not captcha.verify_turnstile_token(question.turnstile_token, client_ip):
         raise HTTPException(400, i18n.get_message("captcha_failed", x_lang))
+
+    # Backlog #97: anonymisiertes Log der ersten Frage einer Konversation -
+    # bewusst schon hier, VOR der eigentlichen RAG-Suche, damit auch Fragen
+    # ohne Treffer erfasst werden (gerade die sind für die Lücken-Analyse
+    # interessant). Ausgeschlossen: Dev/Stabil (IS_DEV_ENVIRONMENT ist dort
+    # identisch gesetzt, siehe .env) und der System-Admin selbst -
+    # Quellen-Pfleger:innen werden bewusst NICHT ausgeschlossen.
+    if question.is_first_message and not IS_DEV_ENVIRONMENT and not users.has_role(
+        _get_current_user_email(request), users.SYSTEM_ADMIN
+    ):
+        question_log.log_question(question.question)
 
     sources = _load_sources()
     if not sources:

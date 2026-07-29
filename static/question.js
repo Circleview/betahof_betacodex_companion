@@ -58,14 +58,6 @@ function hasPflegerRole() {
   return hasRole('quellen_pfleger');
 }
 
-// Backlog #99: das Änderungs-Log ist wie die Quellen-Bearbeitung selbst nur
-// für Quellen-Pfleger:innen/System-Admins gedacht (has_role zählt
-// system_admin automatisch dazu) - der Button bleibt für alle anderen
-// unsichtbar, analog zu updateSourceManagementVisibility in import.js.
-function updateChangelogLinkVisibility() {
-  document.getElementById('changelog-link')?.classList.toggle('hidden', !hasPflegerRole());
-}
-
 function appendEditSourceLink(container, sourceId) {
   if (!hasPflegerRole()) return;
   const a = document.createElement('a');
@@ -411,7 +403,6 @@ function extractCitedSources(container, sources) {
 
 await initI18n();
 await initAuth();
-updateChangelogLinkVisibility();
 
 const chatMessages = document.getElementById('chat-messages');
 const questionInput = document.getElementById('question');
@@ -530,7 +521,6 @@ function renderSidebarSources() {
 // Login-Status, ohne dass eine neue Antwort nötig ist.
 onAuthChange(() => {
   renderSidebarSources();
-  updateChangelogLinkVisibility();
 });
 
 // Backlog-Fix: eine begonnene Konversation soll erhalten bleiben, wenn
@@ -691,7 +681,12 @@ document.getElementById('question-form').addEventListener('submit', async (e) =>
     const res = await fetchWithRetry('/api/ask', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-Lang': getLang() },
-      body: JSON.stringify({ question, top_k: 5, turnstile_token: getTurnstileToken() }),
+      body: JSON.stringify({
+        question,
+        top_k: 5,
+        turnstile_token: getTurnstileToken(),
+        is_first_message: conversationHistory.length === 0,
+      }),
     });
     // Turnstile-Tokens sind Einweg-Token - nach jedem Versuch (egal ob
     // erfolgreich oder nicht) zurücksetzen, damit die nächste Frage ein

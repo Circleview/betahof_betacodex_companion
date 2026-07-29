@@ -51,6 +51,15 @@ class QuestionIn(BaseModel):
     question: str
     top_k: int = 5
     turnstile_token: str = ""
+    # Backlog #97: vom Frontend gesetzt (conversationHistory.length === 0
+    # zum Zeitpunkt des Absendens) - der Server kennt sonst keine
+    # Konversation, jede Anfrage steht für sich (siehe app/main.py ask()).
+    is_first_message: bool = False
+
+
+class QuestionLogEntryOut(BaseModel):
+    text: str
+    timestamp: str
 
 
 class FeedbackIn(BaseModel):

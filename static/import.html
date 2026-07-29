@@ -25,14 +25,12 @@
 </head>
 <body>
 <a href="#quellen-liste-bereich" class="skip-link" data-i18n="common.skipToContent"></a>
-<header>
-  <h1><span class="brand-dot" aria-hidden="true"></span><span data-i18n="import.title"></span></h1>
-  <div class="header-actions">
-    <a href="/" id="back-link" data-i18n="import.backLink"></a>
-    <span id="lang-switcher" class="lang-switcher"></span>
-    <span id="auth-widget" class="auth-widget"></span>
-  </div>
+<header id="site-header">
+  <span id="lang-switcher" class="lang-switcher"></span>
+  <span id="auth-widget" class="auth-widget"></span>
 </header>
+
+<h2 data-i18n="import.title"></h2>
 
 <section id="import-bereich" class="hidden">
   <form id="source-form">
@@ -207,6 +205,7 @@
 
 <footer class="site-footer" id="site-footer"></footer>
 
+<script type="module" src="/init-header.js"></script>
 <script type="module" src="/import.js"></script>
 <script type="module" src="/init-footer.js"></script>
 </body>

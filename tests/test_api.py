@@ -18,6 +18,7 @@ from app import (
     llm,
     mail,
     monitoring,
+    question_log,
     ratelimit,
     summarization,
     terms,
@@ -74,6 +75,7 @@ def client(tmp_path, monkeypatch):
     monkeypatch.setattr(users, "USERS_FILE", tmp_path / "users.json")
     monkeypatch.setattr(terms, "TERMS_FILE", tmp_path / "terms.json")
     monkeypatch.setattr(audit, "AUDIT_LOG_FILE", tmp_path / "audit_log.json")
+    monkeypatch.setattr(question_log, "QUESTION_LOG_FILE", tmp_path / "question_log.json")
 
     monkeypatch.setattr(embeddings, "embed_passages", lambda texts: [[1.0, 0.0] for _ in texts])
     monkeypatch.setattr(embeddings, "embed_query", lambda text: [1.0, 0.0])
@@ -798,6 +800,83 @@ def test_ask_rejects_after_rate_limit_exceeded(client):
     response = client.post("/api/ask", json={"question": "Frage?"})
 
     assert response.status_code == 429
+
+
+# Backlog #97: anonymisiertes Log der ersten Frage einer Konversation. Wird
+# bewusst VOR der RAG-Suche geloggt (siehe app/main.py ask()) - ein 400 wegen
+# fehlender Quellen ist für diese Tests deshalb unerheblich, kein Setup mit
+# echten Quellen/Embeddings nötig.
+
+
+def test_ask_does_not_log_by_default_even_with_is_first_message(client):
+    # Der client-Fixture setzt IS_DEV_ENVIRONMENT bewusst auf True (siehe
+    # dortigen Kommentar) - deckt sich mit Dev/Stabil, wo NIE geloggt werden
+    # soll. Das gilt implizit für ALLE anderen Tests in dieser Datei.
+    client.post("/api/ask", json={"question": "Was ist der BetaCodex?", "is_first_message": True})
+
+    assert question_log.list_entries() == []
+
+
+def test_ask_logs_first_message_outside_dev_environment(client, monkeypatch):
+    monkeypatch.setattr(main_module, "IS_DEV_ENVIRONMENT", False)
+
+    client.post("/api/ask", json={"question": "Was ist der BetaCodex?", "is_first_message": True})
+
+    entries = question_log.list_entries()
+    assert len(entries) == 1
+    assert entries[0]["text"] == "Was ist der BetaCodex?"
+    assert entries[0]["timestamp"]
+
+
+def test_ask_does_not_log_follow_up_messages(client, monkeypatch):
+    monkeypatch.setattr(main_module, "IS_DEV_ENVIRONMENT", False)
+
+    client.post("/api/ask", json={"question": "Folgefrage", "is_first_message": False})
+
+    assert question_log.list_entries() == []
+
+
+def test_ask_does_not_log_system_admins_own_questions(anon_client, monkeypatch):
+    # Reihenfolge wichtig: login() setzt das Session-Cookie mit
+    # secure=not IS_DEV_ENVIRONMENT - würde IS_DEV_ENVIRONMENT VORHER auf
+    # False gepatcht, wäre es ein "Secure"-Cookie, das der TestClient über
+    # das ungesicherte "http://testserver" nie zurückschickt (siehe Kommentar
+    # beim client-Fixture) - der Admin bliebe dann scheinbar ausgeloggt.
+    login(anon_client, "admin@test.local", users.SYSTEM_ADMIN)
+    monkeypatch.setattr(main_module, "IS_DEV_ENVIRONMENT", False)
+
+    anon_client.post("/api/ask", json={"question": "Testfrage des Admins", "is_first_message": True})
+
+    assert question_log.list_entries() == []
+
+
+def test_ask_still_logs_quellen_pfleger_questions(client, monkeypatch):
+    # Abgrenzung zum Admin-Ausschluss: die eigene Nutzung von Quellen-
+    # Pfleger:innen bleibt ein sinnvolles Signal (vom Nutzer explizit
+    # bestätigt) - der client-Fixture ist bereits als PFLEGER eingeloggt.
+    monkeypatch.setattr(main_module, "IS_DEV_ENVIRONMENT", False)
+
+    client.post("/api/ask", json={"question": "Frage einer Pflegerin", "is_first_message": True})
+
+    entries = question_log.list_entries()
+    assert len(entries) == 1
+    assert entries[0]["text"] == "Frage einer Pflegerin"
+
+
+def test_get_question_log_requires_pfleger_role(anon_client):
+    response = anon_client.get("/api/question-log")
+    assert response.status_code == 403
+
+
+def test_get_question_log_returns_entries_for_pfleger(client, monkeypatch):
+    monkeypatch.setattr(main_module, "IS_DEV_ENVIRONMENT", False)
+    client.post("/api/ask", json={"question": "Frage einer Pflegerin", "is_first_message": True})
+
+    response = client.get("/api/question-log")
+
+    assert response.status_code == 200
+    texts = [entry["text"] for entry in response.json()]
+    assert "Frage einer Pflegerin" in texts
 
 
 def test_feedback_sends_mail_to_admin_and_returns_confirmation(client, monkeypatch):
