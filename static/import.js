@@ -259,8 +259,7 @@ function renderJobsListInto(list, jobs) {
         retryBtn.disabled = true;
         try {
           await fetch(`/api/sources/${job.id}/reprocess`, { method: 'POST', headers: devUserHeaders() });
-          await fetchImportJobs();
-          loadSources();
+          await Promise.all([fetchImportJobs(), loadSources()]);
         } finally {
           retryBtn.disabled = false;
         }

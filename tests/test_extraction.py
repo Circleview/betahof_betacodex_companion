@@ -2,12 +2,16 @@ import subprocess
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import httpx
+import openai
+
 from app import extraction
 from app.extraction import (
     _extract_youtube,
     _parse_markdown_extraction,
     _split_authors,
-    _transcribe_chunk,
+    _transcribe_chunk_once,
+    _transcribe_chunk_with_retries,
     download_audio_bytes,
     download_pdf_bytes,
     extract_from_url,
@@ -488,6 +492,11 @@ def test_extract_youtube_handles_transcript_fetch_failure():
     assert result["extracted"] is False
 
 
+def _fake_rate_limit_error() -> openai.RateLimitError:
+    response = httpx.Response(429, request=httpx.Request("POST", "https://api.openai.com/v1/audio/transcriptions"))
+    return openai.RateLimitError("zu viele Anfragen", response=response, body=None)
+
+
 def _fake_diarized_result(pairs):
     segments = []
     for speaker, text in pairs:
@@ -506,7 +515,7 @@ def test_transcribe_chunk_uses_diarize_model_and_formats_speakers():
         [("A", "Hallo zusammen."), ("B", "Hallo, schön hier zu sein."), ("A", "Wie geht's dir?")]
     )
     with patch.object(extraction, "_get_openai_client", return_value=client):
-        text = _transcribe_chunk(b"fake-mp3-bytes", "episode.mp3")
+        text = _transcribe_chunk_once(b"fake-mp3-bytes", "episode.mp3")
 
     assert text == "Sprecher 1: Hallo zusammen.\n\nSprecher 2: Hallo, schön hier zu sein.\n\nSprecher 1: Wie geht's dir?"
     kwargs = client.audio.transcriptions.create.call_args.kwargs
@@ -519,7 +528,7 @@ def test_transcribe_chunk_falls_back_to_whisper_for_flac():
     client = MagicMock()
     client.audio.transcriptions.create.return_value = "Ein einfaches Transkript."
     with patch.object(extraction, "_get_openai_client", return_value=client):
-        text = _transcribe_chunk(b"fake-flac-bytes", "aufnahme.flac")
+        text = _transcribe_chunk_once(b"fake-flac-bytes", "aufnahme.flac")
 
     assert text == "Ein einfaches Transkript."
     kwargs = client.audio.transcriptions.create.call_args.kwargs
@@ -527,13 +536,81 @@ def test_transcribe_chunk_falls_back_to_whisper_for_flac():
     assert kwargs["response_format"] == "text"
 
 
-def test_transcribe_chunk_returns_empty_string_on_error():
+def test_transcribe_chunk_once_raises_on_error_instead_of_swallowing():
+    # Bug vom 2026-07-29: _transcribe_chunk verschluckte jeden Fehler und
+    # lieferte "" zurück - dadurch verschwand ein gescheiterter Abschnitt
+    # einfach spurlos aus dem Ergebnis, statt die Verarbeitung als
+    # gescheitert zu markieren. _transcribe_chunk_once lässt Exceptions
+    # deshalb jetzt bewusst durch - die Fehlerbehandlung/-klassifikation
+    # übernimmt _transcribe_chunk_with_retries.
     client = MagicMock()
     client.audio.transcriptions.create.side_effect = RuntimeError("boom")
     with patch.object(extraction, "_get_openai_client", return_value=client):
-        text = _transcribe_chunk(b"fake-bytes", "episode.mp3")
+        try:
+            _transcribe_chunk_once(b"fake-bytes", "episode.mp3")
+            assert False, "sollte RuntimeError weiterreichen"
+        except RuntimeError as exc:
+            assert str(exc) == "boom"
+
+
+def test_transcribe_chunk_with_retries_gives_up_immediately_on_non_retryable_error(monkeypatch):
+    sleep_calls = []
+    monkeypatch.setattr(extraction.time, "sleep", lambda s: sleep_calls.append(s))
+    with patch.object(extraction, "_transcribe_chunk_once", side_effect=RuntimeError("kaputte Datei")):
+        text, detail = _transcribe_chunk_with_retries(b"data", "episode.mp3", duration_seconds=60)
 
     assert text == ""
+    assert "RuntimeError" in detail and "kaputte Datei" in detail
+    assert sleep_calls == []  # kein Wiederholungsversuch bei nicht-vorübergehendem Fehler
+
+
+def test_transcribe_chunk_with_retries_retries_and_succeeds_on_rate_limit(monkeypatch):
+    sleep_calls = []
+    monkeypatch.setattr(extraction.time, "sleep", lambda s: sleep_calls.append(s))
+    rate_limit_error = _fake_rate_limit_error()
+    with patch.object(
+        extraction, "_transcribe_chunk_once", side_effect=[rate_limit_error, "Erfolgreich beim 2. Versuch."]
+    ):
+        # duration_seconds=None: dieser Test prüft gezielt die Wiederholung
+        # bei Fehlern, nicht die separate Plausibilitätsprüfung der
+        # Textlänge (siehe test_..._treats_suspiciously_short_result...).
+        text, detail = _transcribe_chunk_with_retries(b"data", "episode.mp3", duration_seconds=None)
+
+    assert text == "Erfolgreich beim 2. Versuch."
+    assert detail is None
+    assert sleep_calls == [extraction._SEGMENT_RETRY_DELAYS_SECONDS[0]]
+
+
+def test_transcribe_chunk_with_retries_gives_up_after_exhausting_retryable_attempts(monkeypatch):
+    monkeypatch.setattr(extraction.time, "sleep", lambda s: None)
+    rate_limit_error = _fake_rate_limit_error()
+    with patch.object(extraction, "_transcribe_chunk_once", side_effect=rate_limit_error):
+        text, detail = _transcribe_chunk_with_retries(b"data", "episode.mp3", duration_seconds=60)
+
+    assert text == ""
+    assert "RateLimitError" in detail
+
+
+def test_transcribe_chunk_with_retries_treats_suspiciously_short_result_as_failure(monkeypatch):
+    # Der eigentliche Auslöser der Umstrukturierung (2026-07-29): OpenAI
+    # kann ohne jede Fehlermeldung ein fast leeres Ergebnis liefern - ohne
+    # diese Prüfung würde das stillschweigend als Erfolg durchgehen.
+    monkeypatch.setattr(extraction.time, "sleep", lambda s: None)
+    with patch.object(extraction, "_transcribe_chunk_once", return_value="Nur ein paar Wörter."):
+        text, detail = _transcribe_chunk_with_retries(b"data", "episode.mp3", duration_seconds=20 * 60)
+
+    assert text == ""
+    assert "auffällig kurz" in detail
+
+
+def test_transcribe_chunk_with_retries_accepts_short_result_without_known_duration(monkeypatch):
+    # Ohne Dauer (z.B. ffprobe konnte sie nicht ermitteln) lässt sich keine
+    # Plausibilitätsgrenze berechnen - dann lieber kein falscher Alarm.
+    with patch.object(extraction, "_transcribe_chunk_once", return_value="Kurz."):
+        text, detail = _transcribe_chunk_with_retries(b"data", "episode.mp3", duration_seconds=None)
+
+    assert text == "Kurz."
+    assert detail is None
 
 
 def test_split_audio_file_returns_original_path_when_under_limit(tmp_path):
@@ -667,10 +744,11 @@ def test_transcribe_audio_returns_single_chunk_text_unchanged(tmp_path):
     audio_path.write_bytes(b"fake-bytes")
 
     with patch.object(extraction, "split_audio_file", return_value=[audio_path]), \
-         patch.object(extraction, "_transcribe_chunk", return_value="Nur ein Teil."):
-        text = transcribe_audio(audio_path)
+         patch.object(extraction, "_transcribe_chunk_with_retries", return_value=("Nur ein Teil.", None)):
+        text, error_detail = transcribe_audio(audio_path)
 
     assert text == "Nur ein Teil."
+    assert error_detail is None
 
 
 def test_transcribe_audio_concatenates_multiple_segments_with_part_markers(tmp_path):
@@ -682,8 +760,75 @@ def test_transcribe_audio_concatenates_multiple_segments_with_part_markers(tmp_p
     chunk_b.write_bytes(b"b")
 
     with patch.object(extraction, "split_audio_file", return_value=[chunk_a, chunk_b]), \
-         patch.object(extraction, "_transcribe_chunk", side_effect=["Text A", "Text B"]):
-        text = transcribe_audio(tmp_path / "original.mp3")
+         patch.object(extraction, "_transcribe_chunk_with_retries", side_effect=[("Text A", None), ("Text B", None)]):
+        text, error_detail = transcribe_audio(tmp_path / "original.mp3")
 
     assert text == "--- Teil 1 ---\n\nText A\n\n--- Teil 2 ---\n\nText B"
+    assert error_detail is None
     assert not split_dir.exists()
+
+
+def test_transcribe_audio_fails_whole_file_when_one_segment_fails_permanently(tmp_path):
+    # Der eigentliche Bug (2026-07-29): ein gescheiterter Abschnitt durfte
+    # bisher NIE zu einem stillschweigend lückenhaften Ergebnis führen -
+    # die ganze Datei muss als Fehler gelten, Abschnitt 1 bleibt aber
+    # namentlich im Fehlertext genannt.
+    split_dir = tmp_path / "split"
+    split_dir.mkdir()
+    chunk_a = split_dir / "chunk_000.mp3"
+    chunk_b = split_dir / "chunk_001.mp3"
+    chunk_a.write_bytes(b"a")
+    chunk_b.write_bytes(b"b")
+
+    with patch.object(extraction, "split_audio_file", return_value=[chunk_a, chunk_b]), \
+         patch.object(
+             extraction,
+             "_transcribe_chunk_with_retries",
+             side_effect=[("Text A", None), ("", "RateLimitError: zu viele Anfragen")],
+         ):
+        text, error_detail = transcribe_audio(tmp_path / "original.mp3")
+
+    assert text == ""
+    assert error_detail == "Abschnitt 2/2: RateLimitError: zu viele Anfragen"
+    assert not split_dir.exists()
+
+
+def test_transcribe_audio_reuses_known_segments_without_calling_openai_again(tmp_path):
+    # Kernstück der Kostenschutz-Änderung: ein bereits erfolgreich
+    # transkribierter Abschnitt aus einem vorherigen (teilweise
+    # gescheiterten) Versuch darf bei einem erneuten Versuch NICHT nochmal
+    # bezahlt/angefragt werden.
+    split_dir = tmp_path / "split"
+    split_dir.mkdir()
+    chunk_a = split_dir / "chunk_000.mp3"
+    chunk_b = split_dir / "chunk_001.mp3"
+    chunk_a.write_bytes(b"a")
+    chunk_b.write_bytes(b"b")
+
+    with patch.object(extraction, "split_audio_file", return_value=[chunk_a, chunk_b]), \
+         patch.object(
+             extraction, "_transcribe_chunk_with_retries", return_value=("Text B (neu)", None)
+         ) as mock_retry:
+        text, error_detail = transcribe_audio(
+            tmp_path / "original.mp3", known_segments={0: "Text A (schon erledigt)"}
+        )
+
+    assert error_detail is None
+    assert text == "--- Teil 1 ---\n\nText A (schon erledigt)\n\n--- Teil 2 ---\n\nText B (neu)"
+    mock_retry.assert_called_once()  # nur für Abschnitt 2, nicht für den bereits bekannten Abschnitt 1
+
+
+def test_transcribe_audio_calls_on_segment_success_for_each_new_segment(tmp_path):
+    split_dir = tmp_path / "split"
+    split_dir.mkdir()
+    chunk_a = split_dir / "chunk_000.mp3"
+    chunk_b = split_dir / "chunk_001.mp3"
+    chunk_a.write_bytes(b"a")
+    chunk_b.write_bytes(b"b")
+
+    calls = []
+    with patch.object(extraction, "split_audio_file", return_value=[chunk_a, chunk_b]), \
+         patch.object(extraction, "_transcribe_chunk_with_retries", side_effect=[("Text A", None), ("Text B", None)]):
+        transcribe_audio(tmp_path / "original.mp3", on_segment_success=lambda i, t, txt: calls.append((i, t, txt)))
+
+    assert calls == [(0, 2, "Text A"), (1, 2, "Text B")]

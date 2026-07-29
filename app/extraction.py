@@ -4,10 +4,13 @@ import re
 import shutil
 import subprocess
 import tempfile
+import time
 import urllib.request
 from pathlib import Path
+from typing import Callable
 from urllib.parse import parse_qs, urlparse
 
+import openai
 import trafilatura
 from openai import OpenAI
 from pypdf import PdfReader
@@ -208,32 +211,90 @@ def _format_diarized_text(result) -> str:
     return "\n\n".join(lines)
 
 
-def _transcribe_chunk(data: bytes, filename: str) -> str:
-    """Transkribiert eine einzelne Audiodatei (muss innerhalb des
-    OpenAI-Größenlimits liegen, siehe AUDIO_UPLOAD_MAX_BYTES). Gibt bei
-    jedem Fehler (API-Fehler, nicht unterstütztes Format, fehlender Key,
-    Netzwerkfehler) einen leeren String zurück statt zu crashen - gleiche
-    defensive Konvention wie download_audio_bytes/looks_like_audio."""
+def _transcribe_chunk_once(data: bytes, filename: str) -> str:
+    """Ein einzelner, ungeschützter Transkriptionsversuch - Exceptions werden
+    NICHT abgefangen, das übernimmt _transcribe_chunk_with_retries, die
+    zwischen vorübergehenden (wiederholbaren) und endgültigen Fehlern
+    unterscheiden muss."""
     extension = Path(filename).suffix.lower()
     client = _get_openai_client()
-    try:
-        if extension in _DIARIZE_EXTENSIONS:
-            result = client.audio.transcriptions.create(
-                model="gpt-4o-transcribe-diarize",
-                file=(filename, data),
-                response_format="diarized_json",
-                chunking_strategy="auto",
-            )
-            return _format_diarized_text(result)
-
+    if extension in _DIARIZE_EXTENSIONS:
         result = client.audio.transcriptions.create(
-            model="whisper-1",
+            model="gpt-4o-transcribe-diarize",
             file=(filename, data),
-            response_format="text",
+            response_format="diarized_json",
+            chunking_strategy="auto",
         )
-        return str(result).strip()
-    except Exception:
-        return ""
+        return _format_diarized_text(result)
+
+    result = client.audio.transcriptions.create(
+        model="whisper-1",
+        file=(filename, data),
+        response_format="text",
+    )
+    return str(result).strip()
+
+
+# Vorübergehende Fehlerklassen, bei denen ein erneuter Versuch nach kurzer
+# Wartezeit typischerweise erfolgreich ist - alle anderen Fehler (z.B.
+# beschädigte Datei, nicht unterstütztes Format) werden NICHT wiederholt, da
+# sich am Ergebnis nichts ändern würde. Die OpenAI-Bibliothek wiederholt
+# intern zwar bereits automatisch (kurze Sekunden-Backoffs), das reicht bei
+# den strengeren Limits der Audio-Endpunkte aber oft nicht aus - siehe
+# Vorfall 2026-07-29 (mehrere Segmente scheiterten still, siehe unten).
+_RETRYABLE_OPENAI_ERRORS = (
+    openai.RateLimitError,
+    openai.APITimeoutError,
+    openai.APIConnectionError,
+    openai.InternalServerError,
+)
+
+# 3 Versuche insgesamt (Erstversuch + 2 Wiederholungen), mit steigender
+# Wartezeit - lang genug, um ein Minuten-Rate-Limit auf dem Audio-Endpunkt
+# zu überstehen, ohne die ohnehin schon seltenen Fehlerfälle unnötig weiter
+# in die Länge zu ziehen.
+_SEGMENT_RETRY_DELAYS_SECONDS = [30, 90]
+
+# Grobe, bewusst großzügige Plausibilitätsgrenze: reale, vollständig
+# transkribierte Abschnitte lagen in einer Stichprobe durchweg über
+# 1000 Zeichen/Minute. Ein von OpenAI ohne Fehlermeldung, aber mit
+# auffällig wenig Text beantworteter Abschnitt (beobachtet: nur 538 Zeichen
+# für ~15 Minuten Audio) wäre sonst - der eigentliche Auslöser dieser
+# Umstrukturierung - als "erfolgreich" durchgerutscht. Absichtlich niedrig
+# gewählt, um lange, tatsächlich sehr wortarme Abschnitte (z.B. Musik) nicht
+# fälschlich zu blockieren.
+_MIN_CHARS_PER_MINUTE = 100
+
+
+def _transcribe_chunk_with_retries(data: bytes, filename: str, duration_seconds: float | None) -> tuple[str, str | None]:
+    """Transkribiert EINEN Abschnitt mit Wiederholungen bei vorübergehenden
+    Fehlern und einer Plausibilitätsprüfung des Ergebnisses. Gibt (text,
+    fehlerdetail) zurück - fehlerdetail ist None bei Erfolg, text ist dann
+    nie teilweise/fragwürdig (das war der eigentliche Bug: ein Abschnitt
+    ohne Exception, aber mit fast leerem Ergebnis, galt bisher als
+    Erfolg)."""
+    attempts = len(_SEGMENT_RETRY_DELAYS_SECONDS) + 1
+    detail = "unbekannter Fehler"
+    for attempt in range(attempts):
+        is_last_attempt = attempt == attempts - 1
+        try:
+            text = _transcribe_chunk_once(data, filename)
+        except Exception as exc:
+            detail = f"{type(exc).__name__}: {exc}"
+            if is_last_attempt or not isinstance(exc, _RETRYABLE_OPENAI_ERRORS):
+                return "", detail
+            time.sleep(_SEGMENT_RETRY_DELAYS_SECONDS[attempt])
+            continue
+
+        if duration_seconds and len(text) < (duration_seconds / 60) * _MIN_CHARS_PER_MINUTE:
+            detail = f"Ergebnis auffällig kurz ({len(text)} Zeichen für {duration_seconds / 60:.0f} Minuten)"
+            if is_last_attempt:
+                return "", detail
+            time.sleep(_SEGMENT_RETRY_DELAYS_SECONDS[attempt])
+            continue
+
+        return text, None
+    return "", detail
 
 
 def _audio_duration_seconds(path: Path) -> float | None:
@@ -298,27 +359,65 @@ def split_audio_file(path: Path, max_bytes: int = AUDIO_UPLOAD_MAX_BYTES) -> lis
     return segments or [path]
 
 
-def transcribe_audio(path: Path) -> str:
+def transcribe_audio(
+    path: Path,
+    known_segments: dict[int, str] | None = None,
+    on_segment_success: Callable[[int, int, str], None] | None = None,
+) -> tuple[str, str | None]:
     """Transkribiert eine Audiodatei beliebiger Größe: Dateien über dem
     OpenAI-Limit werden zuerst per split_audio_file() in Abschnitte
-    aufgeteilt, jeder Abschnitt einzeln transkribiert und die Ergebnisse zu
-    einem zusammenhängenden Text verkettet. Sprecher-Nummerierung wird pro
+    aufgeteilt, jeder Abschnitt einzeln transkribiert (mit Wiederholungen,
+    siehe _transcribe_chunk_with_retries) und die Ergebnisse zu einem
+    zusammenhängenden Text verkettet. Sprecher-Nummerierung wird pro
     Abschnitt neu vergeben (keine Kontinuität über Abschnittsgrenzen
-    hinweg möglich)."""
+    hinweg möglich).
+
+    known_segments: bereits erfolgreich transkribierte Abschnitte (0-
+    indiziert) aus einem vorherigen, teilweise gescheiterten Versuch -
+    werden ohne erneuten (kostenpflichtigen) OpenAI-Aufruf übernommen.
+    split_audio_file() liefert bei gleicher Datei stets dieselben
+    Abschnittsgrenzen, daher bleibt der Index über mehrere Versuche hinweg
+    gültig.
+    on_segment_success: wird nach JEDEM neu erfolgreich transkribierten
+    Abschnitt aufgerufen (index, total, text), damit der Aufrufer (siehe
+    app/main.py) den Fortschritt sofort dauerhaft speichern kann - sowohl
+    für einen erneuten "Retry"-Versuch (kein doppeltes Bezahlen bereits
+    erfolgreicher Abschnitte) als auch für einen Server-Neustart mitten in
+    einer langen Datei.
+
+    Rückgabe: (text, fehlerdetail). fehlerdetail ist None nur bei
+    VOLLSTÄNDIGEM Erfolg aller Abschnitte - scheitert auch nur ein
+    Abschnitt endgültig, ist text leer und fehlerdetail beschreibt Ort und
+    Grund. Das war der eigentliche Bug (2026-07-29): ein einzelner
+    gescheiterter Abschnitt wurde bisher still übersprungen, die Quelle
+    aber trotzdem als vollständig verarbeitet markiert."""
     segments = split_audio_file(path)
-    is_split = len(segments) > 1 or (segments and segments[0] != path)
-    texts = []
-    for segment_path in segments:
-        text = _transcribe_chunk(segment_path.read_bytes(), segment_path.name)
-        if text:
-            texts.append(text)
+    total = len(segments)
+    is_split = total > 1 or (segments and segments[0] != path)
+    texts: dict[int, str] = dict(known_segments or {})
+
+    for index, segment_path in enumerate(segments):
+        if index in texts:
+            continue
+        duration = _audio_duration_seconds(segment_path)
+        text, error_detail = _transcribe_chunk_with_retries(
+            segment_path.read_bytes(), segment_path.name, duration
+        )
+        if error_detail:
+            if is_split:
+                shutil.rmtree(segments[0].parent, ignore_errors=True)
+            return "", f"Abschnitt {index + 1}/{total}: {error_detail}"
+        texts[index] = text
+        if on_segment_success:
+            on_segment_success(index, total, text)
 
     if is_split:
         shutil.rmtree(segments[0].parent, ignore_errors=True)
 
-    if len(texts) <= 1:
-        return texts[0] if texts else ""
-    return "\n\n".join(f"--- Teil {i + 1} ---\n\n{text}" for i, text in enumerate(texts))
+    ordered = [texts[i] for i in range(total)]
+    if len(ordered) <= 1:
+        return (ordered[0] if ordered else ""), None
+    return "\n\n".join(f"--- Teil {i + 1} ---\n\n{t}" for i, t in enumerate(ordered)), None
 
 
 def looks_like_pdf(url: str) -> bool:

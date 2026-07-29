@@ -419,30 +419,13 @@ _vectorstore_write_lock = threading.Lock()
 _sources_write_lock = threading.Lock()
 
 
-def _run_deferred_text_extraction(
-    source_id: str,
-    lang: str,
-    initial_step: str,
-    compute_text,
-    failure_i18n_key: str,
-) -> None:
-    """Gemeinsamer Ablauf für Hintergrund-Jobs, die den Text einer bereits
-    angelegten, aber noch textlosen Quelle nachträglich berechnen (Audio-
-    Transkription per _process_audio_transcription, PDF-Texterkennung per
-    _process_pdf_ocr) und ihn danach chunken/indizieren. initial_step
-    markiert die erste, quellenspezifische Verarbeitungsstufe
-    ("transcribe"/"ocr"), compute_text liefert bei Erfolg den erkannten
-    Text, sonst einen leeren String."""
-    with _sources_write_lock:
-        sources = _load_sources()
-        if source_id not in sources:
-            return
-        sources[source_id]["processing_status"] = "running"
-        sources[source_id]["processing_step"] = initial_step
-        _save_sources(sources)
-
-    text = compute_text()
-
+def _finalize_extracted_text(source_id: str, lang: str, text: str, failure_i18n_key: str) -> None:
+    """Gemeinsamer Ablauf ab dem Punkt, an dem der Volltext einer Quelle
+    feststeht (oder leer ist, siehe unten): chunkt/indiziert die Quelle,
+    oder markiert sie bei leerem Text als Fehler. Wird sowohl von der PDF-
+    Texterkennung (_run_deferred_text_extraction) als auch - nach
+    vollständig erfolgreicher, ggf. mehrteiliger Transkription - von
+    _process_audio_transcription aufgerufen."""
     with _sources_write_lock:
         sources = _load_sources()
         if source_id not in sources:
@@ -503,24 +486,94 @@ def _run_deferred_text_extraction(
             sources[source_id]["processing_status"] = None
             sources[source_id]["processing_step"] = None
             sources[source_id]["processing_error"] = None
+            sources[source_id]["processing_segments"] = None
             _save_sources(sources)
 
     _generate_summary_background(source_id, text)
+
+
+def _run_deferred_text_extraction(
+    source_id: str,
+    lang: str,
+    initial_step: str,
+    compute_text,
+    failure_i18n_key: str,
+) -> None:
+    """Hintergrund-Job-Ablauf für die PDF-Texterkennung (_process_pdf_ocr):
+    setzt den Verarbeitungsstatus, berechnet den Text in einem Rutsch
+    (keine Mehrteiligkeit wie bei Audio nötig) und übergibt an
+    _finalize_extracted_text."""
+    with _sources_write_lock:
+        sources = _load_sources()
+        if source_id not in sources:
+            return
+        sources[source_id]["processing_status"] = "running"
+        sources[source_id]["processing_step"] = initial_step
+        _save_sources(sources)
+
+    text = compute_text()
+    _finalize_extracted_text(source_id, lang, text, failure_i18n_key)
 
 
 def _process_audio_transcription(source_id: str, lang: str = i18n.DEFAULT_LANG) -> None:
     """Hintergrund-Job (siehe add_source): transkribiert eine bereits
     angelegte, aber noch textlose Audio-Quelle. Die Audiodatei liegt zu
     diesem Zeitpunkt schon in AUDIO_DIR (add_source lädt/speichert sie
-    synchron, nur die Transkription selbst ist der langsame Teil)."""
+    synchron, nur die Transkription selbst ist der langsame Teil).
+
+    Anders als _run_deferred_text_extraction (PDF) läuft hier ein eigener
+    Ablauf, weil eine lange Audiodatei aus mehreren, EINZELN bezahlten
+    OpenAI-Aufrufen besteht (siehe extraction.transcribe_audio): bereits
+    erfolgreiche Abschnitte werden aus einem vorherigen Versuch übernommen
+    (processing_segments) und nach jedem neu erfolgreichen Abschnitt sofort
+    gespeichert - ein erneuter "Retry" nach einem teilweisen Fehlschlag
+    bezahlt so nicht für bereits erledigte Abschnitte erneut."""
     audio_path = _existing_audio_file(source_id)
-    _run_deferred_text_extraction(
-        source_id,
-        lang,
-        initial_step="transcribe",
-        compute_text=lambda: extraction.transcribe_audio(audio_path) if audio_path else "",
-        failure_i18n_key="audio_transcription_failed",
-    )
+
+    with _sources_write_lock:
+        sources = _load_sources()
+        if source_id not in sources:
+            return
+        entry = sources[source_id]
+        entry["processing_status"] = "running"
+        entry["processing_step"] = "transcribe"
+        known_segments = {int(k): v for k, v in (entry.get("processing_segments") or {}).items()}
+        _save_sources(sources)
+
+    def on_segment_success(index: int, total: int, segment_text: str) -> None:
+        with _sources_write_lock:
+            sources = _load_sources()
+            if source_id not in sources:
+                return
+            segments = sources[source_id].get("processing_segments") or {}
+            segments[str(index)] = segment_text
+            sources[source_id]["processing_segments"] = segments
+            _save_sources(sources)
+
+    if audio_path is None:
+        text, error_detail = "", None
+    else:
+        text, error_detail = extraction.transcribe_audio(
+            audio_path, known_segments=known_segments, on_segment_success=on_segment_success
+        )
+
+    if error_detail:
+        with _sources_write_lock:
+            sources = _load_sources()
+            if source_id not in sources:
+                return
+            # processing_segments bleibt bewusst erhalten - siehe Docstring:
+            # ein erneuter Versuch soll die schon erfolgreichen Abschnitte
+            # wiederverwenden statt sie erneut zu bezahlen.
+            sources[source_id]["processing_status"] = "error"
+            sources[source_id]["processing_step"] = None
+            sources[source_id]["processing_error"] = i18n.get_message(
+                "audio_segment_failed", lang, detail=error_detail
+            )
+            _save_sources(sources)
+        return
+
+    _finalize_extracted_text(source_id, lang, text, "audio_transcription_failed")
 
 
 def _process_pdf_ocr(source_id: str, lang: str = i18n.DEFAULT_LANG) -> None:

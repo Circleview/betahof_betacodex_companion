@@ -314,7 +314,7 @@ def test_process_audio_transcription_fills_text_and_indexes(client, monkeypatch)
     create_res = _create_deferred_audio_source(client, monkeypatch)
     source_id = create_res.json()["id"]
 
-    monkeypatch.setattr(extraction, "transcribe_audio", lambda path: "Nachträglich transkribierter Text.")
+    monkeypatch.setattr(extraction, "transcribe_audio", lambda path, **kw: ("Nachträglich transkribierter Text.", None))
     main_module._process_audio_transcription(source_id)
 
     sources = client.get("/api/sources").json()
@@ -331,7 +331,7 @@ def test_process_audio_transcription_triggers_summary_generation(client, monkeyp
     create_res = _create_deferred_audio_source(client, monkeypatch)
     source_id = create_res.json()["id"]
 
-    monkeypatch.setattr(extraction, "transcribe_audio", lambda path: "Nachträglich transkribierter Text.")
+    monkeypatch.setattr(extraction, "transcribe_audio", lambda path, **kw: ("Nachträglich transkribierter Text.", None))
     monkeypatch.setattr(
         summarization,
         "generate_bilingual_summary",
@@ -350,13 +350,43 @@ def test_process_audio_transcription_marks_error_when_transcription_fails(client
     create_res = _create_deferred_audio_source(client, monkeypatch)
     source_id = create_res.json()["id"]
 
-    monkeypatch.setattr(extraction, "transcribe_audio", lambda path: "")
+    monkeypatch.setattr(extraction, "transcribe_audio", lambda path, **kw: ("", "Abschnitt 1/1: RuntimeError: boom"))
     main_module._process_audio_transcription(source_id)
 
     sources = client.get("/api/sources").json()
     entry = next(s for s in sources if s["id"] == source_id)
     assert entry["processing_status"] == "error"
-    assert entry["processing_error"]
+    assert "Abschnitt 1/1" in entry["processing_error"]
+
+
+def test_process_audio_transcription_keeps_successful_segments_for_next_attempt(client, monkeypatch):
+    # Kostenschutz (2026-07-29): scheitert die Transkription, müssen bereits
+    # erfolgreiche Abschnitte (processing_segments) erhalten bleiben, damit
+    # ein erneuter Versuch sie nicht nochmal bezahlt.
+    create_res = _create_deferred_audio_source(client, monkeypatch)
+    source_id = create_res.json()["id"]
+
+    def fake_transcribe(path, known_segments=None, on_segment_success=None):
+        on_segment_success(0, 2, "Abschnitt 1 (erfolgreich)")
+        return "", "Abschnitt 2/2: RateLimitError: zu viele Anfragen"
+
+    monkeypatch.setattr(extraction, "transcribe_audio", fake_transcribe)
+    main_module._process_audio_transcription(source_id)
+
+    raw = main_module._load_sources()[source_id]
+    assert raw["processing_status"] == "error"
+    assert raw["processing_segments"] == {"0": "Abschnitt 1 (erfolgreich)"}
+
+    def fake_transcribe_retry(path, known_segments=None, on_segment_success=None):
+        assert known_segments == {0: "Abschnitt 1 (erfolgreich)"}
+        return "--- Teil 1 ---\n\nAbschnitt 1 (erfolgreich)\n\n--- Teil 2 ---\n\nAbschnitt 2 (jetzt auch)", None
+
+    monkeypatch.setattr(extraction, "transcribe_audio", fake_transcribe_retry)
+    main_module._process_audio_transcription(source_id)
+
+    entry = next(s for s in client.get("/api/sources").json() if s["id"] == source_id)
+    assert entry["processing_status"] is None
+    assert "Abschnitt 2 (jetzt auch)" in entry["text"]
 
 
 def test_import_jobs_lists_pending_and_error_but_not_done(client, monkeypatch):
@@ -369,7 +399,7 @@ def test_import_jobs_lists_pending_and_error_but_not_done(client, monkeypatch):
         client, monkeypatch, title="Fertig", url="https://cdn.example.org/b.mp3"
     )
     done_id = done_res.json()["id"]
-    monkeypatch.setattr(extraction, "transcribe_audio", lambda path: "Text.")
+    monkeypatch.setattr(extraction, "transcribe_audio", lambda path, **kw: ("Text.", None))
     main_module._process_audio_transcription(done_id)
 
     jobs = client.get("/api/import-jobs").json()
@@ -382,7 +412,7 @@ def test_reprocess_source_retries_and_can_then_succeed(client, monkeypatch):
     create_res = _create_deferred_audio_source(client, monkeypatch)
     source_id = create_res.json()["id"]
 
-    monkeypatch.setattr(extraction, "transcribe_audio", lambda path: "")
+    monkeypatch.setattr(extraction, "transcribe_audio", lambda path, **kw: ("", "Abschnitt 1/1: RuntimeError: boom"))
     main_module._process_audio_transcription(source_id)
     assert client.get("/api/sources").json()[0]["processing_status"] == "error"
 
@@ -391,7 +421,7 @@ def test_reprocess_source_retries_and_can_then_succeed(client, monkeypatch):
     # VORHER auf ein erfolgreiches Transkript umstellen und danach per
     # .join() auf den Worker-Thread warten, um den vollen Erfolgspfad
     # deterministisch zu prüfen.
-    monkeypatch.setattr(extraction, "transcribe_audio", lambda path: "Beim zweiten Versuch erfolgreich.")
+    monkeypatch.setattr(extraction, "transcribe_audio", lambda path, **kw: ("Beim zweiten Versuch erfolgreich.", None))
     response = client.post(f"/api/sources/{source_id}/reprocess")
     assert response.status_code == 200
     main_module._audio_transcription_queue.join()
@@ -415,14 +445,14 @@ def test_audio_transcriptions_are_processed_sequentially_not_concurrently(client
     max_concurrent = []
     lock = threading.Lock()
 
-    def fake_transcribe(path):
+    def fake_transcribe(path, **kw):
         with lock:
             active.append(1)
             max_concurrent.append(len(active))
         time.sleep(0.05)
         with lock:
             active.pop()
-        return "Transkribierter Text."
+        return "Transkribierter Text.", None
 
     monkeypatch.setattr(extraction, "transcribe_audio", fake_transcribe)
 
@@ -466,7 +496,7 @@ def test_recover_interrupted_processing_jobs_requeues_pending_audio(client, monk
     source_id = create_res.json()["id"]
     assert client.get("/api/sources").json()[0]["processing_status"] == "pending"
 
-    monkeypatch.setattr(extraction, "transcribe_audio", lambda path: "Nach Neustart erfolgreich transkribiert.")
+    monkeypatch.setattr(extraction, "transcribe_audio", lambda path, **kw: ("Nach Neustart erfolgreich transkribiert.", None))
     main_module._recover_interrupted_processing_jobs()
     main_module._audio_transcription_queue.join()
 
@@ -2088,7 +2118,7 @@ def test_extract_audio_upload_without_role_is_forbidden(anon_client):
 
 
 def test_add_source_with_audio_upload_id_persists_file(client, monkeypatch):
-    monkeypatch.setattr(extraction, "transcribe_audio", lambda path: "Transkribierter Text.")
+    monkeypatch.setattr(extraction, "transcribe_audio", lambda path, **kw: ("Transkribierter Text.", None))
     upload_res = client.post(
         "/api/extract-audio-upload",
         files={"file": ("episode.mp3", b"fake-mp3-bytes", "audio/mpeg")},
@@ -2112,7 +2142,7 @@ def test_add_source_with_audio_upload_id_persists_file(client, monkeypatch):
 
 
 def test_get_source_audio_returns_file_content(client, monkeypatch):
-    monkeypatch.setattr(extraction, "transcribe_audio", lambda path: "Transkribierter Text.")
+    monkeypatch.setattr(extraction, "transcribe_audio", lambda path, **kw: ("Transkribierter Text.", None))
     upload_res = client.post(
         "/api/extract-audio-upload",
         files={"file": ("episode.mp3", b"fake-mp3-bytes", "audio/mpeg")},

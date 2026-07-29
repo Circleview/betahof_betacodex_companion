@@ -566,6 +566,15 @@ button[type="submit"]:disabled, #popover-load:disabled, #popover-upload:disabled
   color: var(--color-accent-hover);
 }
 
+/* Fix: disabled=true (z.B. Retry-Button während der Anfrage) hatte bisher
+   keinerlei optischen Effekt - der Klick wirkte tot, bis Sekunden später die
+   Status-Aktualisierung eintraf. */
+.link-button:disabled {
+  color: var(--color-text-muted);
+  cursor: default;
+  text-decoration: none;
+}
+
 #source-filter-status {
   color: var(--color-text);
   font-size: 1.15rem;
