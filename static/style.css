@@ -82,6 +82,21 @@ h3 {
   flex-shrink: 0;
 }
 
+/* Fix: Klick auf "BetaCodex Companion" öffnet die Konversationsseite mit
+   leerer Konversation (siehe brand-link-Click-Handler in init-footer.js).
+   Übernimmt die Flex-Ausrichtung der generischen h1-Regel, da diese jetzt
+   nicht mehr direkt auf brand-dot/Text wirkt, sondern nur noch auf dieses
+   einzelne <a>-Kind der h1. */
+.brand-link {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  height: 100%;
+  color: inherit;
+  text-decoration: none;
+  cursor: pointer;
+}
+
 /* Backlog #58 (A11y): für Tastatur-/Screenreader-Nutzung - unsichtbar bis
    die Nutzer:in per Tab dorthin fokussiert, dann oben links sichtbar.
    translateY(-100%) statt eines festen top-Pixelwerts, weil ein fester Wert
@@ -162,6 +177,13 @@ header {
 
 header h1 {
   margin: 0;
+  /* Fix: die Kopfzeile ist insgesamt höher als die reine Textzeile (z.B.
+     durch den Namen unter dem Login-Icon rechts) - ohne align-self:stretch
+     war die klickbare Fläche des Titel-Links nur so hoch wie der Text
+     selbst, mit "totem" Bereich darüber/darunter, der optisch noch zur
+     Titelzeile gehört. Kleinstes Maus-Zittern ließ den Cursor dort ständig
+     zwischen Pointer und Pfeil umspringen. */
+  align-self: stretch;
 }
 
 #import-link {
