@@ -2751,7 +2751,10 @@ def test_source_without_audio_reports_has_audio_false(client):
     assert entry["has_audio"] is False
 
 
-def test_delete_source_removes_audio_file(client, monkeypatch):
+def test_delete_source_keeps_audio_file_for_later_restore(client, monkeypatch):
+    # Backlog #45/#99: weiches Löschen - eine angehängte Audiodatei bleibt
+    # auf der Platte liegen, damit ein späteres Rückgängig-machen über das
+    # Änderungs-Log die Quelle inklusive Datei wiederherstellen kann.
     monkeypatch.setattr(extraction, "looks_like_audio", lambda url: True)
     monkeypatch.setattr(extraction, "looks_like_pdf", lambda url: False)
     monkeypatch.setattr(extraction, "download_audio_bytes", lambda url: b"ID3-fake-audio-data")
@@ -2769,7 +2772,7 @@ def test_delete_source_removes_audio_file(client, monkeypatch):
 
     client.delete(f"/api/sources/{source_id}")
 
-    assert not list(main_module.AUDIO_DIR.glob(f"{source_id}.*"))
+    assert list(main_module.AUDIO_DIR.glob(f"{source_id}.*"))
 
 
 def test_security_headers_include_csp(client):
@@ -2793,3 +2796,196 @@ def test_api_404_still_returns_json(client):
 
     assert response.status_code == 404
     assert response.headers["content-type"].startswith("application/json")
+
+
+# Backlog #45/#99: weiches Löschen + Änderungs-Log mit Rückgängig-Funktion.
+
+
+def test_delete_source_soft_deletes_keeps_raw_record(client):
+    create_res = client.post("/api/sources", json={"title": "Löschmich", "text": "Text zum Löschen."})
+    source_id = create_res.json()["id"]
+
+    client.delete(f"/api/sources/{source_id}")
+
+    raw = json.loads(main_module.SOURCES_FILE.read_text())
+    assert raw[source_id]["deleted_at"] is not None
+    assert raw[source_id]["text"] == "Text zum Löschen."
+
+
+def test_deleted_source_excluded_from_ask(client):
+    create_res = client.post("/api/sources", json={"title": "Quelle", "text": "Text zum Fragen."})
+    source_id = create_res.json()["id"]
+    client.delete(f"/api/sources/{source_id}")
+
+    response = client.post("/api/ask", json={"question": "Frage?"})
+
+    assert response.status_code == 400
+
+
+def test_update_source_logs_only_changed_fields(client):
+    create_res = client.post("/api/sources", json={"title": "Alt", "text": "Text.", "date": "2020-01-01"})
+    source_id = create_res.json()["id"]
+
+    client.put(f"/api/sources/{source_id}", json={"title": "Neu", "text": "Text.", "date": "2020-01-01"})
+
+    entries = client.get("/api/audit-log").json()
+    entry = next(e for e in entries if e["action"] == "source_updated")
+    assert entry["changes"] == {"title": {"old": "Alt", "new": "Neu"}}
+    assert entry["revertible"] is True
+    assert entry["entity_type"] == "source"
+    assert entry["entity_id"] == source_id
+
+
+def test_update_source_with_no_actual_changes_does_not_log(client):
+    create_res = client.post("/api/sources", json={"title": "Gleich", "text": "Text."})
+    source_id = create_res.json()["id"]
+    before_count = len(client.get("/api/audit-log").json())
+
+    client.put(f"/api/sources/{source_id}", json={"title": "Gleich", "text": "Text."})
+
+    assert len(client.get("/api/audit-log").json()) == before_count
+
+
+def test_delete_source_logs_deleted_at_change(client):
+    create_res = client.post("/api/sources", json={"title": "Löschmich", "text": "Text."})
+    source_id = create_res.json()["id"]
+
+    client.delete(f"/api/sources/{source_id}")
+
+    entries = client.get("/api/audit-log").json()
+    entry = next(e for e in entries if e["action"] == "source_deleted")
+    assert entry["changes"]["deleted_at"]["old"] is None
+    assert entry["changes"]["deleted_at"]["new"] is not None
+    assert entry["revertible"] is True
+
+
+def test_audit_log_includes_actor_name(client):
+    users.set_name(PFLEGER, "Lena Pflegerin")
+
+    client.post("/api/sources", json={"title": "Quelle", "text": "Text."})
+
+    entries = client.get("/api/audit-log").json()
+    assert entries[0]["actor_name"] == "Lena Pflegerin"
+
+
+def test_revert_field_change_restores_old_value(client):
+    create_res = client.post("/api/sources", json={"title": "Alt", "text": "Text."})
+    source_id = create_res.json()["id"]
+    client.put(f"/api/sources/{source_id}", json={"title": "Neu", "text": "Text."})
+    entry = next(e for e in client.get("/api/audit-log").json() if e["action"] == "source_updated")
+
+    response = client.post(f"/api/audit-log/{entry['id']}/revert")
+
+    assert response.status_code == 200
+    source = next(s for s in client.get("/api/sources").json() if s["id"] == source_id)
+    assert source["title"] == "Alt"
+
+
+def test_revert_text_change_rebuilds_chunks(client):
+    create_res = client.post("/api/sources", json={"title": "Quelle", "text": "Einzigartiger Fakt Zyxwvu."})
+    source_id = create_res.json()["id"]
+    client.put(f"/api/sources/{source_id}", json={"title": "Quelle", "text": "Komplett anderer Inhalt."})
+    entry = next(e for e in client.get("/api/audit-log").json() if e["action"] == "source_updated")
+
+    response = client.post(f"/api/audit-log/{entry['id']}/revert")
+    assert response.status_code == 200
+
+    source = next(s for s in client.get("/api/sources").json() if s["id"] == source_id)
+    assert source["text"] == "Einzigartiger Fakt Zyxwvu."
+
+    ask_response = client.post("/api/ask", json={"question": "Frage?"})
+    assert ask_result(ask_response)["sources"][0]["text"] == "Einzigartiger Fakt Zyxwvu."
+
+
+def test_revert_deletion_restores_source_and_file(client, monkeypatch):
+    monkeypatch.setattr(extraction, "looks_like_audio", lambda url: True)
+    monkeypatch.setattr(extraction, "looks_like_pdf", lambda url: False)
+    monkeypatch.setattr(extraction, "download_audio_bytes", lambda url: b"ID3-fake-audio-data")
+    create_res = client.post(
+        "/api/sources",
+        json={"title": "Podcast", "url": "https://cdn.example.org/ep.mp3", "text": "Inhalt der Folge."},
+    )
+    source_id = create_res.json()["id"]
+    client.delete(f"/api/sources/{source_id}")
+    assert all(s["id"] != source_id for s in client.get("/api/sources").json())
+    entry = next(e for e in client.get("/api/audit-log").json() if e["action"] == "source_deleted")
+
+    response = client.post(f"/api/audit-log/{entry['id']}/revert")
+
+    assert response.status_code == 200
+    assert any(s["id"] == source_id for s in client.get("/api/sources").json())
+    assert client.get(f"/api/sources/{source_id}/audio").status_code == 200
+
+
+def test_revert_author_rename(client):
+    client.post("/api/sources", json={"title": "Quelle", "authors": ["Jane Doe"], "text": "Text."})
+    client.post("/api/authors/Jane Doe/rename", json={"new_name": "Jane Smith"})
+    entry = next(e for e in client.get("/api/audit-log").json() if e["action"] == "author_renamed")
+
+    response = client.post(f"/api/audit-log/{entry['id']}/revert")
+
+    assert response.status_code == 200
+    author_names = {a["name"] for a in client.get("/api/authors").json()}
+    assert "Jane Doe" in author_names
+    assert "Jane Smith" not in author_names
+
+
+def test_revert_author_profile_change(client):
+    client.post("/api/sources", json={"title": "Quelle", "authors": ["Jane Doe"], "text": "Text."})
+    client.put("/api/authors/Jane Doe", json={"website": "https://alt.example.org"})
+    client.put("/api/authors/Jane Doe", json={"website": "https://neu.example.org"})
+    entry = next(
+        e
+        for e in client.get("/api/audit-log").json()
+        if e["action"] == "author_profile_updated" and "website" in (e["changes"] or {})
+    )
+
+    response = client.post(f"/api/audit-log/{entry['id']}/revert")
+
+    assert response.status_code == 200
+    author = next(a for a in client.get("/api/authors").json() if a["name"] == "Jane Doe")
+    assert author["website"] == "https://alt.example.org"
+
+
+def test_revert_already_reverted_entry_returns_409(client):
+    create_res = client.post("/api/sources", json={"title": "Alt", "text": "Text."})
+    source_id = create_res.json()["id"]
+    client.put(f"/api/sources/{source_id}", json={"title": "Neu", "text": "Text."})
+    entry = next(e for e in client.get("/api/audit-log").json() if e["action"] == "source_updated")
+    client.post(f"/api/audit-log/{entry['id']}/revert")
+
+    response = client.post(f"/api/audit-log/{entry['id']}/revert")
+
+    assert response.status_code == 409
+
+
+def test_revert_unknown_entry_returns_404(client):
+    response = client.post("/api/audit-log/does-not-exist/revert")
+
+    assert response.status_code == 404
+
+
+def test_revert_non_revertible_entry_returns_400(client):
+    client.post("/api/sources", json={"title": "Neu", "text": "Text."})
+    entry = next(e for e in client.get("/api/audit-log").json() if e["action"] == "source_created")
+
+    response = client.post(f"/api/audit-log/{entry['id']}/revert")
+
+    assert response.status_code == 400
+
+
+def test_revert_requires_pfleger_role(client, anon_client):
+    create_res = client.post("/api/sources", json={"title": "Alt", "text": "Text."})
+    source_id = create_res.json()["id"]
+    client.put(f"/api/sources/{source_id}", json={"title": "Neu", "text": "Text."})
+    entry = next(e for e in client.get("/api/audit-log").json() if e["action"] == "source_updated")
+
+    response = anon_client.post(f"/api/audit-log/{entry['id']}/revert")
+
+    assert response.status_code == 403
+
+
+def test_audit_log_requires_pfleger_role(anon_client):
+    response = anon_client.get("/api/audit-log")
+
+    assert response.status_code == 403

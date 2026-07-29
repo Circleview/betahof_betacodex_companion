@@ -46,6 +46,14 @@ function hasPflegerRole() {
   return hasRole('quellen_pfleger');
 }
 
+// Backlog #99: das Änderungs-Log ist wie die Quellen-Bearbeitung selbst nur
+// für Quellen-Pfleger:innen/System-Admins gedacht (has_role zählt
+// system_admin automatisch dazu) - der Button bleibt für alle anderen
+// unsichtbar, analog zu updateSourceManagementVisibility in import.js.
+function updateChangelogLinkVisibility() {
+  document.getElementById('changelog-link')?.classList.toggle('hidden', !hasPflegerRole());
+}
+
 function appendEditSourceLink(container, sourceId) {
   if (!hasPflegerRole()) return;
   const a = document.createElement('a');
@@ -365,6 +373,7 @@ function extractCitedSources(container, sources) {
 
 await initI18n();
 await initAuth();
+updateChangelogLinkVisibility();
 
 const chatMessages = document.getElementById('chat-messages');
 const questionInput = document.getElementById('question');
@@ -481,7 +490,10 @@ function renderSidebarSources() {
 
 // Zeigt/versteckt die Bearbeiten-Icons in der Sidebar sofort passend zum
 // Login-Status, ohne dass eine neue Antwort nötig ist.
-onAuthChange(() => renderSidebarSources());
+onAuthChange(() => {
+  renderSidebarSources();
+  updateChangelogLinkVisibility();
+});
 
 // Backlog-Fix: eine begonnene Konversation soll erhalten bleiben, wenn
 // z.B. über einen Autor:innen-/Zitat-Link kurz in die Quellenverwaltung

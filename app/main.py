@@ -281,6 +281,45 @@ def _save_sources(sources: dict) -> None:
     tmp_path.replace(SOURCES_FILE)
 
 
+def _diff_fields(before: dict, new_values: dict) -> dict:
+    """Vergleicht alte gegen neue Werte und gibt NUR tatsächlich
+    unterschiedliche Felder als {"feld": {"old": ..., "new": ...}} zurück -
+    Grundlage für audit.log_change (Backlog #99). Feldnamen entsprechen
+    exakt den Schlüsseln im Roh-Dict (z.B. "summary_de" statt nur
+    "summary"), damit ein Revert sie unverändert zurückschreiben kann."""
+    changes = {}
+    for field, new_value in new_values.items():
+        old_value = before.get(field)
+        if old_value != new_value:
+            changes[field] = {"old": old_value, "new": new_value}
+    return changes
+
+
+def _source_is_missing(sources: dict, source_id: str) -> bool:
+    # Weiches Löschen (Backlog #45/#99): eine mit deleted_at geflaggte
+    # Quelle bleibt im Rohdatensatz erhalten, soll aber für alle normalen
+    # Lesewege wie eine nicht existierende Quelle behandelt werden - nur
+    # das Änderungs-Log/der Revert-Endpunkt greifen gezielt darauf zu.
+    entry = sources.get(source_id)
+    return entry is None or bool(entry.get("deleted_at"))
+
+
+def _source_in_from_entry(entry: dict) -> SourceIn:
+    # Baut ein SourceIn aus einem rohen sources.json-Eintrag nach - für den
+    # Revert-Endpunkt (Backlog #99), der Chunking/Embedding über die
+    # bestehenden _prepare_chunks/_store_chunks-Helfer erneut ausführen
+    # muss, ohne dass ein echter PUT-Request-Body vorliegt.
+    return SourceIn(
+        title=entry.get("title", ""),
+        authors=entry.get("authors", []),
+        date=entry.get("date"),
+        url=entry.get("url"),
+        listen_url=entry.get("listen_url"),
+        text=entry.get("text", ""),
+        restricted=entry.get("restricted", False),
+    )
+
+
 def _prepare_chunks(source: SourceIn, lang: str) -> tuple[list[str], list[list[float]]]:
     text = source.text.strip()
     if not text:
@@ -957,7 +996,7 @@ def add_source(
     else:
         sources = _load_sources()
         entry = sources[source_id]
-    audit.log_action(_user, "source_created", entry.get("title", source_id))
+    audit.log_action(_user, "source_created", "source", source_id, entry.get("title", source_id))
     return _to_source_out(entry, can_view_full_text=True, lang=x_lang)
 
 
@@ -971,8 +1010,13 @@ def update_source(
 ):
     with _sources_write_lock:
         sources = _load_sources()
-        if source_id not in sources:
+        if _source_is_missing(sources, source_id):
             raise HTTPException(404, i18n.get_message("source_not_found", x_lang))
+
+        # Momentaufnahme VOR jeder Änderung - Grundlage für den Feld-Diff
+        # weiter unten (Backlog #99), der ins Änderungs-Log wandert und
+        # spätere gezielte Reverts ermöglicht.
+        before = dict(sources[source_id])
 
         metadata_only = bool(sources[source_id].get("restricted")) and not source.text.strip()
 
@@ -1028,7 +1072,25 @@ def update_source(
     elif not metadata_only:
         _sync_audio_file_from_url(source_id, source.url)
 
-    audit.log_action(_user, "source_updated", sources[source_id].get("title", source_id))
+    new_values = {
+        "title": source.title,
+        "authors": source.authors,
+        "date": source.date,
+        "url": source.url,
+        "listen_url": source.listen_url,
+        "restricted": source.restricted,
+    }
+    if not metadata_only:
+        new_values["text"] = source.text.strip()
+    if source.summary is not None:
+        new_values[f"summary_{x_lang}"] = source.summary
+    if source.key_terms is not None:
+        new_values[f"key_terms_{x_lang}"] = source.key_terms
+    changes = _diff_fields(before, new_values)
+    if changes:
+        audit.log_change(
+            _user, "source_updated", "source", source_id, sources[source_id].get("title", source_id), changes
+        )
     return _to_source_out(sources[source_id], can_view_full_text=True, lang=x_lang)
 
 
@@ -1038,21 +1100,30 @@ def delete_source(
     _user: str = Depends(require_role(users.QUELLEN_PFLEGER)),
     x_lang: str = Header(default=i18n.DEFAULT_LANG),
 ):
+    # Weiches Löschen (Backlog #45/#99): die Quelle verschwindet aus RAG/
+    # Konversation/Übersicht, aber weder der Datensatz noch eine angehängte
+    # PDF-/Audio-Datei werden physisch entfernt - beides bleibt für ein
+    # spätere Wiederherstellung übers Änderungs-Log erhalten (siehe
+    # POST /api/audit-log/{id}/revert). _delete_pdf_file/_delete_audio_file
+    # bleiben bewusst unangetastet für ihren bisherigen Zweck (Datei wird
+    # beim Bearbeiten durch eine andere URL ersetzt), werden hier aber
+    # NICHT mehr aufgerufen.
     with _sources_write_lock:
         sources = _load_sources()
-        if source_id not in sources:
+        if _source_is_missing(sources, source_id):
             raise HTTPException(404, i18n.get_message("source_not_found", x_lang))
 
         title = sources[source_id].get("title", source_id)
+        deleted_at = datetime.now(timezone.utc).isoformat()
         with _vectorstore_write_lock:
             vectorstore.delete_source_chunks(source_id)
-        del sources[source_id]
+        sources[source_id]["deleted_at"] = deleted_at
         _save_sources(sources)
-    audit.log_action(_user, "source_deleted", title)
+    audit.log_change(
+        _user, "source_deleted", "source", source_id, title, {"deleted_at": {"old": None, "new": deleted_at}}
+    )
     authors.unregister_source(source_id)
     terms.unregister_source(source_id)
-    _delete_pdf_file(source_id)
-    _delete_audio_file(source_id)
 
 
 @app.get("/api/sources", response_model=list[SourceOut])
@@ -1063,7 +1134,11 @@ def list_sources(
     email = _get_current_user_email(request)
     can_view_full_text = users.has_role(email, users.QUELLEN_PFLEGER)
     sources = _load_sources()
-    return [_to_source_out(entry, can_view_full_text, x_lang) for entry in sources.values()]
+    return [
+        _to_source_out(entry, can_view_full_text, x_lang)
+        for entry in sources.values()
+        if not entry.get("deleted_at")
+    ]
 
 
 def _resolve_profile_for_lang(profile: dict, lang: str) -> dict:
@@ -1153,7 +1228,8 @@ def update_author_profile(
     # gerade aktive UI-Sprache (X-Lang) - wer auf Deutsch pflegt, editiert die
     # deutsche Vita, ohne dass die App zwei separate Felder anzeigen muss.
     bio_kwargs = {f"bio_{lang}": profile.bio} if profile.bio is not None else {}
-    author_profiles.set_profile(
+    before = author_profiles.get_profile(name)
+    updated_profile = author_profiles.set_profile(
         name,
         photo_url=profile.photo_url,
         website=profile.website,
@@ -1163,33 +1239,33 @@ def update_author_profile(
         **bio_kwargs,
     )
     matching.update(_resolve_profile_for_lang(author_profiles.get_profile(name), lang))
-    audit.log_action(_user, "author_profile_updated", matching["name"])
+    new_values = {
+        field: updated_profile[field]
+        for field in (f"bio_{lang}", "photo_url", "website", "social_links")
+    }
+    changes = _diff_fields(before, new_values)
+    if changes:
+        audit.log_change(_user, "author_profile_updated", "author", matching["name"], matching["name"], changes)
     return matching
 
 
-@app.post("/api/authors/{name}/rename", response_model=AuthorOut)
-def rename_author_endpoint(
-    name: str,
-    payload: RenameAuthorIn,
-    _user: str = Depends(require_role(users.QUELLEN_PFLEGER)),
-    x_lang: str = Header(default=i18n.DEFAULT_LANG),
-):
-    matching = _find_author(name)
+def _rename_author_entity(old_name: str, new_name: str) -> dict | None:
+    """Kern-Logik einer Autor:innen-Umbenennung, unabhängig vom aufrufenden
+    Endpoint - genutzt sowohl von rename_author_endpoint als auch vom
+    Rückgängig-machen einer Umbenennung (POST /api/audit-log/{id}/revert,
+    einfach mit vertauschtem alten/neuen Namen aufgerufen). Der Name ist
+    kein eigenständiges Feld, sondern wird aus dem authors-Feld jeder Quelle
+    abgeleitet (siehe app/authors.py) - eine Umbenennung muss deshalb in
+    JEDER betroffenen Quelle nachvollzogen werden, sonst würde die nächste
+    Quellen-Bearbeitung (die authors.py per unregister/register neu
+    aufbaut) den alten Namen wiederherstellen. Gibt den aktualisierten,
+    rohen Autor:innen-Eintrag zurück oder None, falls old_name nicht (mehr)
+    existiert."""
+    matching = _find_author(old_name)
     if matching is None:
-        raise HTTPException(404, i18n.get_message("author_not_found", x_lang))
-
-    new_name = payload.new_name.strip()
-    if not new_name:
-        raise HTTPException(400, i18n.get_message("invalid_author_name", x_lang))
-
-    old_name = matching["name"]
+        return None
     old_key = " ".join(old_name.strip().split()).lower()
 
-    # Der Name ist kein eigenständiges Feld, sondern wird aus dem
-    # authors-Feld jeder Quelle abgeleitet (siehe app/authors.py) - eine
-    # Umbenennung muss deshalb in JEDER betroffenen Quelle nachvollzogen
-    # werden, sonst würde die nächste Quellen-Bearbeitung (die authors.py
-    # per unregister/register neu aufbaut) den alten Namen wiederherstellen.
     with _sources_write_lock:
         sources = _load_sources()
         for source_id in matching["source_ids"]:
@@ -1221,13 +1297,38 @@ def rename_author_endpoint(
             authors.register_author(author_name, source_id)
 
     author_profiles.rename_profile(old_name, new_name)
+    return _find_author(new_name)
 
-    updated = _find_author(new_name)
+
+@app.post("/api/authors/{name}/rename", response_model=AuthorOut)
+def rename_author_endpoint(
+    name: str,
+    payload: RenameAuthorIn,
+    _user: str = Depends(require_role(users.QUELLEN_PFLEGER)),
+    x_lang: str = Header(default=i18n.DEFAULT_LANG),
+):
+    matching = _find_author(name)
+    if matching is None:
+        raise HTTPException(404, i18n.get_message("author_not_found", x_lang))
+
+    new_name = payload.new_name.strip()
+    if not new_name:
+        raise HTTPException(400, i18n.get_message("invalid_author_name", x_lang))
+
+    old_name = matching["name"]
+    updated = _rename_author_entity(old_name, new_name)
     if updated is None:
         raise HTTPException(404, i18n.get_message("author_not_found", x_lang))
     lang = x_lang if x_lang in ("de", "en") else i18n.DEFAULT_LANG
     updated.update(_resolve_profile_for_lang(author_profiles.get_profile(new_name), lang))
-    audit.log_action(_user, "author_renamed", f"{old_name} → {new_name}")
+    audit.log_change(
+        _user,
+        "author_renamed",
+        "author",
+        new_name,
+        f"{old_name} → {new_name}",
+        {"name": {"old": old_name, "new": new_name}},
+    )
     return updated
 
 
@@ -1243,9 +1344,12 @@ def generate_author_bio_endpoint(
 
     lang = x_lang if x_lang in ("de", "en") else i18n.DEFAULT_LANG
     texts = _collect_author_bio_texts(matching, lang)
+    old_bio = author_profiles.get_profile(matching["name"]).get(f"bio_{lang}", "")
     bio = summarization.generate_author_bio(matching["name"], texts, lang)
     author_profiles.set_profile(name, **{f"bio_{lang}": bio, f"bio_ai_generated_{lang}": True})
-    audit.log_action(_user, "author_bio_generated", matching["name"])
+    changes = _diff_fields({f"bio_{lang}": old_bio}, {f"bio_{lang}": bio})
+    if changes:
+        audit.log_change(_user, "author_bio_generated", "author", matching["name"], matching["name"], changes)
     return BioOut(bio=bio)
 
 
@@ -1390,9 +1494,110 @@ def set_user_name(
     return entry
 
 
+def _with_actor_name(entry: dict) -> dict:
+    user = users.get_user(entry["actor_email"])
+    return {**entry, "actor_name": user.get("name") if user else None}
+
+
 @app.get("/api/audit-log", response_model=list[AuditLogEntryOut])
 def get_audit_log(_user: str = Depends(require_role(users.QUELLEN_PFLEGER))):
-    return audit.list_entries()
+    return [_with_actor_name(entry) for entry in audit.list_entries()]
+
+
+def _restore_deleted_source(source_id: str, x_lang: str) -> None:
+    """Rückgängig-machen einer Löschung (Backlog #99): der Rohdatensatz und
+    eine angehängte PDF-/Audio-Datei waren nie weg (siehe delete_source) -
+    es genügt, deleted_at zu entfernen und die Vectorstore-Chunks aus dem
+    weiterhin vorhandenen Text neu aufzubauen (kein KI-Aufruf nötig,
+    Zusammenfassung/Begriffe stehen schon im Datensatz)."""
+    with _sources_write_lock:
+        sources = _load_sources()
+        entry = sources.get(source_id)
+        if entry is None or not entry.get("deleted_at"):
+            raise HTTPException(400, i18n.get_message("audit_revert_failed", x_lang))
+        entry["deleted_at"] = None
+        source_in = _source_in_from_entry(entry)
+        chunks, chunk_embeddings = _prepare_chunks(source_in, x_lang)
+        with _vectorstore_write_lock:
+            entry["chunk_count"] = _store_chunks(source_id, source_in, chunks, chunk_embeddings)
+        _save_sources(sources)
+    for name in entry.get("authors") or []:
+        authors.register_author(name, source_id)
+    _register_all_terms(source_id, entry)
+
+
+def _revert_source_changes(source_id: str, changes: dict, x_lang: str) -> None:
+    with _sources_write_lock:
+        sources = _load_sources()
+        if source_id not in sources:
+            raise HTTPException(400, i18n.get_message("audit_revert_failed", x_lang))
+        entry = sources[source_id]
+        for field, diff in changes.items():
+            entry[field] = diff["old"]
+        if "text" in changes:
+            source_in = _source_in_from_entry(entry)
+            chunks, chunk_embeddings = _prepare_chunks(source_in, x_lang)
+            with _vectorstore_write_lock:
+                vectorstore.delete_source_chunks(source_id)
+                entry["chunk_count"] = _store_chunks(source_id, source_in, chunks, chunk_embeddings)
+        _save_sources(sources)
+    if "authors" in changes:
+        authors.unregister_source(source_id)
+        for name in entry.get("authors") or []:
+            authors.register_author(name, source_id)
+    if any(field.startswith(("summary_", "key_terms_")) for field in changes):
+        _register_all_terms(source_id, entry)
+
+
+def _revert_author_changes(name: str, changes: dict, x_lang: str) -> None:
+    matching = _find_author(name)
+    if matching is None:
+        raise HTTPException(400, i18n.get_message("audit_revert_failed", x_lang))
+    kwargs = {field: diff["old"] for field, diff in changes.items()}
+    author_profiles.set_profile(name, **kwargs)
+
+
+@app.post("/api/audit-log/{entry_id}/revert", response_model=MessageOut)
+def revert_audit_entry(
+    entry_id: str,
+    _user: str = Depends(require_role(users.QUELLEN_PFLEGER)),
+    x_lang: str = Header(default=i18n.DEFAULT_LANG),
+):
+    entry = audit.get_entry(entry_id)
+    if entry is None:
+        raise HTTPException(404, i18n.get_message("audit_entry_not_found", x_lang))
+    if entry.get("reverted_at"):
+        raise HTTPException(409, i18n.get_message("audit_entry_already_reverted", x_lang))
+    if not entry.get("revertible") or not entry.get("changes"):
+        raise HTTPException(400, i18n.get_message("audit_revert_failed", x_lang))
+
+    action = entry["action"]
+    entity_type = entry["entity_type"]
+    entity_id = entry["entity_id"]
+    changes = entry["changes"]
+
+    if action == "source_deleted":
+        _restore_deleted_source(entity_id, x_lang)
+    elif action == "author_renamed":
+        old_name = changes["name"]["old"]
+        new_name = changes["name"]["new"]
+        if _rename_author_entity(new_name, old_name) is None:
+            raise HTTPException(400, i18n.get_message("audit_revert_failed", x_lang))
+    elif entity_type == "source":
+        _revert_source_changes(entity_id, changes, x_lang)
+    elif entity_type == "author":
+        _revert_author_changes(entity_id, changes, x_lang)
+    else:
+        raise HTTPException(400, i18n.get_message("audit_revert_failed", x_lang))
+
+    audit.mark_reverted(entry_id)
+    # Der Revert selbst wird wieder als ganz normaler Log-Eintrag
+    # protokolliert (mit vertauschten old/new-Werten) - dadurch ist auch
+    # ein Revert seinerseits erneut revertierbar, ohne Sonderlogik für
+    # "Redo" (Backlog #99).
+    reverted_changes = {field: {"old": diff["new"], "new": diff["old"]} for field, diff in changes.items()}
+    audit.log_change(_user, f"{action}_reverted", entity_type, entity_id, entry["target_label"], reverted_changes)
+    return MessageOut(detail=i18n.get_message("audit_reverted", x_lang))
 
 
 @app.get("/api/sources/{source_id}/check-url", response_model=UrlCheckOut)
@@ -1402,7 +1607,7 @@ def check_source_url(
     x_lang: str = Header(default=i18n.DEFAULT_LANG),
 ):
     sources = _load_sources()
-    if source_id not in sources:
+    if _source_is_missing(sources, source_id):
         raise HTTPException(404, i18n.get_message("source_not_found", x_lang))
 
     url = sources[source_id].get("url")
@@ -1420,7 +1625,7 @@ def get_source_pdf(
     x_lang: str = Header(default=i18n.DEFAULT_LANG),
 ):
     sources = _load_sources()
-    if source_id not in sources:
+    if _source_is_missing(sources, source_id):
         raise HTTPException(404, i18n.get_message("source_not_found", x_lang))
 
     pdf_path = PDF_DIR / f"{source_id}.pdf"
@@ -1437,7 +1642,7 @@ def get_source_audio(
     x_lang: str = Header(default=i18n.DEFAULT_LANG),
 ):
     sources = _load_sources()
-    if source_id not in sources:
+    if _source_is_missing(sources, source_id):
         raise HTTPException(404, i18n.get_message("source_not_found", x_lang))
 
     audio_path = _existing_audio_file(source_id)
@@ -1473,7 +1678,7 @@ def reprocess_source(
 ):
     with _sources_write_lock:
         sources = _load_sources()
-        if source_id not in sources:
+        if _source_is_missing(sources, source_id):
             raise HTTPException(404, i18n.get_message("source_not_found", x_lang))
 
         is_audio = bool(_existing_audio_file(source_id))
@@ -1485,7 +1690,7 @@ def reprocess_source(
         sources[source_id]["processing_error"] = None
         title = sources[source_id].get("title", source_id)
         _save_sources(sources)
-    audit.log_action(_user, "source_reprocessed", title)
+    audit.log_action(_user, "source_reprocessed", "source", source_id, title)
     if is_audio:
         # Backlog #113: siehe add_source - auch ein erneuter Versuch reiht
         # sich hinten in der Warteschlange ein, statt sofort parallel zu
@@ -1503,7 +1708,7 @@ def generate_source_summary(
     x_lang: str = Header(default=i18n.DEFAULT_LANG),
 ):
     sources = _load_sources()
-    if source_id not in sources:
+    if _source_is_missing(sources, source_id):
         raise HTTPException(404, i18n.get_message("source_not_found", x_lang))
     text = sources[source_id].get("text", "")
 
@@ -1513,8 +1718,9 @@ def generate_source_summary(
     result = summarization.generate_bilingual_summary(text)
     with _sources_write_lock:
         sources = _load_sources()
-        if source_id not in sources:
+        if _source_is_missing(sources, source_id):
             raise HTTPException(404, i18n.get_message("source_not_found", x_lang))
+        before = dict(sources[source_id])
         sources[source_id]["summary_de"] = result["de"]["summary"]
         sources[source_id]["summary_en"] = result["en"]["summary"]
         sources[source_id]["key_terms_de"] = result["de"]["key_terms"]
@@ -1523,7 +1729,17 @@ def generate_source_summary(
         _save_sources(sources)
         _register_all_terms(source_id, sources[source_id])
 
-    audit.log_action(_user, "source_summary_generated", title)
+    changes = _diff_fields(
+        before,
+        {
+            "summary_de": result["de"]["summary"],
+            "summary_en": result["en"]["summary"],
+            "key_terms_de": result["de"]["key_terms"],
+            "key_terms_en": result["en"]["key_terms"],
+        },
+    )
+    if changes:
+        audit.log_change(_user, "source_summary_generated", "source", source_id, title, changes)
     lang = x_lang if x_lang in ("de", "en") else i18n.DEFAULT_LANG
     return SummaryOut(summary=result[lang]["summary"], key_terms=result[lang]["key_terms"])
 

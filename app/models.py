@@ -105,10 +105,17 @@ class AdminUserOut(BaseModel):
 
 
 class AuditLogEntryOut(BaseModel):
+    id: str
     timestamp: str
     actor_email: str
+    actor_name: Optional[str] = None
     action: str
     target_label: str
+    entity_type: Optional[str] = None
+    entity_id: Optional[str] = None
+    changes: Optional[dict] = None
+    revertible: bool = False
+    reverted_at: Optional[str] = None
 
 
 class MessageOut(BaseModel):

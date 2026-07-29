@@ -186,7 +186,8 @@ header h1 {
   align-self: stretch;
 }
 
-#import-link {
+#import-link,
+#changelog-link {
   flex-shrink: 0;
   display: flex;
   align-items: center;
@@ -200,7 +201,8 @@ header h1 {
   transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease;
 }
 
-#import-link:hover {
+#import-link:hover,
+#changelog-link:hover {
   border-color: var(--color-accent);
   color: var(--color-accent);
   background: var(--color-accent-tint);
@@ -1603,6 +1605,145 @@ body:not(.chat-started) #question-form {
   letter-spacing: 0.03em;
   text-align: right;
   white-space: nowrap;
+}
+
+/* Backlog #99: Änderungs-Log - gleiches Zeitstrahl-Grid wie
+   #source-list.timeline-mode (siehe Kommentar dort), nur nach Kalendertag
+   statt Monat/Jahr gruppiert und mit eigenen Klassennamen, damit die
+   bestehende Quellenübersicht unangetastet bleibt. */
+#changelog-list.timeline-mode {
+  display: grid;
+  grid-template-columns: max-content 1.25rem 1fr;
+  column-gap: 0.75rem;
+  row-gap: 0;
+  list-style: none;
+  margin: 1.5rem 0 0;
+  padding: 0;
+}
+
+#changelog-list.timeline-mode::after {
+  content: "";
+  grid-column: 2;
+  grid-row: 1 / var(--timeline-row-end, 2);
+  justify-self: center;
+  width: 2px;
+  background: var(--color-border);
+  z-index: 0;
+}
+
+#changelog-list .changelog-day-marker {
+  grid-column: 1;
+  align-self: start;
+  padding: 0.6rem 1.375rem 0.6rem 0;
+  margin-right: -1.375rem;
+  border-bottom: 1px solid var(--color-border);
+  font-weight: 700;
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  text-align: right;
+  white-space: nowrap;
+}
+
+#changelog-list .changelog-entry {
+  grid-column: 3;
+  position: relative;
+  margin-left: -1.375rem;
+  padding: 0.85rem 0 0.85rem 1.375rem;
+  border-bottom: 1px solid var(--color-border);
+}
+
+#changelog-list .changelog-entry::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 1.25rem;
+  transform: translateX(-50%);
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--color-accent);
+  z-index: 1;
+}
+
+.changelog-entry-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+  color: var(--color-text);
+}
+
+.changelog-entry-icon {
+  display: inline-flex;
+  flex-shrink: 0;
+}
+
+.changelog-entry-icon--created { color: #2f7a3d; }
+.changelog-entry-icon--updated { color: var(--color-text-muted); }
+.changelog-entry-icon--deleted { color: var(--color-accent); }
+.changelog-entry-icon--reverted { color: #8a6d1f; }
+
+.changelog-entity-icon {
+  display: inline-flex;
+  flex-shrink: 0;
+  color: var(--color-text-muted);
+}
+
+.changelog-ai-badge {
+  display: inline-flex;
+  flex-shrink: 0;
+  color: var(--color-accent);
+}
+
+.changelog-actor {
+  font-weight: 700;
+}
+
+.changelog-target-label {
+  color: var(--color-text-muted);
+}
+
+.changelog-time {
+  margin-left: auto;
+  flex-shrink: 0;
+  font-size: 0.8rem;
+  color: var(--color-text-muted);
+  white-space: nowrap;
+}
+
+.changelog-field-list {
+  margin: 0.5rem 0 0;
+  padding-left: 1.1rem;
+  color: var(--color-text-muted);
+  font-size: 0.92rem;
+}
+
+.changelog-field-list li {
+  margin-bottom: 0.15rem;
+}
+
+.changelog-field-list strong {
+  color: var(--color-text);
+}
+
+.changelog-revert-row {
+  margin-top: 0.5rem;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-size: 0.9rem;
+}
+
+.changelog-reverted-label {
+  color: var(--color-text-muted);
+  font-size: 0.85rem;
+  font-style: italic;
+}
+
+.changelog-status {
+  color: var(--color-text-muted);
 }
 
 .icon-button {

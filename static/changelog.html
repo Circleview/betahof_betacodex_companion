@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow, noarchive">
+<meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#1c1c1c" media="(prefers-color-scheme: dark)">
+<link rel="icon" type="image/png" href="/icons/favicon.png">
+<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+<title>Änderungs-Log &ndash; BetaCodex Companion</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<a href="#changelog-bereich" class="skip-link" data-i18n="common.skipToContent"></a>
+<header>
+  <h1><span class="brand-dot" aria-hidden="true"></span><span data-i18n="changelog.title"></span></h1>
+  <div class="header-actions">
+    <a href="/" id="back-link" data-i18n="changelog.backLink"></a>
+    <span id="lang-switcher" class="lang-switcher"></span>
+    <span id="auth-widget" class="auth-widget"></span>
+  </div>
+</header>
+
+<section id="changelog-bereich" tabindex="-1">
+  <h2 data-i18n="changelog.heading"></h2>
+  <p id="changelog-status" class="changelog-status" data-i18n="changelog.loading"></p>
+  <ul id="changelog-list" class="timeline-mode"></ul>
+</section>
+
+<script type="module" src="/changelog.js"></script>
+</body>
+</html>
