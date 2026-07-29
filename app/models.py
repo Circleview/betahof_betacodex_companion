@@ -15,6 +15,7 @@ class SourceIn(BaseModel):
     restricted: bool = False
     summary: Optional[str] = None
     key_terms: Optional[list[str]] = None
+    relevance_score: Optional[int] = None
 
 
 class SourceOut(BaseModel):
@@ -32,6 +33,7 @@ class SourceOut(BaseModel):
     key_terms: list[str] = []
     has_pdf: bool = False
     has_audio: bool = False
+    relevance_score: Optional[int] = None
     processing_status: Optional[str] = None
     processing_step: Optional[str] = None
     processing_error: Optional[str] = None

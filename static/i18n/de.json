@@ -131,6 +131,7 @@
   "import.aiBioTooltip": "KI-generierte Vita",
   "import.fieldSummary": "Zusammenfassung",
   "import.fieldKeyTerms": "Begriffe (kommagetrennt)",
+  "import.fieldRelevanceScore": "Relevanz",
   "import.generateSummaryTitle": "Zusammenfassung und Begriffe mit KI generieren",
   "import.generatingSummary": "Generiere Zusammenfassung …",
   "import.generateSummaryFailed": "Generieren fehlgeschlagen.",
@@ -211,5 +212,6 @@
   "changelog.fieldBioEn": "Vita (EN)",
   "changelog.fieldPhotoUrl": "Foto",
   "changelog.fieldWebsite": "Website",
-  "changelog.fieldSocialLinks": "Social-Media-Links"
+  "changelog.fieldSocialLinks": "Social-Media-Links",
+  "changelog.fieldRelevanceScore": "Relevanz"
 }

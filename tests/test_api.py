@@ -2989,3 +2989,73 @@ def test_audit_log_requires_pfleger_role(anon_client):
     response = anon_client.get("/api/audit-log")
 
     assert response.status_code == 403
+
+
+# Backlog #51: Relevanz-Score (1-10) - Pflegeinformation für spätere
+# KI-Gewichtung, nur für Quellen-Pfleger:innen/System-Admins sichtbar.
+
+
+def test_new_source_defaults_relevance_score_to_five(client):
+    create_res = client.post("/api/sources", json={"title": "Quelle", "text": "Text."})
+
+    assert create_res.json()["relevance_score"] == 5
+
+
+def test_relevance_score_hidden_for_anonymous_users(client, anon_client):
+    create_res = client.post("/api/sources", json={"title": "Quelle", "text": "Text."})
+    source_id = create_res.json()["id"]
+
+    sources = anon_client.get("/api/sources").json()
+    source = next(s for s in sources if s["id"] == source_id)
+
+    assert source["relevance_score"] is None
+
+
+def test_relevance_score_visible_for_pfleger(client):
+    create_res = client.post("/api/sources", json={"title": "Quelle", "text": "Text."})
+    source_id = create_res.json()["id"]
+
+    sources = client.get("/api/sources").json()
+    source = next(s for s in sources if s["id"] == source_id)
+
+    assert source["relevance_score"] == 5
+
+
+def test_update_source_sets_relevance_score_and_logs_change(client):
+    create_res = client.post("/api/sources", json={"title": "Quelle", "text": "Text."})
+    source_id = create_res.json()["id"]
+
+    update_res = client.put(
+        f"/api/sources/{source_id}", json={"title": "Quelle", "text": "Text.", "relevance_score": 9}
+    )
+    assert update_res.json()["relevance_score"] == 9
+
+    entries = client.get("/api/audit-log").json()
+    entry = next(e for e in entries if e["action"] == "source_updated")
+    assert entry["changes"]["relevance_score"] == {"old": 5, "new": 9}
+
+
+def test_revert_relevance_score_change_restores_old_value(client):
+    create_res = client.post("/api/sources", json={"title": "Quelle", "text": "Text."})
+    source_id = create_res.json()["id"]
+    client.put(f"/api/sources/{source_id}", json={"title": "Quelle", "text": "Text.", "relevance_score": 9})
+    entry = next(e for e in client.get("/api/audit-log").json() if e["action"] == "source_updated")
+
+    response = client.post(f"/api/audit-log/{entry['id']}/revert")
+
+    assert response.status_code == 200
+    source = next(s for s in client.get("/api/sources").json() if s["id"] == source_id)
+    assert source["relevance_score"] == 5
+
+
+def test_legacy_source_without_relevance_score_defaults_to_five(client):
+    create_res = client.post("/api/sources", json={"title": "Quelle", "text": "Text."})
+    source_id = create_res.json()["id"]
+
+    raw = json.loads(main_module.SOURCES_FILE.read_text())
+    del raw[source_id]["relevance_score"]
+    main_module.SOURCES_FILE.write_text(json.dumps(raw))
+
+    sources = client.get("/api/sources").json()
+    source = next(s for s in sources if s["id"] == source_id)
+    assert source["relevance_score"] == 5

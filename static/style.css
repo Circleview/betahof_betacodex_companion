@@ -1955,6 +1955,80 @@ body:not(.chat-started) #question-form {
   min-width: 0;
 }
 
+/* Backlog #51: Relevanz-Score-Slider auf Höhe des Titels - Titel nimmt 2/3,
+   Slider das übrige Drittel (statt einer eigenen vollbreiten Zeile). */
+.title-relevance-row {
+  display: flex;
+  gap: 1rem;
+  margin-bottom: 0.9rem;
+}
+
+.title-relevance-row label {
+  flex: 2;
+  margin-bottom: 0;
+  min-width: 0;
+}
+
+.relevance-slider-field {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.relevance-slider-label-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-size: 0.85rem;
+  color: var(--color-text-muted);
+  margin-bottom: 0.4rem;
+}
+
+.relevance-slider-value {
+  font-weight: 700;
+  color: var(--color-accent);
+}
+
+.relevance-slider {
+  width: 100%;
+  height: 1.4rem;
+  margin-top: auto;
+  appearance: none;
+  background: transparent;
+  cursor: pointer;
+}
+
+.relevance-slider::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: 999px;
+  background: var(--color-border);
+}
+
+.relevance-slider::-moz-range-track {
+  height: 4px;
+  border-radius: 999px;
+  background: var(--color-border);
+}
+
+.relevance-slider::-webkit-slider-thumb {
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--color-accent);
+  margin-top: -6px;
+  border: none;
+}
+
+.relevance-slider::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--color-accent);
+  border: none;
+}
+
 .author-input-group {
   display: flex;
   align-items: center;

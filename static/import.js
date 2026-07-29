@@ -945,8 +945,45 @@ function buildEditPanel(s, options = {}) {
     return input;
   }
 
-  const titleInput = field('import.fieldTitle', 'title', s.title, 'text');
+  const titleField = buildFieldLabel('import.fieldTitle', 'title', s.title, 'text');
+  const titleInput = titleField.input;
   titleInput.required = true;
+
+  // Backlog #51: Relevanz-Score (1-10) - nur für Quellen-Pfleger:innen/
+  // System-Admins sichtbar (diese ganze Bearbeitungsansicht ist bereits auf
+  // diese Rollen beschränkt) und bewusst auf Höhe des Titels platziert,
+  // statt als eigene Zeile weiter unten - der Titel rückt dafür von voller
+  // Breite auf 2/3 (Slider nimmt das übrige Drittel ein).
+  const relevanceValue = s.relevance_score ?? 5;
+  const relevanceRow = document.createElement('div');
+  relevanceRow.className = 'title-relevance-row';
+  const relevanceField = document.createElement('div');
+  relevanceField.className = 'relevance-slider-field';
+  const relevanceLabelRow = document.createElement('div');
+  relevanceLabelRow.className = 'relevance-slider-label-row';
+  const relevanceLabel = document.createElement('span');
+  relevanceLabel.textContent = t('import.fieldRelevanceScore');
+  const relevanceValueDisplay = document.createElement('span');
+  relevanceValueDisplay.className = 'relevance-slider-value';
+  relevanceValueDisplay.textContent = String(relevanceValue);
+  relevanceLabelRow.append(relevanceLabel, relevanceValueDisplay);
+  const relevanceInput = document.createElement('input');
+  relevanceInput.type = 'range';
+  relevanceInput.min = '1';
+  relevanceInput.max = '10';
+  relevanceInput.step = '1';
+  relevanceInput.value = String(relevanceValue);
+  relevanceInput.className = 'relevance-slider';
+  relevanceInput.id = `edit-relevance-${s.id}`;
+  const relevanceTitle = t('import.fieldRelevanceScore');
+  relevanceInput.title = relevanceTitle;
+  relevanceInput.setAttribute('aria-label', relevanceTitle);
+  relevanceInput.addEventListener('input', () => {
+    relevanceValueDisplay.textContent = relevanceInput.value;
+  });
+  relevanceField.append(relevanceLabelRow, relevanceInput);
+  relevanceRow.append(titleField.label, relevanceField);
+  form.appendChild(relevanceRow);
 
   // Lazy statt direkt gebunden: titleInput/textInput existieren an dieser
   // Stelle noch nicht (werden erst weiter unten deklariert) - der Getter wird
@@ -1090,6 +1127,7 @@ function buildEditPanel(s, options = {}) {
       restrictedInput,
       summaryInput,
       keyTermsInput,
+      relevanceInput,
     ].forEach((input) => {
       input.disabled = true;
     });
@@ -1185,6 +1223,7 @@ function buildEditPanel(s, options = {}) {
               .split(',')
               .map((term) => term.trim())
               .filter((term) => term),
+            relevance_score: parseInt(relevanceInput.value, 10),
           }),
         });
         if (!res.ok) {

@@ -104,6 +104,7 @@ const FIELD_LABEL_KEYS = {
   photo_url: 'changelog.fieldPhotoUrl',
   website: 'changelog.fieldWebsite',
   social_links: 'changelog.fieldSocialLinks',
+  relevance_score: 'changelog.fieldRelevanceScore',
 };
 
 // deleted_at/name werden nicht generisch aufgelistet - die Aktionsbeschreibung

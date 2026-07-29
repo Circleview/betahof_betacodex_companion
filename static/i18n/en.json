@@ -131,6 +131,7 @@
   "import.aiBioTooltip": "AI-generated bio",
   "import.fieldSummary": "Summary",
   "import.fieldKeyTerms": "Terms (comma-separated)",
+  "import.fieldRelevanceScore": "Relevance",
   "import.generateSummaryTitle": "Generate summary and terms with AI",
   "import.generatingSummary": "Generating summary…",
   "import.generateSummaryFailed": "Generation failed.",
@@ -211,5 +212,6 @@
   "changelog.fieldBioEn": "Bio (EN)",
   "changelog.fieldPhotoUrl": "Photo",
   "changelog.fieldWebsite": "Website",
-  "changelog.fieldSocialLinks": "Social links"
+  "changelog.fieldSocialLinks": "Social links",
+  "changelog.fieldRelevanceScore": "Relevance"
 }

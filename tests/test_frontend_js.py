@@ -4,7 +4,7 @@ from pathlib import Path
 STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
 
 APPEND_CALL_RE = re.compile(
-    r"\b(?:appendChild|insertBefore|prepend|replaceChild|insertAdjacentElement|appendTimelineRow)\s*\("
+    r"\b(?:appendChild|append|insertBefore|prepend|replaceChild|insertAdjacentElement|appendTimelineRow)\s*\("
 )
 CREATE_ELEMENT_RE = re.compile(r"\bconst\s+(\w+)\s*=\s*document\.createElement\(")
 FUNCTION_START_RE = re.compile(r"function\s+\w+\s*\([^)]*\)\s*\{")
@@ -33,7 +33,7 @@ def _find_orphaned_elements(function_body: str) -> list[str]:
     orphaned = []
     for name in CREATE_ELEMENT_RE.findall(function_body):
         appended = re.search(
-            rf"(?:appendChild|insertBefore|prepend|replaceChild|insertAdjacentElement|appendTimelineRow)\([^)]*\b{name}\b",
+            rf"(?:appendChild|append|insertBefore|prepend|replaceChild|insertAdjacentElement|appendTimelineRow)\([^)]*\b{name}\b",
             function_body,
         )
         # Direkte Rückgabe (`return label;`) ODER als Objekt-Property zurückgegeben

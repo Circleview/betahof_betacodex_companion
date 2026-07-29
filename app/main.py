@@ -255,6 +255,10 @@ def _load_sources() -> dict:
             # nötig. Beim nächsten Speichern ist der Datensatz bereinigt.
             old_author = entry.pop("author", None)
             entry["authors"] = [old_author] if old_author else []
+        # Backlog #51: Relevanz-Score (1-10) - Bestandsquellen ohne dieses
+        # Feld gelten als neutral (Mittelwert 5), bis eine:r Quellen-
+        # Pfleger:in ihn bewusst setzt.
+        entry.setdefault("relevance_score", 5)
     return sources
 
 
@@ -449,6 +453,12 @@ def _to_source_out(
     data = dict(entry)
     if data.get("restricted") and not can_view_full_text:
         data["text"] = ""
+    # Backlog #51: der Relevanz-Score ist eine reine Pflegeinformation für
+    # Quellen-Pfleger:innen/System-Admins (später Grundlage für die
+    # KI-Gewichtung) - für alle anderen wird das Feld gar nicht erst
+    # mitgeschickt, nicht nur im UI versteckt.
+    if not can_view_full_text:
+        data["relevance_score"] = None
     lang = lang if lang in ("de", "en") else i18n.DEFAULT_LANG
     data["summary"] = data.get(f"summary_{lang}") or ""
     data["key_terms"] = data.get(f"key_terms_{lang}") or []
@@ -825,6 +835,7 @@ def _create_pending_source(source_id: str, source: SourceIn, imported_at: str) -
             "chunk_count": 0,
             "text": "",
             "restricted": source.restricted,
+            "relevance_score": source.relevance_score if source.relevance_score is not None else 5,
             "summary_de": "",
             "summary_en": "",
             "key_terms_de": [],
@@ -985,6 +996,7 @@ def add_source(
             "chunk_count": outcome["chunk_count"],
             "text": text,
             "restricted": source.restricted,
+            "relevance_score": source.relevance_score if source.relevance_score is not None else 5,
             "summary_de": "",
             "summary_en": "",
             "key_terms_de": [],
@@ -1042,6 +1054,8 @@ def update_source(
             sources[source_id][f"summary_{x_lang}"] = source.summary
         if source.key_terms is not None:
             sources[source_id][f"key_terms_{x_lang}"] = source.key_terms
+        if source.relevance_score is not None:
+            sources[source_id]["relevance_score"] = source.relevance_score
         _save_sources(sources)
 
     # VOR unregister_source() erfassen: war dies die letzte Quelle einer
@@ -1086,6 +1100,8 @@ def update_source(
         new_values[f"summary_{x_lang}"] = source.summary
     if source.key_terms is not None:
         new_values[f"key_terms_{x_lang}"] = source.key_terms
+    if source.relevance_score is not None:
+        new_values["relevance_score"] = source.relevance_score
     changes = _diff_fields(before, new_values)
     if changes:
         audit.log_change(
