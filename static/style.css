@@ -1887,6 +1887,15 @@ body:not(.chat-started) #question-form {
   margin-top: 0.5rem;
 }
 
+/* Fix: das Formular zum Anlegen einer neuen Text-Quelle hatte bisher nur
+   einen "Importieren"-Button, keine Möglichkeit, ohne Speichern
+   abzubrechen. */
+.create-form-actions {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
 .edit-panel-actions .delete-button {
   flex-shrink: 0;
 }

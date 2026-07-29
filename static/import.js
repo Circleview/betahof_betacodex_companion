@@ -351,6 +351,19 @@ function showForm() {
   document.getElementById('import-status').textContent = '';
 }
 
+// Fix: Formular zum Anlegen einer neuen Quelle ließ sich bisher nur über
+// einen erfolgreichen Import wieder schließen - weder ein Abbrechen-Button
+// noch ein erneuter Klick auf das Papier-Icon (typ-text) hatten einen
+// Effekt. Setzt auch einen eventuell angehängten Audio-/PDF-Upload-Bezug
+// zurück, damit der beim nächsten Öffnen nicht versehentlich mit
+// übernommen wird.
+function hideForm() {
+  importBereich.classList.add('hidden');
+  pendingUploadId = null;
+  pendingUploadType = null;
+  document.getElementById('import-status').textContent = '';
+}
+
 // hintElementId wählt den passenden Hinweistext (Audio-Transkription vs.
 // PDF-Texterkennung, siehe #audio-text-pending-hint/#pdf-text-pending-hint)
 // - der jeweils andere Hinweis wird dabei stets mitversteckt, damit nach
@@ -398,11 +411,17 @@ function fillForm({
 }
 
 document.getElementById('typ-text').addEventListener('click', () => {
+  if (!importBereich.classList.contains('hidden')) {
+    hideForm();
+    return;
+  }
   pendingUploadId = null;
   pendingUploadType = null;
   fillForm({});
   showForm();
 });
+
+document.getElementById('import-cancel-button').addEventListener('click', hideForm);
 
 // Wird von den Popover-Buttons (url/file/jobs) mitverwendet, damit sich der
 // Suchbereich schließt, sobald eine andere Aktion in der Icon-Leiste
