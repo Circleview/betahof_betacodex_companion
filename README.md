@@ -4,6 +4,74 @@ Ein RAG-basierter Frage-Antwort-Assistent, der ausschließlich auf kuratierten Q
 
 ---
 
+## Aktueller Stand
+
+### Für Nutzer:innen
+
+Aus dem ursprünglichen Durchstich (Text rein, Antwort mit Quellenangabe raus)
+ist inzwischen ein vollwertiger Wissenspartner geworden. Man stellt seine
+Frage im Chat und bekommt eine Antwort, die ausschließlich auf den
+kuratierten BetaCodex-Quellen beruht – jede Aussage ist bis zur
+Original-Quelle zurückverfolgbar, inklusive Zeitstempel bei Video/Audio.
+Wer mag, diktiert die Frage per Mikrofon und lässt sich die Antwort
+vorlesen; Oberfläche und Antworten gibt es auf Deutsch und Englisch.
+
+Wer Quellen einpflegt (Blogposts, PDFs, YouTube-Videos, Podcasts/Audio-
+Dateien), tut das über eine eigene Import-Oberfläche mit Volltextsuche,
+Autor:innen-Verzeichnis samt Profilen und einem Papierkorb statt
+endgültigem Löschen. Größere Verarbeitungsschritte (z. B. Audio-
+Transkription) laufen im Hintergrund, ein Status-Icon zeigt den
+Fortschritt. Über ein echtes, einladungsbasiertes Login-System gibt es
+abgestufte Rechte: anonymes Fragenstellen bleibt für alle offen, das
+Pflegen von Quellen ist Quellen-Pfleger:innen vorbehalten. Änderungen an
+Quellen landen nachvollziehbar in einem Änderungs-Log (mit
+Rückgängig-Funktion), anonymisierte Erstfragen neuer Konversationen helfen
+dabei, Lücken im Quellenbestand zu erkennen. Die Konversationsansicht lässt
+sich außerdem als Widget in fremde Webseiten einbetten.
+
+Das Projekt ist bewusst kein allgemeiner Chatbot: Findet sich in den
+Quellen keine Antwort, sagt der Assistent das offen, statt zu spekulieren.
+
+### Für Entwickler:innen
+
+**Backend:** FastAPI (Python), Vektordatenbank Chroma (persistent, lokal
+unter `data/chroma/`), Embeddings lokal über `sentence-transformers`
+(`intfloat/multilingual-e5-base`), Antwortgenerierung über die Anthropic
+API (`claude-haiku-4-5-20251001`) mit striktem quellenbasiertem
+System-Prompt und Chunk-Referenzen; `/api/ask` antwortet als
+NDJSON-Stream. Auth ist ein selbstgebautes Magic-Link-System
+(`app/auth.py`, `app/users.py`, `app/mail.py`) mit drei Rollen
+(`quellen_pfleger`, `user_admin`, `system_admin`) plus anonymem
+Lesezugriff; Sessions laufen über signierte Cookies. Schreibende Endpunkte
+sind gegen Bots über Rate-Limiting (`app/ratelimit.py`) und Cloudflare
+Turnstile (`app/captcha.py`) abgesichert, dazu eine pfadabhängige
+Content-Security-Policy (eigene, schlankere Variante für das eingebettete
+`/embed.html`). Änderungen an Quellen werden diff-basiert in einem
+Audit-Log protokolliert (`app/audit.py`, mit Revert-Endpunkt), erste
+Konversationsfragen anonymisiert in einem separaten Log (`app/
+question_log.py`) – beides nur für Quellen-Pfleger:innen/System-Admins
+einsehbar. Rechenintensive Hintergrund-Jobs (Audio-Transkription) laufen
+über einen begrenzten Worker-Pool (`AUDIO_TRANSCRIPTION_WORKER_COUNT = 3`)
+statt unbegrenzt parallel. Sprachein-/-ausgabe läuft über einen
+serverseitigen Proxy zu Google Cloud Speech-to-Text/Text-to-Speech, damit
+der API-Key nie im Frontend landet.
+
+**Frontend:** bewusst framework-los (Vanilla HTML/CSS/JS, ES-Module),
+mobile-first, mit gemeinsamen Komponenten für Header/Footer
+(`header.js`/`footer.js` + `init-*.js`, auf allen Seiten eingebunden) und
+einem eigenen i18n-Modul für die zweisprachige Oberfläche (`static/i18n/
+{de,en}.json`). Design orientiert sich an betacodex.org (Systemfont-Stack,
+Terrakotta-Akzent, ruhiger Dark-Mode-Support).
+
+**Betrieb & Tests:** zwei parallele Git-Worktrees, Dev (Port 8000, aktiver
+Arbeitsstand) und Stabil (Port 8001, jeweils letzter getaggter Release,
+siehe Abschnitt 9), Versionierung per `git describe --tags` ohne manuelles
+Versions-File. Testsuite mit `pytest` (aktuell 444 Tests, Embeddings/LLM/
+externe APIs dabei gemockt), ein Pre-Commit-Hook verhindert versehentliche
+`.env`-Commits.
+
+---
+
 ## 1. Ziel des Projekts
 
 Ein Online-Experte / Chatbot, der Fragen zum BetaCodex beantwortet – aber **nur** auf Basis kuratierter, geprüfter Wissensquellen. Vorbild in der Bedienlogik ist Google NotebookLM: Quellen werden hinzugefügt, und die KI antwortet ausschließlich aus diesen Quellen.
@@ -108,18 +176,15 @@ Begründung: Es kommt auf Sprachqualität und einen schlanken Start an. Die Embe
 
 | Thema | Beschreibung |
 |---|---|
-| Podcasts als Quelle | Audio über URL ziehen, per Whisper transkribieren – ein Zwischenschritt mehr |
 | Wissensgraph / Landkarte | Automatische Vernetzung der Inhalte aus den vorhandenen Embedding-Ähnlichkeiten; Darstellung per D3 oder Cytoscape. **Wichtig:** Schwellenwert für Kanten einbauen (Regler), sonst wird das Netz zum Wollknäuel |
-| Nutzer- & Rechtemanagement | Quellen anlegen, kuratieren, pflegen nur mit freigeschaltetem Nutzerkonto. Der Autor eines Chunks/einer Quelle wird mit dem Benutzerkonto verknüpft (statt freiem Textfeld). Freischaltung ist zeitlich begrenzt (z. B. 1 Jahr, Frist wird bei Freischaltung festgelegt) und darf nur durch Nutzer:innen mit einer besonderen technischen Rolle erfolgen |
+| Nutzer- & Rechtemanagement: zeitliche Befristung | Freischaltung von Nutzerkonten mit der Rolle "Quellen-Pfleger:in" zeitlich begrenzen (z. B. 1 Jahr, Frist wird bei Freischaltung festgelegt). Das Nutzerkonto-/Rollenmodell selbst existiert bereits (siehe Versionshistorie) |
 | Community Voting (Bedeutungsrang von Quellen) | Nutzer:innen mit der Rolle "Quellen-Pfleger:in" können jede Quelle einmal bewerten (Vote schiebt den Rang der Quelle einen Schritt hoch/runter). Ein Vote pro Nutzer:in und Quelle, änderbar. Die eigene Bewertung ist für die/den Nutzer:in sichtbar, der Durchschnitt aller Bewertungen ("Community Voting") für alle |
-| Versionshistorie / Audit-Log | Hinzufügen und nachträgliches Bearbeiten von Quellen wird protokolliert: Zeitstempel, änderndes Nutzerkonto, saubere Historie der vorgenommenen Änderungen. Setzt das Nutzerkonto-Konzept voraus (siehe oben) |
 | Autor:innen-Verzeichnis: Empfehlungen & Graph | Das bestehende Autor:innen-Verzeichnis (`app/authors.py`, `/api/authors`) soll später für Leseempfehlungen ähnlicher Autor:innen und für den Aufbau des Wissensgraphen (s. o.) genutzt werden |
-| Podcasts als Quelle | Audio über URL ziehen, per Whisper transkribieren – ein Zwischenschritt mehr |
-| Wissensgraph / Landkarte | Automatische Vernetzung der Inhalte aus den vorhandenen Embedding-Ähnlichkeiten; Darstellung per D3 oder Cytoscape. **Wichtig:** Schwellenwert für Kanten einbauen (Regler), sonst wird das Netz zum Wollknäuel |
-| Sprachdialog | STT für die Frage, TTS für die Antwort (z. B. ElevenLabs). Der Kern bleibt unverändert – Sprache ist nur eine Hülle. **Erst ganz zum Schluss**, sonst debuggt man zwei Dinge gleichzeitig |
 | Kuratierte Aufbereitung | Interessante Takes, Zitate und Impulse ansprechend im Frontend darstellen |
-| Anonymisierte Frage-Analyse | Gestellte Nutzerfragen datenschutzunproblematisch (keine Zuordnung zu Personen) in einer separaten Datenbank protokollieren – getrennt vom RAG-Antwortpfad, spielt für die Antwortgenerierung keine Rolle. Grundlage für spätere Trend-/Lücken-Erkennung ("was ist unklar, welche Quellen fehlen"), visuelle Cluster-Darstellung mit Verknüpfung zu passenden Quellen, sowie automatisch generierte Frage-Vorschläge für neue Nutzer:innen |
 | Verlinkte Quellen in Dokumenten auswerten | Viele importierte Dokumente verlinken selbst weitere Quellen. Diese Links extrahieren und als Vorschläge für neue Quellen im Index nutzen (automatische Erweiterung des Quellen-Netzwerks) |
+| Neue Rolle "Content Creator" | KI-gestützte Textgenerierung für Social Media/Blog-Beiträge auf Basis der vorhandenen Quellen |
+| CI/CD-Pipeline | Automatisierte Tests + Zero-Downtime-Deployment (ggf. Blue-Green) |
+| Produktiv-Deployment | Server-Umzug, eigenes Hosting jenseits von Dev/Stabil, CI/CD-Anbindung |
 
 ---
 
