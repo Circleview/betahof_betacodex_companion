@@ -5,7 +5,8 @@ from app import llm
 
 def _fake_client(response_text):
     client = MagicMock()
-    client.messages.create.return_value.content = [MagicMock(text=response_text)]
+    stream_manager = client.messages.stream.return_value
+    stream_manager.__enter__.return_value.text_stream = iter([response_text])
     return client
 
 
@@ -15,7 +16,7 @@ def test_answer_question_uses_german_prompt_by_default():
         result = llm.answer_question("Frage?", [{"title": "T", "author": "A", "date": "D", "text": "Text"}])
 
     assert result == "Antwort"
-    assert client.messages.create.call_args.kwargs["system"] == llm.SYSTEM_PROMPTS["de"]
+    assert client.messages.stream.call_args.kwargs["system"] == llm.SYSTEM_PROMPTS["de"]
 
 
 def test_answer_question_uses_english_prompt_when_requested():
@@ -26,7 +27,7 @@ def test_answer_question_uses_english_prompt_when_requested():
         )
 
     assert result == "Answer"
-    assert client.messages.create.call_args.kwargs["system"] == llm.SYSTEM_PROMPTS["en"]
+    assert client.messages.stream.call_args.kwargs["system"] == llm.SYSTEM_PROMPTS["en"]
 
 
 def test_answer_question_falls_back_to_german_for_unknown_lang():
@@ -34,7 +35,7 @@ def test_answer_question_falls_back_to_german_for_unknown_lang():
     with patch.object(llm, "_get_client", return_value=client):
         llm.answer_question("Frage?", [], lang="fr")
 
-    assert client.messages.create.call_args.kwargs["system"] == llm.SYSTEM_PROMPTS["de"]
+    assert client.messages.stream.call_args.kwargs["system"] == llm.SYSTEM_PROMPTS["de"]
 
 
 def test_answer_question_appends_author_bios_as_unnumbered_section():
@@ -46,7 +47,7 @@ def test_answer_question_appends_author_bios_as_unnumbered_section():
             author_bios=[{"name": "Peter Pröll", "bio": "Berater und Autor."}],
         )
 
-    user_content = client.messages.create.call_args.kwargs["messages"][0]["content"]
+    user_content = client.messages.stream.call_args.kwargs["messages"][0]["content"]
     assert "Autor:innen-Informationen" in user_content
     assert "Peter Pröll: Berater und Autor." in user_content
     # Die normale Chunk-Nummerierung [1] bleibt unberührt von der Vita.
@@ -58,7 +59,7 @@ def test_answer_question_without_author_bios_omits_section():
     with patch.object(llm, "_get_client", return_value=client):
         llm.answer_question("Frage?", [{"title": "T", "author": "A", "date": "D", "text": "Text"}])
 
-    user_content = client.messages.create.call_args.kwargs["messages"][0]["content"]
+    user_content = client.messages.stream.call_args.kwargs["messages"][0]["content"]
     assert "Autor:innen-Informationen" not in user_content
 
 

@@ -71,11 +71,6 @@ class ChunkRef(BaseModel):
     highlighted_texts: list[str] = []
 
 
-class AnswerOut(BaseModel):
-    answer: str
-    sources: list[ChunkRef]
-
-
 class RequestLinkIn(BaseModel):
     email: str
 

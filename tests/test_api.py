@@ -40,6 +40,22 @@ def login(test_client, email, role=None):
     test_client.get(f"/api/auth/verify?token={token}", follow_redirects=False)
 
 
+def ask_result(response):
+    """Testhilfe (Backlog 2026-07-29, Streaming-Antworten): /api/ask liefert
+    seitdem NDJSON (eine JSON-Zeile pro Event) statt einer einzelnen JSON-
+    Antwort. Liest den kompletten Stream und baut daraus dieselbe Form nach,
+    die früher response.json() lieferte ({"answer": ..., "sources": ...}),
+    damit der Großteil der bestehenden Tests unverändert lesbar bleibt.
+    streamed_text sammelt zusätzlich alle delta-Fragmente in Sende-
+    Reihenfolge - für Tests, die gezielt das Streaming-Verhalten selbst
+    prüfen (z.B. dass der ---QUOTES---Block nie an den Client geht)."""
+    lines = [line for line in response.text.split("\n") if line.strip()]
+    events = [json.loads(line) for line in lines]
+    done = next(e for e in events if e["type"] == "done")
+    streamed_text = "".join(e["text"] for e in events if e["type"] == "delta")
+    return {"answer": done["answer"], "sources": done["sources"], "streamed_text": streamed_text, "events": events}
+
+
 @pytest.fixture
 def client(tmp_path, monkeypatch):
     monkeypatch.setattr(main_module, "DATA_DIR", tmp_path)
@@ -61,10 +77,13 @@ def client(tmp_path, monkeypatch):
 
     monkeypatch.setattr(embeddings, "embed_passages", lambda texts: [[1.0, 0.0] for _ in texts])
     monkeypatch.setattr(embeddings, "embed_query", lambda text: [1.0, 0.0])
+    # /api/ask ruft seit dem Streaming-Umbau (Backlog 2026-07-29)
+    # stream_answer_question statt answer_question auf - der Mock muss ein
+    # Iterable liefern (wie der echte Generator), kein fertiges String.
     monkeypatch.setattr(
         llm,
-        "answer_question",
-        lambda question, chunks, lang="de", author_bios=None: "Testantwort [1].",
+        "stream_answer_question",
+        lambda question, chunks, lang="de", author_bios=None: iter(["Testantwort [1]."]),
     )
     monkeypatch.setattr(
         summarization,
@@ -775,11 +794,63 @@ def test_ask_returns_answer_with_sources(client):
     response = client.post("/api/ask", json={"question": "Was beschreibt der BetaCodex?"})
 
     assert response.status_code == 200
-    data = response.json()
+    data = ask_result(response)
     assert data["answer"] == "Testantwort [1]."
     assert len(data["sources"]) == 1
     assert data["sources"][0]["title"] == "BetaCodex Quelle"
     assert data["sources"][0]["authors"] == ["Autor Y"]
+
+
+def test_ask_stream_emits_delta_events_in_order_before_done_event(client, monkeypatch):
+    monkeypatch.setattr(
+        llm, "stream_answer_question", lambda *a, **k: iter(["Erster Teil ", "zweiter Teil [1]."])
+    )
+    client.post("/api/sources", json={"title": "Q", "text": "Text."})
+
+    response = client.post("/api/ask", json={"question": "Frage?"})
+    result = ask_result(response)
+
+    assert result["events"][-1]["type"] == "done"
+    assert all(e["type"] == "delta" for e in result["events"][:-1])
+    assert result["streamed_text"] == result["answer"]
+
+
+def test_ask_stream_never_leaks_quotes_marker_even_when_split_across_chunks(client, monkeypatch):
+    # Der ---QUOTES---Block ist rein interne Beleg-Information fuer die
+    # Hervorhebungen und darf nie an die Nutzer:in gestreamt werden - auch
+    # nicht, wenn der Marker (oder der Zitat-Inhalt dahinter) ungluecklich
+    # ueber mehrere Chunks der Anthropic-Antwort verteilt ankommt. Zeichen-
+    # weises Yielden erzwingt genau diesen Fall.
+    raw = 'Aussage mit Beleg [1].\n\n---QUOTES---\n[1]: "Niemals sichtbares Zitat."\n'
+    monkeypatch.setattr(llm, "stream_answer_question", lambda *a, **k: iter(list(raw)))
+    client.post("/api/sources", json={"title": "Q", "text": "Text."})
+
+    response = client.post("/api/ask", json={"question": "Frage?"})
+    result = ask_result(response)
+
+    assert "---QUOTES---" not in result["streamed_text"]
+    assert "Niemals sichtbares Zitat" not in result["streamed_text"]
+    assert result["answer"] == "Aussage mit Beleg [1]."
+
+
+def test_ask_stream_strips_answer_label_atomically_without_leaking_partial_prefix(client, monkeypatch):
+    # Das "Antwort:"-Label darf nicht zeichenweise an die Nutzer:in
+    # durchgereicht werden, bevor feststeht, ob es entfernt werden muss -
+    # sonst wuerde kurz "A", "An", "Ant", ... aufblitzen. Zeichenweises
+    # Yielden prueft, dass das erste gesendete Delta das Label bereits
+    # vollstaendig entfernt hat.
+    raw = "Antwort: Der BetaCodex ist ein Organisationsmodell fuer Unternehmen [1]."
+    monkeypatch.setattr(llm, "stream_answer_question", lambda *a, **k: iter(list(raw)))
+    client.post("/api/sources", json={"title": "Q", "text": "Text."})
+
+    response = client.post("/api/ask", json={"question": "Frage?"})
+    result = ask_result(response)
+
+    delta_texts = [e["text"] for e in result["events"] if e["type"] == "delta"]
+    assert delta_texts
+    assert not delta_texts[0].lower().startswith("ant")
+    assert "Antwort:" not in "".join(delta_texts)
+    assert result["answer"] == "Der BetaCodex ist ein Organisationsmodell fuer Unternehmen [1]."
 
 
 def test_ask_passes_author_bio_when_question_mentions_registered_author(client, monkeypatch):
@@ -800,9 +871,9 @@ def test_ask_passes_author_bio_when_question_mentions_registered_author(client, 
 
     def fake_answer(question, chunks, lang="de", author_bios=None):
         captured["author_bios"] = author_bios
-        return "Testantwort [1]."
+        return iter(["Testantwort [1]."])
 
-    monkeypatch.setattr(llm, "answer_question", fake_answer)
+    monkeypatch.setattr(llm, "stream_answer_question", fake_answer)
 
     client.post("/api/ask", json={"question": "Wer ist Peter Pröll?"})
 
@@ -826,9 +897,9 @@ def test_ask_passes_no_author_bio_when_question_does_not_mention_author(client, 
 
     def fake_answer(question, chunks, lang="de", author_bios=None):
         captured["author_bios"] = author_bios
-        return "Testantwort [1]."
+        return iter(["Testantwort [1]."])
 
-    monkeypatch.setattr(llm, "answer_question", fake_answer)
+    monkeypatch.setattr(llm, "stream_answer_question", fake_answer)
 
     client.post("/api/ask", json={"question": "Was beschreibt der BetaCodex?"})
 
@@ -861,7 +932,7 @@ def test_ask_includes_source_summary(client):
     response = client.post("/api/ask", json={"question": "Was beschreibt der BetaCodex?"})
 
     assert response.status_code == 200
-    assert response.json()["sources"][0]["summary"] == "Kurzfassung der Quelle."
+    assert ask_result(response)["sources"][0]["summary"] == "Kurzfassung der Quelle."
 
 
 def test_ask_reports_null_summary_when_source_has_none(client):
@@ -877,7 +948,7 @@ def test_ask_reports_null_summary_when_source_has_none(client):
     response = client.post("/api/ask", json={"question": "Was beschreibt der BetaCodex?"})
 
     assert response.status_code == 200
-    assert response.json()["sources"][0]["summary"] is None
+    assert ask_result(response)["sources"][0]["summary"] is None
 
 
 def test_ask_sets_highlighted_texts_from_local_fallback_without_quote_block(client):
@@ -893,7 +964,7 @@ def test_ask_sets_highlighted_texts_from_local_fallback_without_quote_block(clie
     response = client.post("/api/ask", json={"question": "Was beschreibt der BetaCodex?"})
 
     assert response.status_code == 200
-    assert response.json()["sources"][0]["highlighted_texts"] == [
+    assert ask_result(response)["sources"][0]["highlighted_texts"] == [
         "Der BetaCodex beschreibt Prinzipien dezentraler Organisation."
     ]
 
@@ -912,17 +983,17 @@ def test_ask_uses_llm_quote_when_it_matches_the_chunk(client, monkeypatch):
     )
     monkeypatch.setattr(
         llm,
-        "answer_question",
-        lambda question, chunks, lang="de", author_bios=None: (
+        "stream_answer_question",
+        lambda question, chunks, lang="de", author_bios=None: iter([
             "Aussage [1].\n\n---QUOTES---\n"
             '[1]: "Der BetaCodex beschreibt Prinzipien dezentraler Organisation."\n'
-        ),
+        ]),
     )
 
     response = client.post("/api/ask", json={"question": "Was beschreibt der BetaCodex?"})
 
     assert response.status_code == 200
-    data = response.json()
+    data = ask_result(response)
     assert data["answer"] == "Aussage [1]."
     assert data["sources"][0]["highlighted_texts"] == [
         "Der BetaCodex beschreibt Prinzipien dezentraler Organisation."
@@ -940,11 +1011,11 @@ def test_ask_falls_back_to_local_highlight_when_llm_quote_not_found_in_chunk(cli
     )
     monkeypatch.setattr(
         llm,
-        "answer_question",
-        lambda question, chunks, lang="de", author_bios=None: (
+        "stream_answer_question",
+        lambda question, chunks, lang="de", author_bios=None: iter([
             "Antwort [1].\n\n---QUOTES---\n"
             '[1]: "Dieser Satz kommt in der Quelle so gar nicht vor."\n'
-        ),
+        ]),
     )
 
     response = client.post("/api/ask", json={"question": "Was beschreibt der BetaCodex?"})
@@ -952,7 +1023,7 @@ def test_ask_falls_back_to_local_highlight_when_llm_quote_not_found_in_chunk(cli
     assert response.status_code == 200
     # Fällt auf das lokale Highlight zurück, statt das halluzinierte Zitat
     # zu übernehmen (Verifikation gegen den echten Chunk-Text greift).
-    assert response.json()["sources"][0]["highlighted_texts"] == [
+    assert ask_result(response)["sources"][0]["highlighted_texts"] == [
         "Der BetaCodex beschreibt Prinzipien dezentraler Organisation."
     ]
 
@@ -971,18 +1042,18 @@ def test_ask_uses_different_highlight_per_occurrence_of_the_same_source(client, 
     )
     monkeypatch.setattr(
         llm,
-        "answer_question",
-        lambda question, chunks, lang="de", author_bios=None: (
+        "stream_answer_question",
+        lambda question, chunks, lang="de", author_bios=None: iter([
             "Aussage A [1]. Aussage B [1].\n\n---QUOTES---\n"
             '[1]: "Der BetaCodex beschreibt Prinzipien dezentraler Organisation."\n'
             '[1]: "Teams organisieren sich in Zellen ohne zentrale Weisung."\n'
-        ),
+        ]),
     )
 
     response = client.post("/api/ask", json={"question": "Was beschreibt der BetaCodex?"})
 
     assert response.status_code == 200
-    assert response.json()["sources"][0]["highlighted_texts"] == [
+    assert ask_result(response)["sources"][0]["highlighted_texts"] == [
         "Der BetaCodex beschreibt Prinzipien dezentraler Organisation.",
         "Teams organisieren sich in Zellen ohne zentrale Weisung.",
     ]
@@ -1012,7 +1083,7 @@ def test_reindex_sources_replaces_chunks_with_new_chunking(client, monkeypatch):
     assert response.status_code == 200
 
     ask_response = client.post("/api/ask", json={"question": "Was beschreibt der BetaCodex?"})
-    assert ask_response.json()["sources"][0]["text"] == "Neu gechunkter Inhalt."
+    assert ask_result(ask_response)["sources"][0]["text"] == "Neu gechunkter Inhalt."
 
 
 def test_reindex_sources_skips_broken_records_without_aborting(client, monkeypatch):
@@ -1137,7 +1208,7 @@ def test_add_source_with_multiple_authors_registers_all(client):
     assert author_names == {"Jane Doe", "John Roe"}
 
     response = client.post("/api/ask", json={"question": "Worum geht es?"})
-    assert response.json()["sources"][0]["authors"] == ["Jane Doe", "John Roe"]
+    assert ask_result(response)["sources"][0]["authors"] == ["Jane Doe", "John Roe"]
 
 
 def test_add_source_without_author_does_not_appear_in_directory(client):
@@ -1307,9 +1378,9 @@ def test_ask_uses_requested_language(client, monkeypatch):
 
     def fake_answer(question, chunks, lang="de", author_bios=None):
         captured["lang"] = lang
-        return "Answer"
+        return iter(["Answer"])
 
-    monkeypatch.setattr(llm, "answer_question", fake_answer)
+    monkeypatch.setattr(llm, "stream_answer_question", fake_answer)
     client.post("/api/sources", json={"title": "Q", "text": "Text for asking."})
 
     response = client.post("/api/ask", json={"question": "Q?"}, headers={"X-Lang": "en"})
@@ -1609,7 +1680,7 @@ def test_restricted_source_still_used_for_answers(client):
     response = client.post("/api/ask", json={"question": "Frage?"})
 
     assert response.status_code == 200
-    assert response.json()["sources"][0]["text"] == "Urheberrechtlich geschützter Inhalt."
+    assert ask_result(response)["sources"][0]["text"] == "Urheberrechtlich geschützter Inhalt."
 
 
 def test_update_restricted_source_with_empty_text_keeps_stored_text(client):
@@ -2487,9 +2558,9 @@ def test_listen_url_persists_and_appears_in_ask_citation(client, monkeypatch):
 
     def fake_answer(question, chunks, lang="de", author_bios=None):
         captured["lang"] = lang
-        return "Testantwort [1]."
+        return iter(["Testantwort [1]."])
 
-    monkeypatch.setattr(llm, "answer_question", fake_answer)
+    monkeypatch.setattr(llm, "stream_answer_question", fake_answer)
 
     create_res = client.post(
         "/api/sources",
@@ -2504,7 +2575,7 @@ def test_listen_url_persists_and_appears_in_ask_citation(client, monkeypatch):
 
     response = client.post("/api/ask", json={"question": "Worum geht es?"})
     assert response.status_code == 200
-    source = response.json()["sources"][0]
+    source = ask_result(response)["sources"][0]
     assert source["listen_url"] == "https://podcasts.example.org/episode-1"
     assert source["url"] == "https://cdn.example.org/episode.mp3"
 

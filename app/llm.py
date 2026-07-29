@@ -95,29 +95,33 @@ def _get_client() -> anthropic.Anthropic:
 _AUTHOR_INFO_HEADING = {"de": "Autor:innen-Informationen", "en": "Author information"}
 
 
-def answer_question(
-    question: str,
-    chunks: list[dict],
-    lang: str = DEFAULT_LANG,
-    author_bios: list[dict] | None = None,
-) -> str:
-    """author_bios: optionale Liste von {"name": str, "bio": str} - wird als
-    eigener, NICHT nummerierter Abschnitt angehängt (siehe SYSTEM_PROMPTS),
-    damit biografische Fragen ("Wer ist X?") aus der gepflegten Autor:innen-
-    Vita statt nur aus inhaltlich unpassenden Quellen-Chunks beantwortet
-    werden können (app/main.py, ask())."""
-    lang = lang if lang in SYSTEM_PROMPTS else DEFAULT_LANG
+def _build_context(chunks: list[dict], lang: str, author_bios: list[dict] | None) -> str:
     context = "\n\n".join(
         f"[{i + 1}] (Quelle: {c['title']}, {c['author']}, {c['date']})\n{c['text']}"
         for i, c in enumerate(chunks)
     )
-
     if author_bios:
         bios_text = "\n\n".join(f"{b['name']}: {b['bio']}" for b in author_bios)
         context += f"\n\n{_AUTHOR_INFO_HEADING[lang]}:\n{bios_text}"
+    return context
+
+
+def stream_answer_question(
+    question: str,
+    chunks: list[dict],
+    lang: str = DEFAULT_LANG,
+    author_bios: list[dict] | None = None,
+):
+    """Wie answer_question, liefert die Antwort aber als Generator einzelner
+    Text-Fragmente, sobald Anthropic sie erzeugt (Backlog: Antwortzeit
+    gefühlt beschleunigen, analog zum Streaming im CRT-Tool) - app/main.py
+    (ask()) leitet diese Fragmente direkt an die Nutzer:in weiter, statt auf
+    die komplette Antwort (inkl. des internen ---QUOTES---Blocks) zu warten."""
+    lang = lang if lang in SYSTEM_PROMPTS else DEFAULT_LANG
+    context = _build_context(chunks, lang, author_bios)
 
     client = _get_client()
-    message = client.messages.create(
+    with client.messages.stream(
         model=MODEL_NAME,
         max_tokens=1024,
         system=SYSTEM_PROMPTS[lang],
@@ -127,5 +131,23 @@ def answer_question(
                 "content": f"Kontext-Textausschnitte:\n\n{context}\n\nFrage: {question}",
             }
         ],
-    )
-    return message.content[0].text
+    ) as stream:
+        yield from stream.text_stream
+
+
+def answer_question(
+    question: str,
+    chunks: list[dict],
+    lang: str = DEFAULT_LANG,
+    author_bios: list[dict] | None = None,
+) -> str:
+    """Nicht-streamender Komfort-Wrapper um stream_answer_question - für
+    Aufrufstellen/Tests, die die komplette Antwort in einem Rutsch brauchen.
+    app/main.py (ask()) nutzt für die eigentliche Chat-Antwort
+    stream_answer_question direkt, um Text-Fragmente sofort ausliefern zu
+    können. author_bios: optionale Liste von {"name": str, "bio": str} -
+    wird als eigener, NICHT nummerierter Abschnitt angehängt (siehe
+    SYSTEM_PROMPTS), damit biografische Fragen ("Wer ist X?") aus der
+    gepflegten Autor:innen-Vita statt nur aus inhaltlich unpassenden
+    Quellen-Chunks beantwortet werden können."""
+    return "".join(stream_answer_question(question, chunks, lang=lang, author_bios=author_bios))

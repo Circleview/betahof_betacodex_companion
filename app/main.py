@@ -12,7 +12,7 @@ from urllib.parse import urlsplit
 
 from dotenv import load_dotenv
 from fastapi import BackgroundTasks, Depends, FastAPI, File, Header, HTTPException, Request, UploadFile
-from fastapi.responses import FileResponse, RedirectResponse, Response
+from fastapi.responses import FileResponse, RedirectResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 load_dotenv()
@@ -39,7 +39,6 @@ from app import (
 )
 from app.models import (
     AdminUserOut,
-    AnswerOut,
     AuditLogEntryOut,
     AuthorOut,
     AuthorProfileIn,
@@ -1582,7 +1581,80 @@ def _compute_occurrence_highlights(
     return occurrence_highlights
 
 
-@app.post("/api/ask", response_model=AnswerOut)
+# Backlog (2026-07-29): Antwortzeit gefühlt beschleunigen, analog zum
+# Streaming im CRT-Tool - vor dieser Zeile brauchte /api/ask, bis die
+# GESAMTE Antwort inkl. des internen ---QUOTES---Blocks fertig generiert
+# war, bevor überhaupt etwas angezeigt wurde. Anzahl der Zeichen, die vor
+# dem ersten sichtbaren Fragment abgewartet werden, um die "Antwort:"/
+# "Answer:"-Label-Erkennung (llm._strip_answer_label) sicher einmalig
+# entscheiden zu können, bevor irgendein Zeichen an die Nutzer:in geht -
+# reicht für die längste realistische Ausprägung des Labels ("**Antwort:**
+# ") mit Marge, verzögert die erste sichtbare Ausgabe aber praktisch nicht
+# spürbar (typischerweise weniger als ein Streaming-Chunk).
+_ASK_LABEL_CHECK_MIN_LEN = 20
+_ASK_QUOTES_MARKER = "---QUOTES---"
+
+
+def _ask_event_stream(question_text, llm_chunks, lang, author_bios, chunk_refs, chunk_docs, local_highlights):
+    """Generator für die NDJSON-Stream-Antwort von /api/ask: ein "delta"-
+    Event pro neu angekommenem Text-Fragment, am Ende genau ein "done"-Event
+    mit der vollständigen (bereits vom Label befreiten) Antwort und den
+    Quellen inkl. berechneter Hervorhebungen - oder ein "error"-Event, falls
+    die Anfrage an Anthropic fehlschlägt. Der ---QUOTES---Block selbst wird
+    NIE an die Nutzer:in gestreamt, da er reine interne Beleg-Daten für die
+    Hervorhebungen enthält."""
+    buffer = ""
+    sent_len = 0
+    label_resolved = False
+
+    try:
+        for delta in llm.stream_answer_question(question_text, llm_chunks, lang=lang, author_bios=author_bios):
+            buffer += delta
+            marker_index = buffer.find(_ASK_QUOTES_MARKER)
+            if marker_index != -1:
+                visible_raw = buffer[:marker_index]
+            else:
+                visible_raw = buffer[: max(0, len(buffer) - len(_ASK_QUOTES_MARKER))]
+
+            if not label_resolved:
+                if marker_index == -1 and len(visible_raw) < _ASK_LABEL_CHECK_MIN_LEN:
+                    continue
+                label_resolved = True
+
+            visible_final = llm._strip_answer_label(visible_raw)
+            new_text = visible_final[sent_len:]
+            if new_text:
+                yield json.dumps({"type": "delta", "text": new_text}) + "\n"
+                sent_len = len(visible_final)
+    except Exception:
+        yield json.dumps({"type": "error", "message": i18n.get_message("ask_llm_failed", lang)}) + "\n"
+        return
+
+    answer_text, quotes_by_citation = llm.parse_answer_and_quotes(buffer)
+    remaining = answer_text[sent_len:]
+    if remaining:
+        yield json.dumps({"type": "delta", "text": remaining}) + "\n"
+
+    occurrence_highlights = _compute_occurrence_highlights(answer_text, chunk_docs, quotes_by_citation)
+    for i, chunk_ref in enumerate(chunk_refs):
+        # Letzter Ausweg: eine zurückgegebene Quelle, die im finalen
+        # Antworttext aus irgendeinem Grund gar nicht per [n] referenziert
+        # wird, bekommt trotzdem ein Highlight (gegen die Nutzerfrage
+        # gescort) statt gar keins.
+        chunk_ref.highlighted_texts = occurrence_highlights[i] or (
+            [local_highlights[i]] if local_highlights[i] else []
+        )
+
+    yield json.dumps(
+        {
+            "type": "done",
+            "answer": answer_text,
+            "sources": [chunk_ref.model_dump() for chunk_ref in chunk_refs],
+        }
+    ) + "\n"
+
+
+@app.post("/api/ask")
 def ask(question: QuestionIn, request: Request, x_lang: str = Header(default=i18n.DEFAULT_LANG)):
     client_ip = request.client.host if request.client else "unknown"
     if ratelimit.is_rate_limited(client_ip):
@@ -1655,24 +1727,13 @@ def ask(question: QuestionIn, request: Request, x_lang: str = Header(default=i18
         if bio:
             author_bios.append({"name": name, "bio": bio})
 
-    raw_answer = llm.answer_question(
-        question.question, llm_chunks, lang=x_lang, author_bios=author_bios or None
-    )
-    answer_text, quotes_by_citation = llm.parse_answer_and_quotes(raw_answer)
-
     chunk_docs = [chunk_ref.text for chunk_ref in chunk_refs]
-    occurrence_highlights = _compute_occurrence_highlights(answer_text, chunk_docs, quotes_by_citation)
-
-    for i, chunk_ref in enumerate(chunk_refs):
-        # Letzter Ausweg: eine zurückgegebene Quelle, die im finalen
-        # Antworttext aus irgendeinem Grund gar nicht per [n] referenziert
-        # wird, bekommt trotzdem ein Highlight (gegen die Nutzerfrage
-        # gescort) statt gar keins.
-        chunk_ref.highlighted_texts = occurrence_highlights[i] or (
-            [local_highlights[i]] if local_highlights[i] else []
-        )
-
-    return AnswerOut(answer=answer_text, sources=chunk_refs)
+    return StreamingResponse(
+        _ask_event_stream(
+            question.question, llm_chunks, x_lang, author_bios or None, chunk_refs, chunk_docs, local_highlights
+        ),
+        media_type="application/x-ndjson",
+    )
 
 
 @app.post("/api/speech")

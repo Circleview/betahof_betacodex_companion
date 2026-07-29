@@ -562,6 +562,42 @@ async function fetchWithRetry(url, options, retries = 1, delayMs = 600) {
   }
 }
 
+// Backlog (2026-07-29): Antwortzeit gefühlt beschleunigen, analog zum
+// Streaming im CRT-Tool - /api/ask liefert die Antwort seitdem als NDJSON-
+// Stream (eine JSON-Zeile pro Event) statt als einzelne JSON-Antwort.
+// Liest den Response-Body inkrementell und ruft onDelta(text) für jedes
+// "delta"-Event auf, sobald es ankommt; löst am Ende mit dem "done"-Event
+// auf (bzw. wirft bei einem "error"-Event oder wenn der Stream ohne "done"
+// endet - z.B. abgebrochene Verbindung).
+async function readAskStream(response, onDelta) {
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let doneEvent = null;
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split('\n');
+    buffer = lines.pop();
+    for (const line of lines) {
+      if (!line.trim()) continue;
+      const event = JSON.parse(line);
+      if (event.type === 'delta') {
+        onDelta(event.text);
+      } else if (event.type === 'error') {
+        throw new Error(event.message);
+      } else if (event.type === 'done') {
+        doneEvent = event;
+      }
+    }
+  }
+
+  if (!doneEvent) throw new Error(t('index.askError'));
+  return doneEvent;
+}
+
 document.getElementById('question-form').addEventListener('submit', async (e) => {
   e.preventDefault();
   const question = questionInput.value.trim();
@@ -615,16 +651,31 @@ document.getElementById('question-form').addEventListener('submit', async (e) =>
       const err = await res.json().catch(() => ({}));
       throw new Error(err.detail || t('index.askError'));
     }
-    const data = await res.json();
-    const speakBtn = renderAnswerBubble(assistantBubble, data.answer, data.sources);
+
+    // Erstes Text-Fragment: Tippindikator durch die (noch unfertige)
+    // Antwort ersetzen. Zitat-Verweise [n] und Hervorhebungen brauchen den
+    // kompletten Text und werden erst im finalen renderAnswerBubble unten
+    // aktiv - bis dahin steht z.B. "[1]" noch als reiner Text da.
+    let liveText = '';
+    let indicatorCleared = false;
+    const doneEvent = await readAskStream(res, (delta) => {
+      liveText += delta;
+      if (!indicatorCleared) {
+        indicatorCleared = true;
+        assistantBubble.removeAttribute('aria-label');
+      }
+      assistantBubble.innerHTML = renderMarkdown(liveText);
+    });
+
+    const speakBtn = renderAnswerBubble(assistantBubble, doneEvent.answer, doneEvent.sources);
     renderSidebarSources();
-    conversationHistory.push({ question, answer: data.answer, sources: data.sources });
+    conversationHistory.push({ question, answer: doneEvent.answer, sources: doneEvent.sources });
     saveConversationHistory();
     // Backlog #49: nur bei per Mikrofon gestellten Fragen automatisch
     // vorlesen - getippte Fragen bleiben stumm (mit dem Icon manuell
     // vorlesbar, siehe attachSpeakButton).
     if (viaVoice) {
-      startSpeaking(speakBtn, stripMarkdownForSpeech(data.answer));
+      startSpeaking(speakBtn, stripMarkdownForSpeech(doneEvent.answer));
     }
   } catch (err) {
     assistantBubble.textContent = t('common.errorPrefix') + err.message;
