@@ -10,6 +10,10 @@
 <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
 <title>Fragen-Log &ndash; BetaCodex Companion</title>
 <link rel="stylesheet" href="/style.css">
+<!-- Fürs Feedback-Popover im Footer (Backlog #85) - window.onTurnstileLoad
+     wird zentral von turnstile.js definiert (importiert über footer.js),
+     genau wie auf index.html/import.html. -->
+<script src="https://challenges.cloudflare.com/turnstile/v0/api.js?onload=onTurnstileLoad&render=explicit" async defer></script>
 </head>
 <body>
 <a href="#question-log-bereich" class="skip-link" data-i18n="common.skipToContent"></a>
@@ -24,7 +28,10 @@
   <ul id="question-log-list" class="timeline-mode"></ul>
 </section>
 
+<footer class="site-footer" id="site-footer"></footer>
+
 <script type="module" src="/init-header.js"></script>
 <script type="module" src="/question-log.js"></script>
+<script type="module" src="/init-footer.js"></script>
 </body>
 </html>

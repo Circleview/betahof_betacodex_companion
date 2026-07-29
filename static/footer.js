@@ -17,10 +17,10 @@ function buildLink(href, text, className) {
   return a;
 }
 
-// Spam-/Bot-Schutz fürs Feedback-Popover (Backlog #85) - nutzt dieselbe
+// Spam-/Bot-Schutz fürs Feedback-Formular (Backlog #85) - nutzt dieselbe
 // Turnstile-Anbindung wie das Frage-Formular (siehe question.js/turnstile.js).
-// Wird erst beim ERSTEN Öffnen des Popovers gerendert (nicht schon beim
-// Seitenaufbau) - ein noch verstecktes Popover hätte einen Container mit
+// Wird erst beim ERSTEN Öffnen des Panels gerendert (nicht schon beim
+// Seitenaufbau) - ein noch verstecktes Panel hätte einen Container mit
 // Breite/Höhe 0, in den Cloudflare das Widget nicht zuverlässig rendert.
 let feedbackTurnstileWidget = { getToken: () => '', reset: () => {}, destroy: () => {} };
 let feedbackTurnstileRendered = false;
@@ -32,6 +32,13 @@ function renderFeedbackTurnstileWidget() {
     feedbackTurnstileWidget = widget;
   });
 }
+
+const CLOSE_ICON =
+  '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" ' +
+  'stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
+  '<line x1="18" y1="6" x2="6" y2="18"></line>' +
+  '<line x1="6" y1="6" x2="18" y2="18"></line>' +
+  '</svg>';
 
 function buildFeedbackField(labelKey, type) {
   const label = document.createElement('label');
@@ -49,22 +56,28 @@ function buildFeedbackField(labelKey, type) {
   return { label, input };
 }
 
-function buildFeedbackWidget() {
-  const wrapper = document.createElement('span');
-  wrapper.className = 'footer-feedback';
+// Fix: statt eines Popovers (position:absolute - anfällig für Clipping durch
+// overflow auf Vorfahren-Elementen, siehe die Diskussion beim Footer-
+// Zeilenumbruch, und auf Mobile schwer sauber auszurichten) klappt der
+// Feedback-Bereich jetzt wie die Volltextsuche in import.js (#search-bar)
+// in normalem Fluss auf - hier als eigenständiger Block OBERHALB der
+// Trennlinie des Footers, da <footer id="site-footer"> selbst die
+// Trennlinie als border-top trägt und ein Kind-Element davon zwangsläufig
+// darunter läge.
+function ensureFeedbackPanel() {
+  let panel = document.getElementById('footer-feedback-panel');
+  if (!panel) {
+    const footer = document.getElementById('site-footer');
+    if (!footer) return null;
+    panel = document.createElement('div');
+    panel.id = 'footer-feedback-panel';
+    panel.className = 'footer-feedback-panel hidden';
+    footer.parentNode.insertBefore(panel, footer);
+  }
+  return panel;
+}
 
-  const trigger = document.createElement('button');
-  trigger.type = 'button';
-  trigger.className = 'link-button';
-  trigger.textContent = t('footer.feedback');
-  wrapper.appendChild(trigger);
-
-  const popover = document.createElement('div');
-  popover.className = 'popover feedback-popover hidden';
-  const arrow = document.createElement('div');
-  arrow.className = 'popover-arrow';
-  popover.appendChild(arrow);
-
+function buildFeedbackForm() {
   const form = document.createElement('form');
 
   const { label: messageLabel, input: messageInput } = buildFeedbackField(
@@ -126,22 +139,41 @@ function buildFeedbackWidget() {
     }
   });
 
-  popover.appendChild(form);
-  wrapper.appendChild(popover);
-
-  trigger.addEventListener('click', (e) => {
-    e.stopPropagation();
-    const wasHidden = popover.classList.contains('hidden');
-    popover.classList.toggle('hidden');
-    if (wasHidden) renderFeedbackTurnstileWidget();
-  });
-
-  return wrapper;
+  return form;
 }
 
-// Backlog #75: Popover fürs Embed-Snippet - gleiches Muster wie
-// buildFeedbackWidget() (Trigger-Button öffnet ein Popover, Klick außerhalb
-// schließt es). Nur die Breite ist konfigurierbar (Höhe bleibt fix), da
+function buildFeedbackPanelCloseButton(panel) {
+  const closeBtn = document.createElement('button');
+  closeBtn.type = 'button';
+  closeBtn.className = 'footer-feedback-panel-close';
+  const label = t('import.closeButtonTitle');
+  closeBtn.title = label;
+  closeBtn.setAttribute('aria-label', label);
+  closeBtn.innerHTML = CLOSE_ICON;
+  closeBtn.addEventListener('click', () => panel.classList.add('hidden'));
+  return closeBtn;
+}
+
+function buildFeedbackTrigger() {
+  const trigger = document.createElement('button');
+  trigger.type = 'button';
+  trigger.className = 'footer-feedback-trigger link-button';
+  trigger.textContent = t('footer.feedback');
+  trigger.addEventListener('click', () => {
+    const panel = ensureFeedbackPanel();
+    if (!panel) return;
+    const wasHidden = panel.classList.contains('hidden');
+    panel.classList.toggle('hidden');
+    if (wasHidden) renderFeedbackTurnstileWidget();
+  });
+  return trigger;
+}
+
+// Backlog #75: Popover fürs Embed-Snippet - Trigger-Button öffnet ein
+// Popover, Klick außerhalb schließt es (bleibt bewusst bei diesem Muster,
+// anders als der Feedback-Bereich - hier gibt es keine nach oben
+// überstehenden Inhalte, das Clipping-Risiko besteht also nicht). Nur die
+// Breite ist konfigurierbar (Höhe bleibt fix), da
 // ausschließlich die Breite vom Nutzer als anpassbar gewünscht wurde - eine
 // schmale Standardbreite unter der 900px-Schwelle, ab der die Quellen-
 // Sidebar im Embed erscheint (siehe static/style.css), passt für die
@@ -224,13 +256,14 @@ function buildEmbedWidget() {
   return wrapper;
 }
 
+// Nur noch fürs Embed-Popover relevant - der Feedback-Bereich schließt sich
+// (wie die Volltextsuche in import.js) nicht mehr automatisch bei Klick
+// außerhalb, sondern nur über den eigenen Auslöser-Button.
 document.addEventListener('click', (e) => {
-  ['.footer-feedback', '.footer-embed'].forEach((selector) => {
-    const container = document.querySelector(selector);
-    if (container && !container.contains(e.target)) {
-      container.querySelector('.popover')?.classList.add('hidden');
-    }
-  });
+  const container = document.querySelector('.footer-embed');
+  if (container && !container.contains(e.target)) {
+    container.querySelector('.popover')?.classList.add('hidden');
+  }
 });
 
 // Der Footer sieht auf jeder Seite identisch aus - der Hinweistext steht
@@ -242,11 +275,18 @@ function renderFooter() {
   // Der Footer wird bei jedem Sprachwechsel komplett neu aufgebaut - ein
   // eventuell bereits gerendertes Feedback-Turnstile-Widget hängt dann an
   // einem inzwischen entfernten DOM-Knoten und muss verworfen werden, sonst
-  // hielte die (jetzt neue) Popover-Instanz das Widget fälschlich für
-  // "schon gerendert".
+  // hielte das (jetzt neue) Panel das Widget fälschlich für "schon
+  // gerendert". Das Panel klappt dabei bewusst wieder zu (analog dazu, wie
+  // sich auch #search-bar bei jedem renderSourceList()-Aufruf nicht selbst
+  // merkt, ob es offen war).
   feedbackTurnstileWidget.destroy();
   feedbackTurnstileWidget = { getToken: () => '', reset: () => {}, destroy: () => {} };
   feedbackTurnstileRendered = false;
+  const feedbackPanel = ensureFeedbackPanel();
+  if (feedbackPanel) {
+    feedbackPanel.replaceChildren(buildFeedbackPanelCloseButton(feedbackPanel), buildFeedbackForm());
+    feedbackPanel.classList.add('hidden');
+  }
 
   const taglineSpan = document.createElement('span');
   taglineSpan.className = 'footer-tagline';
@@ -254,9 +294,9 @@ function renderFooter() {
 
   // GitHub-Link und Versionsnummer sind zu einem Link zusammengefasst -
   // sichtbarer Text ist die Version, das Ziel ist dasselbe Repo wie beim
-  // vorherigen separaten "GitHub"-Link. Bleibt (anders als der frühere
-  // .footer-github-link) auch auf schmalen Bildschirmen sichtbar, da die
-  // Versionsnummer nicht verzichtbar ist.
+  // vorherigen separaten "GitHub"-Link. Bleibt (anders als .footer-embed/
+  // .footer-betahof-link) auch auf schmalen Bildschirmen sichtbar - explizit
+  // vom Nutzer bestätigt, die Versionsnummer soll immer sichtbar bleiben.
   const versionLink = buildLink(
     'https://github.com/Circleview/betahof_betacodex_companion',
     currentVersion,
@@ -275,12 +315,12 @@ function renderFooter() {
     t('footer.privacyPolicy')
   );
 
-  const children = [taglineSpan, buildFeedbackWidget()];
+  const children = [taglineSpan, buildFeedbackTrigger()];
   if (embedEnabled) children.push(buildEmbedWidget());
   children.push(
     buildLink('https://betacodex.org', 'betacodex.org'),
     versionLink,
-    buildLink('https://www.betahof.de/beratung/', 'Beta Hof'),
+    buildLink('https://www.betahof.de/beratung/', 'Beta Hof', 'footer-betahof-link'),
     buildLink('https://www.betahof.de/impressum/', t('footer.impressum')),
     privacyPolicyLink,
   );

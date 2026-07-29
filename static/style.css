@@ -2575,6 +2575,13 @@ details a {
   .footer-embed {
     display: none;
   }
+
+  /* Fix: Footer auf schmalen Bildschirmen knapper halten - "Beta Hof" ist
+     als externer Beratungs-Link auf Mobile verzichtbar, betacodex.org/
+     Versionsnummer/Impressum/Datenschutz bleiben erhalten. */
+  .footer-betahof-link {
+    display: none;
+  }
 }
 
 .popover label {
@@ -2607,10 +2614,6 @@ details a {
   font-size: 0.9rem;
 }
 
-.feedback-popover button[type="submit"] {
-  width: 100%;
-}
-
 .site-footer {
   margin-top: 3rem;
   padding-top: 1rem;
@@ -2619,7 +2622,10 @@ details a {
   flex-wrap: wrap;
   align-items: center;
   justify-content: flex-end;
-  gap: 0.6rem;
+  /* Fix: enger gestellt (vorher 0.6rem), damit die Links auf schmalen
+     Bildschirmen eher in einer Zeile bleiben, ohne die Schrift zu
+     verkleinern oder etwas auszublenden/scrollbar zu machen. */
+  gap: 0.4rem;
   font-size: 0.8rem;
   color: var(--color-text-muted);
 }
@@ -2641,49 +2647,78 @@ details a {
   font-variant-numeric: tabular-nums;
 }
 
-/* Backlog #85: Feedback-Popover statt reinem GitHub-Issues-Link - der
-   Trigger soll aber weiterhin wie die übrigen Footer-Links aussehen, nicht
-   wie ein hervorgehobener .link-button (Standard: fett, unterstrichen). */
-.footer-feedback {
-  position: relative;
-  display: inline-flex;
-  /* Auf Mobile wird .popover zu position:static (siehe @media (max-width:
-     480px) weiter unten) und damit zu einem normalen Flex-Item dieses
-     Containers - ohne column stünde das Popover fälschlich NEBEN statt
-     UNTER dem Feedback-Link. Auf Desktop (position:absolute) wirkungslos. */
-  flex-direction: column;
-}
-
-.footer-feedback > .link-button {
+/* Backlog #85: Feedback-Trigger statt reinem GitHub-Issues-Link - soll
+   weiterhin wie die übrigen Footer-Links aussehen, nicht wie ein
+   hervorgehobener .link-button (Standard: fett, unterstrichen). */
+.footer-feedback-trigger {
   color: var(--color-text-muted);
   font-weight: inherit;
   font-size: inherit;
   text-decoration: none;
 }
 
-.footer-feedback > .link-button:hover {
+.footer-feedback-trigger:hover {
   color: var(--color-accent);
 }
 
-/* Der Footer sitzt am Seitenende - ein nach unten aufklappendes Popover
-   (Standard .popover-Regel) würde meist über den Bildschirmrand
-   hinausragen, deshalb öffnet es hier stattdessen nach oben. */
-.feedback-popover {
-  top: auto;
-  bottom: calc(100% + 18px);
-  left: 0;
-  transform: none;
+/* Fix: statt eines Popovers (position:absolute) klappt der Feedback-
+   Bereich wie die Volltextsuche in import.js (#search-bar) in normalem
+   Seitenfluss auf - robuster bei jeder Bildschirmbreite, kein Clipping
+   durch overflow auf Vorfahren-Elementen möglich. Sitzt als Geschwister-
+   Element VOR <footer id="site-footer"> im DOM (siehe ensureFeedbackPanel
+   in footer.js), erscheint dadurch automatisch oberhalb von dessen
+   Trennlinie (border-top), ohne dass extra Positionierung nötig wäre. */
+.footer-feedback-panel {
+  position: relative;
+  margin-top: 3rem;
+  padding: 1.5rem 2.75rem 1.5rem 1.5rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  font-size: 0.9rem;
 }
 
-.feedback-popover .popover-arrow {
-  top: auto;
-  bottom: -7px;
-  left: 12px;
-  transform: rotate(225deg);
+.footer-feedback-panel label {
+  margin-bottom: 1.25rem;
 }
 
-/* Backlog #75: Embed-Snippet-Popover - gleiches Trigger-/Öffnet-nach-oben-
-   Muster wie .footer-feedback/.feedback-popover direkt darüber. */
+.footer-feedback-panel button[type="submit"] {
+  width: 100%;
+}
+
+/* Gleiches Muster wie .jobs-bar-close (import.js/style.css) - Schließen-
+   Kreuz oben rechts im Panel. */
+.footer-feedback-panel-close {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--color-text-muted);
+  cursor: pointer;
+}
+
+.footer-feedback-panel-close:hover {
+  color: var(--color-accent);
+}
+
+/* Nur wenn das Panel tatsächlich sichtbar ist, übernimmt SEIN margin-top
+   den Abstand zum Seiteninhalt darüber - sonst stünden bei geöffnetem
+   Panel zwei Abstände (Panel- + site-footer-margin-top) hintereinander.
+   Ist das Panel (wie im Regelfall) unsichtbar/nicht vorhanden, bleibt der
+   ursprüngliche Abstand von .site-footer selbst unverändert bestehen. */
+.footer-feedback-panel:not(.hidden) + .site-footer {
+  margin-top: 1rem;
+}
+
+/* Backlog #75: Embed-Snippet-Popover - bleibt bewusst beim Popover-Muster
+   (Trigger-Button + nach oben öffnendes .popover), da hier kein Clipping-
+   Risiko besteht wie beim Feedback-Bereich oben. */
 .footer-embed {
   position: relative;
   display: inline-flex;
