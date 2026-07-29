@@ -209,6 +209,7 @@ class KeyTermsOut(BaseModel):
 
 class VersionOut(BaseModel):
     version: str
+    embed_enabled: bool = False
 
 
 class TurnstileConfigOut(BaseModel):

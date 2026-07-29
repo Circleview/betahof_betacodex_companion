@@ -2526,6 +2526,58 @@ def test_get_version_returns_a_string(client):
     assert response.json()["version"]
 
 
+# Backlog #75: Embed-Snippet für die Konversationsansicht. Ohne gesetztes
+# EMBED_ENABLED (Standardfall) bleibt /embed.html unerreichbar und der Footer-
+# Link unsichtbar - analog zum Early-Access-Muster. Das deckt sich implizit
+# mit allen anderen Tests in dieser Datei, die den Wert nie setzen.
+
+
+def test_version_reports_embed_disabled_by_default(client):
+    response = client.get("/api/version")
+    assert response.json()["embed_enabled"] is False
+
+
+def test_version_reports_embed_enabled_when_flag_set(client, monkeypatch):
+    monkeypatch.setenv("EMBED_ENABLED", "true")
+    response = client.get("/api/version")
+    assert response.json()["embed_enabled"] is True
+
+
+def test_embed_page_returns_404_by_default(anon_client):
+    response = anon_client.get("/embed.html")
+    assert response.status_code == 404
+
+
+def test_embed_page_reachable_when_flag_set(anon_client, monkeypatch):
+    monkeypatch.setenv("EMBED_ENABLED", "true")
+    response = anon_client.get("/embed.html")
+    assert response.status_code == 200
+    assert 'id="question-form"' in response.text
+
+
+def test_embed_page_allows_framing_only_when_flag_set(anon_client, monkeypatch):
+    monkeypatch.setenv("EMBED_ENABLED", "true")
+    response = anon_client.get("/embed.html")
+    assert "X-Frame-Options" not in response.headers
+    assert "frame-ancestors *" in response.headers["Content-Security-Policy"]
+
+
+def test_embed_page_stays_denied_when_flag_unset_even_if_file_requested(anon_client):
+    # /embed.html liefert zwar 404, aber die Sicherheits-Header-Middleware
+    # greift trotzdem VOR der Route - stellt sicher, dass ein versehentlich
+    # falsch konfigurierter Zustand nie "halb offen" ist.
+    response = anon_client.get("/embed.html")
+    assert response.headers["X-Frame-Options"] == "DENY"
+    assert "frame-ancestors 'none'" in response.headers["Content-Security-Policy"]
+
+
+def test_other_pages_stay_denied_even_when_embed_enabled(client, monkeypatch):
+    monkeypatch.setenv("EMBED_ENABLED", "true")
+    response = client.get("/")
+    assert response.headers["X-Frame-Options"] == "DENY"
+    assert "frame-ancestors 'none'" in response.headers["Content-Security-Policy"]
+
+
 def test_get_turnstile_config_returns_configured_site_key(client, monkeypatch):
     monkeypatch.setattr(main_module, "TURNSTILE_SITE_KEY", "1x00000000000000000000AA")
 

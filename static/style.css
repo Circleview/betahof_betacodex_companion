@@ -1236,6 +1236,25 @@ body:not(.chat-started) #question-form {
   display: block;
 }
 
+/* Backlog #75: kurzer visueller Hinweis für den ?source=<id>-Deep-Link (z.B.
+   aus dem Embed-Widget oder von Zitaten in der Konversation) - zeigt an,
+   WELCHE der ggf. vielen sichtbaren Quellen gerade angesprungen wurde, ohne
+   (anders als der ?edit=-Deep-Link) den Bearbeitungsmodus zu öffnen. Die
+   Klasse entfernt sich selbst wieder über den animationend-Listener in
+   import.js, sobald die Animation einmal durchgelaufen ist. */
+#source-list li.source-row.source-highlight-flash {
+  animation: source-highlight-flash 2s ease-out;
+}
+
+@keyframes source-highlight-flash {
+  0%, 15% {
+    box-shadow: inset 0 0 0 2px var(--color-accent);
+  }
+  100% {
+    box-shadow: inset 0 0 0 2px transparent;
+  }
+}
+
 #source-list li.author-marker {
   border-bottom: none;
   padding: 1.25rem 0 0.3rem;
@@ -2484,6 +2503,13 @@ details a {
   #reindex-bereich {
     display: none !important;
   }
+
+  /* Backlog #75: Embed-Snippet ist für die Website-Pflege am Desktop gedacht
+     (Copy-Paste in fremden HTML-Code) - auf Mobile ohnehin kaum sinnvoll
+     nutzbar, deshalb dort ausgeblendet. */
+  .footer-embed {
+    display: none;
+  }
 }
 
 .popover label {
@@ -2589,4 +2615,66 @@ details a {
   bottom: -7px;
   left: 12px;
   transform: rotate(225deg);
+}
+
+/* Backlog #75: Embed-Snippet-Popover - gleiches Trigger-/Öffnet-nach-oben-
+   Muster wie .footer-feedback/.feedback-popover direkt darüber. */
+.footer-embed {
+  position: relative;
+  display: inline-flex;
+  flex-direction: column;
+}
+
+.footer-embed > .link-button {
+  color: var(--color-text-muted);
+  font-weight: inherit;
+  font-size: inherit;
+  text-decoration: none;
+}
+
+.footer-embed > .link-button:hover {
+  color: var(--color-accent);
+}
+
+.embed-popover {
+  top: auto;
+  bottom: calc(100% + 18px);
+  left: 0;
+  transform: none;
+}
+
+.embed-popover .popover-arrow {
+  top: auto;
+  bottom: -7px;
+  left: 12px;
+  transform: rotate(225deg);
+}
+
+.embed-popover-heading {
+  margin-top: 0;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.embed-popover label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.embed-popover input[type="number"] {
+  width: 5rem;
+}
+
+.embed-snippet {
+  width: 100%;
+  min-height: 4.5rem;
+  font-family: monospace;
+  font-size: 0.8rem;
+  resize: vertical;
+}
+
+.embed-popover button[type="button"]:last-child {
+  width: 100%;
 }

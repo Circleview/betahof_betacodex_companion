@@ -2,6 +2,10 @@ import { t, getLang, initI18n } from '/i18n.js';
 import { createTurnstileWidget } from '/turnstile.js';
 
 let currentVersion = '';
+// Backlog #75: Feature-Schalter serverseitig (EMBED_ENABLED-Env), damit der
+// Footer-Link auch während der Early-Access-Testphase komplett unsichtbar
+// bleibt - siehe app/main.py get_version().
+let embedEnabled = false;
 
 function buildLink(href, text, className) {
   const a = document.createElement('a');
@@ -135,11 +139,98 @@ function buildFeedbackWidget() {
   return wrapper;
 }
 
+// Backlog #75: Popover fürs Embed-Snippet - gleiches Muster wie
+// buildFeedbackWidget() (Trigger-Button öffnet ein Popover, Klick außerhalb
+// schließt es). Nur die Breite ist konfigurierbar (Höhe bleibt fix), da
+// ausschließlich die Breite vom Nutzer als anpassbar gewünscht wurde - eine
+// schmale Standardbreite unter der 900px-Schwelle, ab der die Quellen-
+// Sidebar im Embed erscheint (siehe static/style.css), passt für die
+// meisten Einbettungs-Szenarien (z.B. eine Seitenspalte).
+function buildEmbedSnippet(width) {
+  const safeWidth = Number.isFinite(width) && width > 0 ? Math.round(width) : 480;
+  return (
+    `<iframe src="${window.location.origin}/embed.html" width="${safeWidth}" height="600" ` +
+    'style="border:0" loading="lazy" title="BetaCodex Companion"></iframe>'
+  );
+}
+
+function buildEmbedWidget() {
+  const wrapper = document.createElement('span');
+  wrapper.className = 'footer-embed';
+
+  const trigger = document.createElement('button');
+  trigger.type = 'button';
+  trigger.className = 'link-button';
+  trigger.textContent = t('footer.embed');
+  wrapper.appendChild(trigger);
+
+  const popover = document.createElement('div');
+  popover.className = 'popover embed-popover hidden';
+  const arrow = document.createElement('div');
+  arrow.className = 'popover-arrow';
+  popover.appendChild(arrow);
+
+  const heading = document.createElement('p');
+  heading.className = 'embed-popover-heading';
+  heading.textContent = t('footer.embedHeading');
+  popover.appendChild(heading);
+
+  const widthLabel = document.createElement('label');
+  const widthLabelSpan = document.createElement('span');
+  widthLabelSpan.textContent = t('footer.embedWidthLabel');
+  widthLabel.appendChild(widthLabelSpan);
+  const widthInput = document.createElement('input');
+  widthInput.type = 'number';
+  widthInput.min = '280';
+  widthInput.step = '10';
+  widthInput.value = '480';
+  widthLabel.appendChild(widthInput);
+  popover.appendChild(widthLabel);
+
+  const snippetArea = document.createElement('textarea');
+  snippetArea.readOnly = true;
+  snippetArea.className = 'embed-snippet';
+  snippetArea.value = buildEmbedSnippet(480);
+  popover.appendChild(snippetArea);
+
+  widthInput.addEventListener('input', () => {
+    snippetArea.value = buildEmbedSnippet(parseInt(widthInput.value, 10));
+  });
+
+  const copyBtn = document.createElement('button');
+  copyBtn.type = 'button';
+  copyBtn.textContent = t('footer.embedCopyButton');
+  copyBtn.addEventListener('click', async () => {
+    try {
+      await navigator.clipboard.writeText(snippetArea.value);
+      copyBtn.textContent = t('footer.embedCopied');
+    } catch (err) {
+      snippetArea.select();
+    } finally {
+      setTimeout(() => {
+        copyBtn.textContent = t('footer.embedCopyButton');
+      }, 2000);
+    }
+  });
+  popover.appendChild(copyBtn);
+
+  wrapper.appendChild(popover);
+
+  trigger.addEventListener('click', (e) => {
+    e.stopPropagation();
+    popover.classList.toggle('hidden');
+  });
+
+  return wrapper;
+}
+
 document.addEventListener('click', (e) => {
-  const container = document.querySelector('.footer-feedback');
-  if (container && !container.contains(e.target)) {
-    container.querySelector('.popover')?.classList.add('hidden');
-  }
+  ['.footer-feedback', '.footer-embed'].forEach((selector) => {
+    const container = document.querySelector(selector);
+    if (container && !container.contains(e.target)) {
+      container.querySelector('.popover')?.classList.add('hidden');
+    }
+  });
 });
 
 // Der Footer sieht auf jeder Seite identisch aus - der Hinweistext steht
@@ -184,15 +275,16 @@ function renderFooter() {
     t('footer.privacyPolicy')
   );
 
-  footer.replaceChildren(
-    taglineSpan,
-    buildFeedbackWidget(),
+  const children = [taglineSpan, buildFeedbackWidget()];
+  if (embedEnabled) children.push(buildEmbedWidget());
+  children.push(
     buildLink('https://betacodex.org', 'betacodex.org'),
     versionLink,
     buildLink('https://www.betahof.de/beratung/', 'Beta Hof'),
     buildLink('https://www.betahof.de/impressum/', t('footer.impressum')),
     privacyPolicyLink,
   );
+  footer.replaceChildren(...children);
 }
 
 export async function initFooter() {
@@ -205,8 +297,10 @@ export async function initFooter() {
     const res = await fetch('/api/version');
     const data = await res.json();
     currentVersion = data.version;
+    embedEnabled = !!data.embed_enabled;
   } catch (err) {
     currentVersion = '';
+    embedEnabled = false;
   }
 
   renderFooter();

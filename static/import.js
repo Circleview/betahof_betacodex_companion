@@ -2837,6 +2837,23 @@ if (deepLinkEditId && hasPflegerRole() && allSources.some((s) => s.id === deepLi
   });
 }
 
+// Deep-Link auf eine einzelne Quelle (Backlog #75: u.a. aus dem Embed-Widget,
+// aber für ALLE Besucher:innen nutzbar) - anders als ?edit= kein Rollen-Gate
+// und kein Bearbeitungsmodus (activeEditId bleibt unverändert), nur Scroll +
+// kurze Hervorhebung. Existiert die ID nicht (falsch/gelöscht), passiert
+// nichts - es bleibt bei der normalen ungefilterten Übersicht.
+const deepLinkSourceId = new URLSearchParams(window.location.search).get('source');
+if (deepLinkSourceId && allSources.some((s) => s.id === deepLinkSourceId)) {
+  ensureSourceVisible(deepLinkSourceId);
+  renderSourceList(currentSourceList);
+  requestAnimationFrame(() => {
+    const row = document.querySelector(`#source-list [data-source-id="${deepLinkSourceId}"]`);
+    row?.scrollIntoView({ block: 'center' });
+    row?.classList.add('source-highlight-flash');
+    row?.addEventListener('animationend', () => row.classList.remove('source-highlight-flash'), { once: true });
+  });
+}
+
 // Deep-Link aus der Konversationsansicht (Autor:innen-Links an Zitaten):
 // /import.html?author=<name> filtert direkt auf die Texte dieser Person und
 // zeigt ihr Profil (inkl. Vita) im Info-Panel an.

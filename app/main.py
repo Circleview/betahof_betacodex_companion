@@ -159,14 +159,28 @@ CONTENT_SECURITY_POLICY = (
     "frame-ancestors 'none'"
 )
 
+# Backlog #75: einzige Seite, die sich absichtlich in einem iframe auf
+# fremden Domains einbetten lassen soll (Embed-Widget) - jede andere Seite
+# bleibt beim strikten frame-ancestors 'none'/X-Frame-Options: DENY.
+EMBED_CONTENT_SECURITY_POLICY = CONTENT_SECURITY_POLICY.replace(
+    "frame-ancestors 'none'", "frame-ancestors *"
+)
+_EMBED_FRAMEABLE_PATHS = {"/embed.html"}
+
 
 @app.middleware("http")
 async def add_security_headers(request: Request, call_next):
     response = await call_next(request)
     response.headers["X-Content-Type-Options"] = "nosniff"
-    response.headers["X-Frame-Options"] = "DENY"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
-    response.headers["Content-Security-Policy"] = CONTENT_SECURITY_POLICY
+    if request.url.path in _EMBED_FRAMEABLE_PATHS and os.environ.get("EMBED_ENABLED", "") == "true":
+        # X-Frame-Options bewusst NICHT setzen: moderne Browser ignorieren es
+        # zugunsten von frame-ancestors, ältere würden trotz gelockertem CSP
+        # sonst weiterhin blocken.
+        response.headers["Content-Security-Policy"] = EMBED_CONTENT_SECURITY_POLICY
+    else:
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["Content-Security-Policy"] = CONTENT_SECURITY_POLICY
     # Backlog #115: vor dem öffentlichen Livegang soll diese Instanz nicht in
     # Suchmaschinen-/KI-Indizes auftauchen - deckt (anders als die HTML-
     # Meta-Tags) auch Nicht-HTML-Antworten ab. Vor dem eigentlichen Go-Live
@@ -236,7 +250,21 @@ def submit_early_access_password(
 
 @app.get("/api/version", response_model=VersionOut)
 def get_version():
-    return VersionOut(version=APP_VERSION)
+    return VersionOut(
+        version=APP_VERSION,
+        embed_enabled=os.environ.get("EMBED_ENABLED", "") == "true",
+    )
+
+
+@app.get("/embed.html")
+def get_embed_page():
+    # Backlog #75: eigener Schalter statt allein über frame-ancestors/CSP zu
+    # steuern - während der aktuellen Early-Access-Testphase soll das
+    # öffentlich einbettbare Widget noch gar nicht existieren, nicht nur
+    # gesperrt sein. Ohne gesetzten Wert bleibt die Seite unerreichbar.
+    if os.environ.get("EMBED_ENABLED", "") != "true":
+        raise HTTPException(404)
+    return FileResponse(STATIC_DIR / "embed.html")
 
 
 @app.get("/api/turnstile-config", response_model=TurnstileConfigOut)

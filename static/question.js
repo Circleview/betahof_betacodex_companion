@@ -42,6 +42,18 @@ const EDIT_ICON =
   '<path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z"></path>' +
   "</svg>";
 
+// Backlog #75: eigenes Icon fürs reine Ansehen (statt EDIT_ICON zweckzu-
+// entfremden, was "Bearbeiten" suggerieren würde) und statt EXTERNAL_LINK_ICON
+// (steht bereits für den externen Original-Link direkt daneben) - ein Auge
+// macht den Unterschied "unsere Quellenübersicht ansehen" vs. "Originalquelle
+// öffnen" auf einen Blick klar.
+const VIEW_ICON =
+  '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" ' +
+  'stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
+  '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8Z"></path>' +
+  '<circle cx="12" cy="12" r="3"></circle>' +
+  "</svg>";
+
 function hasPflegerRole() {
   return hasRole('quellen_pfleger');
 }
@@ -66,6 +78,32 @@ function appendEditSourceLink(container, sourceId) {
   a.setAttribute('aria-label', label);
   a.innerHTML = EDIT_ICON;
   container.appendChild(a);
+}
+
+// Backlog #75: Gegenstück zu appendEditSourceLink für alle anderen
+// Besucher:innen (inkl. anonym, inkl. Embed-Widget) - öffnet dieselbe
+// Quellenübersicht, aber nur zum Ansehen statt im Bearbeiten-Modus.
+// target="_blank" bricht auch innerhalb eines <iframe>-Embeds zuverlässig in
+// einen echten Browser-Tab auf der normalen Website aus.
+function appendViewSourceLink(container, sourceId) {
+  const a = document.createElement('a');
+  a.href = `/import.html?source=${encodeURIComponent(sourceId)}`;
+  a.target = '_blank';
+  a.rel = 'noopener noreferrer';
+  a.className = 'external-link';
+  const label = t('common.viewSource');
+  a.title = label;
+  a.setAttribute('aria-label', label);
+  a.innerHTML = VIEW_ICON;
+  container.appendChild(a);
+}
+
+function appendSourceLink(container, sourceId) {
+  if (hasPflegerRole()) {
+    appendEditSourceLink(container, sourceId);
+  } else {
+    appendViewSourceLink(container, sourceId);
+  }
 }
 
 function formatYear(dateStr) {
@@ -175,7 +213,7 @@ function buildSourceInfo(s, highlight) {
     a.innerHTML = EXTERNAL_LINK_ICON;
     excerpt.appendChild(a);
   }
-  appendEditSourceLink(excerpt, s.source_id);
+  appendSourceLink(excerpt, s.source_id);
 
   return wrapper;
 }
@@ -221,7 +259,7 @@ function buildSourcesList(sources) {
       a.innerHTML = EXTERNAL_LINK_ICON;
       p.appendChild(a);
     }
-    appendEditSourceLink(p, s.source_id);
+    appendSourceLink(p, s.source_id);
     details.appendChild(p);
     li.appendChild(details);
     sourcesList.appendChild(li);

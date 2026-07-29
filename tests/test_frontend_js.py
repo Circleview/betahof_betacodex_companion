@@ -131,3 +131,36 @@ def test_regression_edit_panel_form_is_appended():
         "buildEditPanel() muss das gebaute <form>-Element per li.appendChild(form) "
         "an das zurückgegebene <li> anhängen, sonst bleibt das Bearbeiten-Panel leer."
     )
+
+
+def test_regression_view_and_edit_source_links_are_mutually_exclusive():
+    """Gezielter Regressionstest für Backlog #75: appendSourceLink() muss pro
+    Quelle genau EINEN der beiden Links einhängen (Bearbeiten für Pfleger:innen,
+    Ansehen für alle anderen) - nie direkt appendEditSourceLink(), sonst sähen
+    anonyme Besucher:innen (und das Embed-Widget) gar keinen Quellenlink mehr."""
+    js_source = (STATIC_DIR / "question.js").read_text()
+
+    assert "appendSourceLink(excerpt, s.source_id)" in js_source
+    assert "appendSourceLink(p, s.source_id)" in js_source
+    assert "appendEditSourceLink(excerpt, s.source_id)" not in js_source
+    assert "appendEditSourceLink(p, s.source_id)" not in js_source
+
+    match = re.search(r"function appendSourceLink\([^)]*\)\s*\{", js_source)
+    assert match, "appendSourceLink wurde nicht gefunden."
+    start = match.end() - 1
+    depth = 0
+    end = None
+    for i in range(start, len(js_source)):
+        if js_source[i] == "{":
+            depth += 1
+        elif js_source[i] == "}":
+            depth -= 1
+            if depth == 0:
+                end = i + 1
+                break
+    body = js_source[start:end]
+    assert re.search(r"if\s*\(\s*hasPflegerRole\(\)\s*\)", body), (
+        "appendSourceLink muss zwischen Pfleger:innen und allen anderen unterscheiden."
+    )
+    assert "appendEditSourceLink(container, sourceId)" in body
+    assert "appendViewSourceLink(container, sourceId)" in body
