@@ -89,23 +89,81 @@ Ein Online-Experte / Chatbot, der Fragen zum BetaCodex beantwortet – aber **nu
 
 ## 2. Funktionsprinzip (RAG)
 
-Retrieval Augmented Generation, in zwei Phasen:
+BetaCodex Companion ist ein **RAG-System** (Retrieval-Augmented Generation)
+– ein Chatbot, der Fragen ausschließlich auf Basis der eigenen, kuratierten
+Quellen beantwortet, nicht aus dem allgemeinen Wissen des Sprachmodells.
+Jede Antwort ist mit Belegstellen aus den echten Quellen zitiert. Das ist
+der zentrale Unterschied zu einem gewöhnlichen Chatbot: Statt "irgendwas
+Plausibles" zu generieren, muss das Modell seine Antwort auf konkrete,
+nachprüfbare Textstellen stützen.
 
-**Phase A – Ingestion (Import)**
-1. Quelle wird über URL, Upload oder Texteingabe hinzugefügt.
-2. Reiner Text wird extrahiert (bei Video: Transkript).
-3. Text wird in Abschnitte ("Chunks") zerlegt.
-4. Jeder Chunk erhält **Metadaten zur Herkunft** (Quell-ID, Titel, Autor, Datum, URL, ggf. Zeitstempel/Seitenzahl).
-5. Chunks werden als Embeddings in einer Vektordatenbank abgelegt.
+Es gibt zwei getrennte Abläufe: Import (Quellen ins System bringen) und
+Fragen stellen (den Chat nutzen).
 
-**Phase B – Retrieval & Antwort**
-1. Nutzerfrage wird ebenfalls als Embedding dargestellt.
-2. Die inhaltlich ähnlichsten Chunks werden gesucht (Top-k).
-3. Nur diese Chunks gehen zusammen mit der Frage und einem strikten System-Prompt an das Sprachmodell.
-4. Das Modell antwortet ausschließlich auf dieser Basis und referenziert die verwendeten Chunks.
-5. Das Frontend löst die Referenzen zu klickbaren Quellenangaben auf.
+**Phase A – Import**
+1. **Text holen** – URL, PDF, YouTube-Video oder Audiodatei werden
+   angegeben; `app/extraction.py` holt sich den reinen Text daraus
+   (Webseiten-Scraping, PDF-Textextraktion, YouTube-Transkript, oder bei
+   Audio: Transkription über OpenAI).
+2. **Zerlegen (Chunking)** – Der Text wird in kleine Abschnitte von je
+   ~900 Zeichen zerlegt (`app/chunking.py`), mit etwas Überlappung
+   zwischen den Stücken, damit an den Schnittstellen kein Sinn verloren
+   geht. Ein Buch wird so zu vielleicht 200 einzelnen Chunks. Jeder Chunk
+   erhält zusätzlich **Metadaten zur Herkunft** (Quell-ID, Titel, Autor,
+   Datum, URL, ggf. Zeitstempel/Seitenzahl).
+3. **Embedding erzeugen** – Für jeden Chunk wird ein Embedding berechnet
+   (siehe Kasten unten) und zusammen mit dem Original-Text in **ChromaDB**
+   gespeichert, einer spezialisierten Datenbank für genau solche Vektoren.
 
-Der Quellennachweis ist keine Zusatzfunktion, sondern fällt aus dieser Architektur zwangsläufig ab – vorausgesetzt, die Metadaten werden von Anfang an konsequent mitgeführt.
+**Phase B – Frage stellen**
+1. Eine Frage wird gestellt, z. B. "Was ist ein Flip?".
+2. Die Frage wird **genauso** in ein Embedding umgewandelt wie vorher die
+   Chunks.
+3. ChromaDB durchsucht alle gespeicherten Chunk-Embeddings und findet die,
+   die dem Frage-Embedding am ähnlichsten sind – das ist die eigentliche
+   Suche (Retrieval).
+4. Die relevantesten Chunks (roher Text, keine Zusammenfassung) werden
+   zusammen mit der Frage an das Sprachmodell geschickt, mit der
+   Anweisung: Nur auf Basis dieser Textstellen antworten und sie zitieren.
+5. Das Modell generiert die Antwort, die als Stream Wort für Wort im Chat
+   erscheint, mit `[1]`, `[2]` usw. als klickbare Verweise auf die
+   tatsächlich verwendeten Chunks.
+
+Der Quellennachweis ist keine Zusatzfunktion, sondern fällt aus dieser
+Architektur zwangsläufig ab – vorausgesetzt, die Metadaten werden von
+Anfang an konsequent mitgeführt.
+
+Wichtig: Der KI-Anteil steckt an zwei unterschiedlichen Stellen – dem
+lokalen Embedding-Modell (Suche) und der Anthropic-API (Textgenerierung).
+Das sind zwei separate Systeme mit unterschiedlichen Aufgaben.
+
+### Was ist ein Embedding?
+
+Ein Embedding ist eine Liste von Zahlen (bei uns 768 Stück), die die
+**Bedeutung** eines Textstücks als Punkt in einem hochdimensionalen Raum
+darstellt. Die Kernidee: Texte mit ähnlicher Bedeutung landen nah
+beieinander, egal wie unterschiedlich die Formulierung ist.
+
+Ein einfaches Bild: Stell dir eine Landkarte vor, auf der nicht
+geografische Nähe, sondern *inhaltliche* Nähe die Position bestimmt.
+"Führung ohne Weisungsbefugnis" und "Leadership without formal authority"
+würden auf dieser Karte fast am selben Ort landen – trotz komplett
+unterschiedlicher Wörter und sogar unterschiedlicher Sprache. "Führung"
+und "Kartoffelsalat" wären hingegen weit auseinander.
+
+Konkret bei uns:
+- Das Modell heißt `intfloat/multilingual-e5-base` und läuft **lokal** auf
+  dem Server (kein API-Call, keine Kosten pro Anfrage) – trainiert auf
+  vielen Sprachen gleichzeitig, deshalb funktioniert die Suche auch über
+  Sprachgrenzen hinweg (deutsche Quelle, englische Frage).
+- "Ähnlich" wird mathematisch über den **Winkel zwischen zwei Vektoren**
+  gemessen (Kosinus-Ähnlichkeit) – je kleiner der Winkel, desto ähnlicher
+  die Bedeutung.
+- Das Embedding-Modell "versteht" nichts im menschlichen Sinn – es hat
+  beim Training gelernt, welche Wortkombinationen in ähnlichen Kontexten
+  auftauchen, und bildet das auf Zahlen ab. Genau diese Zahlen sind es,
+  die ChromaDB blitzschnell vergleichen kann, ganz ohne dass jemals ein
+  Sprachmodell den kompletten Quellenbestand "lesen" müsste.
 
 ---
 
