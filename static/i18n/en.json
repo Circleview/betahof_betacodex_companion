@@ -15,6 +15,12 @@
   "common.sourceCountMany": "{count} sources",
   "common.restrictedBadge": "Protected",
   "common.urlUnreachable": "Original URL unreachable",
+  "common.urlErrorHttp": "HTTP error {code}",
+  "common.urlErrorTimeout": "Request timed out",
+  "common.urlErrorDns": "Domain could not be resolved (DNS error)",
+  "common.urlErrorSsl": "SSL/TLS error while connecting",
+  "common.urlErrorConnection": "Could not connect to the server",
+  "common.urlErrorUnknown": "Unknown error while checking the link",
   "common.skipToContent": "Skip to content",
 
   "index.brandName": "BetaCodex Companion",

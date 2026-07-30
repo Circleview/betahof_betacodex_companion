@@ -1937,6 +1937,18 @@ body:not(.chat-started) #question-form {
   color: var(--color-warning);
 }
 
+/* Backlog #163: Statuszeile im Bearbeiten-Panel mit dem konkreten
+   Fehlergrund einer nicht erreichbaren Quelle (siehe import.js:
+   unreachableSourceInfo/urlErrorText) - gleiche Warnfarbe wie das
+   Warn-Icon, gleiche Größe wie bestehende Meta-Texte im Formular
+   (z.B. .relevance-slider-label-row). */
+.url-health-status {
+  color: var(--color-warning);
+  font-size: 0.85rem;
+  margin-top: -0.6rem;
+  margin-bottom: 0.9rem;
+}
+
 #typ-jobs {
   position: relative;
 }

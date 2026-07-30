@@ -201,6 +201,7 @@ class UrlCheckOut(BaseModel):
     has_url: bool
     reachable: Optional[bool] = None
     status_code: Optional[int] = None
+    reason_code: Optional[str] = None
 
 
 class SummaryOut(BaseModel):

@@ -135,8 +135,32 @@ let currentSortMode = 'author';
 // ersetzt dabei die Alphabet-Sprungleiste (siehe updateAlphabetJumpBar).
 let searchBarOpen = false;
 const pendingDeletions = new Map();
-const unreachableSourceIds = new Set();
+// Backlog #163: Map statt Set, damit neben der reinen Unreachable-
+// Markierung auch der konkrete Fehlergrund (reason_code/status_code aus
+// GET /api/sources/{id}/check-url) für Tooltip + Bearbeiten-Panel
+// verfügbar ist.
+const unreachableSourceInfo = new Map();
 const expandedSourceIds = new Set();
+
+// Backlog #163: reason_code (app/monitoring.py) auf übersetzten,
+// menschenlesbaren Text abbilden - bei "http_error" wird der konkrete
+// Statuscode eingesetzt.
+function urlErrorText(info) {
+  switch (info.reasonCode) {
+    case 'http_error':
+      return t('common.urlErrorHttp', { code: info.statusCode });
+    case 'timeout':
+      return t('common.urlErrorTimeout');
+    case 'dns_error':
+      return t('common.urlErrorDns');
+    case 'ssl_error':
+      return t('common.urlErrorSsl');
+    case 'connection_error':
+      return t('common.urlErrorConnection');
+    default:
+      return t('common.urlErrorUnknown');
+  }
+}
 
 // Wird bei jedem Wechsel auf eine inhaltlich NEUE Liste aufgerufen (neuer
 // Filter, Filter aufgehoben) - nicht aber bei einem bloßen Re-Render der
@@ -1021,6 +1045,17 @@ function buildEditPanel(s, options = {}) {
   urlField.label.insertBefore(openUrlBtn, urlInput);
   form.appendChild(urlField.label);
 
+  // Backlog #163: konkreter Fehlergrund als Statuszeile direkt im
+  // Bearbeiten-Panel - im Gegensatz zum Tooltip auf dem Warn-Icon (nur
+  // Hover, auf Mobile kaum nutzbar) hier immer sichtbar, genau dort, wo
+  // der Link auch repariert wird.
+  if (unreachableSourceInfo.has(s.id)) {
+    const healthStatus = document.createElement('p');
+    healthStatus.className = 'url-health-status';
+    healthStatus.textContent = `${t('common.urlUnreachable')}: ${urlErrorText(unreachableSourceInfo.get(s.id))}`;
+    form.appendChild(healthStatus);
+  }
+
   const listenUrlField = buildFieldLabel('import.fieldListenUrl', 'listen-url', s.listen_url, 'url');
   const listenUrlInput = listenUrlField.input;
   if (s.has_audio) {
@@ -1792,7 +1827,7 @@ function renderSourceList(sources, options = {}) {
 
     const li = document.createElement('li');
     li.className = 'source-row';
-    if (unreachableSourceIds.has(s.id)) {
+    if (unreachableSourceInfo.has(s.id)) {
       li.classList.add('source-row--unreachable');
     }
     if (extraGapAfterAuthorGroup) {
@@ -1864,11 +1899,17 @@ function renderSourceList(sources, options = {}) {
     const actions = document.createElement('span');
     actions.className = 'source-row-actions';
 
-    if (unreachableSourceIds.has(s.id)) {
+    if (unreachableSourceInfo.has(s.id)) {
       const warning = document.createElement(hasPflegerRole() ? 'button' : 'span');
       if (hasPflegerRole()) warning.type = 'button';
       warning.className = 'icon-button warning-icon';
-      const warnLabel = t('common.urlUnreachable');
+      // Backlog #163: für Pfleger:innen/Admins (einzige, die diese Info
+      // überhaupt zu sehen bekommen, siehe unreachableSourceInfo) den
+      // konkreten Fehlergrund direkt im Tooltip ergänzen.
+      const info = unreachableSourceInfo.get(s.id);
+      const warnLabel = hasPflegerRole()
+        ? `${t('common.urlUnreachable')} – ${urlErrorText(info)}`
+        : t('common.urlUnreachable');
       warning.title = warnLabel;
       warning.setAttribute('aria-label', warnLabel);
       warning.innerHTML = WARNING_ICON;
@@ -1997,7 +2038,7 @@ async function checkUrlHealth(sources) {
     if (!s.url) {
       // URL wurde entfernt (z.B. beim Bearbeiten) - eine evtl. alte
       // Unreachable-Markierung ist dann nicht mehr gültig.
-      if (unreachableSourceIds.delete(s.id)) {
+      if (unreachableSourceInfo.delete(s.id)) {
         renderSourceList(currentSourceList);
       }
       return;
@@ -2007,15 +2048,24 @@ async function checkUrlHealth(sources) {
       if (!res.ok) return;
       const data = await res.json();
       const isUnreachable = data.has_url && data.reachable === false;
-      const wasUnreachable = unreachableSourceIds.has(s.id);
+      const wasUnreachable = unreachableSourceInfo.has(s.id);
       // Sowohl neu erkannte als auch (nach einer URL-Reparatur) nicht mehr
       // bestehende Unreachable-Zustände müssen sofort sichtbar werden -
-      // vorher wurde eine Markierung nie wieder entfernt.
-      if (isUnreachable && !wasUnreachable) {
-        unreachableSourceIds.add(s.id);
-        renderSourceList(currentSourceList);
-      } else if (!isUnreachable && wasUnreachable) {
-        unreachableSourceIds.delete(s.id);
+      // vorher wurde eine Markierung nie wieder entfernt. Backlog #163:
+      // zusätzlich neu rendern, wenn sich bei weiterhin bestehender
+      // Unreachable-Markierung der Fehlergrund geändert hat (z.B. von
+      // DNS-Fehler zu HTTP 404 nach einer Domain-Migration).
+      if (isUnreachable) {
+        const newInfo = { reasonCode: data.reason_code, statusCode: data.status_code };
+        const oldInfo = unreachableSourceInfo.get(s.id);
+        const changed =
+          !oldInfo ||
+          oldInfo.reasonCode !== newInfo.reasonCode ||
+          oldInfo.statusCode !== newInfo.statusCode;
+        unreachableSourceInfo.set(s.id, newInfo);
+        if (changed) renderSourceList(currentSourceList);
+      } else if (wasUnreachable) {
+        unreachableSourceInfo.delete(s.id);
         renderSourceList(currentSourceList);
       }
     } catch (err) {

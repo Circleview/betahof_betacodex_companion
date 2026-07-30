@@ -174,17 +174,8 @@ Begründung: Es kommt auf Sprachqualität und einen schlanken Start an. Die Embe
 
 ## 7. Backlog (bewusst später)
 
-| Thema | Beschreibung |
-|---|---|
-| Wissensgraph / Landkarte | Automatische Vernetzung der Inhalte aus den vorhandenen Embedding-Ähnlichkeiten; Darstellung per D3 oder Cytoscape. **Wichtig:** Schwellenwert für Kanten einbauen (Regler), sonst wird das Netz zum Wollknäuel |
-| Nutzer- & Rechtemanagement: zeitliche Befristung | Freischaltung von Nutzerkonten mit der Rolle "Quellen-Pfleger:in" zeitlich begrenzen (z. B. 1 Jahr, Frist wird bei Freischaltung festgelegt). Das Nutzerkonto-/Rollenmodell selbst existiert bereits (siehe Versionshistorie) |
-| Community Voting (Bedeutungsrang von Quellen) | Nutzer:innen mit der Rolle "Quellen-Pfleger:in" können jede Quelle einmal bewerten (Vote schiebt den Rang der Quelle einen Schritt hoch/runter). Ein Vote pro Nutzer:in und Quelle, änderbar. Die eigene Bewertung ist für die/den Nutzer:in sichtbar, der Durchschnitt aller Bewertungen ("Community Voting") für alle |
-| Autor:innen-Verzeichnis: Empfehlungen & Graph | Das bestehende Autor:innen-Verzeichnis (`app/authors.py`, `/api/authors`) soll später für Leseempfehlungen ähnlicher Autor:innen und für den Aufbau des Wissensgraphen (s. o.) genutzt werden |
-| Kuratierte Aufbereitung | Interessante Takes, Zitate und Impulse ansprechend im Frontend darstellen |
-| Verlinkte Quellen in Dokumenten auswerten | Viele importierte Dokumente verlinken selbst weitere Quellen. Diese Links extrahieren und als Vorschläge für neue Quellen im Index nutzen (automatische Erweiterung des Quellen-Netzwerks) |
-| Neue Rolle "Content Creator" | KI-gestützte Textgenerierung für Social Media/Blog-Beiträge auf Basis der vorhandenen Quellen |
-| CI/CD-Pipeline | Automatisierte Tests + Zero-Downtime-Deployment (ggf. Blue-Green) |
-| Produktiv-Deployment | Server-Umzug, eigenes Hosting jenseits von Dev/Stabil, CI/CD-Anbindung |
+Aktuell keine offenen Themen an dieser Stelle - laufende Backlog-Punkte
+werden im Task-Tracker der Entwicklungssitzungen geführt.
 
 ---
 
@@ -293,9 +284,3 @@ git config core.hooksPath scripts/git-hooks
 ```bash
 ./venv/bin/pytest -v
 ```
-
-### Noch offen (siehe Backlog, Abschnitt 7)
-
-PDF-/YouTube-Import, Design/UI-Politur und echtes Nutzer-/Rechtemanagement
-sind inzwischen umgesetzt (siehe Versionshistorie, Abschnitt 9) - offen sind
-weiterhin die in Abschnitt 7 gelisteten Backlog-Themen.

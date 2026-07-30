@@ -2704,7 +2704,9 @@ def test_check_source_url_reports_reachability(client, monkeypatch):
     source_id = create_res.json()["id"]
 
     monkeypatch.setattr(
-        monitoring, "check_url", lambda url: {"reachable": False, "status_code": 404}
+        monitoring,
+        "check_url",
+        lambda url: {"reachable": False, "status_code": 404, "reason_code": "http_error"},
     )
 
     response = client.get(f"/api/sources/{source_id}/check-url")
@@ -2714,6 +2716,7 @@ def test_check_source_url_reports_reachability(client, monkeypatch):
     assert data["has_url"] is True
     assert data["reachable"] is False
     assert data["status_code"] == 404
+    assert data["reason_code"] == "http_error"
 
 
 def test_check_source_url_without_url_reports_has_url_false(client):
@@ -2723,7 +2726,12 @@ def test_check_source_url_without_url_reports_has_url_false(client):
     response = client.get(f"/api/sources/{source_id}/check-url")
 
     assert response.status_code == 200
-    assert response.json() == {"has_url": False, "reachable": None, "status_code": None}
+    assert response.json() == {
+        "has_url": False,
+        "reachable": None,
+        "status_code": None,
+        "reason_code": None,
+    }
 
 
 def test_check_source_url_without_role_is_forbidden(client, anon_client):
