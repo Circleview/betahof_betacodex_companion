@@ -817,6 +817,22 @@ def _recover_interrupted_processing_jobs() -> None:
 _recover_interrupted_processing_jobs()
 
 
+def _warm_up_local_models() -> None:
+    embeddings.preload_model()
+    vectorstore.preload()
+
+
+# Backlog: erste Frage nach einem Server-Neustart sollte nicht die Ladezeit
+# des lokalen Embedding-Modells (mehrere Sekunden) mittragen müssen - dafür
+# aber auch nicht den Server-Start selbst blockieren (Ziel: Neustarts, von
+# denen Nutzer:innen im besten Fall gar nichts merken). Läuft deshalb im
+# Hintergrund weiter, während der Server schon Anfragen annimmt - trifft
+# eine echte Anfrage zufällig genau die kurze Warm-up-Phase, wartet sie
+# dank des Locks in embeddings._get_model/vectorstore._get_collection auf
+# genau dieses eine Laden, statt selbst ein zweites zu starten.
+threading.Thread(target=_warm_up_local_models, daemon=True).start()
+
+
 def _reindex_all_sources() -> None:
     """Chunked/embedded jede vorhandene Quelle neu (z.B. nach einer
     Änderung an `chunking.chunk_text()`) - `sources.json` selbst bleibt
@@ -1989,7 +2005,7 @@ def _rerank_by_relevance(
     )
 
 
-def _ask_event_stream(question_text, llm_chunks, lang, author_bios, chunk_refs, chunk_docs, local_highlights):
+def _ask_event_stream(question_text, llm_chunks, lang, author_bios, chunk_refs, chunk_docs, query_embedding):
     """Generator für die NDJSON-Stream-Antwort von /api/ask: ein "delta"-
     Event pro neu angekommenem Text-Fragment, am Ende genau ein "done"-Event
     mit der vollständigen (bereits vom Label befreiten) Antwort und den
@@ -2031,13 +2047,21 @@ def _ask_event_stream(question_text, llm_chunks, lang, author_bios, chunk_refs, 
 
     occurrence_highlights = _compute_occurrence_highlights(answer_text, chunk_docs, quotes_by_citation)
     for i, chunk_ref in enumerate(chunk_refs):
+        if occurrence_highlights[i]:
+            chunk_ref.highlighted_texts = occurrence_highlights[i]
+            continue
         # Letzter Ausweg: eine zurückgegebene Quelle, die im finalen
         # Antworttext aus irgendeinem Grund gar nicht per [n] referenziert
         # wird, bekommt trotzdem ein Highlight (gegen die Nutzerfrage
-        # gescort) statt gar keins.
-        chunk_ref.highlighted_texts = occurrence_highlights[i] or (
-            [local_highlights[i]] if local_highlights[i] else []
-        )
+        # gescort) statt gar keins. Bewusst erst HIER (lazy, nach dem
+        # Streaming) statt vorab für alle Chunks berechnet - das lokale
+        # Embedding-Modell separat pro Chunk aufzurufen kostet spürbar Zeit
+        # (Messung: ~2s für 5 Chunks) und wird in der Praxis fast nie
+        # gebraucht, da die meisten zurückgegebenen Chunks auch tatsächlich
+        # zitiert werden (siehe _compute_occurrence_highlights oben, das
+        # denselben Lazy-Ansatz für zitierte Chunks bereits nutzt).
+        local_highlight = _best_local_sentence(chunk_docs[i], query_embedding)
+        chunk_ref.highlighted_texts = [local_highlight] if local_highlight else []
 
     yield json.dumps(
         {
@@ -2093,7 +2117,6 @@ def ask(question: QuestionIn, request: Request, x_lang: str = Header(default=i18
 
     chunk_refs = []
     llm_chunks = []
-    local_highlights = []
     for chunk_id, doc, meta in zip(ids, documents, metadatas):
         # Rückwärtskompatibel lesen: alte, noch nicht neu gespeicherte Chunks
         # haben noch den alten skalaren "author"-Schlüssel statt der Liste.
@@ -2120,10 +2143,6 @@ def ask(question: QuestionIn, request: Request, x_lang: str = Header(default=i18
                 "text": doc,
             }
         )
-        # Baustein A (kostenloses lokales Fallback-Highlighting): schon hier
-        # berechnen, nicht erst wenn ein KI-Zitat fehlschlägt - braucht
-        # dieselben Chunks/Embeddings, die wir gerade ohnehin verarbeiten.
-        local_highlights.append(_best_local_sentence(doc, query_embedding))
 
     # Backlog (2026-07-29): rein chunk-basierte Suche findet für biografische
     # Fragen ("Wer ist X?") keine passenden Textausschnitte, da Autor:innen-
@@ -2142,7 +2161,7 @@ def ask(question: QuestionIn, request: Request, x_lang: str = Header(default=i18
     chunk_docs = [chunk_ref.text for chunk_ref in chunk_refs]
     return StreamingResponse(
         _ask_event_stream(
-            question.question, llm_chunks, x_lang, author_bios or None, chunk_refs, chunk_docs, local_highlights
+            question.question, llm_chunks, x_lang, author_bios or None, chunk_refs, chunk_docs, query_embedding
         ),
         media_type="application/x-ndjson",
     )

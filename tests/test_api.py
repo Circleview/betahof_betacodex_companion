@@ -1257,6 +1257,69 @@ def test_ask_falls_back_to_local_highlight_when_llm_quote_not_found_in_chunk(cli
     ]
 
 
+def test_ask_skips_eager_local_highlight_computation_for_cited_chunks(client, monkeypatch):
+    """Performance-Regression: _best_local_sentence wurde bislang EAGER für
+    JEDEN zurückgegebenen Chunk aufgerufen (mehrere Sekunden zusätzliches
+    lokales Modell-Inference pro Anfrage, gemessen ~2s bei 5 Chunks) - auch
+    wenn der Chunk ohnehin per [n] zitiert und damit schon anderweitig
+    (per KI-Zitat oder dem eigenen Lazy-Fallback von
+    _compute_occurrence_highlights) gehighlightet wurde. Jetzt darf der
+    Aufruf nur noch für tatsächlich UNZITIERTE Chunks passieren - hier gibt
+    es nur einen einzigen, zitierten Chunk, also darf er gar nicht fallen."""
+    call_count = {"n": 0}
+    original = main_module._best_local_sentence
+
+    def counting(*args, **kwargs):
+        call_count["n"] += 1
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(main_module, "_best_local_sentence", counting)
+
+    client.post(
+        "/api/sources",
+        json={
+            "title": "BetaCodex Quelle",
+            "authors": ["Autor Y"],
+            "text": "Der BetaCodex beschreibt Prinzipien dezentraler Organisation.",
+        },
+    )
+
+    response = client.post("/api/ask", json={"question": "Was beschreibt der BetaCodex?"})
+
+    assert response.status_code == 200
+    assert call_count["n"] == 0
+
+
+def test_ask_gives_uncited_chunk_a_lazy_local_highlight_fallback(client, monkeypatch):
+    """Letzter Ausweg: eine zurückgegebene, aber im Antworttext gar nicht
+    per [n] referenzierte Quelle bekommt trotzdem ein Highlight statt gar
+    keins - jetzt lazy NACH dem Streaming berechnet statt vorab für jeden
+    Chunk (siehe test_ask_skips_eager_local_highlight_computation..., das
+    genau diese Verschiebung als Performance-Fix prüft)."""
+    client.post(
+        "/api/sources",
+        json={"title": "Quelle A", "authors": ["Autor A"], "text": "Erster Satz über den BetaCodex."},
+    )
+    client.post(
+        "/api/sources",
+        json={"title": "Quelle B", "authors": ["Autor B"], "text": "Zweiter Satz über Selbstorganisation."},
+    )
+    monkeypatch.setattr(
+        llm,
+        "stream_answer_question",
+        lambda question, chunks, lang="de", author_bios=None: iter(["Antwort [1]."]),
+    )
+
+    response = client.post("/api/ask", json={"question": "Frage?"})
+
+    assert response.status_code == 200
+    sources = ask_result(response)["sources"]
+    assert len(sources) == 2
+    cited, uncited = sources[0], sources[1]
+    assert cited["highlighted_texts"]
+    assert uncited["highlighted_texts"] == [uncited["text"]]
+
+
 def test_ask_uses_different_highlight_per_occurrence_of_the_same_source(client, monkeypatch):
     client.post(
         "/api/sources",

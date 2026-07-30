@@ -1,3 +1,4 @@
+import threading
 from pathlib import Path
 
 import chromadb
@@ -7,15 +8,29 @@ COLLECTION_NAME = "betacodex_chunks"
 
 _client = None
 _collection = None
+_collection_lock = threading.Lock()
 
 
 def _get_collection():
     global _client, _collection
+    # Lock aus demselben Grund wie embeddings._get_model: preload() läuft
+    # in einem Hintergrund-Thread (siehe app/main.py), eine echte Anfrage
+    # kann also währenddessen gleichzeitig hier ankommen.
     if _collection is None:
-        DB_PATH.mkdir(parents=True, exist_ok=True)
-        _client = chromadb.PersistentClient(path=str(DB_PATH))
-        _collection = _client.get_or_create_collection(COLLECTION_NAME)
+        with _collection_lock:
+            if _collection is None:
+                DB_PATH.mkdir(parents=True, exist_ok=True)
+                _client = chromadb.PersistentClient(path=str(DB_PATH))
+                _collection = _client.get_or_create_collection(COLLECTION_NAME)
     return _collection
+
+
+def preload() -> None:
+    """Öffnet die Chroma-Collection vorab (siehe app/main.py: läuft dort in
+    einem Hintergrund-Thread beim Server-Start) statt lazy bei der ersten
+    echten Anfrage (siehe embeddings.preload_model - gleicher Grund, hier
+    deutlich kleinerer Anteil an der Ladezeit)."""
+    _get_collection()
 
 
 def add_chunks(
