@@ -1951,6 +1951,43 @@ def _compute_occurrence_highlights(
 _ASK_LABEL_CHECK_MIN_LEN = 20
 _ASK_QUOTES_MARKER = "---QUOTES---"
 
+# Backlog #51: der Relevanzscore (1-10, Slider in der Quellen-Bearbeitung)
+# wirkte bislang nur als gespeichertes Metadatum, ohne Einfluss auf die
+# Antwort. Damit er tatsächlich etwas bewirkt, wird hier mehr Kandidaten
+# geholt als angefragt (RELEVANCE_OVERFETCH_MULTIPLIER) und danach nach
+# einer um den Score angepassten Distanz neu sortiert, bevor auf die
+# eigentlich angefragte Anzahl gekürzt wird.
+RELEVANCE_OVERFETCH_MULTIPLIER = 3
+# Multiplikativ statt additiv, damit die Anpassung unabhängig von der
+# absoluten Größenordnung der Chroma-Distanzmetrik bleibt. Bei Score 5
+# (Default für unbewertete Quellen) ergibt sich Faktor 1.0 - die Reihenfolge
+# ändert sich dann exakt nicht, bestehende Ergebnisse bleiben unangetastet.
+RELEVANCE_MAX_ADJUSTMENT = 0.15
+
+
+def _rerank_by_relevance(
+    ids: list[str],
+    documents: list[str],
+    metadatas: list[dict],
+    distances: list[float],
+    sources: dict,
+    top_k: int,
+) -> tuple[list[str], list[str], list[dict]]:
+    def relevance_factor(source_id: str) -> float:
+        score = sources.get(source_id, {}).get("relevance_score")
+        score = score if score is not None else 5
+        return 1 - RELEVANCE_MAX_ADJUSTMENT * (score - 5) / 5
+
+    order = sorted(
+        range(len(ids)),
+        key=lambda i: distances[i] * relevance_factor(metadatas[i]["source_id"]),
+    )[:top_k]
+    return (
+        [ids[i] for i in order],
+        [documents[i] for i in order],
+        [metadatas[i] for i in order],
+    )
+
 
 def _ask_event_stream(question_text, llm_chunks, lang, author_bios, chunk_refs, chunk_docs, local_highlights):
     """Generator für die NDJSON-Stream-Antwort von /api/ask: ein "delta"-
@@ -2035,14 +2072,21 @@ def ask(question: QuestionIn, request: Request, x_lang: str = Header(default=i18
         raise HTTPException(400, i18n.get_message("no_sources", x_lang))
 
     query_embedding = embeddings.embed_query(question.question)
-    results = vectorstore.query(query_embedding, top_k=question.top_k)
+    results = vectorstore.query(
+        query_embedding, top_k=question.top_k * RELEVANCE_OVERFETCH_MULTIPLIER
+    )
 
     ids = results["ids"][0]
     documents = results["documents"][0]
     metadatas = results["metadatas"][0]
+    distances = results["distances"][0]
 
     if not ids:
         raise HTTPException(400, i18n.get_message("no_matching_chunks", x_lang))
+
+    ids, documents, metadatas = _rerank_by_relevance(
+        ids, documents, metadatas, distances, sources, question.top_k
+    )
 
     unknown_label = "unbekannt" if x_lang == "de" else "unknown"
     summary_lang = x_lang if x_lang in ("de", "en") else i18n.DEFAULT_LANG

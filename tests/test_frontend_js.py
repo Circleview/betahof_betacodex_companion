@@ -1,7 +1,23 @@
+import json
 import re
+import subprocess
 from pathlib import Path
 
 STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
+
+
+def _run_strip_markdown_for_speech(text: str) -> str:
+    """Führt static/speech.js#stripMarkdownForSpeech per Node aus (statt die
+    Regeln in Python nachzubauen) - die Funktion importiert selbst /i18n.js
+    (absoluter Browser-Pfad, in Node nicht auflösbar), daher wird hier nur
+    ihr eigener Funktionskörper extrahiert und isoliert ausgeführt."""
+    js_source = (STATIC_DIR / "speech.js").read_text()
+    match = re.search(r"export function stripMarkdownForSpeech.*?\n\}", js_source, re.S)
+    assert match, "stripMarkdownForSpeech wurde in speech.js nicht gefunden."
+    func_source = match.group(0).replace("export function", "function")
+    script = f"{func_source}\nconsole.log(JSON.stringify(stripMarkdownForSpeech({json.dumps(text)})));"
+    result = subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True)
+    return json.loads(result.stdout)
 
 APPEND_CALL_RE = re.compile(
     r"\b(?:appendChild|append|insertBefore|prepend|replaceChild|insertAdjacentElement|appendTimelineRow)\s*\("
@@ -164,3 +180,18 @@ def test_regression_view_and_edit_source_links_are_mutually_exclusive():
     )
     assert "appendEditSourceLink(container, sourceId)" in body
     assert "appendViewSourceLink(container, sourceId)" in body
+
+
+def test_strip_markdown_for_speech_removes_list_markers():
+    """Regression: Listenmarker ('- ', '1. ') wurden vor der Sprachausgabe
+    bislang nicht entfernt, wodurch Aufzählungen unnatürlich mit Ziffern/
+    Strichen vorgelesen wurden (siehe Vergleich mit dem CRT-Tool)."""
+    text = "Vorteile:\n- Erster Punkt\n- Zweiter Punkt\n\n1. Eins\n2. Zwei"
+    result = _run_strip_markdown_for_speech(text)
+    assert result == "Vorteile: Erster Punkt Zweiter Punkt Eins Zwei"
+
+
+def test_strip_markdown_for_speech_removes_headings_and_emphasis_and_citations():
+    text = "## Überschrift\n\nEin **fetter** und *kursiver* Text mit `code` und [1] Zitat."
+    result = _run_strip_markdown_for_speech(text)
+    assert result == "Überschrift Ein fetter und kursiver Text mit code und Zitat."

@@ -957,6 +957,79 @@ def test_ask_returns_answer_with_sources(client):
     assert data["sources"][0]["authors"] == ["Autor Y"]
 
 
+def test_ask_reranks_by_relevance_score_among_similar_matches(client, monkeypatch):
+    """Backlog #51: der Relevanzscore einer Quelle muss das Ranking der
+    Top-k-Treffer beeinflussen - eine embedding-mäßig etwas weiter
+    entfernte, aber hoch bewertete Quelle soll eine näher liegende, aber
+    niedrig bewertete Quelle bei top_k=1 verdrängen können."""
+    embedding_by_text = {
+        "Näher am Anfrageembedding, aber niedrig bewertete Quelle.": [1.0, 0.0],
+        "Etwas weiter entfernt, aber hoch bewertete Quelle.": [0.0, 1.0954],
+    }
+    monkeypatch.setattr(embeddings, "embed_passages", lambda texts: [embedding_by_text[t] for t in texts])
+    monkeypatch.setattr(embeddings, "embed_query", lambda text: [0.0, 0.0])
+
+    client.post(
+        "/api/sources",
+        json={
+            "title": "Niedrig bewertet, aber näher",
+            "authors": ["Autor Nah"],
+            "text": "Näher am Anfrageembedding, aber niedrig bewertete Quelle.",
+            "relevance_score": 1,
+        },
+    )
+    client.post(
+        "/api/sources",
+        json={
+            "title": "Hoch bewertet, aber weiter entfernt",
+            "authors": ["Autor Fern"],
+            "text": "Etwas weiter entfernt, aber hoch bewertete Quelle.",
+            "relevance_score": 10,
+        },
+    )
+
+    response = client.post("/api/ask", json={"question": "Frage?", "top_k": 1})
+
+    data = ask_result(response)
+    assert len(data["sources"]) == 1
+    assert data["sources"][0]["title"] == "Hoch bewertet, aber weiter entfernt"
+
+
+def test_ask_keeps_pure_distance_order_when_relevance_scores_are_equal(client, monkeypatch):
+    """Gegenprobe zu obigem Test: bei gleichem (Default-)Relevanzscore
+    ändert sich am reinen Distanz-Ranking nichts - die näher liegende
+    Quelle gewinnt weiterhin."""
+    embedding_by_text = {
+        "Näher am Anfrageembedding, gleich bewertete Quelle A.": [1.0, 0.0],
+        "Weiter entfernt, gleich bewertete Quelle B.": [0.0, 1.0954],
+    }
+    monkeypatch.setattr(embeddings, "embed_passages", lambda texts: [embedding_by_text[t] for t in texts])
+    monkeypatch.setattr(embeddings, "embed_query", lambda text: [0.0, 0.0])
+
+    client.post(
+        "/api/sources",
+        json={
+            "title": "Näher, Quelle A",
+            "authors": ["Autor A"],
+            "text": "Näher am Anfrageembedding, gleich bewertete Quelle A.",
+        },
+    )
+    client.post(
+        "/api/sources",
+        json={
+            "title": "Weiter, Quelle B",
+            "authors": ["Autor B"],
+            "text": "Weiter entfernt, gleich bewertete Quelle B.",
+        },
+    )
+
+    response = client.post("/api/ask", json={"question": "Frage?", "top_k": 1})
+
+    data = ask_result(response)
+    assert len(data["sources"]) == 1
+    assert data["sources"][0]["title"] == "Näher, Quelle A"
+
+
 def test_ask_stream_emits_delta_events_in_order_before_done_event(client, monkeypatch):
     monkeypatch.setattr(
         llm, "stream_answer_question", lambda *a, **k: iter(["Erster Teil ", "zweiter Teil [1]."])
