@@ -183,11 +183,12 @@ async def add_security_headers(request: Request, call_next):
     else:
         response.headers["X-Frame-Options"] = "DENY"
         response.headers["Content-Security-Policy"] = CONTENT_SECURITY_POLICY
-    # Backlog #115: vor dem öffentlichen Livegang soll diese Instanz nicht in
-    # Suchmaschinen-/KI-Indizes auftauchen - deckt (anders als die HTML-
-    # Meta-Tags) auch Nicht-HTML-Antworten ab. Vor dem eigentlichen Go-Live
-    # bewusst wieder entfernen.
-    response.headers["X-Robots-Tag"] = "noindex, nofollow, noarchive"
+    # Backlog #115: nur Dev/Stabil sollen nicht in Suchmaschinen-/KI-Indizes
+    # auftauchen - deckt (anders als die HTML-Meta-Tags) auch Nicht-HTML-
+    # Antworten ab. Die echte Produktivinstanz setzt ENVIRONMENT nie auf
+    # "development" und bleibt damit indexierbar.
+    if IS_DEV_ENVIRONMENT:
+        response.headers["X-Robots-Tag"] = "noindex, nofollow, noarchive"
     return response
 
 

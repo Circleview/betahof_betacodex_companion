@@ -863,6 +863,26 @@ def test_ask_still_logs_quellen_pfleger_questions(client, monkeypatch):
     assert entries[0]["text"] == "Frage einer Pflegerin"
 
 
+# Backlog #115: X-Robots-Tag darf die echte Produktivinstanz nicht an der
+# Suchmaschinen-Indexierung hindern - nur Dev/Stabil (IS_DEV_ENVIRONMENT)
+# sollen ihn setzen.
+
+
+def test_x_robots_tag_present_in_dev_environment(client):
+    # client-Fixture setzt IS_DEV_ENVIRONMENT bewusst auf True.
+    response = client.get("/api/version")
+
+    assert response.headers["x-robots-tag"] == "noindex, nofollow, noarchive"
+
+
+def test_x_robots_tag_absent_outside_dev_environment(client, monkeypatch):
+    monkeypatch.setattr(main_module, "IS_DEV_ENVIRONMENT", False)
+
+    response = client.get("/api/version")
+
+    assert "x-robots-tag" not in response.headers
+
+
 def test_get_question_log_requires_pfleger_role(anon_client):
     response = anon_client.get("/api/question-log")
     assert response.status_code == 403
