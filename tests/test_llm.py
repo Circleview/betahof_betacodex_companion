@@ -54,6 +54,24 @@ def test_answer_question_appends_author_bios_as_unnumbered_section():
     assert "[1] (Quelle: T, A, D)" in user_content
 
 
+def test_answer_question_repeats_language_instruction_next_to_the_question():
+    """Bug (per Screenshot gemeldet): eine englische Frage bei deutschen
+    Quell-Chunks kippte mitten im ersten Satz von Englisch auf Deutsch -
+    reproduziert auch mit explizit korrektem lang='en'. Die im System-Prompt
+    vergrabene Sprachregel reicht nicht, sie wird deshalb zusätzlich direkt
+    neben der Frage wiederholt (Nähe zur Generierung wirkt zuverlässiger)."""
+    client = _fake_client("Answer")
+    with patch.object(llm, "_get_client", return_value=client):
+        llm.answer_question(
+            "What is leadership about?",
+            [{"title": "T", "author": "A", "date": "D", "text": "Deutscher Text"}],
+            lang="en",
+        )
+
+    user_content = client.messages.stream.call_args.kwargs["messages"][0]["content"]
+    assert user_content.rstrip().endswith(llm._LANGUAGE_REMINDERS["en"])
+
+
 def test_answer_question_without_author_bios_omits_section():
     client = _fake_client("Antwort")
     with patch.object(llm, "_get_client", return_value=client):

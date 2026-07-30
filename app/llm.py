@@ -94,6 +94,22 @@ def _get_client() -> anthropic.Anthropic:
 
 _AUTHOR_INFO_HEADING = {"de": "Autor:innen-Informationen", "en": "Author information"}
 
+# Bug (2026-07-30, per Screenshot gemeldet): eine englische Frage bei
+# überwiegend/ausschließlich deutschsprachigen Quell-Chunks bekam eine
+# Antwort, die MITTEN im ersten Satz von Englisch auf Deutsch kippte -
+# reproduziert auch mit explizit gesetztem X-Lang: en, also kein Header-/
+# Routing-Bug, sondern das Modell hält sich nicht zuverlässig an die
+# entsprechende Regel im System-Prompt, wenn diese von mehreren Absätzen
+# deutschem Kontext-Text überlagert wird (die Regel steht dort nur als
+# EINE von vielen Aufzählungspunkten, weit vor dem eigentlichen Kontext).
+# Fix: dieselbe Anweisung zusätzlich direkt neben der Frage wiederholen,
+# NACH dem Kontext - Nähe zur eigentlichen Generierung wirkt bei Claude
+# deutlich zuverlässiger als eine früh im System-Prompt vergrabene Regel.
+_LANGUAGE_REMINDERS = {
+    "de": "(Wichtig: Auch wenn die Textausschnitte oben in einer anderen Sprache verfasst sind - beantworte diese Frage in der Sprache, in der sie gestellt wurde.)",
+    "en": "(Important: even though the text excerpts above may be written in a different language, answer this question in the language it was asked in.)",
+}
+
 
 def _build_context(chunks: list[dict], lang: str, author_bios: list[dict] | None) -> str:
     context = "\n\n".join(
@@ -128,7 +144,10 @@ def stream_answer_question(
         messages=[
             {
                 "role": "user",
-                "content": f"Kontext-Textausschnitte:\n\n{context}\n\nFrage: {question}",
+                "content": (
+                    f"Kontext-Textausschnitte:\n\n{context}\n\nFrage: {question}\n\n"
+                    f"{_LANGUAGE_REMINDERS[lang]}"
+                ),
             }
         ],
     ) as stream:
