@@ -874,9 +874,22 @@ body:not(.chat-started) #question-form {
   display: none;
 }
 
-/* Backlog #49: Mikrofon-Button für Spracheingabe - ausgeblendet per
-   .hidden, solange static/speech.js keine Browser-Unterstützung meldet
-   (progressive enhancement, Tippen funktioniert immer). */
+/* Backlog #49: Mikrofon-Button für Spracheingabe. Erster Versuch war
+   .hidden (display:none), das JS erst spät entfernt (question.js läuft als
+   deferred Module am Ende von <body>) - das verursachte auf Browsern MIT
+   Unterstützung einen sichtbaren Layout-Sprung (Eingabefeld schrumpft erst
+   nach dem restlichen Seitenaufbau). Der naheliegende Gegenversuch
+   (Platz per visibility:hidden von Anfang an reservieren) hatte das
+   spiegelbildliche Problem: auf Browsern OHNE Unterstützung (z.B. iOS,
+   siehe getRecognitionCtor in speech.js) bliebe dauerhaft eine leere Lücke
+   neben dem Eingabefeld stehen.
+   Lösung: display:none ist wieder der Standard (kein Platzverbrauch ohne
+   Unterstützung), aber html.speech-support-check.js prüft synchron/
+   blockierend im <head> (siehe dort) - noch bevor der Parser dieses
+   Icon überhaupt erreicht - ob der Browser Spracheingabe unterstützt und
+   setzt bei Erfolg schon vorab die Klasse speech-supported auf <html>.
+   Der Button erscheint dadurch von Anfang an im korrekten End-Zustand,
+   ganz ohne nachträgliche DOM-Änderung durch question.js. */
 .mic-button {
   flex-shrink: 0;
   width: 40px;
@@ -886,11 +899,15 @@ body:not(.chat-started) #question-form {
   background: var(--color-bg);
   color: var(--color-text-muted);
   cursor: pointer;
-  display: inline-flex;
+  display: none;
   align-items: center;
   justify-content: center;
   padding: 0;
   transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease;
+}
+
+html.speech-supported .mic-button {
+  display: inline-flex;
 }
 
 .mic-button:hover {
