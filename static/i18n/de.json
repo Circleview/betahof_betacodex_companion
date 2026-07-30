@@ -27,6 +27,7 @@
   "index.askButton": "Absenden",
   "index.micButtonTitle": "Frage per Sprache stellen",
   "index.speakAnswerTitle": "Antwort vorlesen",
+  "index.speedButtonTitle": "Vorlesegeschwindigkeit ändern",
   "index.stopSpeakingTitle": "Vorlesen stoppen",
   "index.searching": "Suche Antwort...",
   "index.askError": "Fehler bei der Anfrage",

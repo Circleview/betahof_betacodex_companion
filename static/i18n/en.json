@@ -27,6 +27,7 @@
   "index.askButton": "Send",
   "index.micButtonTitle": "Ask by voice",
   "index.speakAnswerTitle": "Read answer aloud",
+  "index.speedButtonTitle": "Change playback speed",
   "index.stopSpeakingTitle": "Stop reading aloud",
   "index.searching": "Searching for an answer...",
   "index.askError": "Request failed",

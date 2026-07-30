@@ -935,6 +935,28 @@ body:not(.chat-started) #question-form {
   color: var(--color-accent);
 }
 
+/* Vorlesegeschwindigkeit: schaltet per Klick durch SPEECH_RATES (speech.js)
+   - bewusst ein reiner Text-Button statt eines Icons, da die Beschriftung
+   (z.B. "1.5x") selbst der wichtigste Zustand ist. */
+.speed-answer-btn {
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  padding: 0.2rem 0.3rem;
+  margin-left: 0.1rem;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  font-size: 0.75rem;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  vertical-align: middle;
+}
+
+.speed-answer-btn:hover {
+  color: var(--color-accent);
+}
+
 .chat-sources-heading {
   font-size: 0.8rem;
   font-weight: 700;

@@ -19,6 +19,39 @@ def _run_strip_markdown_for_speech(text: str) -> str:
     result = subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True)
     return json.loads(result.stdout)
 
+
+def _run_speech_rate_cycle(num_clicks: int) -> list[float]:
+    """Führt speech.js#createSpeechController().cyclePlaybackRate() per Node
+    real aus (statt SPEECH_RATES/die Wraparound-Logik in Python
+    nachzubauen). Die Datei importiert /i18n.js (in Node nicht auflösbar)
+    und nutzt ES-Module-`export` - beides wird hier durch einen simplen
+    Textersatz entfernt, der Rest der Datei läuft unverändert als
+    CommonJS-Skript mit minimalen Browser-API-Stubs (localStorage, window)."""
+    js_source = (STATIC_DIR / "speech.js").read_text()
+    lines = js_source.split("\n")
+    assert lines[0] == "import { getLang } from '/i18n.js';"
+    body = "\n".join(lines[1:]).replace("export ", "")
+    script = f"""
+function getLang() {{ return 'de'; }}
+const store = {{}};
+global.localStorage = {{
+  getItem: (k) => (k in store ? store[k] : null),
+  setItem: (k, v) => {{ store[k] = v; }},
+}};
+global.window = {{}};
+
+{body}
+
+const controller = createSpeechController({{}});
+const rates = [];
+for (let i = 0; i < {num_clicks}; i++) {{
+  rates.push(controller.cyclePlaybackRate());
+}}
+console.log(JSON.stringify(rates));
+"""
+    result = subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True)
+    return json.loads(result.stdout)
+
 APPEND_CALL_RE = re.compile(
     r"\b(?:appendChild|append|insertBefore|prepend|replaceChild|insertAdjacentElement|appendTimelineRow)\s*\("
 )
@@ -195,3 +228,134 @@ def test_strip_markdown_for_speech_removes_headings_and_emphasis_and_citations()
     text = "## Überschrift\n\nEin **fetter** und *kursiver* Text mit `code` und [1] Zitat."
     result = _run_strip_markdown_for_speech(text)
     assert result == "Überschrift Ein fetter und kursiver Text mit code und Zitat."
+
+
+def test_speech_rate_cycles_through_all_stages_and_wraps_around():
+    rates = _run_speech_rate_cycle(6)
+    assert rates == [1.25, 1.5, 1.75, 2, 1, 1.25]
+
+
+def test_speak_fetches_all_sentences_in_parallel_instead_of_sequentially():
+    """Regression: die komplette Antwort wurde bisher in EINEM Google-TTS-
+    Aufruf synthetisiert - spürbare Verzögerung bei längeren, mehrsätzigen
+    Antworten, da nichts abspielbar war, bevor der ganze Text fertig war.
+    Jetzt müssen alle Sätze SOFORT (parallel) angefragt werden, statt erst
+    nacheinander, sobald der jeweils vorherige fertig ist."""
+    js_source = (STATIC_DIR / "speech.js").read_text()
+    lines = js_source.split("\n")
+    assert lines[0] == "import { getLang } from '/i18n.js';"
+    body = "\n".join(lines[1:]).replace("export ", "")
+    script = f"""
+function getLang() {{ return 'de'; }}
+global.localStorage = {{ getItem: () => null, setItem: () => {{}} }};
+global.window = {{}};
+
+const fetchCalls = [];
+global.fetch = (url, opts) => {{
+  const requestedText = JSON.parse(opts.body).text;
+  fetchCalls.push(requestedText);
+  return new Promise((resolve) => {{
+    setTimeout(() => resolve({{ ok: true, blob: () => Promise.resolve('blob-for:' + requestedText) }}), 5);
+  }});
+}};
+global.URL = {{ createObjectURL: () => 'blob:fake', revokeObjectURL: () => {{}} }};
+global.Audio = class {{
+  constructor(url) {{ this.src = url; }}
+  play() {{
+    setTimeout(() => {{ this.onplaying?.(); this.onended?.(); }}, 0);
+    return Promise.resolve();
+  }}
+  pause() {{}}
+}};
+
+{body}
+
+const controller = createSpeechController({{}});
+controller.speak('Erster Satz. Zweiter Satz. Dritter Satz.');
+// Direkt nach speak() (noch bevor irgendein setTimeout/Promise aufgelöst
+// wurde) müssen bereits ALLE drei Sätze angefragt worden sein.
+console.log(JSON.stringify(fetchCalls));
+"""
+    result = subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True)
+    calls = json.loads(result.stdout)
+    assert calls == ["Erster Satz.", "Zweiter Satz.", "Dritter Satz."]
+
+
+def test_speak_plays_sentences_in_order_despite_out_of_order_fetch_completion():
+    """Auch wenn ein späterer Satz schneller antwortet als ein früherer
+    (unterschiedliche Google-TTS-Latenz pro Anfrage), muss die Wiedergabe-
+    Reihenfolge trotzdem der Satzreihenfolge der Antwort entsprechen."""
+    js_source = (STATIC_DIR / "speech.js").read_text()
+    lines = js_source.split("\n")
+    body = "\n".join(lines[1:]).replace("export ", "")
+    script = f"""
+function getLang() {{ return 'de'; }}
+global.localStorage = {{ getItem: () => null, setItem: () => {{}} }};
+global.window = {{}};
+
+const DELAY_BY_TEXT = {{ 'Erster Satz.': 15, 'Zweiter Satz.': 1 }};
+global.fetch = (url, opts) => {{
+  const requestedText = JSON.parse(opts.body).text;
+  return new Promise((resolve) => {{
+    setTimeout(
+      () => resolve({{ ok: true, blob: () => Promise.resolve('blob-for:' + requestedText) }}),
+      DELAY_BY_TEXT[requestedText] ?? 1
+    );
+  }});
+}};
+global.URL = {{ createObjectURL: (blob) => blob, revokeObjectURL: () => {{}} }};
+const playedOrder = [];
+global.Audio = class {{
+  constructor(url) {{ this.src = url; }}
+  play() {{
+    playedOrder.push(this.src);
+    setTimeout(() => {{ this.onplaying?.(); this.onended?.(); }}, 0);
+    return Promise.resolve();
+  }}
+  pause() {{}}
+}};
+
+{body}
+
+const controller = createSpeechController({{}});
+controller.speak('Erster Satz. Zweiter Satz.');
+setTimeout(() => console.log(JSON.stringify(playedOrder)), 50);
+"""
+    result = subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True)
+    played_order = json.loads(result.stdout)
+    assert played_order == ["blob-for:Erster Satz.", "blob-for:Zweiter Satz."]
+
+
+def test_speak_gives_first_sentence_high_fetch_priority_and_rest_low():
+    """Der erste Satz blockiert den Beginn der Wiedergabe und darf deshalb
+    bei echter Ressourcen-Konkurrenz (Browser-Verbindungslimit, Bandbreite)
+    nicht von den gleichzeitig abgeschickten späteren Sätzen eingeholt
+    werden - dafür bekommt er 'high' statt 'low' als Fetch-Priority-Hint."""
+    js_source = (STATIC_DIR / "speech.js").read_text()
+    lines = js_source.split("\n")
+    body = "\n".join(lines[1:]).replace("export ", "")
+    script = f"""
+function getLang() {{ return 'de'; }}
+global.localStorage = {{ getItem: () => null, setItem: () => {{}} }};
+global.window = {{}};
+
+const priorityByText = {{}};
+global.fetch = (url, opts) => {{
+  const requestedText = JSON.parse(opts.body).text;
+  priorityByText[requestedText] = opts.priority;
+  return new Promise(() => {{}}); // nie auflösen - reicht für diesen Test
+}};
+
+{body}
+
+const controller = createSpeechController({{}});
+controller.speak('Erster Satz. Zweiter Satz. Dritter Satz.');
+console.log(JSON.stringify(priorityByText));
+"""
+    result = subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True)
+    priorities = json.loads(result.stdout)
+    assert priorities == {
+        "Erster Satz.": "high",
+        "Zweiter Satz.": "low",
+        "Dritter Satz.": "low",
+    }

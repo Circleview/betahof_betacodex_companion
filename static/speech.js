@@ -12,6 +12,19 @@ import { getLang } from '/i18n.js';
 //   oder der Cloud-Aufruf fehlschlägt - Sprachausgabe fällt nie ganz aus.
 const RECOGNITION_LANG_BY_LANG = { de: 'de-DE', en: 'en-US' };
 
+// Vorlesegeschwindigkeit: eine feste Stufenliste statt eines Sliders, per
+// Klick durchgeschaltet (siehe cyclePlaybackRate) - reicht für diesen
+// Anwendungsfall und braucht kein zusätzliches UI-Element. In localStorage
+// gemerkt (wie die Sprachwahl in i18n.js), gilt also für alle Antworten
+// gleichermaßen, nicht nur für die gerade abgespielte.
+export const SPEECH_RATES = [1, 1.25, 1.5, 1.75, 2];
+const SPEECH_RATE_STORAGE_KEY = 'speechRate';
+
+function getStoredPlaybackRate() {
+  const stored = parseFloat(localStorage.getItem(SPEECH_RATE_STORAGE_KEY));
+  return SPEECH_RATES.includes(stored) ? stored : SPEECH_RATES[0];
+}
+
 // Bewusste Entscheidung (2026-07-28): Safari/iOS implementiert die Web
 // Speech Recognition API bis heute grundsätzlich nicht (jeder Browser auf
 // iOS basiert auf WebKit, betrifft also alle iOS-Browser gleichermaßen) -
@@ -72,6 +85,26 @@ export function stripMarkdownForSpeech(text) {
 export function createSpeechController({ onTranscript, onListeningChange, onSpeakingChange } = {}) {
   const RecognitionCtor = getRecognitionCtor();
   const supported = Boolean(RecognitionCtor) && Boolean(window.speechSynthesis);
+
+  let playbackRate = getStoredPlaybackRate();
+
+  function getPlaybackRate() {
+    return playbackRate;
+  }
+
+  // Schaltet zur nächsten Stufe in SPEECH_RATES weiter (mit Wraparound) und
+  // wendet sie sofort auf eine gerade laufende Cloud-Wiedergabe an -
+  // HTMLAudioElement erlaubt das live, ohne Neustart. Bei der
+  // Browser-Stimme (speechSynthesis) greift die neue Rate dagegen erst bei
+  // der nächsten Vorlesung, da eine laufende SpeechSynthesisUtterance ihre
+  // rate nicht nachträglich ändern kann.
+  function cyclePlaybackRate() {
+    const currentIndex = SPEECH_RATES.indexOf(playbackRate);
+    playbackRate = SPEECH_RATES[(currentIndex + 1) % SPEECH_RATES.length];
+    localStorage.setItem(SPEECH_RATE_STORAGE_KEY, String(playbackRate));
+    if (currentAudio) currentAudio.playbackRate = playbackRate;
+    return playbackRate;
+  }
 
   let voices = [];
   if (window.speechSynthesis) {
@@ -149,9 +182,10 @@ export function createSpeechController({ onTranscript, onListeningChange, onSpea
     sequenceToken = token;
     const lang = RECOGNITION_LANG_BY_LANG[getLang()] || RECOGNITION_LANG_BY_LANG.de;
 
-    function playLocal() {
-      const utterance = new SpeechSynthesisUtterance(text);
+    function playLocal(spokenText) {
+      const utterance = new SpeechSynthesisUtterance(spokenText);
       utterance.lang = lang;
+      utterance.rate = playbackRate;
       const bestVoice = pickBestVoice(voices, lang);
       if (bestVoice) utterance.voice = bestVoice;
       utterance.onstart = () => {
@@ -174,56 +208,107 @@ export function createSpeechController({ onTranscript, onListeningChange, onSpea
       }, 50);
     }
 
-    async function playCloud() {
-      let blob;
-      try {
-        const res = await fetch('/api/speech', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'X-Lang': getLang() },
-          body: JSON.stringify({ text }),
-        });
+    // Satzweise statt als ein einziger Google-TTS-Aufruf für die komplette
+    // Antwort: bei mehrsätzigen Antworten musste bislang der GESAMTE Text
+    // fertig synthetisiert sein, bevor überhaupt etwas hörbar war - hörbar
+    // lange Verzögerung gerade bei längeren Antworten. Jetzt werden alle
+    // Sätze SOFORT parallel angefragt (Google TTS braucht für einen
+    // einzelnen Satz nur einen Bruchteil der Zeit einer ganzen Antwort),
+    // die Wiedergabe startet schon mit dem ersten fertigen Satz, während
+    // die übrigen im Hintergrund weiter synthetisiert werden - klassisches
+    // Audio-Pipelining, keine Google-Streaming-API nötig (die wäre nur per
+    // gRPC statt des hier genutzten einfachen REST-Aufrufs verfügbar).
+    function splitSentences(fullText) {
+      return fullText
+        .split(/(?<=[.!?])\s+/)
+        .map((s) => s.trim())
+        .filter(Boolean);
+    }
+
+    // priority nutzt die Fetch-Priority-Hints-API (unterstützt in Chrome/
+    // Edge, in anderen Browsern folgenlos ignoriert): der erste Satz blockiert
+    // den Beginn der Wiedergabe und bekommt deshalb 'high', alle folgenden
+    // 'low' - Aufruf-Reihenfolge allein (map() unten) garantiert zwar schon,
+    // dass Satz 1 immer ALS ERSTES angefragt wird, aber erst der Priority-
+    // Hint sorgt dafür, dass er bei tatsächlicher Konkurrenz um eine
+    // begrenzte Ressource (Browser-Verbindungslimit, Bandbreite) nicht von
+    // den gleichzeitig abgeschickten späteren Sätzen eingeholt werden kann.
+    function fetchSpeechBlob(sentenceText, priority) {
+      return fetch('/api/speech', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Lang': getLang() },
+        body: JSON.stringify({ text: sentenceText }),
+        priority,
+      }).then((res) => {
         if (!res.ok) throw new Error('speech request failed');
-        blob = await res.blob();
-      } catch {
-        if (sequenceToken === token) playLocal();
-        return;
+        return res.blob();
+      });
+    }
+
+    async function playCloud() {
+      const sentences = splitSentences(text);
+      if (sentences.length === 0) return;
+      const blobPromises = sentences.map((sentence, i) =>
+        fetchSpeechBlob(sentence, i === 0 ? 'high' : 'low')
+      );
+
+      for (let i = 0; i < sentences.length; i++) {
+        if (sequenceToken !== token) return;
+        let blob;
+        try {
+          blob = await blobPromises[i];
+        } catch {
+          if (sequenceToken === token) playLocal(sentences.slice(i).join(' '));
+          return;
+        }
+        if (sequenceToken !== token) return;
+
+        const url = URL.createObjectURL(blob);
+        const audio = new Audio(url);
+        audio.playbackRate = playbackRate;
+        currentAudio = audio;
+        audio.onplaying = () => {
+          if (sequenceToken !== token) return;
+          onSpeakingChange?.(true);
+        };
+
+        // Zusätzliche Absicherung: play() kann in manchen Umgebungen (z.B.
+        // ohne echte Nutzer-Interaktion) weder auflösen noch ablehnen -
+        // ohne Zeitlimit bliebe die Vorlesung dann lautlos für immer hängen.
+        const started = await Promise.race([
+          audio.play().then(() => true).catch(() => false),
+          new Promise((resolve) => setTimeout(() => resolve(false), PLAY_TIMEOUT_MS)),
+        ]);
+        if (!started) {
+          audio.onplaying = null;
+          audio.pause();
+          if (sequenceToken === token) playLocal(sentences.slice(i).join(' '));
+          return;
+        }
+
+        let hadError = false;
+        await new Promise((resolve) => {
+          audio.onended = () => {
+            URL.revokeObjectURL(url);
+            resolve();
+          };
+          audio.onerror = () => {
+            hadError = true;
+            resolve();
+          };
+        });
+        if (sequenceToken !== token) return;
+        if (hadError) {
+          // Wiedergabefehler ab GENAU diesem Satz - auf die Browser-Stimme
+          // zurückfallen statt stumm zu bleiben oder abzubrechen.
+          playLocal(sentences.slice(i).join(' '));
+          return;
+        }
       }
-      if (sequenceToken !== token) return;
 
-      const url = URL.createObjectURL(blob);
-      const audio = new Audio(url);
-      currentAudio = audio;
-
-      audio.onplaying = () => {
-        if (sequenceToken !== token) return;
-        onSpeakingChange?.(true);
-      };
-      audio.onended = () => {
-        URL.revokeObjectURL(url);
-        if (sequenceToken !== token) return;
+      if (sequenceToken === token) {
         sequenceToken = null;
         onSpeakingChange?.(false);
-      };
-      audio.onerror = () => {
-        // Wiedergabefehler für GENAU diese Antwort - auf die Browser-
-        // Stimme zurückfallen statt stumm zu bleiben.
-        if (sequenceToken !== token) return;
-        playLocal();
-      };
-
-      // Zusätzliche Absicherung: play() kann in manchen Umgebungen (z.B.
-      // ohne echte Nutzer-Interaktion) weder auflösen noch ablehnen - ohne
-      // Zeitlimit bliebe die Vorlesung dann lautlos für immer hängen.
-      const played = await Promise.race([
-        audio.play().then(() => true).catch(() => false),
-        new Promise((resolve) => setTimeout(() => resolve(false), PLAY_TIMEOUT_MS)),
-      ]);
-      if (!played) {
-        audio.onplaying = null;
-        audio.onended = null;
-        audio.onerror = null;
-        audio.pause();
-        if (sequenceToken === token) playLocal();
       }
     }
 
@@ -240,5 +325,13 @@ export function createSpeechController({ onTranscript, onListeningChange, onSpea
     onSpeakingChange?.(false);
   }
 
-  return { supported, startListening, stopListening, speak, stopSpeaking };
+  return {
+    supported,
+    startListening,
+    stopListening,
+    speak,
+    stopSpeaking,
+    getPlaybackRate,
+    cyclePlaybackRate,
+  };
 }

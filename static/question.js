@@ -467,6 +467,25 @@ function startSpeaking(button, text) {
   speechController.speak(text);
 }
 
+// Formatiert 1 als "1x", 1.25 als "1.25x" - toString() liefert für ganze
+// Zahlen schon "1", für Nachkommastellen automatisch ohne trailing zeros.
+function formatSpeechRate(rate) {
+  return `${rate}x`;
+}
+
+function attachSpeedButton() {
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'speed-answer-btn';
+  btn.textContent = formatSpeechRate(speechController.getPlaybackRate());
+  btn.title = t('index.speedButtonTitle');
+  btn.setAttribute('aria-label', t('index.speedButtonTitle'));
+  btn.addEventListener('click', () => {
+    btn.textContent = formatSpeechRate(speechController.cyclePlaybackRate());
+  });
+  return btn;
+}
+
 function attachSpeakButton(bubble, answer) {
   const btn = document.createElement('button');
   btn.type = 'button';
@@ -482,6 +501,7 @@ function attachSpeakButton(bubble, answer) {
     startSpeaking(btn, stripMarkdownForSpeech(answer));
   });
   bubble.appendChild(btn);
+  bubble.appendChild(attachSpeedButton());
   return btn;
 }
 
