@@ -2604,6 +2604,61 @@ details a {
   .footer-betahof-link {
     display: none;
   }
+
+  /* Fix: Grafik-Glitch - der native Date-Picker (input[type=date]) hat auf
+     iOS eine eigene Mindestbreite für seine Tag/Monat/Jahr-Segmente, die
+     .field-row (Autor + Erscheinungsdatum nebeneinander) auf schmalen
+     Bildschirmen über den rechten Rand des Bearbeiten-Panels hinausdrückt -
+     min-width:0 auf dem Flex-Item allein reicht dagegen nicht, da es sich
+     um die intrinsische Mindestbreite des nativen Eingabe-Widgets selbst
+     handelt. Auf Mobile deshalb gestapelt statt nebeneinander, Datum zuerst
+     (siehe Feedback: "Date Picker sollte über den Autoren stehen"). */
+  .field-row {
+    flex-direction: column;
+  }
+
+  .field-row label:last-child {
+    order: -1;
+  }
+
+  /* Drei Anläufe ohne Erfolg getestet: max-width/min-width (Standard-
+     Properties), overflow:hidden auf dem <label> (hat Overflow zwar
+     verdeckt, dabei aber den rechten Rand abgeschnitten UND das native
+     Kalender-Popup nicht mehr offen gehalten) und -webkit-min-logical-width
+     (WebKit-spezifische "logical width" fuer date/time-Felder). Alle drei
+     setzen voraus, dass WebKit dem Feld ueberhaupt erlaubt, unter seine
+     eigene, intern berechnete Breite fuer die native Menulist-Darstellung
+     zu schrumpfen - das war offenbar nirgends der Fall. Einziger
+     verbleibender Hebel: die native Darstellung (inkl. ihrer eigenen
+     Breitenberechnung) komplett abschalten und das Feld wie ein normales
+     Eingabefeld nach Standard-Boxmodell layouten. Tippen zum Oeffnen des
+     nativen Kalender-Wheels bleibt davon unberuehrt (an den type="date"
+     haengt die Picker-Funktion, nicht an der Menulist-Optik) - es
+     verschwindet lediglich das kleine native Kalender-Icon, das Feld sieht
+     dann aus wie jedes andere Textfeld in diesem Formular. */
+  .field-row input[type="date"] {
+    width: 100%;
+    max-width: 100%;
+    -webkit-appearance: none;
+    appearance: none;
+  }
+
+  /* Fix: .author-extra-row-group war fest auf halbe Breite gedeckelt (siehe
+     Kommentar dort), weil sich die erste Autorenzeile früher die Zeile mit
+     dem Datumsfeld teilte (50/50 via .field-row). Jetzt, wo .field-row auf
+     Mobile gestapelt ist, nimmt die erste Zeile die volle Breite ein - die
+     zusätzlichen Zeilen (mit + UND -) müssen das hier nachziehen, sonst
+     bleiben sie schmaler als die erste Zeile und lassen rechts Platz frei. */
+  .author-extra-row-group {
+    max-width: 100%;
+  }
+
+  /* Backlog: Relevanz-Score-Slider soll auf Mobile unter dem Titel stehen
+     statt daneben - DOM-Reihenfolge ist bereits Titel zuerst, Relevanz
+     danach, daher reicht das Stapeln ohne zusätzliches "order". */
+  .title-relevance-row {
+    flex-direction: column;
+  }
 }
 
 .popover label {
