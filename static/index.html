@@ -27,6 +27,9 @@
 <script src="https://challenges.cloudflare.com/turnstile/v0/api.js?onload=onTurnstileLoad&render=explicit" async defer></script>
 </head>
 <body>
+<!-- Muss als Allererstes im body laufen (klassisches, blockierendes Script) -
+     siehe Kommentar in der Datei selbst. -->
+<script src="/chat-state-check.js"></script>
 <a href="#frage-bereich" class="skip-link" data-i18n="common.skipToContent"></a>
 <header id="site-header">
   <span id="lang-switcher" class="lang-switcher"></span>
