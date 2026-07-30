@@ -164,11 +164,34 @@ Begründung: Es kommt auf Sprachqualität und einen schlanken Start an. Die Embe
 
 ---
 
-## 6. Späteres Deployment (Deutschland)
+## 6. Produktivumgebung (Backlog #115/#96)
 
-- **Server:** kleiner vServer bei Hetzner (Rechenzentren in Deutschland, DSGVO-konform), ca. **5–15 € / Monat**
-- **Speicher:** bei diesen Textmengen praktisch vernachlässigbar
-- **Modellnutzung:** nutzungsabhängig; im Testbetrieb wenige Euro, skaliert mit Nutzerzahl und Antwortlänge
+Live unter **https://companion.betahof.com** (Hetzner Cloud, CX23, Falkenstein,
+~6,50 €/Monat + Backup-Add-on, DSGVO-konform).
+
+**Architektur:** ein einzelner Server, aber zwei komplette App-Instanzen
+("Blue"/"Green", Port 8000/8001) unter einem eigenen Systembenutzer
+`betacodex` - dahinter Caddy als Reverse Proxy mit automatischem
+Let's-Encrypt-TLS. Beide Instanzen teilen sich `data/` und `.env` per
+Symlink auf ein gemeinsames `shared/`-Verzeichnis; nur der Code
+unterscheidet sich zwischen den beiden Slots.
+
+**Deployment: vollautomatisch per GitHub Actions**
+(`.github/workflows/deploy.yml`), ausgelöst durch denselben Tag-Push, mit
+dem bisher manuell auf Stabil deployt wurde:
+1. `pytest -q` + `node --check` (bestehende Verifikation).
+2. Bei Erfolg: SSH zum Server, `deploy.sh <tag>` deployt auf die gerade
+   inaktive Farbe, wartet auf einen Health-Check (`/api/version`), schaltet
+   Caddy erst danach um und stoppt die alte Farbe - Zero-Downtime, mit
+   automatischem Rollback (alte Farbe bleibt live), falls die neue Version
+   nicht startet.
+
+**Unterschiede zu Dev/Stabil:** `ENVIRONMENT` bleibt hier ungesetzt (nicht
+`"development"`) - dadurch sind Cookies `Secure`, der `X-Robots-Tag`
+(verhindert sonst die Suchmaschinen-Indexierung) entfällt, und ein eigenes
+`EARLY_ACCESS_PASSWORD` sperrt die Seite vorerst für einen sanften Start.
+Turnstile läuft mit einem für `companion.betahof.com` echten, bei
+Cloudflare registrierten Schlüsselpaar statt der lokalen Test-Keys.
 
 ---
 
