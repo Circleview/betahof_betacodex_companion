@@ -1238,26 +1238,33 @@ body:not(.chat-started) #question-form {
     padding-right: 0;
   }
 
-  /* Fix (2026-07-31, zweiter Anlauf): die Annahme, #question-form bleibe
-     als Flex-Geschwister von #chat-messages automatisch am unteren Rand
-     sichtbar, während nur #chat-messages intern scrollt (siehe #chat-column
-     oben), hat sich auf echten Mobilgeräten (Chrome/iOS, WKWebView) NICHT
-     bestätigt - die Eingabezeile verschwand komplett unterhalb des
-     sichtbaren Bereichs, sobald die Konversation lief (per Screenshot
-     nachgewiesen). Stattdessen jetzt explizit am Viewport fixiert, egal wie
-     die Seite gerade steht. left/right statt 0 gleicht das horizontale
-     body-Padding aus (siehe body { padding-left/right: 0.75rem } oben),
-     das ein fixiertes Element sonst umgehen würde. #chat-messages bekommt
-     dafür per JS (siehe question.js: syncMobileChatMessagesPadding) so viel
-     padding-bottom, wie das jetzt fixierte Feld gerade hoch ist - sonst
-     würde es die letzte Nachricht verdecken. */
+  /* Fix (2026-07-31, dritter Anlauf): sowohl die ursprüngliche Annahme
+     (Flex-Geschwister von #chat-messages bleibt automatisch unten sichtbar,
+     während nur #chat-messages intern scrollt) als auch der Zwischenschritt
+     mit position:fixed haben sich auf echten Geräten als falsch erwiesen -
+     fixed blockierte dauerhaft den unteren Bildschirmrand und machte den
+     Footer unerreichbar, egal wie weit man scrollte (per Nutzer-Feedback
+     nachgewiesen). Stattdessen jetzt wie am Desktop (siehe body.chat-started
+     weiter oben, @media min-width:900px): die ganze Seite wächst mit dem
+     Antworttext und scrollt selbst, #question-form bleibt per
+     position:sticky nur INNERHALB von #chat-column am unteren Rand kleben -
+     scrollt man darüber hinaus zum Footer, löst sich die Eingabezeile ganz
+     regulär und gibt den Footer frei. */
+  body.chat-started #chat-column {
+    flex: initial;
+    height: auto;
+    max-height: none;
+    overflow: visible;
+  }
+
+  body.chat-started #chat-messages {
+    overflow-y: visible;
+  }
+
   body.chat-started #question-form {
-    position: fixed;
-    left: 0.75rem;
-    right: 0.75rem;
-    bottom: 0;
-    z-index: 5;
-    /* background/border-top kommen schon aus der Basisregel weiter oben. */
+    position: sticky;
+    bottom: max(1rem, env(safe-area-inset-bottom));
+    z-index: 1;
   }
 
   #chat-messages {
