@@ -83,7 +83,12 @@ export function stripMarkdownForSpeech(text) {
     .trim();
 }
 
-export function createSpeechController({ onTranscript, onListeningChange, onSpeakingChange } = {}) {
+export function createSpeechController({
+  onTranscript,
+  onListeningChange,
+  onSpeakingChange,
+  onInterimTranscript,
+} = {}) {
   const RecognitionCtor = getRecognitionCtor();
   const supported = Boolean(RecognitionCtor) && Boolean(window.speechSynthesis);
 
@@ -125,6 +130,9 @@ export function createSpeechController({ onTranscript, onListeningChange, onSpea
 
   let recognition = null;
   let transcriptBuffer = '';
+  // Hält den zuletzt an onInterimTranscript gemeldeten Gesamtstand fest
+  // (finale Sätze + noch laufender Satzteil) - siehe onend unten.
+  let latestLiveText = '';
 
   if (RecognitionCtor) {
     recognition = new RecognitionCtor();
@@ -132,21 +140,35 @@ export function createSpeechController({ onTranscript, onListeningChange, onSpea
     // automatisch beendet - die Frage soll erst beantwortet werden, wenn
     // die Aufnahme wirklich (durch erneuten Klick) abgeschlossen ist.
     recognition.continuous = true;
-    recognition.interimResults = false;
+    // Backlog #190: Live-Transkript - der erkannte Text soll wie bei
+    // modernen Diktierfunktionen schon WÄHREND des Sprechens im
+    // Eingabefeld erscheinen, nicht erst nach dem Beenden der Aufnahme.
+    recognition.interimResults = true;
     recognition.maxAlternatives = 1;
 
     recognition.onresult = (event) => {
+      let interim = '';
       for (let i = event.resultIndex; i < event.results.length; i += 1) {
         const result = event.results[i];
         if (result.isFinal) {
           transcriptBuffer = `${transcriptBuffer} ${result[0].transcript}`.trim();
+        } else {
+          interim += result[0].transcript;
         }
       }
+      latestLiveText = `${transcriptBuffer} ${interim}`.trim();
+      onInterimTranscript?.(latestLiveText);
     };
     recognition.onend = () => {
       onListeningChange?.(false);
-      const finalText = transcriptBuffer.trim();
+      // latestLiveText statt nur transcriptBuffer: garantiert, dass exakt
+      // das übernommen wird, was zuletzt live im Eingabefeld sichtbar war -
+      // manche Browser markieren das letzte, noch laufende Wort beim
+      // Stoppen nicht mehr als isFinal, dann fehlte sonst ein im Feld
+      // sichtbares Wortfragment beim Absenden.
+      const finalText = latestLiveText.trim();
       transcriptBuffer = '';
+      latestLiveText = '';
       if (finalText) onTranscript?.(finalText);
     };
     recognition.onerror = () => {
@@ -214,6 +236,7 @@ export function createSpeechController({ onTranscript, onListeningChange, onSpea
     // berücksichtigt wird.
     recognition.lang = RECOGNITION_LANG_BY_LANG[getLang()] || RECOGNITION_LANG_BY_LANG.de;
     transcriptBuffer = '';
+    latestLiveText = '';
     onListeningChange?.(true);
     recognition.start();
   }

@@ -926,6 +926,14 @@ body:not(.chat-started) #question-form {
   transition: height 0.15s ease;
 }
 
+/* Backlog #190: während der Aufnahme (Live-Transkript) ist das Feld
+   read-only (siehe question.js onListeningChange) - dezenter optischer
+   Hinweis, dass Tippen gerade nicht greift. */
+#question-form textarea.dictating {
+  opacity: 0.75;
+  cursor: not-allowed;
+}
+
 /* Backlog #184: sobald der eingegebene Text nicht mehr in eine Zeile passt,
    wächst das Feld auf volle Breite (siehe autosizeQuestionInput in
    question.js, das diese Klasse setzt) - Mikro-/Senden-Button rutschen

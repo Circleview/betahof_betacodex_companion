@@ -574,3 +574,96 @@ setTimeout(() => console.log(JSON.stringify({{ startCalls, resumeCalls }})), 50)
     # erneut aufgerufen worden sein.
     assert output["startCalls"] == 2
     assert output["resumeCalls"] >= 1
+
+
+def _run_speech_recognition_script(scenario_js: str) -> dict:
+    """Führt ein Testszenario gegen createSpeechController mit einer
+    FakeRecognition aus, deren Instanz (recognitionInstances[0]) im
+    scenario_js direkt angesteuert wird (onresult/onend manuell auslösen) -
+    Web Speech API ist in Node nicht verfügbar, daher wird sie hier komplett
+    simuliert statt (wie im echten Browser) vom Betriebssystem geliefert."""
+    js_source = (STATIC_DIR / "speech.js").read_text()
+    lines = js_source.split("\n")
+    body = "\n".join(lines[1:]).replace("export ", "")
+    script = f"""
+function getLang() {{ return 'de'; }}
+global.localStorage = {{ getItem: () => null, setItem: () => {{}} }};
+
+const recognitionInstances = [];
+class FakeRecognition {{
+  constructor() {{ recognitionInstances.push(this); }}
+  start() {{}}
+  stop() {{}}
+}}
+global.window = {{ SpeechRecognition: FakeRecognition }};
+
+const interimCalls = [];
+const transcriptCalls = [];
+
+{body}
+
+const speechController = createSpeechController({{
+  onInterimTranscript: (text) => interimCalls.push(text),
+  onTranscript: (text) => transcriptCalls.push(text),
+}});
+const recognition = recognitionInstances[0];
+
+{scenario_js}
+"""
+    result = subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True)
+    return json.loads(result.stdout)
+
+
+def test_interim_transcript_fires_before_recording_ends():
+    """Regression-Test (Backlog #190): der erkannte Text soll schon WÄHREND
+    des Sprechens gemeldet werden, nicht erst wenn die Aufnahme endet."""
+    output = _run_speech_recognition_script(
+        """
+speechController.startListening();
+recognition.onresult({ resultIndex: 0, results: [{ 0: { transcript: 'Hallo' }, isFinal: false }] });
+console.log(JSON.stringify({ interimCalls, transcriptCalls }));
+"""
+    )
+    assert output == {"interimCalls": ["Hallo"], "transcriptCalls": []}
+
+
+def test_interim_transcript_reflects_growing_and_finalized_text():
+    output = _run_speech_recognition_script(
+        """
+speechController.startListening();
+recognition.onresult({ resultIndex: 0, results: [{ 0: { transcript: 'Hallo' }, isFinal: false }] });
+recognition.onresult({ resultIndex: 0, results: [{ 0: { transcript: 'Hallo Welt' }, isFinal: false }] });
+recognition.onresult({ resultIndex: 0, results: [{ 0: { transcript: 'Hallo Welt.' }, isFinal: true }] });
+console.log(JSON.stringify({ interimCalls }));
+"""
+    )
+    assert output == {"interimCalls": ["Hallo", "Hallo Welt", "Hallo Welt."]}
+
+
+def test_final_transcript_on_end_matches_last_interim_even_without_final_flag():
+    """Kernszenario: manche Browser markieren das letzte, beim Stoppen noch
+    laufende Wort nie als isFinal - onTranscript muss trotzdem exakt das
+    liefern, was zuletzt live im Eingabefeld sichtbar war."""
+    output = _run_speech_recognition_script(
+        """
+speechController.startListening();
+recognition.onresult({ resultIndex: 0, results: [{ 0: { transcript: 'Hallo Welt' }, isFinal: false }] });
+recognition.onend();
+console.log(JSON.stringify({ transcriptCalls }));
+"""
+    )
+    assert output == {"transcriptCalls": ["Hallo Welt"]}
+
+
+def test_start_listening_resets_live_text_for_a_new_recording():
+    output = _run_speech_recognition_script(
+        """
+speechController.startListening();
+recognition.onresult({ resultIndex: 0, results: [{ 0: { transcript: 'Hallo.' }, isFinal: true }] });
+recognition.onend();
+speechController.startListening();
+recognition.onresult({ resultIndex: 0, results: [{ 0: { transcript: 'Welt' }, isFinal: false }] });
+console.log(JSON.stringify({ interimCalls }));
+"""
+    )
+    assert output == {"interimCalls": ["Hallo.", "Welt"]}

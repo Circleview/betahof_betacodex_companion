@@ -475,8 +475,20 @@ const speechController = createSpeechController({
     pendingViaVoice = true;
     questionForm.requestSubmit();
   },
+  // Backlog #190: Live-Transkript - schreibt den erkannten Text schon
+  // WÄHREND des Sprechens ins Eingabefeld, statt erst nach Aufnahmeende
+  // (onTranscript oben).
+  onInterimTranscript: (liveText) => {
+    questionInput.value = liveText;
+    autosizeQuestionInput();
+  },
   onListeningChange: (listening) => {
     micButton.classList.toggle('recording', listening);
+    // Während der Aufnahme read-only: verhindert, dass eine manuelle
+    // Tastatureingabe vom nächsten live eintreffenden Spracherkennungs-
+    // Ergebnis (onInterimTranscript oben) einfach überschrieben wird.
+    questionInput.readOnly = listening;
+    questionInput.classList.toggle('dictating', listening);
   },
   onSpeakingChange: (speaking) => {
     if (!activeSpeakButton) return;
