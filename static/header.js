@@ -42,11 +42,21 @@ const QUESTION_LOG_ICON =
   '<polyline points="17.5 13.8 17.5 16.5 19.8 17.8"></polyline>' +
   '</svg>';
 
+// Backlog (2026-08-01, Nutzerwunsch): Stift (Bearbeiten/Änderungen) statt
+// nur einer reinen Uhr - dieselbe Bauweise wie QUESTION_LOG_ICON oben
+// (Hauptform oben links, kleines Uhr-Abzeichen unten rechts mit
+// Hintergrund-Ausstanzung), damit die Bedeutung "Log von Änderungen über
+// die Zeit" auf einen Blick klar wird statt nur "Zeit" zu zeigen.
 const CHANGELOG_ICON =
   '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" ' +
-  'stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
-  '<circle cx="12" cy="12" r="9"></circle>' +
-  '<polyline points="12 7 12 12 16 14"></polyline>' +
+  'stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">' +
+  '<g transform="translate(-1.5,-1.5) scale(0.7)">' +
+  '<path d="M12 20h9"></path>' +
+  '<path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z"></path>' +
+  '</g>' +
+  '<circle cx="17.5" cy="16.5" r="6" fill="var(--color-bg)" stroke="none"></circle>' +
+  '<circle cx="17.5" cy="16.5" r="5.2"></circle>' +
+  '<polyline points="17.5 13.8 17.5 16.5 19.8 17.8"></polyline>' +
   '</svg>';
 
 // gated: nur für Quellen-Pfleger:innen/System-Admins sichtbar (siehe
