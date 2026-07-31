@@ -265,6 +265,60 @@ header h1 {
   transform: rotate(45deg);
 }
 
+/* Backlog #183: auf Mobile klappt der Login-/Konto-Bereich als eigenständiger,
+   vollbreiter Block direkt unter der Kopfzeile auf statt als Popover -
+   gleiches Muster wie .footer-feedback-panel/#search-bar/#jobs-bar (siehe
+   dortige Kommentare): ein position:static-Popover als Flex-Item von
+   .header-actions würde beim Öffnen sonst alle anderen Icons der Kopfzeile
+   verschieben. Erscheint als Geschwister-Element direkt NACH <header
+   id="site-header"> im DOM (siehe ensureAuthFlowPanel in auth.js), dadurch
+   automatisch unterhalb von dessen Trennlinie (border-bottom). */
+.auth-flow-panel {
+  position: relative;
+  margin-bottom: 1.5rem;
+  padding: 1.5rem 2.75rem 1.5rem 1.5rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+}
+
+.auth-flow-panel-close {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--color-text-muted);
+  cursor: pointer;
+}
+
+.auth-flow-panel-close:hover {
+  color: var(--color-accent);
+}
+
+@media (min-width: 481px) {
+  /* Auf Desktop bleibt .auth-popover aktiv (siehe isMobileAuthLayout() in
+     auth.js) - das Flow-Panel bleibt hier verborgen, selbst wenn sein
+     hidden-Zustand durch ein Resize während des Öffnens veraltet wäre. */
+  .auth-flow-panel {
+    display: none !important;
+  }
+}
+
+@media (max-width: 480px) {
+  /* Umgekehrter Schutz zur Regel oben - auf Mobile bleibt das generische
+     .popover (position:static, siehe weiter unten in dieser Datei) für den
+     Auth-Bereich unsichtbar, das Flow-Panel übernimmt. */
+  #auth-widget .auth-popover {
+    display: none !important;
+  }
+}
+
 .auth-login-form {
   display: flex;
   flex-direction: column;
@@ -819,6 +873,13 @@ body:not(.chat-started) #question-form {
 #question-form {
   display: flex;
   align-items: center;
+  /* Backlog #184: Zeilenumbruch nötig, damit das Eingabefeld im
+     "gewachsenen" Zustand (siehe .question-form--expanded unten) die ganze
+     Breite einnehmen und Mikro-/Senden-Button in eine zweite Zeile
+     schieben kann - solange das Feld einzeilig bleibt, ändert flex-wrap
+     nichts am gewohnten Layout, da alle Elemente ohnehin in eine Zeile
+     passen (das Eingabefeld schrumpft dafür wie bisher, flex-shrink:1). */
+  flex-wrap: wrap;
   gap: 0.6rem;
   padding: 1rem 1.25rem;
   /* Auf iPhones mit Home-Indicator/Notch (viewport-fit=cover im Meta-Tag
@@ -831,9 +892,14 @@ body:not(.chat-started) #question-form {
   flex-shrink: 0;
 }
 
-#question-form input {
+#question-form textarea {
   margin-top: 0;
   flex: 1;
+  /* Ohne dies verhindert die Mindestbreite, die Browser einem <textarea>
+     ohne "cols"-Attribut von sich aus geben, das Schrumpfen auf schmalen
+     Bildschirmen (Flexbox-Standard: min-width:auto orientiert sich am
+     Inhalt/Intrinsic-Wert des Elements, nicht an der gesetzten width). */
+  min-width: 0;
   border-radius: var(--radius);
   padding: 0.7rem 1.25rem;
   background: var(--color-surface);
@@ -842,6 +908,27 @@ body:not(.chat-started) #question-form {
      jedes Feld mit weniger als 16px Schriftgröße hinein (der gemeldete
      "Zoom-Glitch" beim Start der Konversation). */
   font-size: 16px;
+  line-height: 1.4;
+  /* Höhe wird ausschließlich per JS (autosizeQuestionInput in question.js)
+     anhand von scrollHeight gesetzt - resize:none verhindert den nativen
+     Ziehgriff, overflow:hidden das kurze Aufblitzen einer internen
+     Scrollleiste während der Höhenänderung. */
+  resize: none;
+  overflow: hidden;
+  transition: height 0.15s ease;
+}
+
+/* Backlog #184: sobald der eingegebene Text nicht mehr in eine Zeile passt,
+   wächst das Feld auf volle Breite (siehe autosizeQuestionInput in
+   question.js, das diese Klasse setzt) - Mikro-/Senden-Button rutschen
+   dadurch als flex-wrap-Umbruch automatisch in eine zweite Zeile und werden
+   per justify-content rechtsbündig ausgerichtet. */
+#question-form.question-form--expanded textarea {
+  flex-basis: 100%;
+}
+
+#question-form.question-form--expanded {
+  justify-content: flex-end;
 }
 
 /* Ohne konfigurierten Turnstile-Site-Key bleibt der Container leer und darf

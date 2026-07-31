@@ -24,6 +24,13 @@ const AUTH_ICON_LOGGED_IN =
   '<path d="M16.6 18.6l1.3 1.3 2.2-2.6" stroke="var(--color-bg)" stroke-width="1.6"></path>' +
   '</svg>';
 
+const CLOSE_ICON =
+  '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" ' +
+  'stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
+  '<line x1="18" y1="6" x2="6" y2="18"></line>' +
+  '<line x1="6" y1="6" x2="18" y2="18"></line>' +
+  '</svg>';
+
 const ROLE_LABEL_KEYS = {
   quellen_pfleger: 'auth.roleQuellenPfleger',
   user_admin: 'auth.roleUserAdmin',
@@ -332,6 +339,46 @@ function buildLoggedOutPanel(showExpiredNotice) {
   return wrapper;
 }
 
+// Backlog: gleiche Bildschirmbreite, ab der .popover auf position:static
+// wechselt (siehe style.css) - unterhalb dieser Breite würde ein
+// position:static-Popover als Flex-Item von .header-actions beim Öffnen
+// alle anderen Icons der Kopfzeile verschieben (identisches, bereits
+// gelöstes Problem wie bei #search-bar/#jobs-bar in import.js).
+function isMobileAuthLayout() {
+  return window.matchMedia('(max-width: 480px)').matches;
+}
+
+// Backlog #183: auf Mobile klappt der Login-/Konto-Bereich als eigenständiger,
+// vollbreiter Block direkt unter der Kopfzeile auf statt als Popover -
+// gleiches Muster wie .footer-feedback-panel/#search-bar/#jobs-bar. Bleibt
+// über einen Seiten-Reload/erneutes renderWidget() hinweg dasselbe
+// DOM-Element (per ID gesucht), damit nicht bei jedem Rendern ein weiterer
+// Block hinter der Kopfzeile angehängt wird.
+function ensureAuthFlowPanel() {
+  let panel = document.getElementById('auth-flow-panel');
+  if (!panel) {
+    const header = document.getElementById('site-header');
+    if (!header) return null;
+    panel = document.createElement('div');
+    panel.id = 'auth-flow-panel';
+    panel.className = 'auth-flow-panel hidden';
+    header.insertAdjacentElement('afterend', panel);
+  }
+  return panel;
+}
+
+function buildAuthFlowPanelCloseButton(panel) {
+  const closeBtn = document.createElement('button');
+  closeBtn.type = 'button';
+  closeBtn.className = 'auth-flow-panel-close';
+  const label = t('import.closeButtonTitle');
+  closeBtn.title = label;
+  closeBtn.setAttribute('aria-label', label);
+  closeBtn.innerHTML = CLOSE_ICON;
+  closeBtn.addEventListener('click', () => panel.classList.add('hidden'));
+  return closeBtn;
+}
+
 function renderWidget(showExpiredNotice) {
   const container = document.getElementById('auth-widget');
   if (!container) return;
@@ -359,6 +406,7 @@ function renderWidget(showExpiredNotice) {
     container.appendChild(usernameLabel);
   }
 
+  // Desktop: unverändertes Popover, relativ zum Icon positioniert.
   const popover = document.createElement('div');
   popover.className = 'popover auth-popover hidden';
   const arrow = document.createElement('div');
@@ -367,11 +415,32 @@ function renderWidget(showExpiredNotice) {
   popover.appendChild(currentUser.email ? buildLoggedInPanel() : buildLoggedOutPanel(showExpiredNotice));
   container.appendChild(popover);
 
+  // Mobile: eigener, vollbreiter Block unter der Kopfzeile (siehe oben) -
+  // bekommt einen unabhängig aufgebauten Inhalt (eigene Formulare/Listener),
+  // damit Popover und Flow-Panel sich nicht denselben DOM-Knoten teilen.
+  const flowPanel = ensureAuthFlowPanel();
+  if (flowPanel) {
+    flowPanel.replaceChildren(
+      buildAuthFlowPanelCloseButton(flowPanel),
+      currentUser.email ? buildLoggedInPanel() : buildLoggedOutPanel(showExpiredNotice)
+    );
+    flowPanel.classList.add('hidden');
+  }
+
   button.addEventListener('click', (e) => {
     e.stopPropagation();
-    popover.classList.toggle('hidden');
+    if (isMobileAuthLayout()) {
+      popover.classList.add('hidden');
+      flowPanel?.classList.toggle('hidden');
+    } else {
+      flowPanel?.classList.add('hidden');
+      popover.classList.toggle('hidden');
+    }
   });
-  if (showExpiredNotice) popover.classList.remove('hidden');
+  if (showExpiredNotice) {
+    if (isMobileAuthLayout()) flowPanel?.classList.remove('hidden');
+    else popover.classList.remove('hidden');
+  }
 }
 
 document.addEventListener('click', (e) => {

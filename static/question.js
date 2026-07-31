@@ -405,9 +405,42 @@ await initI18n();
 await initAuth();
 
 const chatMessages = document.getElementById('chat-messages');
+const questionForm = document.getElementById('question-form');
 const questionInput = document.getElementById('question');
 const micButton = document.getElementById('mic-button');
 const sidebarSourcesList = document.getElementById('sidebar-sources-list');
+
+// Backlog #184: Ausgangshöhe EINMALIG beim Laden messen (das Feld ist zu
+// diesem Zeitpunkt garantiert leer) - dient als Schwelle, ab der ein
+// eingegebener Text als "größer als das initiale Feld" gilt und das
+// Formular in den zweizeiligen Layout-Modus wechselt (siehe .question-form
+// --expanded in style.css). Als expliziter Inline-Wert statt "auto"
+// gesetzt, damit die CSS-Transition beim späteren Wachsen/Schrumpfen
+// zwischen zwei konkreten Pixelwerten animiert, nicht zu/von "auto".
+const questionBaseHeight = questionInput.scrollHeight;
+questionInput.style.height = `${questionBaseHeight}px`;
+
+function autosizeQuestionInput() {
+  questionInput.style.height = 'auto';
+  const scrollHeight = questionInput.scrollHeight;
+  const expanded = scrollHeight > questionBaseHeight;
+  questionForm.classList.toggle('question-form--expanded', expanded);
+  questionInput.style.height = `${expanded ? scrollHeight : questionBaseHeight}px`;
+}
+
+questionInput.addEventListener('input', autosizeQuestionInput);
+
+// <textarea> submittet Formulare (anders als <input>) nicht automatisch bei
+// Enter - hier nachgebaut, Umschalt+Enter bleibt für einen manuellen
+// Zeilenumbruch reserviert. isComposing schützt IME-Eingaben (z.B.
+// Japanisch/Chinesisch), bei denen Enter die Zeichenauswahl bestätigt statt
+// abzuschicken.
+questionInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
+    e.preventDefault();
+    questionForm.requestSubmit();
+  }
+});
 
 // Backlog #49: Sprachdialog. Eine per Mikrofon gestellte Frage wird
 // automatisch abgeschickt UND die Antwort automatisch vorgelesen (siehe
@@ -423,8 +456,9 @@ let activeSpeakButton = null;
 const speechController = createSpeechController({
   onTranscript: (transcript) => {
     questionInput.value = transcript;
+    autosizeQuestionInput();
     pendingViaVoice = true;
-    document.getElementById('question-form').requestSubmit();
+    questionForm.requestSubmit();
   },
   onListeningChange: (listening) => {
     micButton.classList.toggle('recording', listening);
@@ -658,7 +692,7 @@ async function readAskStream(response, onDelta) {
   return doneEvent;
 }
 
-document.getElementById('question-form').addEventListener('submit', async (e) => {
+questionForm.addEventListener('submit', async (e) => {
   e.preventDefault();
   const question = questionInput.value.trim();
   if (!question) return;
@@ -681,6 +715,7 @@ document.getElementById('question-form').addEventListener('submit', async (e) =>
   scrollQuestionIntoView(userMessage);
 
   questionInput.value = '';
+  autosizeQuestionInput();
   questionInput.placeholder = t('index.questionPlaceholderContinue');
   // Auf dem Handy öffnet .focus() die virtuelle Tastatur, deren eigenes
   // "gefokussiertes Feld ins Bild scrollen"-Verhalten den obigen Scroll auf
