@@ -279,6 +279,32 @@ Commit-/Tag-Nachrichten in Git.
 
 | Version | Wesentliche Änderungen |
 |---|---|
+| v0.44 | Backlog #183/#184: Login-Bereich mobil als Aufklapp-Bereich statt Popover, dynamisch wachsendes Frage-Eingabefeld (inkl. Zittern-Fix) |
+| v0.43 | Backlog #96/#115: GitHub-Actions-Workflow für Tests + Zero-Downtime Blue-Green-Deployment, Produktiv-Livegang auf Hetzner |
+| v0.42 | Anonymisiertes Fragen-Log für Quellen-Admins + gemeinsame Navigations-Kopfzeile auf allen Seiten |
+| v0.41 | Einbettbares Embed-Snippet für die Konversationsansicht (Backlog #75, hinter Feature-Flag) |
+| v0.40 | Relevanz-Score für Quellen (1-10) |
+| v0.39 | Änderungs-Log mit Rückgängig-Funktion + weiches Löschen |
+| v0.38 | Klickbare Begriffs-Links + gezielte Begriffs-Ableitung aus der Zusammenfassung |
+| v0.37 | Early-Access-Passwort für die Produktivumgebung |
+| v0.36 | Streaming-Antworten für /api/ask |
+| v0.35 | Vorbereitung für den Livegang: noindex, Datenschutzerklärung, gepinnte Abhängigkeiten, Backup-Skript |
+| v0.34 | Sprachdialog: STT für Fragen, TTS für Antworten (Backlog #49) |
+| v0.33 | Quellen-Admins mit Namen + Audit-Log ihrer Änderungen (Backlog #98) |
+| v0.32 | Volltextsuche im Quellenverzeichnis (Backlog #94) |
+| v0.31 | Fix: Audio-Import scheiterte bei Episoden über 23 Minuten (Diarisierungs-Zeitlimit) |
+| v0.30 | Social-Media-Plattform wird automatisch anhand der URL erkannt |
+| v0.29 | Großer/langsamer Import blockiert nicht mehr - eigene Warteschlange wie bei Audio/PDF |
+| v0.28 | Fix: Scroll-Position nach Import + Anzahl importierter Quellen in Überschrift |
+| v0.27 | Fix: Cmd/Strg+F durchsucht jetzt alle geladenen Quellen, nicht nur die aktuelle Seite |
+| v0.26 | Fix: PDF-Extraktion crasht nicht mehr bei beschädigter Xref-Tabelle im CreationDate |
+| v0.25 | KI-Vita-Vorschlag für neue Co-Autor:innen, PDF-OCR-Hintergrundjob, diverse Fixes |
+| v0.24 | Backlog #58: Website-Grundlagen-Audit Teil 2 (PWA, Fehlerseiten, CSP, A11y, OG-Tags) |
+| v0.23 | Backlog #65 + diverse Fixes: Alphabet-Sprungleiste, bilinguale Vita, Popover/Scroll/Retry-Fixes |
+| v0.22 | Backlog #85: Feedback-Popover statt reinem GitHub-Issues-Link |
+| v0.21 | Backlog #57: Infinite Scroll für die Quellenliste (je 20) |
+| v0.20 | Backlog #86: Autorenprofil-Panel beim Import neuer Autor:innen |
+| v0.19 | Zweistufiger Audio-Import mit Hintergrund-Verarbeitung + Status-Icon |
 | v0.18 | Zitat-Qualität: Satzgrenzen-bewusstes Chunking, lokales Satz-Highlighting, KI-Zitat mit Verifikation gegen Halluzination, Re-Indizierung bestehender Quellen |
 | v0.17 | Autor:innen-Profile (Foto, Vita, Website, Social Links) inkl. Umbenennen-Funktion |
 | v0.16 | Echtes Login-System (Magic-Link, ausschließlich per Einladung) + zentrierter Chat-Startzustand |
@@ -343,7 +369,7 @@ Damit während laufender Weiterentwicklung immer eine funktionierende Version zu
   ```bash
   cd "Beta-Kodex - Wissenspartner (stabil)"
   git fetch origin --tags
-  git checkout v0.18         # jeweils aktueller Tag
+  git checkout v0.44.1       # jeweils aktueller Tag
   ./venv/bin/pip install -r requirements.txt   # falls sich Abhängigkeiten geändert haben
   # Server neu starten
   ```
