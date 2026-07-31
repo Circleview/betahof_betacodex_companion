@@ -507,3 +507,70 @@ setTimeout(() => console.log(JSON.stringify({{ fetchBodies, createdSourcePlaybac
     # Der Wert bleibt bei der FakeAudioContext-Standardvorgabe (1) - der Code
     # darf ihn nicht anfassen, sonst käme die Tonhöhenverzerrung zurück.
     assert output["createdSourcePlaybackRate"] == 1
+
+
+def test_playcloud_resumes_audio_context_if_browser_suspended_it_between_sentences():
+    """Regression-Test (2026-08-01): auf Produktion blieb die Vorlesung bei
+    längeren, mehrsätzigen Antworten manchmal nach dem ersten Satz stumm
+    hängen. Ursache: der AudioContext wurde nur EINMAL zu Beginn von speak()
+    entsperrt - versetzt der Browser ihn zwischen zwei Sätzen (Netzwerk-
+    Roundtrip + Decodieren, auf Produktion langsamer als lokal) von sich aus
+    wieder in "suspended", lief die Zeitachse des nächsten source.start()
+    nie an, "onended" feuerte nie, die Wiedergabe hing fest. Jetzt muss vor
+    JEDEM Satz erneut geprüft/aufgeweckt werden."""
+    js_source = (STATIC_DIR / "speech.js").read_text()
+    lines = js_source.split("\n")
+    body = "\n".join(lines[1:]).replace("export ", "")
+    script = f"""
+function getLang() {{ return 'de'; }}
+global.localStorage = {{ getItem: () => null, setItem: () => {{}} }};
+
+let resumeCalls = 0;
+let startCalls = 0;
+class FakeAudioContext {{
+  constructor() {{ this.state = 'running'; this.destination = {{}}; }}
+  resume() {{ resumeCalls += 1; this.state = 'running'; }}
+  decodeAudioData(buf) {{ return Promise.resolve(buf); }}
+  createBufferSource() {{
+    const ctx = this;
+    const node = {{
+      buffer: null,
+      playbackRate: {{ value: 1 }},
+      onended: null,
+      connect() {{}},
+      start() {{
+        startCalls += 1;
+        // Simuliert den Browser, der den Context nach dem ERSTEN Satz von
+        // sich aus wieder schlafen legt, während der nächste Satz noch
+        // angefragt/dekodiert wird.
+        if (startCalls === 1) ctx.state = 'suspended';
+        setTimeout(() => node.onended?.(), 0);
+      }},
+      stop() {{}},
+    }};
+    return node;
+  }}
+}}
+global.window = {{ AudioContext: FakeAudioContext }};
+
+global.fetch = (url, opts) => {{
+  const requestedText = JSON.parse(opts.body).text;
+  return Promise.resolve({{
+    ok: true,
+    blob: () => Promise.resolve({{ arrayBuffer: () => Promise.resolve('buf:' + requestedText) }}),
+  }});
+}};
+
+{body}
+
+const controller = createSpeechController({{}});
+controller.speak('Erster Satz. Zweiter Satz.');
+setTimeout(() => console.log(JSON.stringify({{ startCalls, resumeCalls }})), 50);
+"""
+    result = subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True)
+    output = json.loads(result.stdout)
+    # Beide Sätze müssen tatsächlich gestartet worden sein (kein Hängenbleiben
+    # nach dem ersten) UND resume() muss (mindestens) für den zweiten Satz
+    # erneut aufgerufen worden sein.
+    assert output["startCalls"] == 2
+    assert output["resumeCalls"] >= 1

@@ -364,6 +364,21 @@ export function createSpeechController({ onTranscript, onListeningChange, onSpea
         const ended = new Promise((resolve) => {
           source.onended = resolve;
         });
+        // Bug (2026-08-01, auf Produktion bei längeren, mehrsätzigen
+        // Antworten nachgestellt): der AudioContext wurde bisher nur EINMAL
+        // zu Beginn von speak() entsperrt. Zwischen zwei Sätzen liegt aber
+        // jeweils ein Netzwerk-Roundtrip zu /api/speech + decodeAudioData -
+        // auf Produktion (schwächere CPU, höhere Latenz) oft spürbar länger
+        // als lokal. In dieser Pause kann der Browser einen kurzzeitig
+        // untätigen AudioContext von sich aus wieder in den Zustand
+        // "suspended" versetzen (Energiespar-/Hintergrund-Heuristiken) - ohne
+        // erneutes resume() bliebe der nächste Satz dann stumm hängen, weil
+        // seine Zeitachse (und damit auch "onended") nie zu laufen beginnt.
+        // Deshalb hier, direkt vor JEDEM einzelnen source.start(), erneut
+        // geprüft - nicht nur einmalig zu Beginn.
+        if (audioContext.state === 'suspended') {
+          audioContext.resume();
+        }
         source.start();
         onSpeakingChange?.(true);
         await ended;
