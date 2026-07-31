@@ -9,7 +9,7 @@ SYSTEM_PROMPTS = {
 
 Regeln:
 - Nutze ausschließlich Informationen aus den bereitgestellten Textausschnitten. Kein allgemeines Wissen, keine Spekulation, keine Ergänzung aus dem Internet oder deinem Trainingswissen.
-- Kennzeichne jede Aussage mit einem Verweis auf den Textausschnitt, aus dem sie stammt, im Format [1], [2] usw., passend zur Nummerierung im Kontext.
+- Kennzeichne jede Aussage mit einem Verweis auf den Textausschnitt, aus dem sie stammt, im Format [1], [2] usw., passend zur Nummerierung im Kontext. Platziere den Verweis IMMER am Ende des Satzes (direkt vor dem Satzzeichen), auf den er sich bezieht - niemals am Satz- oder Absatzanfang. Beispiel richtig: "Teams entscheiden selbst [1]." Beispiel falsch: "[1] Teams entscheiden selbst."
 - Wenn die bereitgestellten Textausschnitte die Frage nicht oder nur teilweise beantworten, sage das explizit und wörtlich, z. B.: "Die vorliegende Quellenlage gibt darauf keine Antwort." Erfinde nichts hinzu.
 - Antworte direkt und natürlich auf die Frage, so wie ein erfahrener Berater es im Gespräch tun würde – nicht wie ein technisches System. Vermeide Meta-Formulierungen wie "Aus den bereitgestellten Textausschnitten ergeben sich folgende Konsequenzen" oder jeden technischen Verweis auf "Chunks", "Textausschnitte" oder "Kontext" im Fließtext der Antwort. Die Quellenverweise [1], [2] usw. bleiben davon unberührt.
 - Formatiere die Antwort mit minimalem Markdown (fett für zentrale Begriffe, ggf. kurze Absätze), aber ohne Emojis.
@@ -27,7 +27,7 @@ Regeln:
 
 Rules:
 - Use only information from the provided text excerpts. No general knowledge, no speculation, no supplementing from the internet or your training data.
-- Mark every statement with a reference to the excerpt it came from, in the format [1], [2] etc., matching the numbering in the context.
+- Mark every statement with a reference to the excerpt it came from, in the format [1], [2] etc., matching the numbering in the context. ALWAYS place the reference at the end of the sentence (right before the punctuation) it supports - never at the start of a sentence or paragraph. Correct example: "Teams decide for themselves [1]." Incorrect example: "[1] Teams decide for themselves."
 - If the provided text excerpts don't answer the question, or only partially answer it, say so explicitly and literally, e.g.: "The available sources do not answer this." Do not invent anything.
 - Answer the question directly and naturally, the way an experienced advisor would in conversation – not like a technical system. Avoid meta phrasing like "Based on the provided text excerpts, the following consequences arise" or any technical reference to "chunks", "excerpts", or "context" in the body of your answer. The source references [1], [2] etc. are unaffected by this.
 - Format the answer with minimal Markdown (bold for key terms, short paragraphs where helpful), but no emojis.
@@ -58,6 +58,40 @@ def _strip_answer_label(text: str) -> str:
     return _ANSWER_LABEL_PREFIX_RE.sub("", text, count=1)
 
 
+# Backlog (2026-08-01): Nutzer erwartet, dass ein Quellenverweis [n] IMMER am
+# Ende des Satzes steht, auf den er sich bezieht - die Prompt-Anweisung oben
+# wurde entsprechend verschärft, ist aber (wie jede Prompt-Anweisung) keine
+# Garantie. Sicherheitsnetz hier: erkennt einen [n] (oder mehrere direkt
+# hintereinander), der am Anfang eines Satzes steht, und verschiebt ihn ans
+# Ende GENAU DESSELBEN Satzes. \A bzw. das (fixed-width) Lookbehind auf
+# [.!?] sorgen dafür, dass mehrere aufeinanderfolgende Sätze mit jeweils
+# eigenem führendem Verweis unabhängig voneinander korrigiert werden (ein
+# Lookbehind "verbraucht" das Satzzeichen nicht, im Gegensatz zu \s+ als Teil
+# der eigentlichen Übereinstimmung - sonst stünde es dem nächsten Treffer
+# nicht mehr als Trenner zur Verfügung). Verschiebt einen Verweis
+# NIE über die eigene Satzgrenze hinaus - die Reihenfolge mehrfacher
+# Vorkommen DERSELBEN Nummer (relevant für die Zitat-Zuordnung in
+# app/main.py) bleibt dadurch unangetastet. Bekannte, bewusst in Kauf
+# genommene Einschränkung wie schon bei chunking.split_sentences/
+# static/speech.js splitSentences: Abkürzungen mit Punkt (z.B. "z.B.")
+# werden fälschlich als Satzende erkannt - kein neues Problem, sondern
+# dieselbe, bereits akzeptierte Grenze naiver Satzerkennung.
+_LEADING_CITATION_RE = re.compile(
+    r'(?P<sep>\A|(?<=[.!?])\s+)(?P<citations>(?:\[\d+\]\s*)+)(?P<sentence>[^.!?\n]+[.!?])'
+)
+
+
+def _move_leading_citations_to_sentence_end(text: str) -> str:
+    def repl(match: re.Match) -> str:
+        citations = " ".join(re.findall(r"\[\d+\]", match.group("citations")))
+        sentence = match.group("sentence")
+        punctuation = sentence[-1]
+        body = sentence[:-1].rstrip()
+        return f"{match.group('sep')}{body} {citations}{punctuation}"
+
+    return _LEADING_CITATION_RE.sub(repl, text)
+
+
 def parse_answer_and_quotes(raw: str) -> tuple[str, dict[int, list[str]]]:
     """Trennt die für Nutzer:innen sichtbare Antwort vom angehängten
     Zitat-Block. Fehlt der Block (z.B. bei einfachen Test-Fakes, die nur
@@ -71,9 +105,11 @@ def parse_answer_and_quotes(raw: str) -> tuple[str, dict[int, list[str]]]:
     """
     marker_index = raw.find(_QUOTES_MARKER)
     if marker_index == -1:
-        return _strip_answer_label(raw.strip()), {}
+        answer = _strip_answer_label(raw.strip())
+        return _move_leading_citations_to_sentence_end(answer), {}
 
     answer = _strip_answer_label(raw[:marker_index].strip())
+    answer = _move_leading_citations_to_sentence_end(answer)
     quotes_block = raw[marker_index + len(_QUOTES_MARKER) :]
     quotes: dict[int, list[str]] = {}
     for match in _QUOTE_LINE_RE.finditer(quotes_block):

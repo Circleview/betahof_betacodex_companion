@@ -167,3 +167,54 @@ def test_parse_answer_and_quotes_strips_answer_label_before_quote_block():
 
     assert answer == "Ein Flip ist ein Zustandswechsel [1]."
     assert quotes == {1: ["Any irritation can flip the system into the New state."]}
+
+
+# Backlog (2026-08-01): Nutzer möchte, dass ein Quellenverweis [n] IMMER am
+# Ende des Satzes steht, auf den er sich bezieht - Sicherheitsnetz in
+# parse_answer_and_quotes (_move_leading_citations_to_sentence_end), falls
+# sich das Sprachmodell trotz verschärfter Prompt-Anweisung nicht daran hält.
+def test_parse_answer_and_quotes_moves_leading_citation_to_sentence_end():
+    answer, _ = llm.parse_answer_and_quotes("[1] Teams entscheiden selbst.")
+    assert answer == "Teams entscheiden selbst [1]."
+
+
+def test_parse_answer_and_quotes_leaves_already_correct_placement_untouched():
+    answer, _ = llm.parse_answer_and_quotes("Teams entscheiden selbst [1].")
+    assert answer == "Teams entscheiden selbst [1]."
+
+
+def test_parse_answer_and_quotes_fixes_leading_citation_in_second_sentence():
+    """Mehrere aufeinanderfolgende Sätze mit jeweils eigenem führendem
+    Verweis müssen UNABHÄNGIG voneinander korrigiert werden."""
+    answer, _ = llm.parse_answer_and_quotes(
+        "[1] Erste Aussage hierzu. [2] Zweite Aussage dazu."
+    )
+    assert answer == "Erste Aussage hierzu [1]. Zweite Aussage dazu [2]."
+
+
+def test_parse_answer_and_quotes_moves_leading_citation_group_of_two():
+    answer, _ = llm.parse_answer_and_quotes("[1][2] Teams entscheiden selbst.")
+    assert answer == "Teams entscheiden selbst [1] [2]."
+
+
+def test_parse_answer_and_quotes_moves_leading_citation_at_paragraph_start():
+    answer, _ = llm.parse_answer_and_quotes(
+        "Erster Absatz endet hier.\n\n[2] Zweiter Absatz beginnt so."
+    )
+    assert answer == "Erster Absatz endet hier.\n\nZweiter Absatz beginnt so [2]."
+
+
+def test_parse_answer_and_quotes_preserves_citation_order_for_same_number():
+    """Verschieben darf die Reihenfolge MEHRFACHER Vorkommen DERSELBEN
+    Quellenzahl nicht verändern, da app/main.py Zitate genau in dieser
+    Reihenfolge aus quotes_by_citation entnimmt."""
+    raw = (
+        '[1] Erste Aussage. Zweite Aussage bezieht sich auch [1] darauf.\n\n'
+        '---QUOTES---\n'
+        '[1]: "Beleg für Erste Aussage."\n'
+        '[1]: "Beleg für Zweite Aussage."\n'
+    )
+    answer, quotes = llm.parse_answer_and_quotes(raw)
+
+    assert answer == "Erste Aussage [1]. Zweite Aussage bezieht sich auch [1] darauf."
+    assert quotes == {1: ["Beleg für Erste Aussage.", "Beleg für Zweite Aussage."]}
