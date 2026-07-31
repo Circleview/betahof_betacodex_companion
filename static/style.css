@@ -1237,6 +1237,28 @@ body:not(.chat-started) #question-form {
     padding-right: 0;
   }
 
+  /* Fix (2026-07-31, zweiter Anlauf): die Annahme, #question-form bleibe
+     als Flex-Geschwister von #chat-messages automatisch am unteren Rand
+     sichtbar, während nur #chat-messages intern scrollt (siehe #chat-column
+     oben), hat sich auf echten Mobilgeräten (Chrome/iOS, WKWebView) NICHT
+     bestätigt - die Eingabezeile verschwand komplett unterhalb des
+     sichtbaren Bereichs, sobald die Konversation lief (per Screenshot
+     nachgewiesen). Stattdessen jetzt explizit am Viewport fixiert, egal wie
+     die Seite gerade steht. left/right statt 0 gleicht das horizontale
+     body-Padding aus (siehe body { padding-left/right: 0.75rem } oben),
+     das ein fixiertes Element sonst umgehen würde. #chat-messages bekommt
+     dafür per JS (siehe question.js: syncMobileChatMessagesPadding) so viel
+     padding-bottom, wie das jetzt fixierte Feld gerade hoch ist - sonst
+     würde es die letzte Nachricht verdecken. */
+  body.chat-started #question-form {
+    position: fixed;
+    left: 0.75rem;
+    right: 0.75rem;
+    bottom: 0;
+    z-index: 5;
+    /* background/border-top kommen schon aus der Basisregel weiter oben. */
+  }
+
   #chat-messages {
     padding-left: 0;
     padding-right: 0;

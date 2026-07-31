@@ -420,6 +420,27 @@ const sidebarSourcesList = document.getElementById('sidebar-sources-list');
 const questionBaseHeight = questionInput.scrollHeight;
 questionInput.style.height = `${questionBaseHeight}px`;
 
+// Fix (2026-07-31, zweiter Anlauf): #question-form ist auf Mobile jetzt
+// position:fixed statt Teil des normalen Flusses (siehe style.css) - die
+// Annahme, es bliebe als Flex-Geschwister von #chat-messages automatisch
+// am unteren Rand sichtbar, hat sich auf echten Geräten NICHT bestätigt
+// (die Eingabezeile verschwand komplett, per Screenshot nachgewiesen).
+// #chat-messages braucht deshalb explizit so viel padding-bottom, wie das
+// jetzt fixierte Feld gerade hoch ist, sonst würde es die letzte Nachricht
+// verdecken - per ResizeObserver aktuell gehalten, da die Feldhöhe selbst
+// variabel ist (siehe autosizeQuestionInput/Backlog #184).
+const mobileLayoutQuery = window.matchMedia('(max-width: 640px)');
+
+function syncMobileChatMessagesPadding() {
+  chatMessages.style.paddingBottom = mobileLayoutQuery.matches
+    ? `${questionForm.getBoundingClientRect().height}px`
+    : '';
+}
+
+new ResizeObserver(syncMobileChatMessagesPadding).observe(questionForm);
+mobileLayoutQuery.addEventListener('change', syncMobileChatMessagesPadding);
+syncMobileChatMessagesPadding();
+
 function autosizeQuestionInput() {
   // Die Ausklapp-Entscheidung IMMER an der eingeklappten (schmaleren)
   // Breite treffen, auch wenn das Feld gerade schon ausgeklappt ist - dafür
