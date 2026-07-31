@@ -687,17 +687,18 @@ section {
    :has(#frage-bereich) schließt import.html aus) - Grundlage dafür, dass
    #frage-bereich per flex:1 den verbleibenden Platz zwischen Header/Tagline
    und Footer exakt ausfüllt und sein Inhalt darin zentrieren kann.
-   --app-height statt eines festen 100dvh (Fallback für Browser ohne
-   visualViewport-Unterstützung, siehe viewport-height.js): iOS Safari
-   verkleinert den Layout-Viewport beim Öffnen der virtuellen Tastatur oft
-   nicht - 100dvh bliebe dann auf voller Bildschirmhöhe stehen und die
-   Eingabezeile unten würde hinter der Tastatur verschwinden statt darüber
-   zu erscheinen. --app-height wird live per JS aus der TATSÄCHLICH
-   sichtbaren Höhe (window.visualViewport) aktualisiert. */
+   Bewusst ein fester 100dvh statt einer per visualViewport live
+   nachgeführten Höhe (kurzzeitig ausprobiert, siehe Git-Historie) - beim
+   Öffnen der Tastatur auf dem zentrierten Startbildschirm (noch keine
+   Konversation) schrumpfte die verfügbare Flex-Fläche dadurch auf fast
+   nichts, wodurch die Zentrierung zusammenbrach und das Eingabefeld an den
+   oberen Rand sprang. Die eigentliche Sticky-Eingabezeile während einer
+   laufenden Konversation braucht das ohnehin nicht mehr - siehe
+   body.chat-started #question-form (position:fixed) weiter unten. */
 body:has(#frage-bereich) {
   display: flex;
   flex-direction: column;
-  min-height: var(--app-height, 100dvh);
+  min-height: 100dvh;
 }
 
 #frage-bereich {
