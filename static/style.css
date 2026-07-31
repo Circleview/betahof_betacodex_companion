@@ -931,6 +931,25 @@ body:not(.chat-started) #question-form {
   justify-content: flex-end;
 }
 
+@media (min-width: 900px) {
+  /* Das Verschieben der Buttons unter das Feld ist für den schmalen,
+     zentrierten Startzustand gedacht (erste Frage, siehe body:not(
+     .chat-started) weiter oben). Läuft die Konversation bereits (volle
+     Breite, sticky Eingabezeile unten am Desktop), bleiben Mikro-/Senden-
+     Button stattdessen rechts stehen - das Feld wächst dort nur noch nach
+     unten, ohne die Buttons zu verdrängen. */
+  body.chat-started #question-form.question-form--expanded textarea {
+    flex-basis: 0%;
+  }
+
+  body.chat-started #question-form.question-form--expanded {
+    justify-content: normal;
+    /* Buttons bleiben an der letzten Textzeile "unten" statt vertikal
+       mittig in der jetzt höheren Box zu schweben. */
+    align-items: flex-end;
+  }
+}
+
 /* Ohne konfigurierten Turnstile-Site-Key bleibt der Container leer und darf
    keinen Platz in der Eingabezeile beanspruchen. */
 .turnstile-container {

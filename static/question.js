@@ -421,11 +421,26 @@ const questionBaseHeight = questionInput.scrollHeight;
 questionInput.style.height = `${questionBaseHeight}px`;
 
 function autosizeQuestionInput() {
+  // Die Ausklapp-Entscheidung IMMER an der eingeklappten (schmaleren)
+  // Breite treffen, auch wenn das Feld gerade schon ausgeklappt ist - dafür
+  // die Klasse hier zuerst entfernen und NEU messen. Sonst würde das
+  // Ausklappen selbst (das laut style.css die Breite vergrößert) den
+  // Zeilenumbruch u.U. wieder aufheben, was sofort zum Wieder-Einklappen
+  // führt und umgekehrt: ein sich an der Umbruch-Grenze selbst
+  // verstärkendes Zittern zwischen beiden Zuständen.
+  questionForm.classList.remove('question-form--expanded');
   questionInput.style.height = 'auto';
-  const scrollHeight = questionInput.scrollHeight;
-  const expanded = scrollHeight > questionBaseHeight;
+  const collapsedScrollHeight = questionInput.scrollHeight;
+  const expanded = collapsedScrollHeight > questionBaseHeight;
   questionForm.classList.toggle('question-form--expanded', expanded);
-  questionInput.style.height = `${expanded ? scrollHeight : questionBaseHeight}px`;
+  if (!expanded) {
+    questionInput.style.height = `${questionBaseHeight}px`;
+    return;
+  }
+  // Jetzt an der tatsächlichen (durch die Klasse ggf. breiteren) Zielbreite
+  // messen, damit die Boxhöhe zur wirklich benötigten Zeilenzahl passt.
+  questionInput.style.height = 'auto';
+  questionInput.style.height = `${questionInput.scrollHeight}px`;
 }
 
 questionInput.addEventListener('input', autosizeQuestionInput);
