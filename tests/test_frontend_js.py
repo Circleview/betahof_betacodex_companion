@@ -235,6 +235,48 @@ def test_speech_rate_cycles_through_all_stages_and_wraps_around():
     assert rates == [1.25, 1.5, 1.75, 2, 1, 1.25]
 
 
+def test_start_listening_unlocks_audio_context_for_later_automatic_speak():
+    """Regression-Test (2026-08-01): automatisches Vorlesen nach einer per
+    Mikrofon gestellten Frage blieb stumm, weil die AudioContext-
+    Freischaltung bisher NUR in speak() passierte - für eine Sprachfrage
+    läuft speak() aber automatisch erst am Ende einer langen asynchronen
+    Kette (Aufnahme stoppen -> Transkription -> Absenden -> Antwort
+    abwarten), zu weit weg von der ursprünglichen Klick-Geste. startListening
+    (direkt im Klick-Handler des Mikrofon-Buttons aufgerufen) muss die
+    Freischaltung deshalb selbst anstoßen."""
+    js_source = (STATIC_DIR / "speech.js").read_text()
+    lines = js_source.split("\n")
+    body = "\n".join(lines[1:]).replace("export ", "")
+    script = f"""
+function getLang() {{ return 'de'; }}
+global.localStorage = {{ getItem: () => null, setItem: () => {{}} }};
+
+class FakeRecognition {{
+  start() {{}}
+  stop() {{}}
+}}
+
+let resumeCalls = 0;
+let constructedCount = 0;
+class FakeAudioContext {{
+  constructor() {{ constructedCount += 1; this.state = 'suspended'; }}
+  resume() {{ resumeCalls += 1; this.state = 'running'; }}
+}}
+global.window = {{
+  SpeechRecognition: FakeRecognition,
+  AudioContext: FakeAudioContext,
+}};
+
+{body}
+
+const controller = createSpeechController({{}});
+controller.startListening();
+console.log(JSON.stringify({{ constructedCount, resumeCalls }}));
+"""
+    result = subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True)
+    output = json.loads(result.stdout)
+    assert output == {"constructedCount": 1, "resumeCalls": 1}
+
 
 def test_speak_fetches_all_sentences_in_parallel_instead_of_sequentially():
     """Regression: die komplette Antwort wurde bisher in EINEM Google-TTS-

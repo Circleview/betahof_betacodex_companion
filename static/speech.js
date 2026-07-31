@@ -154,17 +154,6 @@ export function createSpeechController({ onTranscript, onListeningChange, onSpea
     };
   }
 
-  function startListening() {
-    if (!recognition) return;
-    // Sprache erst beim Start setzen (nicht einmalig bei der Erstellung),
-    // damit ein zwischenzeitlicher Sprachwechsel (DE/EN-Umschalter)
-    // berücksichtigt wird.
-    recognition.lang = RECOGNITION_LANG_BY_LANG[getLang()] || RECOGNITION_LANG_BY_LANG.de;
-    transcriptBuffer = '';
-    onListeningChange?.(true);
-    recognition.start();
-  }
-
   function stopListening() {
     // isListening/onTranscript werden erst in onend ausgelöst, sobald die
     // Aufnahme nach diesem Aufruf tatsächlich beendet ist.
@@ -197,6 +186,38 @@ export function createSpeechController({ onTranscript, onListeningChange, onSpea
   // Kommentar bei cyclePlaybackRate.
   let audioContext = null;
 
+  function ensureAudioContextUnlocked() {
+    if (AudioContextCtor && !audioContext) {
+      audioContext = new AudioContextCtor();
+    }
+    if (audioContext?.state === 'suspended') {
+      audioContext.resume();
+    }
+  }
+
+  // Bug (2026-08-01): das automatische Vorlesen nach einer per Mikrofon
+  // gestellten Frage ("Gespräch") blieb stumm. Ursache: die Freischaltung
+  // oben passierte bisher NUR innerhalb von speak() - für eine getippte
+  // Frage reicht das, weil der Klick auf den Vorlesen-Button direkt davor
+  // liegt. Bei der Sprachfrage läuft speak() aber automatisch erst am Ende
+  // einer langen asynchronen Kette (Aufnahme stoppen -> Transkription ->
+  // Absenden -> auf die komplette Antwort warten) - zu dem Zeitpunkt ist
+  // die ursprüngliche Klick-Geste (Mikrofon-Button) längst verstrichen.
+  // Freischaltung deshalb zusätzlich hier, synchron im Klick-Handler, der
+  // die Aufnahme startet - bleibt dann (wie oben beschrieben) dauerhaft
+  // entsperrt, auch für das spätere automatische speak().
+  function startListening() {
+    if (!recognition) return;
+    ensureAudioContextUnlocked();
+    // Sprache erst beim Start setzen (nicht einmalig bei der Erstellung),
+    // damit ein zwischenzeitlicher Sprachwechsel (DE/EN-Umschalter)
+    // berücksichtigt wird.
+    recognition.lang = RECOGNITION_LANG_BY_LANG[getLang()] || RECOGNITION_LANG_BY_LANG.de;
+    transcriptBuffer = '';
+    onListeningChange?.(true);
+    recognition.start();
+  }
+
   function speak(text) {
     if (!text) return;
     window.speechSynthesis?.cancel();
@@ -209,15 +230,13 @@ export function createSpeechController({ onTranscript, onListeningChange, onSpea
       currentSource = null;
     }
 
-    if (AudioContextCtor && !audioContext) {
-      audioContext = new AudioContextCtor();
-    }
-    // .resume() muss HIER, synchron im Klick-Handler, aufgerufen werden -
-    // nicht erst später in playCloud() nach dem ersten await, sonst wäre
-    // die Nutzer-Geste für die Freischaltung schon verstrichen.
-    if (audioContext?.state === 'suspended') {
-      audioContext.resume();
-    }
+    // .resume() muss synchron im Klick-Handler aufgerufen werden - nicht
+    // erst später in playCloud() nach dem ersten await, sonst wäre die
+    // Nutzer-Geste für die Freischaltung schon verstrichen. Für eine
+    // getippte Frage übernimmt DAS genau diese Zeile hier; für eine per
+    // Mikrofon gestellte Frage ist der AudioContext an dieser Stelle bereits
+    // durch startListening() oben entsperrt.
+    ensureAudioContextUnlocked();
 
     const token = {};
     sequenceToken = token;
