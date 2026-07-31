@@ -93,17 +93,24 @@ export function createSpeechController({ onTranscript, onListeningChange, onSpea
     return playbackRate;
   }
 
-  // Schaltet zur nächsten Stufe in SPEECH_RATES weiter (mit Wraparound) und
-  // wendet sie sofort auf eine gerade laufende Cloud-Wiedergabe an -
-  // HTMLAudioElement erlaubt das live, ohne Neustart. Bei der
-  // Browser-Stimme (speechSynthesis) greift die neue Rate dagegen erst bei
-  // der nächsten Vorlesung, da eine laufende SpeechSynthesisUtterance ihre
-  // rate nicht nachträglich ändern kann.
+  // Schaltet zur nächsten Stufe in SPEECH_RATES weiter (mit Wraparound).
+  // Greift erst ab der nächsten Vorlesung (bzw. dem nächsten, noch nicht
+  // angefragten Satz einer laufenden Vorlesung): die Rate wird serverseitig
+  // von Google TTS selbst synthetisiert (siehe fetchSpeechBlob/playCloud
+  // unten), ein bereits angefragter/abgespielter Satz kann seine Rate daher
+  // nicht mehr nachträglich ändern, ohne ihn neu anzufragen. Zwei
+  // Alternativen wurden verworfen (siehe Git-Historie 2026-07-31): (1)
+  // client-seitiges Resampling per AudioBufferSourceNode.playbackRate -
+  // verzerrt ohne Tonhöhenkorrektur die Stimme bei höherem Tempo; (2) ein
+  // wiederverwendetes <audio>-Element mit dessen (tonhöhenkorrigierendem)
+  // playbackRate - verursachte ein hörbares Knacken zwischen Sätzen, da
+  // <audio> unabhängig kodierte MP3-Segmente nicht wirklich gapless
+  // wiedergibt (bekannte Browser-Einschränkung, anders als
+  // decodeAudioData/AudioBufferSourceNode unten, das dafür spezifiziert ist).
   function cyclePlaybackRate() {
     const currentIndex = SPEECH_RATES.indexOf(playbackRate);
     playbackRate = SPEECH_RATES[(currentIndex + 1) % SPEECH_RATES.length];
     localStorage.setItem(SPEECH_RATE_STORAGE_KEY, String(playbackRate));
-    if (currentSource) currentSource.playbackRate.value = playbackRate;
     return playbackRate;
   }
 
@@ -185,7 +192,9 @@ export function createSpeechController({ onTranscript, onListeningChange, onSpea
   // eigentliche Wiedergabe (über decodeAudioData/AudioBufferSourceNode)
   // erst Sekunden später beginnt. Einmalig erzeugt und wiederverwendet
   // (viele AudioContext-Instanzen sind unnötig und in manchen Browsern
-  // limitiert).
+  // limitiert). Zwei Alternativen dazu (jeweils ein <audio>-Element statt
+  // AudioContext) wurden ausprobiert und wieder verworfen, siehe
+  // Kommentar bei cyclePlaybackRate.
   let audioContext = null;
 
   function speak(text) {
@@ -269,7 +278,7 @@ export function createSpeechController({ onTranscript, onListeningChange, onSpea
       return fetch('/api/speech', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-Lang': getLang() },
-        body: JSON.stringify({ text: sentenceText }),
+        body: JSON.stringify({ text: sentenceText, rate: playbackRate }),
         priority,
       }).then((res) => {
         if (!res.ok) throw new Error('speech request failed');
@@ -307,7 +316,10 @@ export function createSpeechController({ onTranscript, onListeningChange, onSpea
         // Kommentar bei audioContext oben: das eigentliche Abspielen läuft
         // über den bereits per Nutzer-Geste entsperrten AudioContext und
         // braucht dadurch KEINE eigene, frische Aktivierung mehr, egal wie
-        // lange der Roundtrip zu /api/speech gedauert hat.
+        // lange der Roundtrip zu /api/speech gedauert hat. decodeAudioData
+        // dekodiert MP3s zudem lückenlos (kein Encoder-Priming-Artefakt an
+        // Satzgrenzen) - <audio>-Elemente können das nicht zuverlässig
+        // ("gapless MP3 playback" ist eine bekannte Browser-Einschränkung).
         let audioBuffer;
         try {
           const arrayBuffer = await blob.arrayBuffer();
@@ -318,9 +330,15 @@ export function createSpeechController({ onTranscript, onListeningChange, onSpea
         }
         if (sequenceToken !== token) return;
 
+        // KEIN source.playbackRate hier setzen (Bug, 2026-07-31): Google TTS
+        // liefert das Audio oben bereits fertig in der gewünschten Rate
+        // (fetchSpeechBlob schickt sie mit) - das Sprachmodell synthetisiert
+        // selbst schneller/langsamer. AudioBufferSourceNode.playbackRate
+        // dagegen resamplet nachträglich OHNE Tonhöhenkorrektur - das
+        // frühere Setzen hier war die Ursache für die "Micky-Maus-Stimme"
+        // bei höherem Tempo.
         const source = audioContext.createBufferSource();
         source.buffer = audioBuffer;
-        source.playbackRate.value = playbackRate;
         source.connect(audioContext.destination);
         currentSource = source;
 

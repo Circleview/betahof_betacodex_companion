@@ -753,7 +753,9 @@ def test_ask_without_sources_returns_400(client):
 
 
 def test_speech_returns_audio_without_login(anon_client, monkeypatch):
-    monkeypatch.setattr(tts, "synthesize_speech", lambda text, lang="de": b"fake-mp3-bytes")
+    monkeypatch.setattr(
+        tts, "synthesize_speech", lambda text, lang="de", speaking_rate=1.0: b"fake-mp3-bytes"
+    )
 
     response = anon_client.post("/api/speech", json={"text": "Hallo Welt"})
 
@@ -765,9 +767,10 @@ def test_speech_returns_audio_without_login(anon_client, monkeypatch):
 def test_speech_passes_current_language_to_synthesize(anon_client, monkeypatch):
     captured = {}
 
-    def fake_synthesize(text, lang="de"):
+    def fake_synthesize(text, lang="de", speaking_rate=1.0):
         captured["text"] = text
         captured["lang"] = lang
+        captured["speaking_rate"] = speaking_rate
         return b"audio"
 
     monkeypatch.setattr(tts, "synthesize_speech", fake_synthesize)
@@ -777,7 +780,27 @@ def test_speech_passes_current_language_to_synthesize(anon_client, monkeypatch):
     )
 
     assert response.status_code == 200
-    assert captured == {"text": "Hello", "lang": "en"}
+    assert captured == {"text": "Hello", "lang": "en", "speaking_rate": 1.0}
+
+
+def test_speech_passes_requested_rate_to_synthesize(anon_client, monkeypatch):
+    # Regression-Test (2026-07-31): das Vorlesetempo muss an Google TTS selbst
+    # weitergereicht werden (Synthese in Zielgeschwindigkeit), statt es erst
+    # nachträglich im Client zu resampeln oder per <audio>-Element-Wechsel
+    # abzuspielen - beides verursachte eigene Nebenwirkungen (Tonhöhen-
+    # verzerrung bzw. Knacken zwischen Sätzen, siehe Git-Historie).
+    captured = {}
+
+    def fake_synthesize(text, lang="de", speaking_rate=1.0):
+        captured["speaking_rate"] = speaking_rate
+        return b"audio"
+
+    monkeypatch.setattr(tts, "synthesize_speech", fake_synthesize)
+
+    response = anon_client.post("/api/speech", json={"text": "Hallo", "rate": 1.75})
+
+    assert response.status_code == 200
+    assert captured["speaking_rate"] == 1.75
 
 
 def test_speech_rejects_empty_text(anon_client):
@@ -786,7 +809,7 @@ def test_speech_rejects_empty_text(anon_client):
 
 
 def test_speech_returns_502_when_synthesis_fails(anon_client, monkeypatch):
-    def raise_error(text, lang="de"):
+    def raise_error(text, lang="de", speaking_rate=1.0):
         raise tts.SpeechSynthesisError("boom")
 
     monkeypatch.setattr(tts, "synthesize_speech", raise_error)

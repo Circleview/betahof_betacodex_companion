@@ -2211,7 +2211,7 @@ def synthesize_speech(payload: SpeechIn, x_lang: str = Header(default=i18n.DEFAU
 
     lang = x_lang if x_lang in ("de", "en") else i18n.DEFAULT_LANG
     try:
-        audio = tts.synthesize_speech(text, lang=lang)
+        audio = tts.synthesize_speech(text, lang=lang, speaking_rate=payload.rate)
     except tts.SpeechSynthesisError:
         raise HTTPException(502, i18n.get_message("speech_synthesis_failed", x_lang))
     return Response(content=audio, media_type="audio/mpeg")

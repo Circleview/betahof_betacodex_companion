@@ -28,6 +28,37 @@ def test_synthesize_speech_returns_decoded_audio_bytes(monkeypatch):
     body = json.loads(request.data.decode("utf-8"))
     assert body["input"] == {"text": "Hallo Welt"}
     assert body["voice"]["languageCode"] == "de-DE"
+    assert body["audioConfig"]["speakingRate"] == 1.0
+
+
+def test_synthesize_speech_passes_speaking_rate_to_google(monkeypatch):
+    # Regression-Test (2026-07-31): siehe Git-Historie - vorher wurde ein
+    # schnelleres Tempo entweder client-seitig per
+    # AudioBufferSourceNode.playbackRate resamplet (Tonhöhenverzerrung) oder
+    # über ein wiederverwendetes <audio>-Element abgespielt (Knacken
+    # zwischen Sätzen, da <audio> kein gapless MP3-Playback beherrscht).
+    # Google TTS synthetisiert stattdessen selbst in der Zielgeschwindigkeit.
+    monkeypatch.setenv("GOOGLE_TTS_API_KEY", "test-key")
+    resp = _mock_response({"audioContent": base64.b64encode(b"x").decode("ascii")})
+
+    with patch("app.tts.urllib.request.urlopen", return_value=resp) as mock_urlopen:
+        tts.synthesize_speech("Hallo Welt", lang="de", speaking_rate=1.75)
+
+    request = mock_urlopen.call_args[0][0]
+    body = json.loads(request.data.decode("utf-8"))
+    assert body["audioConfig"]["speakingRate"] == 1.75
+
+
+def test_synthesize_speech_clamps_speaking_rate_to_google_limits(monkeypatch):
+    monkeypatch.setenv("GOOGLE_TTS_API_KEY", "test-key")
+    resp = _mock_response({"audioContent": base64.b64encode(b"x").decode("ascii")})
+
+    with patch("app.tts.urllib.request.urlopen", return_value=resp) as mock_urlopen:
+        tts.synthesize_speech("Hallo Welt", lang="de", speaking_rate=99)
+
+    request = mock_urlopen.call_args[0][0]
+    body = json.loads(request.data.decode("utf-8"))
+    assert body["audioConfig"]["speakingRate"] == 4.0
 
 
 def test_synthesize_speech_uses_language_specific_voice(monkeypatch):

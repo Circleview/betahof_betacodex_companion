@@ -43,19 +43,31 @@ class SpeechSynthesisError(Exception):
     pass
 
 
-def synthesize_speech(text: str, lang: str = "de") -> bytes:
+def synthesize_speech(text: str, lang: str = "de", speaking_rate: float = 1.0) -> bytes:
     api_key = os.environ.get("GOOGLE_TTS_API_KEY", "")
     if not api_key:
         raise SpeechSynthesisError("Kein Google-TTS-Key konfiguriert")
 
     language_code = LANGUAGE_CODES_BY_LANG.get(lang, LANGUAGE_CODES_BY_LANG["de"])
     voice_name = _resolve_voice_name(lang)
+    # Live gegen die echte API verifiziert (2026-07-31, Chirp3-HD): speakingRate
+    # 0.5/1.0/1.75/2.0 liefern jeweils gültiges, korrekt proportional kürzeres/
+    # längeres Audio - das Sprachmodell synthetisiert selbst in der Zielrate.
+    # Wichtig, DAMIT client-seitig source.playbackRate bei 1 bleiben kann (kein
+    # Resampling mehr nötig): das vermeidet gleich zwei Nebenwirkungen -
+    # AudioBufferSourceNode.playbackRate verzerrt sonst die Tonhöhe (ohne
+    # Korrektur, wie ein schneller abgespieltes Tonband), UND ein <audio>-
+    # Element mit reassigned src zwischen Sätzen (Alternativlösung, verworfen)
+    # verursacht ein hörbares Knacken zwischen Sätzen, da <audio> unabhängig
+    # kodierte MP3-Segmente nicht wirklich "gapless" wiedergibt - anders als
+    # decodeAudioData/AudioBufferSourceNode, das dafür spezifiziert ist.
+    clamped_rate = max(0.25, min(4.0, speaking_rate))
 
     payload = json.dumps(
         {
             "input": {"text": text},
             "voice": {"languageCode": language_code, "name": voice_name},
-            "audioConfig": {"audioEncoding": "MP3"},
+            "audioConfig": {"audioEncoding": "MP3", "speakingRate": clamped_rate},
         }
     ).encode("utf-8")
 

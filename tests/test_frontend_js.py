@@ -235,6 +235,7 @@ def test_speech_rate_cycles_through_all_stages_and_wraps_around():
     assert rates == [1.25, 1.5, 1.75, 2, 1, 1.25]
 
 
+
 def test_speak_fetches_all_sentences_in_parallel_instead_of_sequentially():
     """Regression: die komplette Antwort wurde bisher in EINEM Google-TTS-
     Aufruf synthetisiert - spürbare Verzögerung bei längeren, mehrsätzigen
@@ -395,3 +396,72 @@ console.log(JSON.stringify(priorityByText));
         "Zweiter Satz.": "low",
         "Dritter Satz.": "low",
     }
+
+
+def test_speak_requests_audio_in_selected_rate_instead_of_resampling_client_side():
+    """Regression-Test (2026-07-31): schnellere Wiedergabe ließ die Stimme
+    höher klingen ("Micky-Maus-Effekt"). Zwei Ursachen wurden nacheinander
+    ausgeschlossen (siehe Git-Historie): (1) client-seitiges Resampling per
+    AudioBufferSourceNode.playbackRate ohne Tonhöhenkorrektur, (2) ein
+    wiederverwendetes <audio>-Element - verursachte stattdessen ein
+    hörbares Knacken zwischen Sätzen (kein gapless MP3-Playback). Die
+    Lösung: die gewählte Rate wird an /api/speech mitgeschickt, Google TTS
+    synthetisiert selbst schneller/langsamer, source.playbackRate bleibt
+    unangetastet (Standardwert 1) UND die Wiedergabe bleibt über
+    decodeAudioData/AudioBufferSourceNode gapless."""
+    js_source = (STATIC_DIR / "speech.js").read_text()
+    lines = js_source.split("\n")
+    body = "\n".join(lines[1:]).replace("export ", "")
+    script = f"""
+function getLang() {{ return 'de'; }}
+const store = {{ speechRate: '1.75' }};
+global.localStorage = {{
+  getItem: (k) => (k in store ? store[k] : null),
+  setItem: (k, v) => {{ store[k] = v; }},
+}};
+
+let createdSourcePlaybackRate = null;
+class FakeAudioContext {{
+  constructor() {{ this.state = 'running'; this.destination = {{}}; }}
+  resume() {{ this.state = 'running'; }}
+  decodeAudioData(buf) {{ return Promise.resolve(buf); }}
+  createBufferSource() {{
+    const node = {{
+      buffer: null,
+      playbackRate: {{ value: 1 }},
+      onended: null,
+      connect() {{}},
+      start() {{
+        createdSourcePlaybackRate = node.playbackRate.value;
+        setTimeout(() => node.onended?.(), 0);
+      }},
+      stop() {{}},
+    }};
+    return node;
+  }}
+}}
+global.window = {{ AudioContext: FakeAudioContext }};
+
+const fetchBodies = [];
+global.fetch = (url, opts) => {{
+  fetchBodies.push(JSON.parse(opts.body));
+  return new Promise((resolve) => {{
+    setTimeout(
+      () => resolve({{ ok: true, blob: () => Promise.resolve({{ arrayBuffer: () => Promise.resolve('buf') }}) }}),
+      5
+    );
+  }});
+}};
+
+{body}
+
+const controller = createSpeechController({{}});
+controller.speak('Einziger Satz.');
+setTimeout(() => console.log(JSON.stringify({{ fetchBodies, createdSourcePlaybackRate }})), 20);
+"""
+    result = subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True)
+    output = json.loads(result.stdout)
+    assert output["fetchBodies"] == [{"text": "Einziger Satz.", "rate": 1.75}]
+    # Der Wert bleibt bei der FakeAudioContext-Standardvorgabe (1) - der Code
+    # darf ihn nicht anfassen, sonst käme die Tonhöhenverzerrung zurück.
+    assert output["createdSourcePlaybackRate"] == 1

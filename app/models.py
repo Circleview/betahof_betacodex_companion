@@ -135,6 +135,7 @@ class MessageOut(BaseModel):
 
 class SpeechIn(BaseModel):
     text: str
+    rate: float = 1.0
 
 
 class SocialLink(BaseModel):
