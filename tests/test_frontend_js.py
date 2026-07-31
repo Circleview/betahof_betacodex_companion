@@ -248,24 +248,38 @@ def test_speak_fetches_all_sentences_in_parallel_instead_of_sequentially():
     script = f"""
 function getLang() {{ return 'de'; }}
 global.localStorage = {{ getItem: () => null, setItem: () => {{}} }};
-global.window = {{}};
+
+class FakeAudioContext {{
+  constructor() {{ this.state = 'running'; this.destination = {{}}; }}
+  resume() {{ this.state = 'running'; }}
+  decodeAudioData(buf) {{ return Promise.resolve(buf); }}
+  createBufferSource() {{
+    const node = {{
+      buffer: null,
+      playbackRate: {{ value: 1 }},
+      onended: null,
+      connect() {{}},
+      start() {{ setTimeout(() => node.onended?.(), 0); }},
+      stop() {{}},
+    }};
+    return node;
+  }}
+}}
+global.window = {{ AudioContext: FakeAudioContext }};
 
 const fetchCalls = [];
 global.fetch = (url, opts) => {{
   const requestedText = JSON.parse(opts.body).text;
   fetchCalls.push(requestedText);
   return new Promise((resolve) => {{
-    setTimeout(() => resolve({{ ok: true, blob: () => Promise.resolve('blob-for:' + requestedText) }}), 5);
+    setTimeout(
+      () => resolve({{
+        ok: true,
+        blob: () => Promise.resolve({{ arrayBuffer: () => Promise.resolve('buf:' + requestedText) }}),
+      }}),
+      5
+    );
   }});
-}};
-global.URL = {{ createObjectURL: () => 'blob:fake', revokeObjectURL: () => {{}} }};
-global.Audio = class {{
-  constructor(url) {{ this.src = url; }}
-  play() {{
-    setTimeout(() => {{ this.onplaying?.(); this.onended?.(); }}, 0);
-    return Promise.resolve();
-  }}
-  pause() {{}}
 }};
 
 {body}
@@ -291,28 +305,41 @@ def test_speak_plays_sentences_in_order_despite_out_of_order_fetch_completion():
     script = f"""
 function getLang() {{ return 'de'; }}
 global.localStorage = {{ getItem: () => null, setItem: () => {{}} }};
-global.window = {{}};
+
+const playedOrder = [];
+class FakeAudioContext {{
+  constructor() {{ this.state = 'running'; this.destination = {{}}; }}
+  resume() {{ this.state = 'running'; }}
+  decodeAudioData(buf) {{ return Promise.resolve(buf); }}
+  createBufferSource() {{
+    const node = {{
+      buffer: null,
+      playbackRate: {{ value: 1 }},
+      onended: null,
+      connect() {{}},
+      start() {{
+        playedOrder.push(node.buffer);
+        setTimeout(() => node.onended?.(), 0);
+      }},
+      stop() {{}},
+    }};
+    return node;
+  }}
+}}
+global.window = {{ AudioContext: FakeAudioContext }};
 
 const DELAY_BY_TEXT = {{ 'Erster Satz.': 15, 'Zweiter Satz.': 1 }};
 global.fetch = (url, opts) => {{
   const requestedText = JSON.parse(opts.body).text;
   return new Promise((resolve) => {{
     setTimeout(
-      () => resolve({{ ok: true, blob: () => Promise.resolve('blob-for:' + requestedText) }}),
+      () => resolve({{
+        ok: true,
+        blob: () => Promise.resolve({{ arrayBuffer: () => Promise.resolve('buf-for:' + requestedText) }}),
+      }}),
       DELAY_BY_TEXT[requestedText] ?? 1
     );
   }});
-}};
-global.URL = {{ createObjectURL: (blob) => blob, revokeObjectURL: () => {{}} }};
-const playedOrder = [];
-global.Audio = class {{
-  constructor(url) {{ this.src = url; }}
-  play() {{
-    playedOrder.push(this.src);
-    setTimeout(() => {{ this.onplaying?.(); this.onended?.(); }}, 0);
-    return Promise.resolve();
-  }}
-  pause() {{}}
 }};
 
 {body}
@@ -323,7 +350,7 @@ setTimeout(() => console.log(JSON.stringify(playedOrder)), 50);
 """
     result = subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True)
     played_order = json.loads(result.stdout)
-    assert played_order == ["blob-for:Erster Satz.", "blob-for:Zweiter Satz."]
+    assert played_order == ["buf-for:Erster Satz.", "buf-for:Zweiter Satz."]
 
 
 def test_speak_gives_first_sentence_high_fetch_priority_and_rest_low():
@@ -337,7 +364,16 @@ def test_speak_gives_first_sentence_high_fetch_priority_and_rest_low():
     script = f"""
 function getLang() {{ return 'de'; }}
 global.localStorage = {{ getItem: () => null, setItem: () => {{}} }};
-global.window = {{}};
+
+class FakeAudioContext {{
+  constructor() {{ this.state = 'running'; this.destination = {{}}; }}
+  resume() {{ this.state = 'running'; }}
+  decodeAudioData(buf) {{ return Promise.resolve(buf); }}
+  createBufferSource() {{
+    return {{ buffer: null, playbackRate: {{ value: 1 }}, onended: null, connect() {{}}, start() {{}}, stop() {{}} }};
+  }}
+}}
+global.window = {{ AudioContext: FakeAudioContext }};
 
 const priorityByText = {{}};
 global.fetch = (url, opts) => {{

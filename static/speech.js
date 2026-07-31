@@ -45,7 +45,8 @@ function getRecognitionCtor() {
 // unnötige, zusätzliche Fehlerquelle sind - hier ohnehin nur der Fallback,
 // falls der Cloud-Weg über /api/speech nicht funktioniert.
 const ENHANCED_VOICE_MARKERS = ['premium', 'enhanced', 'neural', 'natural', 'erweitert', 'verbessert'];
-const PLAY_TIMEOUT_MS = 4000;
+
+const AudioContextCtor = window.AudioContext || window.webkitAudioContext || null;
 
 function pickBestVoice(voices, lang) {
   const langPrefix = lang.split('-')[0].toLowerCase();
@@ -102,7 +103,7 @@ export function createSpeechController({ onTranscript, onListeningChange, onSpea
     const currentIndex = SPEECH_RATES.indexOf(playbackRate);
     playbackRate = SPEECH_RATES[(currentIndex + 1) % SPEECH_RATES.length];
     localStorage.setItem(SPEECH_RATE_STORAGE_KEY, String(playbackRate));
-    if (currentAudio) currentAudio.playbackRate = playbackRate;
+    if (currentSource) currentSource.playbackRate.value = playbackRate;
     return playbackRate;
   }
 
@@ -168,14 +169,45 @@ export function createSpeechController({ onTranscript, onListeningChange, onSpea
   // Callbacks einer bereits abgebrochenen Vorlesung sich selbst als
   // überholt erkennen, statt eine veraltete Wiedergabe fortzusetzen.
   let sequenceToken = null;
-  let currentAudio = null;
+  let currentSource = null;
+
+  // Bug (2026-07-31, live auf Produktion nachgestellt): ein klassisches
+  // <audio>.play() schlug dort öfter mit "NotAllowedError: play() failed
+  // because the user didn't interact with the document first" fehl - der
+  // Fallback auf die Browser-Stimme (playLocal) brauchte dieselbe frische
+  // Nutzer-Geste und scheiterte dann ebenfalls, meist lautlos. Ursache: bis
+  // die Audiodaten von /api/speech eintreffen, ist ein spürbarer Netzwerk-
+  // Roundtrip vergangen (auf Produktion länger als lokal) - das kurze
+  // Zeitfenster, in dem Browser Ton-Wiedergabe nach einem Klick erlauben
+  // ("transient activation"), ist bis dahin oft schon abgelaufen. Fix:
+  // einen AudioContext SYNCHRON im Klick-Handler (noch vor jedem await)
+  // "entsperren" - einmal entsperrt, bleibt er es dauerhaft, auch wenn die
+  // eigentliche Wiedergabe (über decodeAudioData/AudioBufferSourceNode)
+  // erst Sekunden später beginnt. Einmalig erzeugt und wiederverwendet
+  // (viele AudioContext-Instanzen sind unnötig und in manchen Browsern
+  // limitiert).
+  let audioContext = null;
 
   function speak(text) {
     if (!text) return;
     window.speechSynthesis?.cancel();
-    if (currentAudio) {
-      currentAudio.pause();
-      currentAudio = null;
+    if (currentSource) {
+      try {
+        currentSource.stop();
+      } catch (err) {
+        // Bereits gestoppt/durchgelaufen - kein Fehlerfall.
+      }
+      currentSource = null;
+    }
+
+    if (AudioContextCtor && !audioContext) {
+      audioContext = new AudioContextCtor();
+    }
+    // .resume() muss HIER, synchron im Klick-Handler, aufgerufen werden -
+    // nicht erst später in playCloud() nach dem ersten await, sonst wäre
+    // die Nutzer-Geste für die Freischaltung schon verstrichen.
+    if (audioContext?.state === 'suspended') {
+      audioContext.resume();
     }
 
     const token = {};
@@ -246,6 +278,14 @@ export function createSpeechController({ onTranscript, onListeningChange, onSpea
     }
 
     async function playCloud() {
+      // Ohne Web-Audio-API-Unterstützung (praktisch nur sehr alte Browser)
+      // direkt auf die Browser-Stimme ausweichen, statt eine Kette aus
+      // Fehlversuchen zu provozieren.
+      if (!audioContext) {
+        playLocal(text);
+        return;
+      }
+
       const sentences = splitSentences(text);
       if (sentences.length === 0) return;
       const blobPromises = sentences.map((sentence, i) =>
@@ -263,47 +303,34 @@ export function createSpeechController({ onTranscript, onListeningChange, onSpea
         }
         if (sequenceToken !== token) return;
 
-        const url = URL.createObjectURL(blob);
-        const audio = new Audio(url);
-        audio.playbackRate = playbackRate;
-        currentAudio = audio;
-        audio.onplaying = () => {
-          if (sequenceToken !== token) return;
-          onSpeakingChange?.(true);
-        };
-
-        // Zusätzliche Absicherung: play() kann in manchen Umgebungen (z.B.
-        // ohne echte Nutzer-Interaktion) weder auflösen noch ablehnen -
-        // ohne Zeitlimit bliebe die Vorlesung dann lautlos für immer hängen.
-        const started = await Promise.race([
-          audio.play().then(() => true).catch(() => false),
-          new Promise((resolve) => setTimeout(() => resolve(false), PLAY_TIMEOUT_MS)),
-        ]);
-        if (!started) {
-          audio.onplaying = null;
-          audio.pause();
+        // Decodieren statt eines <audio src=blob:...>-Elements - siehe
+        // Kommentar bei audioContext oben: das eigentliche Abspielen läuft
+        // über den bereits per Nutzer-Geste entsperrten AudioContext und
+        // braucht dadurch KEINE eigene, frische Aktivierung mehr, egal wie
+        // lange der Roundtrip zu /api/speech gedauert hat.
+        let audioBuffer;
+        try {
+          const arrayBuffer = await blob.arrayBuffer();
+          audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+        } catch {
           if (sequenceToken === token) playLocal(sentences.slice(i).join(' '));
           return;
         }
-
-        let hadError = false;
-        await new Promise((resolve) => {
-          audio.onended = () => {
-            URL.revokeObjectURL(url);
-            resolve();
-          };
-          audio.onerror = () => {
-            hadError = true;
-            resolve();
-          };
-        });
         if (sequenceToken !== token) return;
-        if (hadError) {
-          // Wiedergabefehler ab GENAU diesem Satz - auf die Browser-Stimme
-          // zurückfallen statt stumm zu bleiben oder abzubrechen.
-          playLocal(sentences.slice(i).join(' '));
-          return;
-        }
+
+        const source = audioContext.createBufferSource();
+        source.buffer = audioBuffer;
+        source.playbackRate.value = playbackRate;
+        source.connect(audioContext.destination);
+        currentSource = source;
+
+        const ended = new Promise((resolve) => {
+          source.onended = resolve;
+        });
+        source.start();
+        onSpeakingChange?.(true);
+        await ended;
+        if (sequenceToken !== token) return;
       }
 
       if (sequenceToken === token) {
@@ -318,9 +345,13 @@ export function createSpeechController({ onTranscript, onListeningChange, onSpea
   function stopSpeaking() {
     sequenceToken = null;
     window.speechSynthesis?.cancel();
-    if (currentAudio) {
-      currentAudio.pause();
-      currentAudio = null;
+    if (currentSource) {
+      try {
+        currentSource.stop();
+      } catch (err) {
+        // Bereits gestoppt/durchgelaufen - kein Fehlerfall.
+      }
+      currentSource = null;
     }
     onSpeakingChange?.(false);
   }
