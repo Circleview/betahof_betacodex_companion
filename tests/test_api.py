@@ -49,12 +49,22 @@ def ask_result(response):
     damit der Großteil der bestehenden Tests unverändert lesbar bleibt.
     streamed_text sammelt zusätzlich alle delta-Fragmente in Sende-
     Reihenfolge - für Tests, die gezielt das Streaming-Verhalten selbst
-    prüfen (z.B. dass der ---QUOTES---Block nie an den Client geht)."""
+    prüfen (z.B. dass der ---QUOTES---Block nie an den Client geht). Der
+    fertige Antworttext kommt seit Backlog 2026-07-31 in einem eigenen,
+    FRÜHEREN "answer"-Event statt im "done"-Event - das trägt seitdem nur
+    noch die (u.U. langsamer berechneten) Quellen/Highlights, damit z.B. der
+    Vorlesen-Button auf die nicht warten muss."""
     lines = [line for line in response.text.split("\n") if line.strip()]
     events = [json.loads(line) for line in lines]
+    answer_event = next(e for e in events if e["type"] == "answer")
     done = next(e for e in events if e["type"] == "done")
     streamed_text = "".join(e["text"] for e in events if e["type"] == "delta")
-    return {"answer": done["answer"], "sources": done["sources"], "streamed_text": streamed_text, "events": events}
+    return {
+        "answer": answer_event["answer"],
+        "sources": done["sources"],
+        "streamed_text": streamed_text,
+        "events": events,
+    }
 
 
 @pytest.fixture
@@ -1065,8 +1075,26 @@ def test_ask_stream_emits_delta_events_in_order_before_done_event(client, monkey
     result = ask_result(response)
 
     assert result["events"][-1]["type"] == "done"
-    assert all(e["type"] == "delta" for e in result["events"][:-1])
+    assert result["events"][-2]["type"] == "answer"
+    assert all(e["type"] == "delta" for e in result["events"][:-2])
     assert result["streamed_text"] == result["answer"]
+
+
+def test_ask_answer_event_precedes_done_event_and_done_carries_no_answer(client):
+    """Backlog (2026-07-31): der fertige Antworttext kommt in einem eigenen,
+    FRÜHEREN "answer"-Event - das "done"-Event trägt seitdem nur noch die
+    Quellen/Highlights, deren Berechnung spürbar länger dauern kann (siehe
+    _compute_occurrence_highlights/_best_local_sentence), damit z.B. der
+    Vorlesen-Button im Frontend nicht darauf warten muss."""
+    client.post("/api/sources", json={"title": "Q", "text": "Text."})
+
+    response = client.post("/api/ask", json={"question": "Frage?"})
+    events = ask_result(response)["events"]
+
+    answer_index = next(i for i, e in enumerate(events) if e["type"] == "answer")
+    done_index = next(i for i, e in enumerate(events) if e["type"] == "done")
+    assert answer_index < done_index
+    assert "answer" not in events[done_index]
 
 
 def test_ask_stream_never_leaks_quotes_marker_even_when_split_across_chunks(client, monkeypatch):

@@ -2069,6 +2069,14 @@ def _ask_event_stream(question_text, llm_chunks, lang, author_bios, chunk_refs, 
     if remaining:
         yield json.dumps({"type": "delta", "text": remaining}) + "\n"
 
+    # Backlog (2026-07-31): der fertige Antworttext steht hier bereits fest -
+    # die folgende Highlight-Berechnung (lokales Embedding-Modell, siehe
+    # _compute_occurrence_highlights/_best_local_sentence) kann auf
+    # schwächerer CPU spürbar dauern. Eigenes, frühes Event dafür, damit
+    # z.B. der Vorlesen-Button nicht auf Quellen/Highlights warten muss
+    # (siehe question.js: onAnswer-Callback schaltet ihn schon hier frei).
+    yield json.dumps({"type": "answer", "answer": answer_text}) + "\n"
+
     occurrence_highlights = _compute_occurrence_highlights(answer_text, chunk_docs, quotes_by_citation)
     for i, chunk_ref in enumerate(chunk_refs):
         if occurrence_highlights[i]:
@@ -2090,7 +2098,6 @@ def _ask_event_stream(question_text, llm_chunks, lang, author_bios, chunk_refs, 
     yield json.dumps(
         {
             "type": "done",
-            "answer": answer_text,
             "sources": [chunk_ref.model_dump() for chunk_ref in chunk_refs],
         }
     ) + "\n"

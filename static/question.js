@@ -621,16 +621,33 @@ function saveConversationHistory() {
 
 const conversationHistory = loadConversationHistory();
 
-// Gemeinsame Rendering-Logik für eine Antwort-Bubble - sowohl für eine
-// gerade eingetroffene Antwort als auch beim Wiederherstellen der
-// gespeicherten Konversation nach einem Seitenwechsel.
-function renderAnswerBubble(bubble, answer, sources) {
+// Backlog (2026-07-31): in zwei Schritte aufgeteilt, damit eine live
+// eintreffende Antwort den Vorlesen-Button schon anzeigen kann, sobald der
+// Antworttext feststeht ("answer"-Event) - ohne auf die u.U. spürbar
+// langsamere Quellen-/Highlight-Berechnung ("done"-Event) zu warten. Beim
+// Wiederherstellen einer gespeicherten Konversation (beides schon bekannt)
+// laufen weiterhin beide Schritte direkt hintereinander, siehe
+// renderAnswerBubble unten.
+function renderAnswerText(bubble, answer) {
   bubble.innerHTML = renderMarkdown(answer);
+  return attachSpeakButton(bubble, answer);
+}
+
+function attachAnswerSources(bubble, sources) {
   makeCitationsClickable(bubble, sources);
   extractCitedSources(bubble, sources).forEach((s) => {
     conversationCitedSources.set(s.chunk_id, s);
   });
-  return attachSpeakButton(bubble, answer);
+}
+
+// Gemeinsame Rendering-Logik für eine Antwort-Bubble beim Wiederherstellen
+// der gespeicherten Konversation nach einem Seitenwechsel - dort liegen
+// Antwort und Quellen von Anfang an beide vor, kein Grund für die beiden
+// Schritte oben zeitlich zu trennen.
+function renderAnswerBubble(bubble, answer, sources) {
+  const speakBtn = renderAnswerText(bubble, answer);
+  attachAnswerSources(bubble, sources);
+  return speakBtn;
 }
 
 function restoreConversationHistory() {
@@ -675,10 +692,13 @@ async function fetchWithRetry(url, options, retries = 1, delayMs = 600) {
 // Streaming im CRT-Tool - /api/ask liefert die Antwort seitdem als NDJSON-
 // Stream (eine JSON-Zeile pro Event) statt als einzelne JSON-Antwort.
 // Liest den Response-Body inkrementell und ruft onDelta(text) für jedes
-// "delta"-Event auf, sobald es ankommt; löst am Ende mit dem "done"-Event
-// auf (bzw. wirft bei einem "error"-Event oder wenn der Stream ohne "done"
-// endet - z.B. abgebrochene Verbindung).
-async function readAskStream(response, onDelta) {
+// "delta"-Event auf, sobald es ankommt, sowie onAnswer(answer) für das
+// "answer"-Event (fertiger Antworttext, kommt VOR den - u.U. spürbar
+// langsameren - Quellen/Highlights im "done"-Event, siehe Backlog
+// 2026-07-31); löst am Ende mit dem "done"-Event auf (bzw. wirft bei einem
+// "error"-Event oder wenn der Stream ohne "done" endet - z.B. abgebrochene
+// Verbindung).
+async function readAskStream(response, onDelta, onAnswer) {
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
   let buffer = '';
@@ -695,6 +715,8 @@ async function readAskStream(response, onDelta) {
       const event = JSON.parse(line);
       if (event.type === 'delta') {
         onDelta(event.text);
+      } else if (event.type === 'answer') {
+        onAnswer(event.answer);
       } else if (event.type === 'error') {
         throw new Error(event.message);
       } else if (event.type === 'done') {
@@ -768,30 +790,43 @@ questionForm.addEventListener('submit', async (e) => {
     }
 
     // Erstes Text-Fragment: Tippindikator durch die (noch unfertige)
-    // Antwort ersetzen. Zitat-Verweise [n] und Hervorhebungen brauchen den
-    // kompletten Text und werden erst im finalen renderAnswerBubble unten
-    // aktiv - bis dahin steht z.B. "[1]" noch als reiner Text da.
+    // Antwort ersetzen. Zitat-Verweise [n] und Hervorhebungen brauchen die
+    // Quellen und werden erst mit attachAnswerSources unten aktiv - bis
+    // dahin steht z.B. "[1]" noch als reiner Text da.
     let liveText = '';
     let indicatorCleared = false;
-    const doneEvent = await readAskStream(res, (delta) => {
-      liveText += delta;
-      if (!indicatorCleared) {
-        indicatorCleared = true;
-        assistantBubble.removeAttribute('aria-label');
+    let finalAnswer = '';
+    let speakBtn = null;
+    const doneEvent = await readAskStream(
+      res,
+      (delta) => {
+        liveText += delta;
+        if (!indicatorCleared) {
+          indicatorCleared = true;
+          assistantBubble.removeAttribute('aria-label');
+        }
+        assistantBubble.innerHTML = renderMarkdown(liveText);
+      },
+      (answer) => {
+        // Backlog (2026-07-31): Vorlesen-Button so früh wie möglich
+        // freischalten, ohne auf die u.U. spürbar langsamere Quellen-/
+        // Highlight-Berechnung zu warten - die kommt gleich danach per
+        // attachAnswerSources nach.
+        finalAnswer = answer;
+        speakBtn = renderAnswerText(assistantBubble, answer);
+        // Backlog #49: nur bei per Mikrofon gestellten Fragen automatisch
+        // vorlesen - getippte Fragen bleiben stumm (mit dem Icon manuell
+        // vorlesbar, siehe attachSpeakButton).
+        if (viaVoice) {
+          startSpeaking(speakBtn, stripMarkdownForSpeech(answer));
+        }
       }
-      assistantBubble.innerHTML = renderMarkdown(liveText);
-    });
+    );
 
-    const speakBtn = renderAnswerBubble(assistantBubble, doneEvent.answer, doneEvent.sources);
+    attachAnswerSources(assistantBubble, doneEvent.sources);
     renderSidebarSources();
-    conversationHistory.push({ question, answer: doneEvent.answer, sources: doneEvent.sources });
+    conversationHistory.push({ question, answer: finalAnswer, sources: doneEvent.sources });
     saveConversationHistory();
-    // Backlog #49: nur bei per Mikrofon gestellten Fragen automatisch
-    // vorlesen - getippte Fragen bleiben stumm (mit dem Icon manuell
-    // vorlesbar, siehe attachSpeakButton).
-    if (viaVoice) {
-      startSpeaking(speakBtn, stripMarkdownForSpeech(doneEvent.answer));
-    }
   } catch (err) {
     assistantBubble.textContent = t('common.errorPrefix') + err.message;
   }
