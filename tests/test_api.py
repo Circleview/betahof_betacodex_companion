@@ -79,6 +79,11 @@ def client(tmp_path, monkeypatch):
 
     monkeypatch.setattr(embeddings, "embed_passages", lambda texts: [[1.0, 0.0] for _ in texts])
     monkeypatch.setattr(embeddings, "embed_query", lambda text: [1.0, 0.0])
+    # Performance-Fix (Backlog 2026-07-31): Satz-Embeddings für lokales
+    # Highlighting werden serverweit über einen Text-Hash gecacht (siehe
+    # _CHUNK_SENTENCE_EMBEDDING_CACHE in app/main.py) - der Cache lebt
+    # modulweit und würde sonst über Tests hinweg bestehen bleiben.
+    monkeypatch.setattr(main_module, "_CHUNK_SENTENCE_EMBEDDING_CACHE", {})
     # /api/ask ruft seit dem Streaming-Umbau (Backlog 2026-07-29)
     # stream_answer_question statt answer_question auf - der Mock muss ein
     # Iterable liefern (wie der echte Generator), kein fertiges String.
@@ -1308,6 +1313,94 @@ def test_ask_skips_eager_local_highlight_computation_for_cited_chunks(client, mo
 
     assert response.status_code == 200
     assert call_count["n"] == 0
+
+
+def test_local_highlight_sentence_embeddings_are_cached_across_requests(client, monkeypatch):
+    """Performance-Fix (Backlog 2026-07-31): Satz-Embeddings eines Chunks
+    hängen nur von dessen TEXT ab, nicht von der gestellten Frage - werden
+    deshalb über einen Hash des Texts gecacht (_get_chunk_sentence_embeddings
+    in app/main.py) statt bei jeder Frage erneut vom lokalen Modell berechnet
+    zu werden. Zwei verschiedene Fragen, die denselben mehrsätzigen,
+    unzitierten Chunk lazy highlighten (siehe
+    test_ask_gives_uncited_chunk_a_lazy_local_highlight_fallback), dürfen
+    embed_passages für dessen Sätze deshalb nur beim ERSTEN Mal aufrufen."""
+    client.post(
+        "/api/sources",
+        json={"title": "Quelle A", "authors": ["Autor A"], "text": "Erster Satz über den BetaCodex."},
+    )
+    client.post(
+        "/api/sources",
+        json={
+            "title": "Quelle B",
+            "authors": ["Autor B"],
+            "text": "Zweiter Satz über Organisation. Dritter Satz über Struktur.",
+        },
+    )
+    monkeypatch.setattr(
+        llm,
+        "stream_answer_question",
+        lambda question, chunks, lang="de", author_bios=None: iter(["Antwort [1]."]),
+    )
+
+    # Erst NACH dem Anlegen der Quellen mitzählen - deren eigene Indizierung
+    # ruft embed_passages ebenfalls auf, das soll hier nicht mitgezählt werden.
+    call_count = {"n": 0}
+    original = embeddings.embed_passages
+
+    def counting(texts):
+        call_count["n"] += 1
+        return original(texts)
+
+    monkeypatch.setattr(embeddings, "embed_passages", counting)
+
+    client.post("/api/ask", json={"question": "Erste Frage?"})
+    assert call_count["n"] == 1
+
+    client.post("/api/ask", json={"question": "Zweite, ganz andere Frage?"})
+    assert call_count["n"] == 1
+
+
+def test_local_highlight_cache_ignores_stale_entry_after_source_edit(client, monkeypatch):
+    """Absicherung gegen einen naheliegenden Cache-Bug: die chunk_id bleibt
+    beim Bearbeiten einer Quelle unverändert (f"{source_id}::{i}", siehe
+    _store_chunks), obwohl sich der Text ändert - ein über die chunk_id statt
+    über den Text geschlüsselter Cache würde nach einer Bearbeitung veraltete
+    Satz-Embeddings für den NEUEN Text ausliefern. Hier geprüft, indem
+    dieselbe (unzitierte) Quelle vor und nach einer Bearbeitung jeweils ihr
+    zum AKTUELLEN Text passendes Highlight liefert. Quelle A bleibt bewusst
+    UNZITIERT (Zitat zeigt auf [2] = Quelle B), damit ihr Highlight über den
+    zu prüfenden Lazy-Fallback (_best_local_sentence) berechnet wird."""
+    create_res = client.post(
+        "/api/sources",
+        json={"title": "Quelle A", "authors": ["Autor A"], "text": "Alter erster Satz. Alter zweiter Satz."},
+    )
+    source_id = create_res.json()["id"]
+    client.post(
+        "/api/sources",
+        json={"title": "Quelle B", "authors": ["Autor B"], "text": "Zitierter Satz."},
+    )
+    monkeypatch.setattr(
+        llm,
+        "stream_answer_question",
+        lambda question, chunks, lang="de", author_bios=None: iter(["Antwort [2]."]),
+    )
+
+    first = ask_result(client.post("/api/ask", json={"question": "Frage eins?"}))
+    uncited_before = next(s for s in first["sources"] if s["title"] == "Quelle A")
+    assert uncited_before["highlighted_texts"] == ["Alter erster Satz."]
+
+    client.put(
+        f"/api/sources/{source_id}",
+        json={
+            "title": "Quelle A",
+            "authors": ["Autor A"],
+            "text": "Neuer erster Satz. Neuer zweiter Satz.",
+        },
+    )
+
+    second = ask_result(client.post("/api/ask", json={"question": "Frage zwei?"}))
+    uncited_after = next(s for s in second["sources"] if s["title"] == "Quelle A")
+    assert uncited_after["highlighted_texts"] == ["Neuer erster Satz."]
 
 
 def test_ask_gives_uncited_chunk_a_lazy_local_highlight_fallback(client, monkeypatch):

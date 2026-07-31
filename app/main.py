@@ -1,3 +1,4 @@
+import hashlib
 import hmac
 import json
 import os
@@ -1869,17 +1870,46 @@ def _normalize_for_match(text: str) -> str:
     return " ".join(text.split()).lower()
 
 
+# Performance-Fix (2026-07-31, Produktion auf schwächerer Hetzner-CPU
+# spürbar langsam): die Satz-Embeddings eines Chunks hängen nur von dessen
+# TEXT ab, nicht von der gestellten Frage - wurden bislang aber bei JEDER
+# Frage neu vom lokalen Modell berechnet, obwohl sich derselbe Chunk über
+# viele Fragen hinweg meist gar nicht ändert. Hier über einen Hash des
+# tatsächlichen Chunk-Texts gecacht (bewusst NICHT über die chunk_id: die
+# bleibt beim Bearbeiten einer Quelle unverändert - siehe
+# f"{source_id}::{i}" in _store_chunks -, obwohl sich der Text ändert; ein
+# über die ID geschlüsselter Cache würde nach einer Bearbeitung veraltete
+# Vektoren für den neuen Text ausliefern). Cacht ausdrücklich NUR die
+# chunk-eigenen Satz-Vektoren, nicht das Highlight selbst - welcher Satz am
+# Ende gewinnt, hängt weiterhin vom jeweils aktuellen Frage-/Antwortsatz ab
+# (query_embedding/claim_embedding, beide frisch pro Anfrage) und wird
+# durch den Cache nicht beeinflusst. Wächst unbegrenzt mit der Anzahl
+# unterschiedlicher jemals zitierter Chunk-Texte - für eine kuratierte
+# Quellensammlung dieser Größenordnung unkritisch.
+_CHUNK_SENTENCE_EMBEDDING_CACHE: dict[str, tuple[list[str], list[list[float]] | None]] = {}
+
+
+def _get_chunk_sentence_embeddings(doc: str) -> tuple[list[str], list[list[float]] | None]:
+    cache_key = hashlib.sha256(doc.encode("utf-8")).hexdigest()
+    cached = _CHUNK_SENTENCE_EMBEDDING_CACHE.get(cache_key)
+    if cached is not None:
+        return cached
+    sentences = chunking.split_sentences(doc)
+    sentence_embeddings = embeddings.embed_passages(sentences) if len(sentences) > 1 else None
+    _CHUNK_SENTENCE_EMBEDDING_CACHE[cache_key] = (sentences, sentence_embeddings)
+    return sentences, sentence_embeddings
+
+
 def _best_local_sentence(doc: str, query_embedding: list[float]) -> str | None:
     """Lokales Fallback-Highlighting (Baustein A): zerlegt den Chunk in
     Sätze und wählt per Skalarprodukt (beide Embeddings normalisiert) den
     Satz, der der Frage am nächsten kommt - kostet keine Anthropic-API,
     läuft komplett mit dem bereits geladenen lokalen Embedding-Modell."""
-    sentences = chunking.split_sentences(doc)
+    sentences, sentence_embeddings = _get_chunk_sentence_embeddings(doc)
     if not sentences:
         return None
     if len(sentences) == 1:
         return sentences[0]
-    sentence_embeddings = embeddings.embed_passages(sentences)
     best_index = max(
         range(len(sentences)),
         key=lambda i: sum(a * b for a, b in zip(sentence_embeddings[i], query_embedding)),
@@ -1905,7 +1935,6 @@ def _compute_occurrence_highlights(
     unterschiedliche Highlights bekommen, statt immer dasselbe zu zeigen."""
     used_quote_index: dict[int, int] = {}
     occurrence_highlights: list[list[str]] = [[] for _ in chunk_docs]
-    sentence_cache: dict[int, tuple[list[str], list[list[float]] | None]] = {}
 
     for sentence in chunking.split_sentences(answer_text):
         matches = list(_CITATION_NUMBER_RE.finditer(sentence))
@@ -1929,13 +1958,7 @@ def _compute_occurrence_highlights(
                     highlight = candidate
 
             if highlight is None:
-                if chunk_index not in sentence_cache:
-                    doc_sentences = chunking.split_sentences(doc)
-                    doc_embeddings = (
-                        embeddings.embed_passages(doc_sentences) if len(doc_sentences) > 1 else None
-                    )
-                    sentence_cache[chunk_index] = (doc_sentences, doc_embeddings)
-                doc_sentences, doc_embeddings = sentence_cache[chunk_index]
+                doc_sentences, doc_embeddings = _get_chunk_sentence_embeddings(doc)
                 if len(doc_sentences) == 1:
                     highlight = doc_sentences[0]
                 elif doc_sentences:
