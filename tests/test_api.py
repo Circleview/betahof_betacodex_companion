@@ -239,6 +239,24 @@ def test_early_access_rate_limits_repeated_wrong_attempts(anon_client, monkeypat
     assert response.status_code == 429
 
 
+def test_early_access_exempts_magic_link_verification(anon_client, monkeypatch):
+    """Regression-Schutz (2026-08-02): ohne diese Ausnahme fing die Early-
+    Access-Sperre auch /api/auth/verify ab, BEVOR der Token geprueft wurde -
+    wer noch kein Early-Access-Cookie hatte (praktisch jeder erste Klick auf
+    einen frisch verschickten Login-/Einladungslink) bekam statt der echten
+    Anmeldung die Passwort-Gate-Seite gezeigt, waehrend die URL weiterhin den
+    Auth-Token als Query-Parameter enthielt - ein Muster, das Chromes
+    Safe-Browsing-Heuristik als Phishing eingestuft hat."""
+    users.invite_user("neu@example.org", users.QUELLEN_PFLEGER, invited_by="test-bootstrap")
+    token = auth.create_magic_link_token("neu@example.org", auth.LOGIN_LINK_MAX_AGE_SECONDS)
+    monkeypatch.setenv("EARLY_ACCESS_PASSWORD", "geheim123")
+
+    response = anon_client.get(f"/api/auth/verify?token={token}", follow_redirects=False)
+
+    assert response.status_code == 307
+    assert auth.SESSION_COOKIE_NAME in anon_client.cookies
+
+
 def test_add_source_creates_chunks(client):
     response = client.post(
         "/api/sources",

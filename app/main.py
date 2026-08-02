@@ -208,6 +208,14 @@ _EARLY_ACCESS_EXEMPT_PATHS = {
     "/i18n.js",
     "/i18n/de.json",
     "/i18n/en.json",
+    # Fix (2026-08-02): ohne diese Ausnahme griff die Sperre auch hier - der
+    # Magic-Link-Token in der URL wurde nie geprüft, stattdessen bekam jede
+    # Person ohne Early-Access-Cookie (also praktisch jeder erste Klick auf
+    # einen frisch verschickten Login-/Einladungslink) die Passwort-Gate-
+    # Seite gezeigt, während die URL weiterhin den Auth-Token als
+    # Query-Parameter enthielt. Diese Kombination (Token-Parameter + bloße
+    # Passwortabfrage) wurde von Chrome als Phishing-Muster eingestuft.
+    "/api/auth/verify",
 }
 
 
