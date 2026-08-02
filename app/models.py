@@ -37,6 +37,19 @@ class SourceOut(BaseModel):
     processing_status: Optional[str] = None
     processing_step: Optional[str] = None
     processing_error: Optional[str] = None
+    # Backlog (2026-08-02): Ergebnis der wöchentlichen Hintergrund-
+    # Link-Prüfung (app/main.py: _run_url_health_check_once), direkt im
+    # sources.json-Eintrag persistiert statt live pro Seitenaufruf
+    # berechnet. None = noch nie geprüft (z.B. ganz neue Quelle vor dem
+    # ersten Lauf) - bewusst NICHT wie "kaputt" behandeln.
+    url_reachable: Optional[bool] = None
+    url_reason_code: Optional[str] = None
+    url_status_code: Optional[int] = None
+    url_checked_at: Optional[str] = None
+
+
+class BrokenLinksCountOut(BaseModel):
+    count: int
 
 
 class ImportJobOut(BaseModel):

@@ -62,20 +62,63 @@ const CHANGELOG_ICON =
 // gated: nur für Quellen-Pfleger:innen/System-Admins sichtbar (siehe
 // updateNavVisibility) - Konversation und Quellenverzeichnis bleiben für
 // alle Besucher:innen sichtbar.
+// badge: Backlog (2026-08-02) - Warn-Badge, falls mindestens eine Quelle
+// einen defekten Link hat (siehe updateBrokenLinksBadge unten), damit das
+// von JEDER Seite aus auffällt, nicht erst nach dem Öffnen der
+// Quellenübersicht.
 const NAV_LINKS = [
   { id: 'conversation-link', href: '/', icon: CONVERSATION_ICON, titleKey: 'index.viewConversation', gated: false },
-  { id: 'import-link', href: '/import.html', icon: IMPORT_ICON, titleKey: 'index.viewSources', gated: false },
+  { id: 'import-link', href: '/import.html', icon: IMPORT_ICON, titleKey: 'index.viewSources', gated: false, badge: true },
   { id: 'question-log-link', href: '/question-log.html', icon: QUESTION_LOG_ICON, titleKey: 'index.viewQuestionLog', gated: true },
   { id: 'changelog-link', href: '/changelog.html', icon: CHANGELOG_ICON, titleKey: 'index.viewChangelog', gated: true },
 ];
 
-function buildNavLink({ id, href, icon, gated }) {
+// Gleiches Warndreieck-Motiv wie das bestehende Vorbild für fehlgeschlagene
+// Imports (static/import.html, #jobs-icon-warning).
+const NAV_WARNING_BADGE_ICON =
+  '<svg viewBox="0 0 24 24" width="9" height="9" fill="none" stroke="currentColor" ' +
+  'stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">' +
+  '<path d="M12 3.5 2 20h20L12 3.5z"></path>' +
+  '<line x1="12" y1="9.5" x2="12" y2="14"></line>' +
+  '<circle cx="12" cy="17" r="0.6" fill="currentColor" stroke="none"></circle>' +
+  '</svg>';
+
+function buildNavLink({ id, href, icon, gated, badge }) {
   const a = document.createElement('a');
   a.id = id;
   a.href = href;
   if (gated) a.classList.add('hidden');
   a.innerHTML = icon;
+  if (badge) {
+    const badgeEl = document.createElement('span');
+    badgeEl.id = `${id}-badge`;
+    badgeEl.className = 'nav-warning-badge hidden';
+    badgeEl.innerHTML = NAV_WARNING_BADGE_ICON;
+    a.appendChild(badgeEl);
+  }
   return a;
+}
+
+// Backlog (2026-08-02): Anzahl Quellen mit defektem Link (aus dem
+// wöchentlichen Hintergrund-Check, app/main.py) fürs Badge am
+// "Quellen"-Menüpunkt holen - nur für Pfleger:innen/Admins relevant, der
+// Endpoint ist entsprechend rollen-geschützt (GET /api/sources/broken-
+// links-count liefert für alle anderen ohnehin 403).
+async function updateBrokenLinksBadge(visible) {
+  const badgeEl = document.getElementById('import-link-badge');
+  if (!badgeEl) return;
+  if (!visible) {
+    badgeEl.classList.add('hidden');
+    return;
+  }
+  try {
+    const res = await fetch('/api/sources/broken-links-count');
+    if (!res.ok) return;
+    const data = await res.json();
+    badgeEl.classList.toggle('hidden', !(data.count > 0));
+  } catch (err) {
+    // Netzwerkfehler: Badge bleibt im letzten bekannten Zustand.
+  }
 }
 
 function applyNavTexts() {
@@ -95,6 +138,7 @@ function updateNavVisibility() {
   NAV_LINKS.filter((link) => link.gated).forEach(({ id }) => {
     document.getElementById(id)?.classList.toggle('hidden', !visible);
   });
+  updateBrokenLinksBadge(visible);
 }
 
 function renderHeaderShell() {

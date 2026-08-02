@@ -3501,3 +3501,166 @@ def test_legacy_source_without_relevance_score_defaults_to_five(client):
     sources = client.get("/api/sources").json()
     source = next(s for s in sources if s["id"] == source_id)
     assert source["relevance_score"] == 5
+
+
+# Backlog (2026-08-02): wöchentliche Link-Prüfung + Warn-Badge am
+# "Quellen"-Menüpunkt statt Live-Prüfung beim Öffnen der Übersicht.
+
+
+def test_broken_links_count_is_zero_when_no_source_has_a_url(client):
+    client.post("/api/sources", json={"title": "Ohne URL", "text": "Text."})
+
+    response = client.get("/api/sources/broken-links-count")
+
+    assert response.status_code == 200
+    assert response.json() == {"count": 0}
+
+
+def test_broken_links_count_reflects_persisted_url_reachable_field(client):
+    create_res = client.post(
+        "/api/sources", json={"title": "Mit URL", "url": "https://example.org", "text": "Text."}
+    )
+    source_id = create_res.json()["id"]
+    raw = json.loads(main_module.SOURCES_FILE.read_text())
+    raw[source_id]["url_reachable"] = False
+    main_module.SOURCES_FILE.write_text(json.dumps(raw))
+
+    response = client.get("/api/sources/broken-links-count")
+
+    assert response.json() == {"count": 1}
+
+
+def test_broken_links_count_ignores_deleted_sources(client):
+    create_res = client.post(
+        "/api/sources", json={"title": "Mit URL", "url": "https://example.org", "text": "Text."}
+    )
+    source_id = create_res.json()["id"]
+    raw = json.loads(main_module.SOURCES_FILE.read_text())
+    raw[source_id]["url_reachable"] = False
+    main_module.SOURCES_FILE.write_text(json.dumps(raw))
+    client.delete(f"/api/sources/{source_id}")
+
+    response = client.get("/api/sources/broken-links-count")
+
+    assert response.json() == {"count": 0}
+
+
+def test_broken_links_count_requires_pfleger_role(anon_client):
+    response = anon_client.get("/api/sources/broken-links-count")
+    assert response.status_code == 403
+
+
+def test_url_reachable_visible_for_anonymous_users_but_reason_hidden(client, anon_client):
+    create_res = client.post(
+        "/api/sources", json={"title": "Mit URL", "url": "https://example.org", "text": "Text."}
+    )
+    source_id = create_res.json()["id"]
+    raw = json.loads(main_module.SOURCES_FILE.read_text())
+    raw[source_id]["url_reachable"] = False
+    raw[source_id]["url_reason_code"] = "http_error"
+    raw[source_id]["url_status_code"] = 404
+    main_module.SOURCES_FILE.write_text(json.dumps(raw))
+
+    sources = anon_client.get("/api/sources").json()
+    source = next(s for s in sources if s["id"] == source_id)
+
+    assert source["url_reachable"] is False
+    assert source["url_reason_code"] is None
+    assert source["url_status_code"] is None
+
+
+def test_url_reachable_and_reason_both_visible_for_pfleger(client):
+    create_res = client.post(
+        "/api/sources", json={"title": "Mit URL", "url": "https://example.org", "text": "Text."}
+    )
+    source_id = create_res.json()["id"]
+    raw = json.loads(main_module.SOURCES_FILE.read_text())
+    raw[source_id]["url_reachable"] = False
+    raw[source_id]["url_reason_code"] = "http_error"
+    raw[source_id]["url_status_code"] = 404
+    main_module.SOURCES_FILE.write_text(json.dumps(raw))
+
+    sources = client.get("/api/sources").json()
+    source = next(s for s in sources if s["id"] == source_id)
+
+    assert source["url_reachable"] is False
+    assert source["url_reason_code"] == "http_error"
+    assert source["url_status_code"] == 404
+
+
+def test_new_source_has_no_url_health_status_before_first_check(client):
+    create_res = client.post(
+        "/api/sources", json={"title": "Mit URL", "url": "https://example.org", "text": "Text."}
+    )
+    assert create_res.json()["url_reachable"] is None
+    assert create_res.json()["url_checked_at"] is None
+
+
+def test_run_url_health_check_once_persists_results_and_skips_deleted_sources(client, monkeypatch):
+    reachable_res = client.post(
+        "/api/sources", json={"title": "Erreichbar", "url": "https://example.org", "text": "Text."}
+    )
+    reachable_id = reachable_res.json()["id"]
+    broken_res = client.post(
+        "/api/sources", json={"title": "Kaputt", "url": "https://broken.example", "text": "Text."}
+    )
+    broken_id = broken_res.json()["id"]
+    deleted_res = client.post(
+        "/api/sources", json={"title": "Gelöscht", "url": "https://deleted.example", "text": "Text."}
+    )
+    deleted_id = deleted_res.json()["id"]
+    client.delete(f"/api/sources/{deleted_id}")
+
+    def fake_check_url(url):
+        if url == "https://broken.example":
+            return {"reachable": False, "status_code": 404, "reason_code": "http_error"}
+        return {"reachable": True, "status_code": 200, "reason_code": None}
+
+    monkeypatch.setattr(monitoring, "check_url", fake_check_url)
+
+    main_module._run_url_health_check_once()
+
+    raw = json.loads(main_module.SOURCES_FILE.read_text())
+    assert raw[reachable_id]["url_reachable"] is True
+    assert raw[reachable_id]["url_checked_at"] is not None
+    assert raw[broken_id]["url_reachable"] is False
+    assert raw[broken_id]["url_reason_code"] == "http_error"
+    assert raw[broken_id]["url_status_code"] == 404
+    assert "url_reachable" not in raw[deleted_id] or raw[deleted_id]["url_reachable"] is None
+
+    response = client.get("/api/sources/broken-links-count")
+    assert response.json() == {"count": 1}
+
+
+def test_run_url_health_check_once_persists_in_batches_of_ten(client, monkeypatch):
+    """Regression-Schutz (2026-08-02, Nutzerwunsch): bei einem wachsenden
+    Quellenverzeichnis kann ein Lauf (sequenzielle Netzwerk-Checks, bis zu
+    monitoring.TIMEOUT_SECONDS pro Quelle) lange dauern. Bricht der Prozess
+    mittendrin ab (Neustart, Deploy, Absturz), darf nicht die gesamte
+    bisherige Arbeit verloren gehen - es wird alle
+    URL_HEALTH_CHECK_BATCH_SIZE (10) geprüften Quellen zwischengespeichert."""
+    ids = []
+    for i in range(12):
+        create_res = client.post(
+            "/api/sources", json={"title": f"Quelle {i}", "url": f"https://example.org/{i}", "text": "Text."}
+        )
+        ids.append(create_res.json()["id"])
+
+    call_count = {"n": 0}
+
+    def flaky_check_url(url):
+        call_count["n"] += 1
+        if call_count["n"] > 10:
+            raise RuntimeError("Simulierter Absturz nach der ersten Zehnergruppe")
+        return {"reachable": True, "status_code": 200, "reason_code": None}
+
+    monkeypatch.setattr(monitoring, "check_url", flaky_check_url)
+
+    with pytest.raises(RuntimeError):
+        main_module._run_url_health_check_once()
+
+    raw = json.loads(main_module.SOURCES_FILE.read_text())
+    checked = [sid for sid in ids if raw[sid].get("url_checked_at")]
+    assert len(checked) == 10
+    unchecked = [sid for sid in ids if not raw[sid].get("url_checked_at")]
+    assert len(unchecked) == 2

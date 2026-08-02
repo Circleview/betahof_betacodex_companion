@@ -160,6 +160,18 @@
             <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
           </svg>
         </button>
+        <!-- Backlog (2026-08-02): Filter auf Quellen mit defektem Link -
+             nur für Quellen-Pfleger:innen/System-Admins sichtbar (siehe
+             import.js: updateSourceManagementVisibility), Badge zeigt die
+             aktuelle Anzahl (updateBrokenLinksButton). -->
+        <button type="button" id="typ-broken-links" class="circle-button circle-button--sm hidden" data-i18n-title="import.brokenLinksFilterTitle">
+          <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M14 4l1.5-1.5a3.54 3.54 0 1 1 5 5L19 9"></path>
+            <path d="M10 15l-1.5 1.5a3.54 3.54 0 1 1-5-5L5 10"></path>
+            <line x1="3" y1="3" x2="21" y2="21"></line>
+          </svg>
+          <span id="broken-links-count-badge" class="nav-warning-badge hidden"></span>
+        </button>
       </div>
       <div id="reindex-bereich" class="hidden">
         <button type="button" id="reindex-sources-btn" class="sort-button" data-i18n-title="import.reindexSourcesTitle">

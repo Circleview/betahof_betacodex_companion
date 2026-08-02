@@ -7,6 +7,7 @@ import re
 import subprocess
 import tempfile
 import threading
+import time
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -47,6 +48,7 @@ from app.models import (
     AuthorProfileIn,
     BioOut,
     AuthorBioPreviewIn,
+    BrokenLinksCountOut,
     RenameAuthorIn,
     ChunkRef,
     EarlyAccessIn,
@@ -491,6 +493,13 @@ def _to_source_out(
     # mitgeschickt, nicht nur im UI versteckt.
     if not can_view_full_text:
         data["relevance_score"] = None
+        # Backlog (2026-08-02): der reine Erreichbarkeits-Status
+        # (url_reachable) bleibt für alle sichtbar - deckt sich mit dem
+        # generischen Warn-Icon an der Quelle selbst. Der konkrete
+        # Fehlergrund/Statuscode ist wie relevance_score eine reine
+        # Pflegeinformation.
+        data["url_reason_code"] = None
+        data["url_status_code"] = None
     lang = lang if lang in ("de", "en") else i18n.DEFAULT_LANG
     data["summary"] = data.get(f"summary_{lang}") or ""
     data["key_terms"] = data.get(f"key_terms_{lang}") or []
@@ -783,6 +792,78 @@ def _audio_transcription_worker() -> None:
 
 for _ in range(AUDIO_TRANSCRIPTION_WORKER_COUNT):
     threading.Thread(target=_audio_transcription_worker, daemon=True).start()
+
+
+# Backlog (2026-08-02): Nutzerwunsch nach regelmäßiger statt nur
+# bedarfsweiser Link-Prüfung (vorher: app/monitoring.check_url nur live
+# beim Öffnen der Quellenübersicht, siehe Git-Historie). Läuft in JEDEM
+# Prozess (auch bei Blue/Green also potenziell doppelt) - bewusst in Kauf
+# genommen, da die Prüfung selbst harmlos ist (nur HTTP HEAD/GET) und eine
+# Koordination zwischen den beiden Slots unnötige Komplexität wäre.
+URL_HEALTH_CHECK_INTERVAL_SECONDS = 7 * 24 * 3600
+
+# Backlog (2026-08-02, Nutzerwunsch): Ergebnisse nicht erst nach dem
+# kompletten Durchlauf speichern, sondern alle 10 geprüften Quellen -
+# das Quellenverzeichnis soll noch deutlich wachsen, ein Lauf mit vielen
+# Quellen dauert dann entsprechend länger (sequenziell, bis zu
+# monitoring.TIMEOUT_SECONDS pro Quelle). Bricht der Prozess mittendrin ab
+# (Neustart, Deploy, Absturz), geht so höchstens der Fortschritt der
+# aktuellen Zehnergruppe verloren statt des gesamten bisherigen Laufs.
+URL_HEALTH_CHECK_BATCH_SIZE = 10
+
+
+def _persist_url_health_results(results: dict) -> None:
+    checked_at = datetime.now(timezone.utc).isoformat()
+    with _sources_write_lock:
+        # Frisch neu laden statt einer zuvor gelesenen Kopie - eine Quelle
+        # könnte während der (potenziell mehrere Sekunden dauernden) Checks
+        # bearbeitet oder gelöscht worden sein.
+        sources = _load_sources()
+        for source_id, result in results.items():
+            entry = sources.get(source_id)
+            if not entry or entry.get("deleted_at"):
+                continue
+            entry["url_reachable"] = result["reachable"]
+            entry["url_reason_code"] = result.get("reason_code")
+            entry["url_status_code"] = result.get("status_code")
+            entry["url_checked_at"] = checked_at
+        _save_sources(sources)
+
+
+def _run_url_health_check_once() -> None:
+    with _sources_write_lock:
+        sources = _load_sources()
+    to_check = {
+        source_id: entry["url"]
+        for source_id, entry in sources.items()
+        if entry.get("url") and not entry.get("deleted_at")
+    }
+    # Die eigentlichen Netzwerk-Checks laufen BEWUSST außerhalb des Locks -
+    # sonst würde ein einzelner Lauf mit vielen/langsamen Quellen (bis zu
+    # monitoring.TIMEOUT_SECONDS pro Quelle) jeden anderen gleichzeitigen
+    # Schreibzugriff auf sources.json für die gesamte Laufzeit blockieren.
+    pending_results: dict = {}
+    for source_id, url in to_check.items():
+        pending_results[source_id] = monitoring.check_url(url)
+        if len(pending_results) >= URL_HEALTH_CHECK_BATCH_SIZE:
+            _persist_url_health_results(pending_results)
+            pending_results = {}
+    if pending_results:
+        _persist_url_health_results(pending_results)
+
+
+def _url_health_check_worker() -> None:
+    while True:
+        try:
+            _run_url_health_check_once()
+        except Exception:
+            # Ein Fehlschlag (z.B. defektes sources.json) darf den Worker
+            # nicht dauerhaft beenden - nächster Versuch beim nächsten Takt.
+            pass
+        time.sleep(URL_HEALTH_CHECK_INTERVAL_SECONDS)
+
+
+threading.Thread(target=_url_health_check_worker, daemon=True).start()
 
 
 def _recover_interrupted_processing_jobs() -> None:
@@ -1694,6 +1775,23 @@ def check_source_url(
 
     result = monitoring.check_url(url)
     return UrlCheckOut(has_url=True, **result)
+
+
+@app.get("/api/sources/broken-links-count", response_model=BrokenLinksCountOut)
+def get_broken_links_count(_user: str = Depends(require_role(users.QUELLEN_PFLEGER))):
+    # Backlog (2026-08-02): leichtgewichtiger Endpoint fürs Warn-Badge am
+    # "Quellen"-Menüpunkt (static/header.js) - auf JEDER Seite aufrufbar,
+    # ohne (wie GET /api/sources) den kompletten Quellenbestand inkl.
+    # Volltext übertragen zu müssen. Liest den von
+    # _run_url_health_check_once() zuletzt gespeicherten Stand, prüft
+    # nicht live nach.
+    sources = _load_sources()
+    count = sum(
+        1
+        for entry in sources.values()
+        if entry.get("url_reachable") is False and not entry.get("deleted_at")
+    )
+    return BrokenLinksCountOut(count=count)
 
 
 @app.get("/api/sources/{source_id}/pdf")

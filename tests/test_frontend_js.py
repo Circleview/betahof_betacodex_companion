@@ -667,3 +667,57 @@ console.log(JSON.stringify({ interimCalls }));
 """
     )
     assert output == {"interimCalls": ["Hallo.", "Welt"]}
+
+
+def _run_update_broken_links_badge(*, visible: bool, fetch_response) -> dict:
+    """Führt static/header.js#updateBrokenLinksBadge per Node aus. Die
+    Funktion ist nicht exportiert (reines Modul-Innenleben) - daher wird
+    hier, wie schon bei stripMarkdownForSpeech in speech.js, nur ihr eigener
+    Funktionskörper per Regex extrahiert und mit einem minimalen
+    document/fetch-Stub isoliert ausgeführt."""
+    js_source = (STATIC_DIR / "header.js").read_text()
+    match = re.search(r"async function updateBrokenLinksBadge.*?\n\}", js_source, re.S)
+    assert match, "updateBrokenLinksBadge wurde in header.js nicht gefunden."
+    func_source = match.group(0)
+    fetch_stub = (
+        "() => Promise.reject(new Error('fetch sollte hier nicht aufgerufen werden'))"
+        if fetch_response is None
+        else f"() => Promise.resolve({{ ok: true, json: () => Promise.resolve({json.dumps(fetch_response)}) }})"
+    )
+    script = f"""
+let hidden = true;
+const badgeEl = {{
+  classList: {{
+    add: (cls) => {{ if (cls === 'hidden') hidden = true; }},
+    toggle: (cls, force) => {{ if (cls === 'hidden') hidden = force; }},
+  }},
+}};
+global.document = {{ getElementById: (id) => (id === 'import-link-badge' ? badgeEl : null) }};
+global.fetch = {fetch_stub};
+
+{func_source}
+
+updateBrokenLinksBadge({json.dumps(visible)}).then(() => {{
+  console.log(JSON.stringify({{ hidden }}));
+}});
+"""
+    result = subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True)
+    return json.loads(result.stdout)
+
+
+def test_update_broken_links_badge_shown_when_pfleger_has_broken_sources():
+    output = _run_update_broken_links_badge(visible=True, fetch_response={"count": 2})
+    assert output == {"hidden": False}
+
+
+def test_update_broken_links_badge_hidden_when_pfleger_has_no_broken_sources():
+    output = _run_update_broken_links_badge(visible=True, fetch_response={"count": 0})
+    assert output == {"hidden": True}
+
+
+def test_update_broken_links_badge_hidden_without_fetch_for_non_pfleger():
+    """Regression-Schutz: für nicht-berechtigte Nutzer:innen darf gar nicht
+    erst gegen den rollen-geschützten Endpoint gefetcht werden (liefert für
+    sie ohnehin 403) - das Badge wird stattdessen sofort ausgeblendet."""
+    output = _run_update_broken_links_badge(visible=False, fetch_response=None)
+    assert output == {"hidden": True}

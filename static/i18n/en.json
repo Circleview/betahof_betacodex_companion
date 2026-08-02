@@ -114,6 +114,8 @@
   "import.filteredByAuthorPlural": "Texts by",
   "import.filteredByTerm": "Filtered by term:",
   "import.filteredBySearch": "Search results for:",
+  "import.filteredByBrokenLinks": "Filtered: sources with a broken link",
+  "import.brokenLinksFilterTitle": "Show sources with a broken link",
   "import.searchIconTitle": "Search sources",
   "import.searchPopoverLabel": "Search (title, text, author, terms)",
   "import.searchPlaceholder": "Enter search term...",

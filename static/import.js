@@ -7,6 +7,7 @@ const urlPopover = document.getElementById('url-popover');
 const filePopover = document.getElementById('file-popover');
 const quelltypBereich = document.getElementById('quelltyp-bereich');
 const reindexBereich = document.getElementById('reindex-bereich');
+const brokenLinksBtn = document.getElementById('typ-broken-links');
 
 const EDIT_ICON =
   '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" ' +
@@ -135,20 +136,22 @@ let currentSortMode = 'author';
 // ersetzt dabei die Alphabet-Sprungleiste (siehe updateAlphabetJumpBar).
 let searchBarOpen = false;
 const pendingDeletions = new Map();
-// Backlog #163: Map statt Set, damit neben der reinen Unreachable-
-// Markierung auch der konkrete Fehlergrund (reason_code/status_code aus
-// GET /api/sources/{id}/check-url) für Tooltip + Bearbeiten-Panel
-// verfügbar ist.
-const unreachableSourceInfo = new Map();
 const expandedSourceIds = new Set();
 
+// Backlog (2026-08-02): der Erreichbarkeits-Status kommt jetzt fertig
+// berechnet aus GET /api/sources mit (url_reachable/url_reason_code/
+// url_status_code, siehe app/main.py: wöchentlicher Hintergrund-Check),
+// statt live pro Seitenaufruf per Fan-out über alle Quellen geprüft zu
+// werden (vorheriges unreachableSourceInfo/checkUrlHealth, siehe
+// Git-Historie) - urlErrorText liest deshalb direkt vom Source-Objekt.
+//
 // Backlog #163: reason_code (app/monitoring.py) auf übersetzten,
 // menschenlesbaren Text abbilden - bei "http_error" wird der konkrete
 // Statuscode eingesetzt.
-function urlErrorText(info) {
-  switch (info.reasonCode) {
+function urlErrorText(source) {
+  switch (source.url_reason_code) {
     case 'http_error':
-      return t('common.urlErrorHttp', { code: info.statusCode });
+      return t('common.urlErrorHttp', { code: source.url_status_code });
     case 'timeout':
       return t('common.urlErrorTimeout');
     case 'dns_error':
@@ -204,6 +207,7 @@ function devUserHeaders() {
 function updateSourceManagementVisibility() {
   quelltypBereich.classList.toggle('hidden', !hasPflegerRole());
   reindexBereich.classList.toggle('hidden', !hasPflegerRole());
+  brokenLinksBtn.classList.toggle('hidden', !hasPflegerRole());
   if (!hasPflegerRole()) {
     importBereich.classList.add('hidden');
     urlPopover.classList.add('hidden');
@@ -320,16 +324,14 @@ async function fetchImportJobs() {
     // gezielten Refresh bliebe sie stehen, bis die Seite manuell neu
     // geladen wird, selbst wenn der Job längst fertig ist. Nur bei
     // TATSÄCHLICHER Änderung der Job-Menge neu laden (nicht bei jedem
-    // Poll-Takt) und dabei die URL-Erreichbarkeits-Prüfung überspringen -
-    // sonst käme die bereits einmal behobene Performance-Falle zurück
-    // (Flut gleichzeitiger Checks bei jedem Neuladen).
+    // Poll-Takt).
     const currentJobIds = new Set(jobs.map((job) => job.id));
     const jobsChanged =
       currentJobIds.size !== previousJobIds.size ||
       [...currentJobIds].some((id) => !previousJobIds.has(id));
     previousJobIds = currentJobIds;
     if (jobsChanged) {
-      loadSources({ skipUrlHealthCheck: true });
+      loadSources();
     }
   } catch (err) {
     // Stille Hintergrund-Aktualisierung - der nächste Poll-Takt versucht
@@ -1049,10 +1051,10 @@ function buildEditPanel(s, options = {}) {
   // Bearbeiten-Panel - im Gegensatz zum Tooltip auf dem Warn-Icon (nur
   // Hover, auf Mobile kaum nutzbar) hier immer sichtbar, genau dort, wo
   // der Link auch repariert wird.
-  if (unreachableSourceInfo.has(s.id)) {
+  if (s.url_reachable === false) {
     const healthStatus = document.createElement('p');
     healthStatus.className = 'url-health-status';
-    healthStatus.textContent = `${t('common.urlUnreachable')}: ${urlErrorText(unreachableSourceInfo.get(s.id))}`;
+    healthStatus.textContent = `${t('common.urlUnreachable')}: ${urlErrorText(s)}`;
     form.appendChild(healthStatus);
   }
 
@@ -1827,7 +1829,7 @@ function renderSourceList(sources, options = {}) {
 
     const li = document.createElement('li');
     li.className = 'source-row';
-    if (unreachableSourceInfo.has(s.id)) {
+    if (s.url_reachable === false) {
       li.classList.add('source-row--unreachable');
     }
     if (extraGapAfterAuthorGroup) {
@@ -1899,16 +1901,16 @@ function renderSourceList(sources, options = {}) {
     const actions = document.createElement('span');
     actions.className = 'source-row-actions';
 
-    if (unreachableSourceInfo.has(s.id)) {
+    if (s.url_reachable === false) {
       const warning = document.createElement(hasPflegerRole() ? 'button' : 'span');
       if (hasPflegerRole()) warning.type = 'button';
       warning.className = 'icon-button warning-icon';
-      // Backlog #163: für Pfleger:innen/Admins (einzige, die diese Info
-      // überhaupt zu sehen bekommen, siehe unreachableSourceInfo) den
-      // konkreten Fehlergrund direkt im Tooltip ergänzen.
-      const info = unreachableSourceInfo.get(s.id);
+      // Backlog #163: für Pfleger:innen/Admins den konkreten Fehlergrund
+      // direkt im Tooltip ergänzen (url_reason_code/url_status_code sind
+      // für alle anderen bereits serverseitig auf null gesetzt, siehe
+      // app/main.py: _to_source_out).
       const warnLabel = hasPflegerRole()
-        ? `${t('common.urlUnreachable')} – ${urlErrorText(info)}`
+        ? `${t('common.urlUnreachable')} – ${urlErrorText(s)}`
         : t('common.urlUnreachable');
       warning.title = warnLabel;
       warning.setAttribute('aria-label', warnLabel);
@@ -2032,48 +2034,6 @@ function renderSourceList(sources, options = {}) {
   });
 }
 
-async function checkUrlHealth(sources) {
-  if (!hasPflegerRole()) return;
-  sources.forEach(async (s) => {
-    if (!s.url) {
-      // URL wurde entfernt (z.B. beim Bearbeiten) - eine evtl. alte
-      // Unreachable-Markierung ist dann nicht mehr gültig.
-      if (unreachableSourceInfo.delete(s.id)) {
-        renderSourceList(currentSourceList);
-      }
-      return;
-    }
-    try {
-      const res = await fetch(`/api/sources/${s.id}/check-url`, { headers: devUserHeaders() });
-      if (!res.ok) return;
-      const data = await res.json();
-      const isUnreachable = data.has_url && data.reachable === false;
-      const wasUnreachable = unreachableSourceInfo.has(s.id);
-      // Sowohl neu erkannte als auch (nach einer URL-Reparatur) nicht mehr
-      // bestehende Unreachable-Zustände müssen sofort sichtbar werden -
-      // vorher wurde eine Markierung nie wieder entfernt. Backlog #163:
-      // zusätzlich neu rendern, wenn sich bei weiterhin bestehender
-      // Unreachable-Markierung der Fehlergrund geändert hat (z.B. von
-      // DNS-Fehler zu HTTP 404 nach einer Domain-Migration).
-      if (isUnreachable) {
-        const newInfo = { reasonCode: data.reason_code, statusCode: data.status_code };
-        const oldInfo = unreachableSourceInfo.get(s.id);
-        const changed =
-          !oldInfo ||
-          oldInfo.reasonCode !== newInfo.reasonCode ||
-          oldInfo.statusCode !== newInfo.statusCode;
-        unreachableSourceInfo.set(s.id, newInfo);
-        if (changed) renderSourceList(currentSourceList);
-      } else if (wasUnreachable) {
-        unreachableSourceInfo.delete(s.id);
-        renderSourceList(currentSourceList);
-      }
-    } catch (err) {
-      // Netzwerkfehler beim Erreichbarkeits-Check ignorieren.
-    }
-  });
-}
-
 // Der Klick auf einen Autor/Begriff kann von weit unten in der Liste
 // kommen (z.B. aus dem Autoren-Verzeichnis oder einer Quellenzeile) - die
 // gefilterte Ergebnisliste erscheint aber oben bei "Importierte Quellen",
@@ -2180,6 +2140,38 @@ function searchSources(query) {
   applySearchFilter(query);
 }
 
+// Backlog (2026-08-02): Filter auf Quellen mit defektem Link, erreichbar
+// über den neuen Button in der Toolbar (Badge zeigt die Anzahl) - kein
+// eigener Backend-Aufruf nötig, url_reachable steckt bereits in allSources
+// (siehe GET /api/sources).
+function applyBrokenLinksFilter() {
+  document.getElementById('source-filter-label').textContent = t('import.filteredByBrokenLinks');
+  document.getElementById('source-filter-name').textContent = '';
+  document.getElementById('source-filter-status').classList.remove('hidden');
+  renderSourceList(allSources.filter((s) => s.url_reachable === false));
+
+  filteredAuthorEntry = null;
+  authorPanelEditMode = false;
+  renderAuthorInfoPanel();
+}
+
+function filterByBrokenLinks() {
+  activeFilter = { type: 'broken-links', value: null };
+  resetSourcePagination();
+  applyBrokenLinksFilter();
+  scrollToFilteredResults();
+}
+
+// Zählt bei jedem Laden/Neuladen neu, wie viele Quellen aktuell einen
+// defekten Link haben, und spiegelt das im Zähler-Badge am Toolbar-Button.
+function updateBrokenLinksButton() {
+  const badge = document.getElementById('broken-links-count-badge');
+  if (!badge) return;
+  const count = allSources.filter((s) => s.url_reachable === false).length;
+  badge.textContent = String(count);
+  badge.classList.toggle('hidden', count === 0);
+}
+
 // scroll=false beim Leeren des Suchfelds während des Tippens - die Ansicht
 // soll dabei nicht plötzlich unter der noch fokussierten, oben in der
 // Kopfzeile sitzenden Suchbox wegspringen (anders als beim expliziten
@@ -2206,6 +2198,8 @@ document.getElementById('search-input').addEventListener('input', (e) => {
 });
 
 document.getElementById('source-filter-clear').addEventListener('click', () => clearSourceFilter());
+
+brokenLinksBtn.addEventListener('click', () => filterByBrokenLinks());
 
 document.getElementById('sort-author').addEventListener('click', () => setSortMode('author'));
 document.getElementById('sort-date').addEventListener('click', () => setSortMode('date'));
@@ -2239,35 +2233,30 @@ function setSortMode(mode) {
   renderSourceList(currentSourceList);
 }
 
-async function loadSources({ skipUrlHealthCheck = false } = {}) {
+async function loadSources() {
   const res = await fetch('/api/sources', {
     headers: { 'X-Lang': getLang() },
   });
   allSources = await res.json();
-  // Ein aktiver Autor:innen-/Begriffs-Filter soll ein Neuladen (z.B. nach
-  // dem Aktualisieren oder Löschen einer Quelle) überleben, statt
-  // stillschweigend auf die ungefilterte Liste zurückzuspringen.
+  // Ein aktiver Autor:innen-/Begriffs-/Broken-Links-Filter soll ein
+  // Neuladen (z.B. nach dem Aktualisieren oder Löschen einer Quelle)
+  // überleben, statt stillschweigend auf die ungefilterte Liste
+  // zurückzuspringen.
   if (activeFilter?.type === 'author') {
     await applyAuthorFilter(activeFilter.value);
   } else if (activeFilter?.type === 'term') {
     await applyTermFilter(activeFilter.value);
   } else if (activeFilter?.type === 'search') {
     applySearchFilter(activeFilter.value);
+  } else if (activeFilter?.type === 'broken-links') {
+    applyBrokenLinksFilter();
   } else {
     renderSourceList(allSources);
     filteredAuthorEntry = null;
     authorPanelEditMode = false;
     renderAuthorInfoPanel();
   }
-  // skipUrlHealthCheck: beim allerersten Laden (siehe unten) sollen die
-  // Deep-Links (?edit=/?author=) zuerst ihre eigene, für die Nutzer:in
-  // sichtbare Anfrage stellen können, bevor der Browser seine begrenzten
-  // gleichzeitigen Verbindungen mit einem Check pro Quelle flutet - sonst
-  // reiht sich deren Anfrage hinten an und die gefilterte Ansicht wirkt
-  // spürbar langsam.
-  if (!skipUrlHealthCheck) {
-    checkUrlHealth(allSources);
-  }
+  updateBrokenLinksButton();
 }
 
 async function loadAuthors() {
@@ -2868,7 +2857,7 @@ createToolbarRow.className = 'markup-toolbar-row';
 createToolbarRow.appendChild(buildMarkupToolbar(createTextInput));
 createTextInput.parentNode.insertBefore(createToolbarRow, createTextInput);
 
-await loadSources({ skipUrlHealthCheck: true });
+await loadSources();
 loadAuthors();
 
 // Deep-Link aus der Konversationsansicht (Stift-Icon an Zitat-Snippets, nur
@@ -2911,5 +2900,3 @@ const deepLinkAuthor = new URLSearchParams(window.location.search).get('author')
 if (deepLinkAuthor) {
   await filterByAuthor(deepLinkAuthor);
 }
-
-checkUrlHealth(allSources);
