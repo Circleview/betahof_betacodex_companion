@@ -86,6 +86,10 @@ Assistent das offen, statt zu spekulieren.
 - Bearbeiten inline in der Quellenliste; Löschen ist ein Papierkorb mit
   Rückholfrist statt eines endgültigen Vorgangs.
 - Relevanz-Score pro Quelle (1–10) für die spätere Sortierung/Gewichtung.
+- Wöchentliche Hintergrund-Prüfung aller Quellen-Links; ein Warn-Badge am
+  "Quellen"-Menüpunkt macht auf defekte Links aufmerksam (von jeder Seite
+  aus sichtbar), ein Filter-Button in der Quellenübersicht zeigt gezielt
+  die betroffenen Quellen.
 
 ### Nachvollziehbarkeit & Rechte
 
@@ -304,6 +308,7 @@ Commit-/Tag-Nachrichten in Git.
 
 | Version | Wesentliche Änderungen |
 |---|---|
+| v0.46 | Wöchentliche Link-Prüfung + Warn-Badge am "Quellen"-Menüpunkt mit Filter für defekte Quellen |
 | v0.45 | Backlog #190: Live-Transkript während Spracheingabe |
 | v0.44 | Backlog #183/#184: Login-Bereich mobil als Aufklapp-Bereich statt Popover, dynamisch wachsendes Frage-Eingabefeld (inkl. Zittern-Fix) |
 | v0.43 | Backlog #96/#115: GitHub-Actions-Workflow für Tests + Zero-Downtime Blue-Green-Deployment, Produktiv-Livegang auf Hetzner |
