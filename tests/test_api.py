@@ -3682,3 +3682,104 @@ def test_run_url_health_check_once_persists_in_batches_of_ten(client, monkeypatc
     assert len(checked) == 10
     unchecked = [sid for sid in ids if not raw[sid].get("url_checked_at")]
     assert len(unchecked) == 2
+
+
+# Backlog (Nutzerwunsch, 2026-08-02): wer eine als kaputt markierte Quelle
+# bearbeitet, soll direkt sehen, ob der Link jetzt wieder erreichbar ist -
+# statt bis zu eine Woche auf den naechsten Hintergrund-Lauf warten zu
+# muessen (siehe _run_url_health_check_once).
+
+
+def _mark_url_broken(source_id):
+    raw = json.loads(main_module.SOURCES_FILE.read_text())
+    raw[source_id]["url_reachable"] = False
+    raw[source_id]["url_reason_code"] = "http_error"
+    raw[source_id]["url_status_code"] = 404
+    main_module.SOURCES_FILE.write_text(json.dumps(raw))
+
+
+def test_update_source_rechecks_url_immediately_when_previously_broken(client, monkeypatch):
+    create_res = client.post(
+        "/api/sources", json={"title": "Quelle", "url": "https://example.org", "text": "Text."}
+    )
+    source_id = create_res.json()["id"]
+    _mark_url_broken(source_id)
+    monkeypatch.setattr(
+        monitoring, "check_url", lambda url: {"reachable": True, "status_code": 200, "reason_code": None}
+    )
+
+    update_res = client.put(
+        f"/api/sources/{source_id}",
+        json={"title": "Quelle", "url": "https://example.org", "text": "Text."},
+    )
+
+    assert update_res.status_code == 200
+    assert update_res.json()["url_reachable"] is True
+    assert update_res.json()["url_reason_code"] is None
+
+    raw = json.loads(main_module.SOURCES_FILE.read_text())
+    assert raw[source_id]["url_reachable"] is True
+    assert raw[source_id]["url_checked_at"] is not None
+
+
+def test_update_source_reports_url_still_broken_after_recheck(client, monkeypatch):
+    create_res = client.post(
+        "/api/sources", json={"title": "Quelle", "url": "https://example.org", "text": "Text."}
+    )
+    source_id = create_res.json()["id"]
+    _mark_url_broken(source_id)
+    monkeypatch.setattr(
+        monitoring,
+        "check_url",
+        lambda url: {"reachable": False, "status_code": 500, "reason_code": "http_error"},
+    )
+
+    update_res = client.put(
+        f"/api/sources/{source_id}",
+        json={"title": "Aktualisierter Titel", "url": "https://example.org", "text": "Text."},
+    )
+
+    assert update_res.json()["url_reachable"] is False
+    assert update_res.json()["url_status_code"] == 500
+
+
+def test_update_source_does_not_recheck_url_when_not_previously_broken(client, monkeypatch):
+    create_res = client.post(
+        "/api/sources", json={"title": "Quelle", "url": "https://example.org", "text": "Text."}
+    )
+    source_id = create_res.json()["id"]
+
+    def fail_if_called(url):
+        raise AssertionError("check_url haette hier nicht aufgerufen werden duerfen")
+
+    monkeypatch.setattr(monitoring, "check_url", fail_if_called)
+
+    update_res = client.put(
+        f"/api/sources/{source_id}",
+        json={"title": "Neuer Titel", "url": "https://example.org", "text": "Text."},
+    )
+
+    assert update_res.status_code == 200
+
+
+def test_update_source_clears_broken_status_when_url_removed(client, monkeypatch):
+    create_res = client.post(
+        "/api/sources", json={"title": "Quelle", "url": "https://example.org", "text": "Text."}
+    )
+    source_id = create_res.json()["id"]
+    _mark_url_broken(source_id)
+
+    def fail_if_called(url):
+        raise AssertionError("check_url haette hier nicht aufgerufen werden duerfen - keine URL mehr")
+
+    monkeypatch.setattr(monitoring, "check_url", fail_if_called)
+
+    update_res = client.put(
+        f"/api/sources/{source_id}", json={"title": "Quelle", "url": "", "text": "Text."}
+    )
+
+    assert update_res.json()["url_reachable"] is None
+    raw = json.loads(main_module.SOURCES_FILE.read_text())
+    assert raw[source_id]["url_reachable"] is None
+    assert raw[source_id]["url_reason_code"] is None
+    assert raw[source_id]["url_checked_at"] is None

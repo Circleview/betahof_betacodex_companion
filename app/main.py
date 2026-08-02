@@ -1253,6 +1253,29 @@ def update_source(
         audit.log_change(
             _user, "source_updated", "source", source_id, sources[source_id].get("title", source_id), changes
         )
+
+    # Backlog (Nutzerwunsch, 2026-08-02): wer eine als kaputt markierte
+    # Quelle bearbeitet, will direkt sehen, ob der Link jetzt wieder
+    # erreichbar ist - statt bis zu eine Woche auf den naechsten
+    # Hintergrund-Lauf (_run_url_health_check_once) warten zu muessen.
+    if before.get("url_reachable") is False:
+        if source.url:
+            result = monitoring.check_url(source.url)
+            _persist_url_health_results({source_id: result})
+        else:
+            # URL entfernt - nichts mehr zu pruefen. Der alte "kaputt"-
+            # Status darf nicht fuer immer stehen bleiben, da der
+            # woechentliche Hintergrund-Check Quellen ohne URL uebergeht.
+            with _sources_write_lock:
+                fresh = _load_sources()
+                entry = fresh.get(source_id)
+                if entry and not entry.get("deleted_at"):
+                    for field in ("url_reachable", "url_reason_code", "url_status_code", "url_checked_at"):
+                        entry[field] = None
+                    _save_sources(fresh)
+        with _sources_write_lock:
+            sources[source_id] = _load_sources().get(source_id, sources[source_id])
+
     return _to_source_out(sources[source_id], can_view_full_text=True, lang=x_lang)
 
 
