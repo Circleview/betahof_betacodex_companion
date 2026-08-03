@@ -110,6 +110,12 @@ def client(tmp_path, monkeypatch):
             "en": {"summary": "", "key_terms": []},
         },
     )
+    # Das Standard-Mock oben liefert absichtlich ein leeres Ergebnis - das
+    # loest seit dem Retry-Fix (2026-08-03, siehe _generate_summary_with_
+    # retries in app/main.py) mehrere Versuche mit echtem time.sleep()
+    # dazwischen aus. Ohne dies wuerde JEDER Test, der eine Quelle anlegt,
+    # durch die Test-Suite hindurch spuerbar langsamer werden.
+    monkeypatch.setattr(main_module, "SUMMARY_RETRY_DELAY_SECONDS", 0)
     # Ohne dieses Mock würde jede neue Person beim Import einen echten
     # API-Call für die automatische Vita auslösen (Backlog: "jede:r Autor:in
     # soll von Anfang an eine Vita haben"). Tests, die dieses Verhalten
@@ -3159,6 +3165,120 @@ def test_add_source_generates_summary_in_background_and_registers_terms(client, 
     terms_res = client.get("/api/terms").json()
     term_names = {t["term"] for t in terms_res}
     assert term_names == {"BetaCodex", "Dezentralisierung"}
+
+
+def test_generate_summary_with_retries_retries_on_total_failure(monkeypatch):
+    """Vorfall (2026-08-03): generate_bilingual_summary() liefert bei einem
+    echten Fehlschlag (API-Fehler, Rate-Limit) bewusst ein leeres Ergebnis
+    statt eine Exception zu werfen (siehe app/summarization.py) - das muss
+    hier als Fehlschlag erkannt und wiederholt werden, nicht als "nichts zu
+    sagen" akzeptiert werden."""
+    monkeypatch.setattr(main_module, "SUMMARY_RETRY_DELAY_SECONDS", 0)
+    calls = []
+    empty = {"de": {"summary": "", "key_terms": []}, "en": {"summary": "", "key_terms": []}}
+    success = {
+        "de": {"summary": "Erfolgreich.", "key_terms": ["X"]},
+        "en": {"summary": "Success.", "key_terms": ["X"]},
+    }
+
+    def fake_generate(text):
+        calls.append(text)
+        return empty if len(calls) < 3 else success
+
+    monkeypatch.setattr(summarization, "generate_bilingual_summary", fake_generate)
+
+    result = main_module._generate_summary_with_retries("Ein Text.")
+
+    assert result == success
+    assert len(calls) == 3
+
+
+def test_generate_summary_with_retries_gives_up_after_max_attempts(monkeypatch):
+    monkeypatch.setattr(main_module, "SUMMARY_RETRY_DELAY_SECONDS", 0)
+    calls = []
+    empty = {"de": {"summary": "", "key_terms": []}, "en": {"summary": "", "key_terms": []}}
+
+    def fake_generate(text):
+        calls.append(text)
+        return empty
+
+    monkeypatch.setattr(summarization, "generate_bilingual_summary", fake_generate)
+
+    result = main_module._generate_summary_with_retries("Ein Text.")
+
+    assert result == empty
+    assert len(calls) == main_module.SUMMARY_RETRY_ATTEMPTS
+
+
+def test_backfill_missing_summaries_fills_in_gaps(client, monkeypatch):
+    """Nutzerwunsch (2026-08-03): eine Quelle mit Text, aber ohne
+    Zusammenfassung (z.B. aus der Zeit vor dem Retry-Fix, oder weil alle
+    Retries damals fehlschlugen) soll beim naechsten Sweep automatisch
+    nachgezogen werden."""
+    create_res = client.post("/api/sources", json={"title": "Quelle", "text": "Ein Text."})
+    source_id = create_res.json()["id"]
+    sources = main_module._load_sources()
+    sources[source_id]["summary_de"] = ""
+    sources[source_id]["summary_en"] = ""
+    main_module._save_sources(sources)
+
+    monkeypatch.setattr(
+        summarization,
+        "generate_bilingual_summary",
+        lambda text: {
+            "de": {"summary": "Nachgezogen.", "key_terms": ["Y"]},
+            "en": {"summary": "Backfilled.", "key_terms": ["Y"]},
+        },
+    )
+
+    main_module._backfill_missing_summaries_once()
+
+    updated = next(s for s in client.get("/api/sources").json() if s["id"] == source_id)
+    assert updated["summary"] == "Nachgezogen."
+
+
+def test_backfill_missing_summaries_ignores_sources_without_text(client, monkeypatch):
+    # z.B. eine noch textlose Audio-/PDF-Quelle, deren Verarbeitung noch
+    # aussteht - fuer die gibt es (noch) nichts zu summarisieren.
+    create_res = client.post("/api/sources", json={"title": "Quelle", "text": "Text."})
+    source_id = create_res.json()["id"]
+    sources = main_module._load_sources()
+    sources[source_id]["text"] = ""
+    sources[source_id]["summary_de"] = ""
+    sources[source_id]["summary_en"] = ""
+    main_module._save_sources(sources)
+
+    calls = []
+    monkeypatch.setattr(
+        summarization,
+        "generate_bilingual_summary",
+        lambda text: calls.append(text) or {"de": {"summary": "X", "key_terms": []}, "en": {"summary": "X", "key_terms": []}},
+    )
+
+    main_module._backfill_missing_summaries_once()
+
+    assert calls == []
+
+
+def test_backfill_missing_summaries_ignores_deleted_sources(client, monkeypatch):
+    create_res = client.post("/api/sources", json={"title": "Quelle", "text": "Text."})
+    source_id = create_res.json()["id"]
+    sources = main_module._load_sources()
+    sources[source_id]["summary_de"] = ""
+    sources[source_id]["summary_en"] = ""
+    sources[source_id]["deleted_at"] = "2026-08-03T00:00:00+00:00"
+    main_module._save_sources(sources)
+
+    calls = []
+    monkeypatch.setattr(
+        summarization,
+        "generate_bilingual_summary",
+        lambda text: calls.append(text) or {"de": {"summary": "X", "key_terms": []}, "en": {"summary": "X", "key_terms": []}},
+    )
+
+    main_module._backfill_missing_summaries_once()
+
+    assert calls == []
 
 
 def test_summary_is_served_in_the_requested_language(client, monkeypatch):

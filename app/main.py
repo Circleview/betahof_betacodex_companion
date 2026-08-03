@@ -523,8 +523,30 @@ def _register_all_terms(source_id: str, entry: dict) -> None:
         terms.register_term(term, source_id)
 
 
-def _generate_summary_background(source_id: str, text: str) -> None:
+# Vorfall (2026-08-03): generate_bilingual_summary() gibt bei JEDEM Fehler
+# (API-Timeout, Rate-Limit, kaputte Antwort) bewusst ein leeres Ergebnis
+# zurueck statt eine Exception zu werfen (siehe app/summarization.py) - eine
+# Quelle blieb dadurch fuer immer ohne Zusammenfassung stehen, ohne dass das
+# irgendwo sichtbar wurde (processing_status war zu diesem Zeitpunkt schon
+# auf None/"fertig" gesetzt). Ein leeres Ergebnis trotz nicht-leerem
+# Eingabetext gilt hier als echter Fehlschlag (nicht "nichts zu sagen") und
+# wird mit kurzer Pause wiederholt, bevor aufgegeben wird.
+SUMMARY_RETRY_ATTEMPTS = 3
+SUMMARY_RETRY_DELAY_SECONDS = 5
+
+
+def _generate_summary_with_retries(text: str) -> dict:
     result = summarization.generate_bilingual_summary(text)
+    for attempt in range(1, SUMMARY_RETRY_ATTEMPTS):
+        if result["de"]["summary"] or result["en"]["summary"]:
+            break
+        time.sleep(SUMMARY_RETRY_DELAY_SECONDS)
+        result = summarization.generate_bilingual_summary(text)
+    return result
+
+
+def _generate_summary_background(source_id: str, text: str) -> None:
+    result = _generate_summary_with_retries(text)
     with _sources_write_lock:
         sources = _load_sources()
         if source_id not in sources:
@@ -950,6 +972,43 @@ def _url_health_check_worker() -> None:
 
 
 threading.Thread(target=_url_health_check_worker, daemon=True).start()
+
+
+# Nutzerwunsch (2026-08-03): fehlende Zusammenfassungen (egal ob durch die
+# Retries in _generate_summary_background immer noch nicht gelungen, oder
+# aus der Zeit vor diesem Fix) automatisch nachziehen - laeuft nach
+# demselben Muster wie der obige woechentliche URL-Gesundheits-Check, sofort
+# einmal beim Prozessstart und danach in festem Takt.
+SUMMARY_BACKFILL_INTERVAL_SECONDS = 24 * 3600
+
+
+def _backfill_missing_summaries_once() -> None:
+    sources = _load_sources()
+    missing = {
+        sid: entry["text"]
+        for sid, entry in sources.items()
+        if not entry.get("deleted_at")
+        and entry.get("text", "").strip()
+        and not entry.get("summary_de")
+        and not entry.get("summary_en")
+    }
+    for source_id, text in missing.items():
+        with _track_background_job(source_id):
+            _generate_summary_background(source_id, text)
+
+
+def _summary_backfill_worker() -> None:
+    while True:
+        try:
+            _backfill_missing_summaries_once()
+        except Exception:
+            # Ein Fehlschlag (z.B. defektes sources.json) darf den Worker
+            # nicht dauerhaft beenden - naechster Versuch beim naechsten Takt.
+            pass
+        time.sleep(SUMMARY_BACKFILL_INTERVAL_SECONDS)
+
+
+threading.Thread(target=_summary_backfill_worker, daemon=True).start()
 
 
 def _recover_interrupted_processing_jobs() -> None:
