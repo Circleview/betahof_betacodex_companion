@@ -1176,8 +1176,47 @@ def test_ask_stream_emits_delta_events_in_order_before_done_event(client, monkey
 
     assert result["events"][-1]["type"] == "done"
     assert result["events"][-2]["type"] == "answer"
-    assert all(e["type"] == "delta" for e in result["events"][:-2])
+    assert result["events"][0]["type"] == "sources"
+    assert all(e["type"] == "delta" for e in result["events"][1:-2])
     assert result["streamed_text"] == result["answer"]
+
+
+def test_ask_stream_emits_early_sources_event_with_empty_highlights(client):
+    """Nutzerwunsch (2026-08-03): Titel/Autor:in/Link jeder Quelle stehen
+    schon vor dem LLM-Aufruf fest - ein frühes "sources"-Event soll das
+    sofort mitschicken (mit noch leeren highlighted_texts), statt bis zum
+    "done"-Event zu warten, damit "[n]"-Verweise im Frontend sofort
+    klickbar werden."""
+    client.post("/api/sources", json={"title": "Näher, Quelle A", "text": "Text."})
+
+    response = client.post("/api/ask", json={"question": "Frage?"})
+    events = ask_result(response)["events"]
+
+    sources_index = next(i for i, e in enumerate(events) if e["type"] == "sources")
+    answer_index = next(i for i, e in enumerate(events) if e["type"] == "answer")
+    assert sources_index == 0
+    assert sources_index < answer_index
+    early_source = events[sources_index]["sources"][0]
+    assert early_source["title"] == "Näher, Quelle A"
+    assert early_source["highlighted_texts"] == []
+
+
+def test_ask_stream_emits_exactly_one_answer_event_when_quotes_marker_present(client, monkeypatch):
+    """Nutzerwunsch (2026-08-03): das "answer"-Event feuert jetzt schon,
+    sobald der ---QUOTES---Marker im Puffer auftaucht (siehe answer_sent-
+    Flag in _ask_event_stream), statt erst am Streamende - es darf dabei
+    trotzdem nur genau EIN "answer"-Event pro Antwort geben, kein
+    zusaetzliches am Ende."""
+    raw = 'Aussage mit Beleg [1].\n\n---QUOTES---\n[1]: "Ein Zitat."\n'
+    monkeypatch.setattr(llm, "stream_answer_question", lambda *a, **k: iter(list(raw)))
+    client.post("/api/sources", json={"title": "Q", "text": "Text."})
+
+    response = client.post("/api/ask", json={"question": "Frage?"})
+    events = ask_result(response)["events"]
+
+    answer_events = [e for e in events if e["type"] == "answer"]
+    assert len(answer_events) == 1
+    assert answer_events[0]["answer"] == "Aussage mit Beleg [1]."
 
 
 def test_ask_answer_event_precedes_done_event_and_done_carries_no_answer(client):

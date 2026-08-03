@@ -2270,16 +2270,28 @@ def _rerank_by_relevance(
 
 
 def _ask_event_stream(question_text, llm_chunks, lang, author_bios, chunk_refs, chunk_docs, query_embedding):
-    """Generator für die NDJSON-Stream-Antwort von /api/ask: ein "delta"-
-    Event pro neu angekommenem Text-Fragment, am Ende genau ein "done"-Event
-    mit der vollständigen (bereits vom Label befreiten) Antwort und den
-    Quellen inkl. berechneter Hervorhebungen - oder ein "error"-Event, falls
-    die Anfrage an Anthropic fehlschlägt. Der ---QUOTES---Block selbst wird
-    NIE an die Nutzer:in gestreamt, da er reine interne Beleg-Daten für die
-    Hervorhebungen enthält."""
+    """Generator für die NDJSON-Stream-Antwort von /api/ask: ein frühes
+    "sources"-Event (Titel/Autor:in/Link, siehe unten), dann ein "delta"-
+    Event pro neu angekommenem Text-Fragment, ein "answer"-Event sobald der
+    sichtbare Antworttext feststeht, und am Ende ein "done"-Event mit
+    denselben Quellen inkl. berechneter Hervorhebungen - oder ein "error"-
+    Event, falls die Anfrage an Anthropic fehlschlägt. Der ---QUOTES---Block
+    selbst wird NIE an die Nutzer:in gestreamt, da er reine interne Beleg-
+    Daten für die Hervorhebungen enthält."""
+    # Nutzerwunsch (2026-08-03): Titel/Autor:in/Link jeder Quelle stehen
+    # bereits vor dem LLM-Aufruf fest (siehe ask() oben) - ein frühes
+    # "sources"-Event macht "[n]"-Verweise im Frontend sofort klickbar,
+    # statt bis zum "done"-Event zu warten, dessen Hervorhebungs-Berechnung
+    # spürbar länger dauern kann. highlighted_texts ist hier noch leer und
+    # wird unten im "done"-Event für dieselben Quellen nachgereicht.
+    yield json.dumps(
+        {"type": "sources", "sources": [chunk_ref.model_dump() for chunk_ref in chunk_refs]}
+    ) + "\n"
+
     buffer = ""
     sent_len = 0
     label_resolved = False
+    answer_sent = False
 
     try:
         for delta in llm.stream_answer_question(question_text, llm_chunks, lang=lang, author_bios=author_bios):
@@ -2300,6 +2312,19 @@ def _ask_event_stream(question_text, llm_chunks, lang, author_bios, chunk_refs, 
             if new_text:
                 yield json.dumps({"type": "delta", "text": new_text}) + "\n"
                 sent_len = len(visible_final)
+
+            # Nutzerwunsch (2026-08-03): Vorlesen soll nicht auf den
+            # unsichtbaren ---QUOTES---Block warten, der nach dem sichtbaren
+            # Antworttext folgt - sobald der Marker im Puffer auftaucht,
+            # steht der sichtbare Text (inkl. Zitat-Positionskorrektur,
+            # siehe llm.parse_answer_and_quotes/_move_leading_citations_to_
+            # sentence_end) bereits fest. Der Rest des Streams (die Zitate
+            # selbst) wird unten weiter eingesammelt, aber ohne weitere
+            # "delta"-Events (visible_final wächst ab hier nicht mehr).
+            if marker_index != -1 and not answer_sent:
+                early_answer_text, _ = llm.parse_answer_and_quotes(buffer)
+                yield json.dumps({"type": "answer", "answer": early_answer_text}) + "\n"
+                answer_sent = True
     except Exception:
         yield json.dumps({"type": "error", "message": i18n.get_message("ask_llm_failed", lang)}) + "\n"
         return
@@ -2309,13 +2334,16 @@ def _ask_event_stream(question_text, llm_chunks, lang, author_bios, chunk_refs, 
     if remaining:
         yield json.dumps({"type": "delta", "text": remaining}) + "\n"
 
-    # Backlog (2026-07-31): der fertige Antworttext steht hier bereits fest -
-    # die folgende Highlight-Berechnung (lokales Embedding-Modell, siehe
-    # _compute_occurrence_highlights/_best_local_sentence) kann auf
-    # schwächerer CPU spürbar dauern. Eigenes, frühes Event dafür, damit
-    # z.B. der Vorlesen-Button nicht auf Quellen/Highlights warten muss
-    # (siehe question.js: onAnswer-Callback schaltet ihn schon hier frei).
-    yield json.dumps({"type": "answer", "answer": answer_text}) + "\n"
+    # Backlog (2026-07-31, ergaenzt 2026-08-03): der fertige Antworttext
+    # steht hier bereits fest - die folgende Highlight-Berechnung (lokales
+    # Embedding-Modell, siehe _compute_occurrence_highlights/
+    # _best_local_sentence) kann auf schwächerer CPU spürbar dauern. Eigenes,
+    # frühes Event dafür, damit z.B. der Vorlesen-Button nicht auf Quellen/
+    # Highlights warten muss (siehe question.js: onAnswer-Callback schaltet
+    # ihn schon hier frei). NUR falls oben (beim Marker-Fund) noch nicht
+    # gefeuert - sonst gäbe es zwei identische "answer"-Events.
+    if not answer_sent:
+        yield json.dumps({"type": "answer", "answer": answer_text}) + "\n"
 
     occurrence_highlights = _compute_occurrence_highlights(answer_text, chunk_docs, quotes_by_citation)
     for i, chunk_ref in enumerate(chunk_refs):

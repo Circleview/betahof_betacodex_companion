@@ -704,13 +704,14 @@ async function fetchWithRetry(url, options, retries = 1, delayMs = 600) {
 // Streaming im CRT-Tool - /api/ask liefert die Antwort seitdem als NDJSON-
 // Stream (eine JSON-Zeile pro Event) statt als einzelne JSON-Antwort.
 // Liest den Response-Body inkrementell und ruft onDelta(text) für jedes
-// "delta"-Event auf, sobald es ankommt, sowie onAnswer(answer) für das
-// "answer"-Event (fertiger Antworttext, kommt VOR den - u.U. spürbar
-// langsameren - Quellen/Highlights im "done"-Event, siehe Backlog
-// 2026-07-31); löst am Ende mit dem "done"-Event auf (bzw. wirft bei einem
-// "error"-Event oder wenn der Stream ohne "done" endet - z.B. abgebrochene
-// Verbindung).
-async function readAskStream(response, onDelta, onAnswer) {
+// "delta"-Event auf, sobald es ankommt, onSources(sources) für das ganz
+// frühe "sources"-Event (Titel/Autor:in/Link, siehe Backlog 2026-08-03 -
+// noch ohne Hervorhebungen) sowie onAnswer(answer) für das "answer"-Event
+// (fertiger Antworttext, kommt VOR den im "done"-Event nachgereichten
+// Hervorhebungen, siehe Backlog 2026-07-31/2026-08-03); löst am Ende mit
+// dem "done"-Event auf (bzw. wirft bei einem "error"-Event oder wenn der
+// Stream ohne "done" endet - z.B. abgebrochene Verbindung).
+async function readAskStream(response, onDelta, onAnswer, onSources) {
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
   let buffer = '';
@@ -729,6 +730,8 @@ async function readAskStream(response, onDelta, onAnswer) {
         onDelta(event.text);
       } else if (event.type === 'answer') {
         onAnswer(event.answer);
+      } else if (event.type === 'sources') {
+        onSources?.(event.sources);
       } else if (event.type === 'error') {
         throw new Error(event.message);
       } else if (event.type === 'done') {
@@ -803,12 +806,20 @@ questionForm.addEventListener('submit', async (e) => {
 
     // Erstes Text-Fragment: Tippindikator durch die (noch unfertige)
     // Antwort ersetzen. Zitat-Verweise [n] und Hervorhebungen brauchen die
-    // Quellen und werden erst mit attachAnswerSources unten aktiv - bis
-    // dahin steht z.B. "[1]" noch als reiner Text da.
+    // Quellen - werden dank des frühen "sources"-Events (Backlog
+    // 2026-08-03) aber schon beim "answer"-Event aktiv, nicht erst am Ende.
     let liveText = '';
     let indicatorCleared = false;
     let finalAnswer = '';
     let speakBtn = null;
+    // Von onSources befüllt, sobald das (sehr frühe) "sources"-Event
+    // ankommt - noch ohne highlighted_texts, siehe unten. Dieselben
+    // Objekt-Referenzen werden von attachAnswerSources() u.a. in
+    // conversationCitedSources (Sidebar) sowie in den Klick-Handlern der
+    // Zitat-Buttons (makeCitationsClickable) gehalten; ein nachträgliches
+    // Mutieren der Felder wirkt sich dadurch überall gleichzeitig aus, ohne
+    // dass irgendwas neu gerendert werden müsste.
+    let earlySources = null;
     const doneEvent = await readAskStream(
       res,
       (delta) => {
@@ -820,24 +831,42 @@ questionForm.addEventListener('submit', async (e) => {
         assistantBubble.innerHTML = renderMarkdown(liveText);
       },
       (answer) => {
-        // Backlog (2026-07-31): Vorlesen-Button so früh wie möglich
-        // freischalten, ohne auf die u.U. spürbar langsamere Quellen-/
-        // Highlight-Berechnung zu warten - die kommt gleich danach per
-        // attachAnswerSources nach.
+        // Backlog (2026-07-31, ergänzt 2026-08-03): Vorlesen-Button UND
+        // Zitat-Verweise so früh wie möglich freischalten, ohne auf die
+        // u.U. spürbar langsamere Hervorhebungs-Berechnung zu warten - die
+        // kommt erst später über das "done"-Event nach (siehe unten).
         finalAnswer = answer;
         speakBtn = renderAnswerText(assistantBubble, answer);
+        if (earlySources) {
+          attachAnswerSources(assistantBubble, earlySources);
+          renderSidebarSources();
+        }
         // Backlog #49: nur bei per Mikrofon gestellten Fragen automatisch
         // vorlesen - getippte Fragen bleiben stumm (mit dem Icon manuell
         // vorlesbar, siehe attachSpeakButton).
         if (viaVoice) {
           startSpeaking(speakBtn, stripMarkdownForSpeech(answer));
         }
+      },
+      (sources) => {
+        earlySources = sources;
       }
     );
 
-    attachAnswerSources(assistantBubble, doneEvent.sources);
-    renderSidebarSources();
-    conversationHistory.push({ question, answer: finalAnswer, sources: doneEvent.sources });
+    if (earlySources) {
+      // Nachtrag statt Neu-Rendern: dieselben Objekte, die attachAnswerSources
+      // oben schon verteilt hat (Sidebar, Zitat-Karten), bekommen jetzt ihre
+      // Hervorhebungen - ein späterer Klick auf "[n]" zeigt dann den
+      // passenden Ausschnitt, auch wenn die Karte schon vorher geöffnet war.
+      doneEvent.sources.forEach((s, i) => {
+        if (earlySources[i]) earlySources[i].highlighted_texts = s.highlighted_texts;
+      });
+    } else {
+      // Fallback, falls das "sources"-Event wider Erwarten nie ankam.
+      attachAnswerSources(assistantBubble, doneEvent.sources);
+      renderSidebarSources();
+    }
+    conversationHistory.push({ question, answer: finalAnswer, sources: earlySources || doneEvent.sources });
     saveConversationHistory();
   } catch (err) {
     assistantBubble.textContent = t('common.errorPrefix') + err.message;
