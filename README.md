@@ -279,6 +279,21 @@ fehl.
   für einen sanften Start, Turnstile läuft mit einem echten, bei
   Cloudflare registrierten Schlüsselpaar.
 
+### System-Voraussetzungen (Produktion)
+
+Über `requirements.txt` (per `pip`) hinaus braucht der Server folgendes
+System-Paket, das bei einem frischen Server-Aufsetzen leicht vergessen
+wird (Vorfall 2026-08-03: fehlte auf Produktion, dadurch schlugen alle
+Audio-Transkriptionen über 25 MB fehl, siehe `split_audio_file` in
+`app/extraction.py`):
+
+```bash
+sudo apt-get update && sudo apt-get install -y ffmpeg
+```
+
+Fehlt `ffmpeg`/`ffprobe` beim Start, schreibt die App eine deutliche
+Warnung in die Logs (`journalctl --user -u betacodex-blue`/`-green`).
+
 ### Schutz vor versehentlichem Secret-Commit
 
 `.env` ist in `.gitignore` und wird dadurch nicht getrackt. Zusätzlich

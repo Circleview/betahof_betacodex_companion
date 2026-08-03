@@ -1,4 +1,5 @@
 import subprocess
+import sys
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -763,6 +764,26 @@ def test_find_binary_falls_back_to_known_install_paths(monkeypatch, tmp_path):
 def test_find_binary_returns_bare_name_when_nothing_found(monkeypatch):
     monkeypatch.setattr(extraction.shutil, "which", lambda name: None)
     assert extraction._find_binary("ffmpeg", ["/does/not/exist"]) == "ffmpeg"
+
+
+def test_warn_if_binary_missing_prints_warning_when_not_found(capsys, monkeypatch):
+    """Nutzerwunsch (2026-08-03): ffmpeg fehlte auf Produktion komplett -
+    der Startup-Check soll das deutlich in den Logs sichtbar machen, statt
+    erst beim Scheitern der naechsten grossen Audio-Transkription."""
+    monkeypatch.setattr(extraction.shutil, "which", lambda name: None)
+    extraction._warn_if_binary_missing("ffmpeg", "/does/not/exist/ffmpeg")
+
+    captured = capsys.readouterr()
+    assert "ffmpeg" in captured.err
+    assert "WARNUNG" in captured.err
+    assert captured.out == ""
+
+
+def test_warn_if_binary_missing_silent_when_found(capsys):
+    extraction._warn_if_binary_missing("python3", sys.executable)
+
+    captured = capsys.readouterr()
+    assert captured.err == ""
 
 
 def test_transcribe_audio_returns_single_chunk_text_unchanged(tmp_path):

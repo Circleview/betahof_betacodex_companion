@@ -3,6 +3,7 @@ import io
 import re
 import shutil
 import subprocess
+import sys
 import tempfile
 import time
 import urllib.request
@@ -196,6 +197,27 @@ def _find_binary(name: str, fallback_paths: list[str]) -> str:
 
 _FFMPEG_BIN = _find_binary("ffmpeg", ["/opt/homebrew/bin/ffmpeg", "/usr/local/bin/ffmpeg"])
 _FFPROBE_BIN = _find_binary("ffprobe", ["/opt/homebrew/bin/ffprobe", "/usr/local/bin/ffprobe"])
+
+
+def _warn_if_binary_missing(name: str, resolved: str) -> None:
+    # Vorfall (2026-08-03): ffmpeg fehlte auf Produktion komplett (nie
+    # installiert) - split_audio_file() faengt das ab und liefert einfach
+    # die unveraenderte Originaldatei zurueck (siehe dort), wodurch grosse
+    # Audios erst beim Scheitern der Transkription auffielen, Wochen nach
+    # dem eigentlichen Root Cause. Eine deutliche Warnung direkt beim
+    # Prozessstart macht die Luecke sofort in den Logs sichtbar.
+    if shutil.which(resolved) is None and not Path(resolved).exists():
+        print(
+            f"WARNUNG: '{name}' wurde beim Start nicht gefunden. Audio-Dateien "
+            f"über {AUDIO_UPLOAD_MAX_BYTES // (1024 * 1024)} MB können dann nicht "
+            "in Abschnitte aufgeteilt werden und schlagen bei der Transkription "
+            "fehl (siehe split_audio_file). Bitte ffmpeg auf dem Server installieren.",
+            file=sys.stderr,
+        )
+
+
+_warn_if_binary_missing("ffmpeg", _FFMPEG_BIN)
+_warn_if_binary_missing("ffprobe", _FFPROBE_BIN)
 
 # gpt-4o-transcribe-diarize lehnt Dateien über dieser Dauer unabhängig von
 # der Byte-Größe mit einem 400er ab ("audio duration X seconds is longer
