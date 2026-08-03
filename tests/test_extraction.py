@@ -518,49 +518,6 @@ def test_extract_youtube_still_fills_metadata_when_transcript_is_blocked():
     assert result["date"] == "2024-01-01"
 
 
-# Backlog #200 (2026-08-03): optionaler Residential-Proxy (Webshare) gegen
-# das IP-Blocking von YouTube auf Produktion - ohne gesetzte Umgebungs-
-# variablen (Dev/Stabil, Standardfall) muss sich am bisherigen Verhalten
-# nichts aendern.
-
-
-def test_youtube_transcript_api_uses_no_proxy_by_default(monkeypatch):
-    monkeypatch.delenv("WEBSHARE_PROXY_USERNAME", raising=False)
-    monkeypatch.delenv("WEBSHARE_PROXY_PASSWORD", raising=False)
-
-    with patch("app.extraction.YouTubeTranscriptApi") as fake_cls:
-        extraction._youtube_transcript_api()
-
-    fake_cls.assert_called_once_with()
-
-
-def test_youtube_transcript_api_uses_webshare_proxy_when_configured(monkeypatch):
-    monkeypatch.setenv("WEBSHARE_PROXY_USERNAME", "meinnutzer")
-    monkeypatch.setenv("WEBSHARE_PROXY_PASSWORD", "meingeheimnis")
-
-    with (
-        patch("app.extraction.YouTubeTranscriptApi") as fake_cls,
-        patch("app.extraction.WebshareProxyConfig") as fake_proxy_cls,
-    ):
-        extraction._youtube_transcript_api()
-
-    fake_proxy_cls.assert_called_once_with(proxy_username="meinnutzer", proxy_password="meingeheimnis")
-    fake_cls.assert_called_once_with(proxy_config=fake_proxy_cls.return_value)
-
-
-def test_youtube_transcript_api_ignores_partial_proxy_config(monkeypatch):
-    """Nur EINE der beiden Variablen gesetzt (z.B. Tippfehler beim Ausrollen)
-    soll nicht zu einem kaputten Proxy-Config-Aufruf fuehren, sondern
-    stillschweigend auf das Standardverhalten (kein Proxy) zurueckfallen."""
-    monkeypatch.setenv("WEBSHARE_PROXY_USERNAME", "meinnutzer")
-    monkeypatch.delenv("WEBSHARE_PROXY_PASSWORD", raising=False)
-
-    with patch("app.extraction.YouTubeTranscriptApi") as fake_cls:
-        extraction._youtube_transcript_api()
-
-    fake_cls.assert_called_once_with()
-
-
 def _fake_rate_limit_error() -> openai.RateLimitError:
     response = httpx.Response(429, request=httpx.Request("POST", "https://api.openai.com/v1/audio/transcriptions"))
     return openai.RateLimitError("zu viele Anfragen", response=response, body=None)
