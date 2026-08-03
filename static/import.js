@@ -207,7 +207,9 @@ function devUserHeaders() {
 function updateSourceManagementVisibility() {
   quelltypBereich.classList.toggle('hidden', !hasPflegerRole());
   reindexBereich.classList.toggle('hidden', !hasPflegerRole());
-  brokenLinksBtn.classList.toggle('hidden', !hasPflegerRole());
+  // Sichtbarkeit des Broken-Links-Buttons hängt zusätzlich von der Anzahl
+  // defekter Links ab - das übernimmt updateBrokenLinksButton() komplett
+  // (wird am Ende jedes loadSources()-Laufs aufgerufen).
   if (!hasPflegerRole()) {
     importBereich.classList.add('hidden');
     urlPopover.classList.add('hidden');
@@ -2224,12 +2226,15 @@ function filterByBrokenLinks() {
 
 // Zählt bei jedem Laden/Neuladen neu, wie viele Quellen aktuell einen
 // defekten Link haben, und spiegelt das im Zähler-Badge am Toolbar-Button.
+// Der Button selbst wird bei 0 defekten Links komplett ausgeblendet (nicht
+// nur das Badge) - ohne betroffene Quellen gibt es nichts zu filtern.
 function updateBrokenLinksButton() {
   const badge = document.getElementById('broken-links-count-badge');
   if (!badge) return;
   const count = allSources.filter((s) => s.url_reachable === false).length;
   badge.textContent = String(count);
   badge.classList.toggle('hidden', count === 0);
+  brokenLinksBtn.classList.toggle('hidden', !hasPflegerRole() || count === 0);
 }
 
 // scroll=false beim Leeren des Suchfelds während des Tippens - die Ansicht

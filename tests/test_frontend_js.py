@@ -723,6 +723,72 @@ def test_update_broken_links_badge_hidden_without_fetch_for_non_pfleger():
     assert output == {"hidden": True}
 
 
+# Backlog (2026-08-03): der Broken-Links-Filter-Button in der Quellen-
+# übersicht soll komplett verschwinden (nicht nur sein Zähler-Badge), sobald
+# keine Quelle mehr einen defekten Link hat.
+
+
+def _run_update_broken_links_button(*, is_pfleger: bool, sources: list[dict]) -> dict:
+    js_source = (STATIC_DIR / "import.js").read_text()
+    match = re.search(r"function updateBrokenLinksButton\(\) \{.*?\n\}", js_source, re.S)
+    assert match, "updateBrokenLinksButton wurde in import.js nicht gefunden."
+    func_source = match.group(0)
+    script = f"""
+function hasPflegerRole() {{ return {json.dumps(is_pfleger)}; }}
+const allSources = {json.dumps(sources)};
+
+function makeElement() {{
+  let hidden = false;
+  let text = '';
+  return {{
+    classList: {{
+      toggle(cls, force) {{ if (cls === 'hidden') hidden = force; }},
+      get hidden() {{ return hidden; }},
+    }},
+    set textContent(value) {{ text = value; }},
+    get textContent() {{ return text; }},
+  }};
+}}
+
+const badgeEl = makeElement();
+const btnEl = makeElement();
+const brokenLinksBtn = btnEl;
+global.document = {{
+  getElementById: (id) => (id === 'broken-links-count-badge' ? badgeEl : null),
+}};
+
+{func_source}
+
+updateBrokenLinksButton();
+console.log(JSON.stringify({{
+  badgeHidden: badgeEl.classList.hidden,
+  badgeText: badgeEl.textContent,
+  btnHidden: btnEl.classList.hidden,
+}}));
+"""
+    result = subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True)
+    return json.loads(result.stdout)
+
+
+def test_update_broken_links_button_hidden_when_no_broken_sources():
+    output = _run_update_broken_links_button(
+        is_pfleger=True, sources=[{"url_reachable": True}, {"url_reachable": None}]
+    )
+    assert output == {"badgeHidden": True, "badgeText": "0", "btnHidden": True}
+
+
+def test_update_broken_links_button_shown_when_pfleger_has_broken_sources():
+    output = _run_update_broken_links_button(
+        is_pfleger=True, sources=[{"url_reachable": False}, {"url_reachable": True}]
+    )
+    assert output == {"badgeHidden": False, "badgeText": "1", "btnHidden": False}
+
+
+def test_update_broken_links_button_hidden_for_non_pfleger_even_with_broken_sources():
+    output = _run_update_broken_links_button(is_pfleger=False, sources=[{"url_reachable": False}])
+    assert output == {"badgeHidden": False, "badgeText": "1", "btnHidden": True}
+
+
 # Backlog #201 (2026-08-03): klickbarer Link zu youtube-transcript.io + kurze
 # Anleitung, wenn die automatische YouTube-Transkript-Extraktion fehlschlägt.
 
