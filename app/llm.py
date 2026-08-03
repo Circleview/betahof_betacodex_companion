@@ -163,29 +163,46 @@ def stream_answer_question(
     chunks: list[dict],
     lang: str = DEFAULT_LANG,
     author_bios: list[dict] | None = None,
+    history: list[dict] | None = None,
 ):
     """Wie answer_question, liefert die Antwort aber als Generator einzelner
     Text-Fragmente, sobald Anthropic sie erzeugt (Backlog: Antwortzeit
     gefühlt beschleunigen, analog zum Streaming im CRT-Tool) - app/main.py
     (ask()) leitet diese Fragmente direkt an die Nutzer:in weiter, statt auf
-    die komplette Antwort (inkl. des internen ---QUOTES---Blocks) zu warten."""
+    die komplette Antwort (inkl. des internen ---QUOTES---Blocks) zu warten.
+
+    history: bisherige Turns der laufenden Konversation ({"question", "answer"},
+    älteste zuerst) - werden als eigene user/assistant-Nachrichten VOR der
+    aktuellen Frage eingereiht, damit das Modell z.B. Folgefragen wie "und
+    was ist mit X?" auflösen kann und sich nicht wortgleich wiederholt.
+    Die darin enthaltenen [n]-Verweise beziehen sich auf die JEWEILIGEN
+    Kontext-Textausschnitte des jeweils eigenen Turns, nicht auf den neuen
+    Kontext unten - das Modell behandelt frühere Turns aber ohnehin als
+    abgeschlossen und nicht neu zu belegen, nur die aktuelle Antwort bekommt
+    frische Zitate aus dem aktuellen Kontext."""
     lang = lang if lang in SYSTEM_PROMPTS else DEFAULT_LANG
     context = _build_context(chunks, lang, author_bios)
+
+    messages = []
+    for turn in history or []:
+        messages.append({"role": "user", "content": turn["question"]})
+        messages.append({"role": "assistant", "content": turn["answer"]})
+    messages.append(
+        {
+            "role": "user",
+            "content": (
+                f"Kontext-Textausschnitte:\n\n{context}\n\nFrage: {question}\n\n"
+                f"{_LANGUAGE_REMINDERS[lang]}"
+            ),
+        }
+    )
 
     client = _get_client()
     with client.messages.stream(
         model=MODEL_NAME,
         max_tokens=1024,
         system=SYSTEM_PROMPTS[lang],
-        messages=[
-            {
-                "role": "user",
-                "content": (
-                    f"Kontext-Textausschnitte:\n\n{context}\n\nFrage: {question}\n\n"
-                    f"{_LANGUAGE_REMINDERS[lang]}"
-                ),
-            }
-        ],
+        messages=messages,
     ) as stream:
         yield from stream.text_stream
 
@@ -195,6 +212,7 @@ def answer_question(
     chunks: list[dict],
     lang: str = DEFAULT_LANG,
     author_bios: list[dict] | None = None,
+    history: list[dict] | None = None,
 ) -> str:
     """Nicht-streamender Komfort-Wrapper um stream_answer_question - für
     Aufrufstellen/Tests, die die komplette Antwort in einem Rutsch brauchen.
@@ -205,4 +223,6 @@ def answer_question(
     SYSTEM_PROMPTS), damit biografische Fragen ("Wer ist X?") aus der
     gepflegten Autor:innen-Vita statt nur aus inhaltlich unpassenden
     Quellen-Chunks beantwortet werden können."""
-    return "".join(stream_answer_question(question, chunks, lang=lang, author_bios=author_bios))
+    return "".join(
+        stream_answer_question(question, chunks, lang=lang, author_bios=author_bios, history=history)
+    )

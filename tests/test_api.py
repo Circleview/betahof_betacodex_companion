@@ -100,7 +100,7 @@ def client(tmp_path, monkeypatch):
     monkeypatch.setattr(
         llm,
         "stream_answer_question",
-        lambda question, chunks, lang="de", author_bios=None: iter(["Testantwort [1]."]),
+        lambda question, chunks, lang="de", author_bios=None, history=None: iter(["Testantwort [1]."]),
     )
     monkeypatch.setattr(
         summarization,
@@ -1367,7 +1367,7 @@ def test_ask_passes_author_bio_when_question_mentions_registered_author(client, 
 
     captured = {}
 
-    def fake_answer(question, chunks, lang="de", author_bios=None):
+    def fake_answer(question, chunks, lang="de", author_bios=None, history=None):
         captured["author_bios"] = author_bios
         return iter(["Testantwort [1]."])
 
@@ -1393,7 +1393,7 @@ def test_ask_passes_no_author_bio_when_question_does_not_mention_author(client, 
 
     captured = {}
 
-    def fake_answer(question, chunks, lang="de", author_bios=None):
+    def fake_answer(question, chunks, lang="de", author_bios=None, history=None):
         captured["author_bios"] = author_bios
         return iter(["Testantwort [1]."])
 
@@ -1402,6 +1402,110 @@ def test_ask_passes_no_author_bio_when_question_does_not_mention_author(client, 
     client.post("/api/ask", json={"question": "Was beschreibt der BetaCodex?"})
 
     assert captured["author_bios"] is None
+
+
+# Backlog (2026-08-03): der Chatbot wiederholte sich im Konversationsmodus,
+# weil jede Frage isoliert ohne Kenntnis vorheriger Turns beantwortet wurde.
+
+
+def test_ask_passes_history_to_llm(client, monkeypatch):
+    client.post(
+        "/api/sources",
+        json={"title": "Q", "text": "Der BetaCodex beschreibt Prinzipien dezentraler Organisation."},
+    )
+    captured = {}
+
+    def fake_answer(question, chunks, lang="de", author_bios=None, history=None):
+        captured["history"] = history
+        return iter(["Testantwort [1]."])
+
+    monkeypatch.setattr(llm, "stream_answer_question", fake_answer)
+
+    client.post(
+        "/api/ask",
+        json={
+            "question": "Und wie sieht es mit Vertrauen aus?",
+            "history": [
+                {"question": "Was ist der BetaCodex?", "answer": "Ein Prinzipien-Set [1]."}
+            ],
+        },
+    )
+
+    assert captured["history"] == [
+        {"question": "Was ist der BetaCodex?", "answer": "Ein Prinzipien-Set [1]."}
+    ]
+
+
+def test_ask_caps_history_to_last_turns_even_if_client_sends_more(client, monkeypatch):
+    client.post(
+        "/api/sources",
+        json={"title": "Q", "text": "Der BetaCodex beschreibt Prinzipien dezentraler Organisation."},
+    )
+    captured = {}
+
+    def fake_answer(question, chunks, lang="de", author_bios=None, history=None):
+        captured["history"] = history
+        return iter(["Testantwort [1]."])
+
+    monkeypatch.setattr(llm, "stream_answer_question", fake_answer)
+    monkeypatch.setattr(main_module, "ASK_HISTORY_MAX_TURNS", 2)
+
+    client.post(
+        "/api/ask",
+        json={
+            "question": "Frage 4?",
+            "history": [
+                {"question": "Frage 1?", "answer": "Antwort 1."},
+                {"question": "Frage 2?", "answer": "Antwort 2."},
+                {"question": "Frage 3?", "answer": "Antwort 3."},
+            ],
+        },
+    )
+
+    assert captured["history"] == [
+        {"question": "Frage 2?", "answer": "Antwort 2."},
+        {"question": "Frage 3?", "answer": "Antwort 3."},
+    ]
+
+
+def test_ask_folds_last_history_question_into_embedding_query(client, monkeypatch):
+    client.post(
+        "/api/sources",
+        json={"title": "Q", "text": "Der BetaCodex beschreibt Prinzipien dezentraler Organisation."},
+    )
+    captured = {}
+    monkeypatch.setattr(
+        embeddings,
+        "embed_query",
+        lambda text: captured.setdefault("query_text", text) and [1.0, 0.0] or [1.0, 0.0],
+    )
+
+    client.post(
+        "/api/ask",
+        json={
+            "question": "Und wie sieht es mit Vertrauen aus?",
+            "history": [{"question": "Was ist der BetaCodex?", "answer": "Ein Prinzipien-Set [1]."}],
+        },
+    )
+
+    assert captured["query_text"] == "Was ist der BetaCodex? Und wie sieht es mit Vertrauen aus?"
+
+
+def test_ask_without_history_uses_plain_question_for_embedding_query(client, monkeypatch):
+    client.post(
+        "/api/sources",
+        json={"title": "Q", "text": "Der BetaCodex beschreibt Prinzipien dezentraler Organisation."},
+    )
+    captured = {}
+    monkeypatch.setattr(
+        embeddings,
+        "embed_query",
+        lambda text: captured.setdefault("query_text", text) and [1.0, 0.0] or [1.0, 0.0],
+    )
+
+    client.post("/api/ask", json={"question": "Was ist der BetaCodex?"})
+
+    assert captured["query_text"] == "Was ist der BetaCodex?"
 
 
 def test_ask_includes_source_summary(client):
@@ -1482,7 +1586,7 @@ def test_ask_uses_llm_quote_when_it_matches_the_chunk(client, monkeypatch):
     monkeypatch.setattr(
         llm,
         "stream_answer_question",
-        lambda question, chunks, lang="de", author_bios=None: iter([
+        lambda question, chunks, lang="de", author_bios=None, history=None: iter([
             "Aussage [1].\n\n---QUOTES---\n"
             '[1]: "Der BetaCodex beschreibt Prinzipien dezentraler Organisation."\n'
         ]),
@@ -1510,7 +1614,7 @@ def test_ask_falls_back_to_local_highlight_when_llm_quote_not_found_in_chunk(cli
     monkeypatch.setattr(
         llm,
         "stream_answer_question",
-        lambda question, chunks, lang="de", author_bios=None: iter([
+        lambda question, chunks, lang="de", author_bios=None, history=None: iter([
             "Antwort [1].\n\n---QUOTES---\n"
             '[1]: "Dieser Satz kommt in der Quelle so gar nicht vor."\n'
         ]),
@@ -1583,7 +1687,7 @@ def test_local_highlight_sentence_embeddings_are_cached_across_requests(client, 
     monkeypatch.setattr(
         llm,
         "stream_answer_question",
-        lambda question, chunks, lang="de", author_bios=None: iter(["Antwort [1]."]),
+        lambda question, chunks, lang="de", author_bios=None, history=None: iter(["Antwort [1]."]),
     )
 
     # Erst NACH dem Anlegen der Quellen mitzählen - deren eigene Indizierung
@@ -1626,7 +1730,7 @@ def test_local_highlight_cache_ignores_stale_entry_after_source_edit(client, mon
     monkeypatch.setattr(
         llm,
         "stream_answer_question",
-        lambda question, chunks, lang="de", author_bios=None: iter(["Antwort [2]."]),
+        lambda question, chunks, lang="de", author_bios=None, history=None: iter(["Antwort [2]."]),
     )
 
     first = ask_result(client.post("/api/ask", json={"question": "Frage eins?"}))
@@ -1664,7 +1768,7 @@ def test_ask_gives_uncited_chunk_a_lazy_local_highlight_fallback(client, monkeyp
     monkeypatch.setattr(
         llm,
         "stream_answer_question",
-        lambda question, chunks, lang="de", author_bios=None: iter(["Antwort [1]."]),
+        lambda question, chunks, lang="de", author_bios=None, history=None: iter(["Antwort [1]."]),
     )
 
     response = client.post("/api/ask", json={"question": "Frage?"})
@@ -1692,7 +1796,7 @@ def test_ask_uses_different_highlight_per_occurrence_of_the_same_source(client, 
     monkeypatch.setattr(
         llm,
         "stream_answer_question",
-        lambda question, chunks, lang="de", author_bios=None: iter([
+        lambda question, chunks, lang="de", author_bios=None, history=None: iter([
             "Aussage A [1]. Aussage B [1].\n\n---QUOTES---\n"
             '[1]: "Der BetaCodex beschreibt Prinzipien dezentraler Organisation."\n'
             '[1]: "Teams organisieren sich in Zellen ohne zentrale Weisung."\n'
@@ -2047,7 +2151,7 @@ def test_role_required_message_in_english(anon_client):
 def test_ask_uses_requested_language(client, monkeypatch):
     captured = {}
 
-    def fake_answer(question, chunks, lang="de", author_bios=None):
+    def fake_answer(question, chunks, lang="de", author_bios=None, history=None):
         captured["lang"] = lang
         return iter(["Answer"])
 
@@ -3449,7 +3553,7 @@ def test_delete_source_removes_terms(client, monkeypatch):
 def test_listen_url_persists_and_appears_in_ask_citation(client, monkeypatch):
     captured = {}
 
-    def fake_answer(question, chunks, lang="de", author_bios=None):
+    def fake_answer(question, chunks, lang="de", author_bios=None, history=None):
         captured["lang"] = lang
         return iter(["Testantwort [1]."])
 

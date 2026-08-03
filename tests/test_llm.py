@@ -81,6 +81,41 @@ def test_answer_question_without_author_bios_omits_section():
     assert "Autor:innen-Informationen" not in user_content
 
 
+def test_answer_question_includes_history_as_prior_messages():
+    """Backlog (2026-08-03): ohne Verlauf beantwortete das Modell jede
+    Folgefrage isoliert - frühere Turns werden jetzt als eigene user/
+    assistant-Nachrichten VOR der aktuellen Kontext-Frage eingereiht."""
+    client = _fake_client("Antwort")
+    with patch.object(llm, "_get_client", return_value=client):
+        llm.answer_question(
+            "Und was ist mit Vertrauen?",
+            [{"title": "T", "author": "A", "date": "D", "text": "Text"}],
+            history=[
+                {"question": "Was ist der BetaCodex?", "answer": "Ein Prinzipien-Set [1]."},
+                {"question": "Wer hat ihn entwickelt?", "answer": "Niels Pfläging [1]."},
+            ],
+        )
+
+    messages = client.messages.stream.call_args.kwargs["messages"]
+    assert messages[0] == {"role": "user", "content": "Was ist der BetaCodex?"}
+    assert messages[1] == {"role": "assistant", "content": "Ein Prinzipien-Set [1]."}
+    assert messages[2] == {"role": "user", "content": "Wer hat ihn entwickelt?"}
+    assert messages[3] == {"role": "assistant", "content": "Niels Pfläging [1]."}
+    assert messages[4]["role"] == "user"
+    assert "Frage: Und was ist mit Vertrauen?" in messages[4]["content"]
+    assert len(messages) == 5
+
+
+def test_answer_question_without_history_has_only_the_current_message():
+    client = _fake_client("Antwort")
+    with patch.object(llm, "_get_client", return_value=client):
+        llm.answer_question("Frage?", [{"title": "T", "author": "A", "date": "D", "text": "Text"}])
+
+    messages = client.messages.stream.call_args.kwargs["messages"]
+    assert len(messages) == 1
+    assert messages[0]["role"] == "user"
+
+
 def test_parse_answer_and_quotes_splits_answer_from_quote_block():
     raw = (
         'Ein Flip ist ein Zustandswechsel [1].\n\n'

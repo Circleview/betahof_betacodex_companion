@@ -60,6 +60,11 @@ class ImportJobOut(BaseModel):
     processing_error: Optional[str] = None
 
 
+class HistoryTurnIn(BaseModel):
+    question: str
+    answer: str
+
+
 class QuestionIn(BaseModel):
     question: str
     top_k: int = 5
@@ -68,6 +73,11 @@ class QuestionIn(BaseModel):
     # zum Zeitpunkt des Absendens) - der Server kennt sonst keine
     # Konversation, jede Anfrage steht für sich (siehe app/main.py ask()).
     is_first_message: bool = False
+    # Backlog (2026-08-03): vorherige Turns der laufenden Konversation, damit
+    # das Modell nicht bei jeder Folgefrage bei null anfängt (siehe
+    # app/main.py ask() - wird dort defensiv auf die letzten paar Turns
+    # gekappt, unabhängig davon, wie viele das Frontend mitschickt).
+    history: list[HistoryTurnIn] = []
 
 
 class QuestionLogEntryOut(BaseModel):

@@ -2337,6 +2337,15 @@ RELEVANCE_OVERFETCH_MULTIPLIER = 3
 # ändert sich dann exakt nicht, bestehende Ergebnisse bleiben unangetastet.
 RELEVANCE_MAX_ADJUSTMENT = 0.15
 
+# Backlog (2026-08-03): ohne Konversationsverlauf beantwortete das Modell
+# jede Folgefrage isoliert, ohne den bisherigen Gesprächsverlauf zu kennen -
+# das wirkte wie ständige Wiederholung, sobald die neue Frage inhaltlich an
+# die vorherige anknüpfte. Serverseitig bewusst nochmal gekappt, unabhängig
+# davon, wie viele Turns das Frontend mitschickt (QuestionIn.history) - hält
+# den Prompt schlank und begrenzt den Schaden eines manipulierten Requests
+# ohne UI.
+ASK_HISTORY_MAX_TURNS = 3
+
 
 def _rerank_by_relevance(
     ids: list[str],
@@ -2362,7 +2371,9 @@ def _rerank_by_relevance(
     )
 
 
-def _ask_event_stream(question_text, llm_chunks, lang, author_bios, chunk_refs, chunk_docs, query_embedding):
+def _ask_event_stream(
+    question_text, llm_chunks, lang, author_bios, chunk_refs, chunk_docs, query_embedding, history
+):
     """Generator für die NDJSON-Stream-Antwort von /api/ask: ein frühes
     "sources"-Event (Titel/Autor:in/Link, siehe unten), dann ein "delta"-
     Event pro neu angekommenem Text-Fragment, ein "answer"-Event sobald der
@@ -2387,7 +2398,9 @@ def _ask_event_stream(question_text, llm_chunks, lang, author_bios, chunk_refs, 
     answer_sent = False
 
     try:
-        for delta in llm.stream_answer_question(question_text, llm_chunks, lang=lang, author_bios=author_bios):
+        for delta in llm.stream_answer_question(
+            question_text, llm_chunks, lang=lang, author_bios=author_bios, history=history
+        ):
             buffer += delta
             marker_index = buffer.find(_ASK_QUOTES_MARKER)
             if marker_index != -1:
@@ -2487,7 +2500,19 @@ def ask(question: QuestionIn, request: Request, x_lang: str = Header(default=i18
     if not sources:
         raise HTTPException(400, i18n.get_message("no_sources", x_lang))
 
-    query_embedding = embeddings.embed_query(question.question)
+    history = [turn.model_dump() for turn in question.history[-ASK_HISTORY_MAX_TURNS:]]
+
+    # Backlog (2026-08-03): eine kurze Folgefrage wie "und bei Vertrauen?"
+    # trägt allein zu wenig thematischen Anker für eine gute Embedding-Suche
+    # - die letzte Frage der Konversation fließt deshalb mit ein. Bewusst nur
+    # die letzte Frage (nicht die ganze Historie oder die Antwort), um die
+    # Suche nicht mit Text zu verwässern, der für die AKTUELLE Frage nicht
+    # mehr relevant ist.
+    query_text = question.question
+    if history:
+        query_text = f"{history[-1]['question']} {question.question}"
+
+    query_embedding = embeddings.embed_query(query_text)
     results = vectorstore.query(
         query_embedding, top_k=question.top_k * RELEVANCE_OVERFETCH_MULTIPLIER
     )
@@ -2553,7 +2578,14 @@ def ask(question: QuestionIn, request: Request, x_lang: str = Header(default=i18
     chunk_docs = [chunk_ref.text for chunk_ref in chunk_refs]
     return StreamingResponse(
         _ask_event_stream(
-            question.question, llm_chunks, x_lang, author_bios or None, chunk_refs, chunk_docs, query_embedding
+            question.question,
+            llm_chunks,
+            x_lang,
+            author_bios or None,
+            chunk_refs,
+            chunk_docs,
+            query_embedding,
+            history,
         ),
         media_type="application/x-ndjson",
     )

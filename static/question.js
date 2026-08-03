@@ -632,6 +632,14 @@ onAuthChange(() => {
 // oder ein Neustart des Browsers beginnt bewusst wieder leer.
 const CONVERSATION_STORAGE_KEY = 'conversationHistory';
 
+// Backlog (2026-08-03): ohne Verlauf beantwortete der Chatbot jede
+// Folgefrage isoliert, ohne den bisherigen Gesprächsverlauf zu kennen - das
+// wirkte wie ständige Wiederholung. Nur Frage+Antwort (keine Quellen) gehen
+// mit, das reicht dem Modell für die Konversation und hält den Request
+// klein; app/main.py kappt serverseitig defensiv nochmal auf dieselbe
+// Anzahl.
+const ASK_HISTORY_MAX_TURNS = 3;
+
 function loadConversationHistory() {
   try {
     const raw = sessionStorage.getItem(CONVERSATION_STORAGE_KEY);
@@ -813,6 +821,10 @@ questionForm.addEventListener('submit', async (e) => {
         top_k: 5,
         turnstile_token: getTurnstileToken(),
         is_first_message: conversationHistory.length === 0,
+        history: conversationHistory.slice(-ASK_HISTORY_MAX_TURNS).map(({ question, answer }) => ({
+          question,
+          answer,
+        })),
       }),
     });
     // Turnstile-Tokens sind Einweg-Token - nach jedem Versuch (egal ob
