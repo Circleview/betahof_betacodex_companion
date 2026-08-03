@@ -881,7 +881,14 @@ function buildAuthorFields(
     const label = t('import.addAuthor');
     btn.title = label;
     btn.setAttribute('aria-label', label);
-    btn.addEventListener('click', () => insertNewRow(buildExtraRow('')));
+    // Nutzerwunsch (2026-08-03): nach Klick auf "+" soll der Cursor direkt
+    // im neuen Eingabefeld stehen, damit der Name ohne zusätzlichen Klick
+    // eingetippt werden kann.
+    btn.addEventListener('click', () => {
+      const newRow = buildExtraRow('');
+      insertNewRow(newRow);
+      newRow.querySelector('.author-input')?.focus();
+    });
     return btn;
   }
 
