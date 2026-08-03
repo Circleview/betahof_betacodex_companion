@@ -303,19 +303,38 @@ function makeCitationsClickable(container, sources) {
         // weitergezählte, falsche Vorkommens-Index verwendet.
         const myOccurrence = occurrenceCounts.get(index) || 0;
         occurrenceCounts.set(index, myOccurrence + 1);
-        const highlights = source.highlighted_texts || [];
-        const highlight = highlights[myOccurrence] ?? highlights[0] ?? null;
-        const contentKey = `${source.chunk_id}::${highlight || ''}`;
 
         const btn = document.createElement('button');
         btn.type = 'button';
         btn.className = 'citation-ref';
         btn.textContent = part;
+        // Bug (2026-08-03): source.highlighted_texts wurde bisher SCHON HIER
+        // beim Bauen des Buttons gelesen und als "highlight" fest in den
+        // Klick-Handler eingefroren. Seit source.highlighted_texts erst
+        // verzoegert nachtraeglich befuellt wird (frühes "sources"-Event vor
+        // den eigentlichen Hervorhebungen, siehe attachAnswerSources im
+        // submit-Handler), war highlight beim Erzeugen des Buttons IMMER
+        // leer - die spaeter nachgetragenen Werte kamen nie mehr an.
+        // Fix: erst im Klick-Handler selbst lesen, dann steht der aktuelle
+        // Stand zur Verfuegung. openKey merkt sich (pro Button), unter
+        // welchem Content-Schluessel die eigene Karte in openCards liegt -
+        // unabhaengig davon, ob eine sich zwischenzeitlich aendernde
+        // Hervorhebung beim naechsten Klick einen anderen Schluessel
+        // ergeben wuerde.
+        let openKey = null;
         btn.addEventListener('click', () => {
           const paragraph = btn.closest('p') || container;
+          if (openKey !== null) {
+            openCards.get(openKey)?.remove();
+            openCards.delete(openKey);
+            openKey = null;
+            return;
+          }
+          const highlights = source.highlighted_texts || [];
+          const highlight = highlights[myOccurrence] ?? highlights[0] ?? null;
+          const contentKey = `${source.chunk_id}::${highlight || ''}`;
           if (openCards.has(contentKey)) {
-            openCards.get(contentKey).remove();
-            openCards.delete(contentKey);
+            openKey = contentKey;
             return;
           }
           const card = document.createElement('div');
@@ -323,6 +342,7 @@ function makeCitationsClickable(container, sources) {
           card.appendChild(buildSourceInfo(source, highlight));
           paragraph.insertAdjacentElement('afterend', card);
           openCards.set(contentKey, card);
+          openKey = contentKey;
         });
         // Satzzeichen, die direkt (ohne Leerzeichen) auf die Quellenangabe
         // folgen (z. B. "[1]."), sollen beim Zeilenumbruch nicht von ihr
