@@ -1891,6 +1891,10 @@ function renderSourceList(sources, options = {}) {
     const citationUrl = s.listen_url || s.url;
     const hasDetails = !!s.summary;
     const isProcessing = !!s.processing_status;
+    // Nutzerwunsch (2026-08-03): "error" zaehlt NICHT als aktiv - da laeuft
+    // nichts mehr, das ein manueller Edit ueberschreiben koennte (siehe
+    // Kommentar am editBtn unten). Nur pending/running sperren Bearbeiten.
+    const isActivelyProcessing = s.processing_status === 'pending' || s.processing_status === 'running';
 
     const textSpan = document.createElement('span');
     if (hasDetails) {
@@ -1984,12 +1988,15 @@ function renderSourceList(sources, options = {}) {
       const editBtn = document.createElement('button');
       editBtn.type = 'button';
       editBtn.className = 'icon-button';
-      // Solange die Quelle noch verarbeitet wird, würde ein manueller Edit
-      // vom später eintreffenden Transkript überschrieben - deshalb für
-      // GENAU diese eine Quelle deaktiviert, alle anderen bleiben normal
-      // bearbeitbar (das ist ja gerade der Zweck der Hintergrund-Verarbeitung).
-      editBtn.disabled = isProcessing;
-      const editLabel = isProcessing ? t('import.editDisabledWhileProcessing') : t('common.editSource');
+      // Solange die Quelle noch AKTIV verarbeitet wird (pending/running),
+      // würde ein manueller Edit vom später eintreffenden Transkript
+      // überschrieben - deshalb für GENAU diese eine Quelle deaktiviert,
+      // alle anderen bleiben normal bearbeitbar (das ist ja gerade der Zweck
+      // der Hintergrund-Verarbeitung). Bei "error" laeuft dagegen nichts
+      // mehr - Bearbeiten ist dort die Reparatur (siehe update_source, das
+      // den Fehlerzustand bei erfolgreichem Speichern zuruecksetzt).
+      editBtn.disabled = isActivelyProcessing;
+      const editLabel = isActivelyProcessing ? t('import.editDisabledWhileProcessing') : t('common.editSource');
       editBtn.title = editLabel;
       editBtn.setAttribute('aria-label', editLabel);
       editBtn.innerHTML = EDIT_ICON;

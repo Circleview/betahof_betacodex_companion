@@ -599,31 +599,65 @@ _in_flight_background_jobs = 0
 _in_flight_jobs_lock = threading.Lock()
 _in_flight_jobs_drained = threading.Event()
 _in_flight_jobs_drained.set()
+# Welche Quelle(n) gerade in einem _track_background_job()-Block stecken -
+# damit der Shutdown-Hook unten (falls die Wartezeit doch nicht reicht,
+# z.B. bei sehr langen Audio-Transkriptionen) genau diese Quellen markieren
+# kann, statt raten zu müssen, wer betroffen ist.
+_in_flight_background_job_source_ids: set[str] = set()
 
-# Muss unter dem TimeoutStopSec der systemd-Unit bleiben (siehe deploy.sh/
-# systemd-Unit-Doku), sonst killt systemd den Prozess ohnehin per SIGKILL,
-# bevor dieser Hook fertig warten konnte.
-BACKGROUND_JOB_SHUTDOWN_GRACE_SECONDS = 240
+# Nutzerwunsch (2026-08-03): 10 Minuten statt der ursprünglichen 4 (240s) -
+# deckt auch längere Audio-Transkriptionen ab, ohne den Deploy selbst zu
+# verzögern (Traffic wechselt beim Blue/Green-Switch sofort auf den neuen
+# Slot, der alte läuft nur noch im Hintergrund zu Ende). Muss unter dem
+# TimeoutStopSec der systemd-Unit bleiben (siehe deploy.sh/systemd-Unit-
+# Doku), sonst killt systemd den Prozess ohnehin per SIGKILL, bevor dieser
+# Hook fertig warten konnte.
+BACKGROUND_JOB_SHUTDOWN_GRACE_SECONDS = 600
 
 
 @contextlib.contextmanager
-def _track_background_job():
+def _track_background_job(source_id: str):
     global _in_flight_background_jobs
     with _in_flight_jobs_lock:
         _in_flight_background_jobs += 1
+        _in_flight_background_job_source_ids.add(source_id)
         _in_flight_jobs_drained.clear()
     try:
         yield
     finally:
         with _in_flight_jobs_lock:
             _in_flight_background_jobs -= 1
+            _in_flight_background_job_source_ids.discard(source_id)
             if _in_flight_background_jobs <= 0:
                 _in_flight_jobs_drained.set()
 
 
 @app.on_event("shutdown")
 def _wait_for_background_jobs_on_shutdown() -> None:
-    _in_flight_jobs_drained.wait(timeout=BACKGROUND_JOB_SHUTDOWN_GRACE_SECONDS)
+    finished_in_time = _in_flight_jobs_drained.wait(timeout=BACKGROUND_JOB_SHUTDOWN_GRACE_SECONDS)
+    if finished_in_time:
+        return
+    # Nutzerwunsch (2026-08-03): Wartezeit hat nicht gereicht - die
+    # betroffenen Quellen bekommen ein Merkmal, damit der nächste
+    # Prozessstart (_recover_interrupted_processing_jobs) sie automatisch
+    # neu einreiht statt (wie bei einem "echten" Absturz) nur als Fehler zu
+    # markieren. Ein Prozess, der stattdessen hart abstürzt (OOM, kill -9),
+    # durchläuft diesen Hook gar nicht erst - solche Quellen bleiben bewusst
+    # beim bisherigen Verhalten (manueller Re-Import).
+    with _in_flight_jobs_lock:
+        still_running = set(_in_flight_background_job_source_ids)
+    if not still_running:
+        return
+    with _sources_write_lock:
+        sources = _load_sources()
+        changed = False
+        for source_id in still_running:
+            entry = sources.get(source_id)
+            if entry and entry.get("processing_status") == "running":
+                entry["interrupted_by_deploy"] = True
+                changed = True
+        if changed:
+            _save_sources(sources)
 
 
 def _finalize_extracted_text(source_id: str, lang: str, text: str, failure_i18n_key: str) -> None:
@@ -791,7 +825,7 @@ def _process_pdf_ocr(source_id: str, lang: str = i18n.DEFAULT_LANG) -> None:
     Zeitpunkt schon in PDF_DIR (add_source speichert sie synchron, nur die
     Texterkennung selbst ist der langsame Teil) - analog zu
     _process_audio_transcription."""
-    with _track_background_job():
+    with _track_background_job(source_id):
         pdf_path = _existing_pdf_file(source_id)
         _run_deferred_text_extraction(
             source_id,
@@ -829,7 +863,7 @@ def _audio_transcription_worker() -> None:
     while True:
         source_id, lang = _audio_transcription_queue.get()
         try:
-            with _track_background_job():
+            with _track_background_job(source_id):
                 _process_audio_transcription(source_id, lang)
         except Exception:
             # Ein unerwarteter Fehler hier darf den Worker nicht beenden -
@@ -920,33 +954,56 @@ threading.Thread(target=_url_health_check_worker, daemon=True).start()
 
 def _recover_interrupted_processing_jobs() -> None:
     """Nach einem Server-Neustart läuft kein Hintergrund-Job mehr, dessen
-    Quelle noch auf "running" steht - kein Auto-Resume (unklar, wie weit
-    er kam), stattdessen klar als Fehler markieren, damit ein Re-Import
-    bewusst manuell angestoßen wird (siehe POST /.../reprocess).
+    Quelle noch auf "running" steht. Trägt die Quelle das Merkmal
+    "interrupted_by_deploy" (vom Shutdown-Hook gesetzt, siehe
+    _wait_for_background_jobs_on_shutdown), ist die Ursache bekannt (Deploy
+    hat die Wartezeit überschritten) und die zugrunde liegende Datei liegt
+    noch unverändert auf der Platte (Audio/PDF) - dann wird automatisch neu
+    eingereiht. Bei einem "echten" Absturz (kein Deploy, Merkmal fehlt) bzw.
+    beim synchronen Text-/URL-Import (Text nur im Arbeitsspeicher des toten
+    Prozesses, nicht wiederherstellbar) bleibt es beim bisherigen Verhalten:
+    klar als Fehler markieren, damit ein Re-Import bewusst manuell
+    angestoßen wird (siehe POST /.../reprocess).
 
     Audio-Quellen, die noch auf "pending" stehen (Backlog #113: warten in
     _audio_transcription_queue, bevor sie überhaupt angefangen haben),
-    werden dagegen automatisch neu eingereiht - die In-Memory-Warteschlange
-    selbst überlebt einen Neustart nicht, ohne dies blieben sie sonst
-    unbemerkt für immer auf "pending" stehen, statt (wie vor #113) zeitnah
-    von selbst dranzukommen. PDF-Texterkennung ist hiervon nicht betroffen
-    (siehe #113-Kommentar bei _audio_transcription_queue)."""
+    werden ebenfalls automatisch neu eingereiht - die In-Memory-
+    Warteschlange selbst überlebt einen Neustart nicht, ohne dies blieben
+    sie sonst unbemerkt für immer auf "pending" stehen, statt (wie vor
+    #113) zeitnah von selbst dranzukommen."""
     pending_audio_ids: list[str] = []
+    resumed_audio_ids: list[str] = []
+    resumed_pdf_ids: list[str] = []
     with _sources_write_lock:
         sources = _load_sources()
         changed = False
         for source_id, entry in sources.items():
             if entry.get("processing_status") == "running":
+                interrupted_by_deploy = entry.pop("interrupted_by_deploy", False)
+                changed = True
+                if interrupted_by_deploy and _existing_audio_file(source_id):
+                    entry["processing_status"] = "pending"
+                    entry["processing_step"] = None
+                    resumed_audio_ids.append(source_id)
+                    continue
+                if interrupted_by_deploy and _existing_pdf_file(source_id):
+                    entry["processing_status"] = "pending"
+                    entry["processing_step"] = None
+                    resumed_pdf_ids.append(source_id)
+                    continue
                 entry["processing_status"] = "error"
                 entry["processing_step"] = None
                 entry["processing_error"] = i18n.get_message("processing_interrupted", i18n.DEFAULT_LANG)
-                changed = True
             elif entry.get("processing_status") == "pending" and _existing_audio_file(source_id):
                 pending_audio_ids.append(source_id)
         if changed:
             _save_sources(sources)
-    for source_id in pending_audio_ids:
+    for source_id in pending_audio_ids + resumed_audio_ids:
         _audio_transcription_queue.put((source_id, i18n.DEFAULT_LANG))
+    for source_id in resumed_pdf_ids:
+        threading.Thread(
+            target=_process_pdf_ocr, args=(source_id, i18n.DEFAULT_LANG), daemon=True
+        ).start()
 
 
 _recover_interrupted_processing_jobs()
@@ -1056,7 +1113,7 @@ def _finish_synchronous_import(
     processing_status="pending" geantwortet hat - kein Sonderfall nötig, die
     Quelle existiert in sources.json in beiden Fällen schon (siehe
     _create_pending_source), bevor dieser Thread gestartet wird."""
-    with _track_background_job():
+    with _track_background_job(source_id):
         with _sources_write_lock:
             sources = _load_sources()
             if source_id not in sources:
@@ -1231,6 +1288,14 @@ def update_source(
                 chunk_count = _store_chunks(source_id, source, chunks, chunk_embeddings)
             sources[source_id]["text"] = source.text.strip()
             sources[source_id]["chunk_count"] = chunk_count
+            # Nutzerwunsch (2026-08-03): ein manueller Edit ist die Reparatur
+            # fuer einen fehlgeschlagenen Import (z.B. Text von Hand
+            # eingefuegt, siehe youtube-transcript.io-Workaround) - ohne
+            # dies bliebe die Quelle trotz erfolgreichem Speichern fuer immer
+            # auf processing_status="error" stehen.
+            sources[source_id]["processing_status"] = None
+            sources[source_id]["processing_step"] = None
+            sources[source_id]["processing_error"] = None
 
         sources[source_id].update(
             {

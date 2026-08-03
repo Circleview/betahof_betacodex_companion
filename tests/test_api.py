@@ -651,6 +651,65 @@ def test_recover_interrupted_processing_jobs_ignores_pending_pdf(client, monkeyp
     assert entry["processing_status"] == "pending"
 
 
+def test_recover_interrupted_processing_jobs_resumes_audio_interrupted_by_deploy(client, monkeypatch):
+    """Nutzerwunsch (2026-08-03): eine Audio-Transkription, die der
+    Shutdown-Hook als "interrupted_by_deploy" markiert hat (Wartezeit
+    reichte nicht), muss automatisch neu eingereiht werden statt in einem
+    dauerhaften Fehlerzustand zu landen."""
+    create_res = _create_deferred_audio_source(client, monkeypatch)
+    source_id = create_res.json()["id"]
+    sources = main_module._load_sources()
+    sources[source_id]["processing_status"] = "running"
+    sources[source_id]["interrupted_by_deploy"] = True
+    main_module._save_sources(sources)
+
+    monkeypatch.setattr(extraction, "transcribe_audio", lambda path, **kw: ("Nach Deploy erfolgreich transkribiert.", None))
+    main_module._recover_interrupted_processing_jobs()
+    main_module._audio_transcription_queue.join()
+
+    entry = next(s for s in client.get("/api/sources").json() if s["id"] == source_id)
+    assert entry["text"] == "Nach Deploy erfolgreich transkribiert."
+    assert entry["processing_status"] is None
+
+
+def test_recover_interrupted_processing_jobs_resumes_pdf_interrupted_by_deploy(client, monkeypatch):
+    create_res = _create_deferred_pdf_source(client, monkeypatch)
+    source_id = create_res.json()["id"]
+    sources = main_module._load_sources()
+    sources[source_id]["processing_status"] = "running"
+    sources[source_id]["interrupted_by_deploy"] = True
+    main_module._save_sources(sources)
+
+    monkeypatch.setattr(extraction, "ocr_pdf_with_ai", lambda data: "Nach Deploy erkannter Text.")
+    main_module._recover_interrupted_processing_jobs()
+
+    entry = None
+    for _ in range(20):
+        entry = next(s for s in client.get("/api/sources").json() if s["id"] == source_id)
+        if entry["processing_status"] is None:
+            break
+        time.sleep(0.1)
+    assert entry["text"] == "Nach Deploy erkannter Text."
+
+
+def test_recover_interrupted_processing_jobs_still_errors_running_audio_without_deploy_flag(client, monkeypatch):
+    """Abgrenzung: eine vorhandene Audiodatei allein reicht nicht fuers
+    Auto-Resume - fehlt das interrupted_by_deploy-Merkmal (z.B. echter
+    Absturz statt Deploy), bleibt es beim bisherigen manuellen
+    Fehler-Verhalten."""
+    create_res = _create_deferred_audio_source(client, monkeypatch)
+    source_id = create_res.json()["id"]
+    sources = main_module._load_sources()
+    sources[source_id]["processing_status"] = "running"
+    main_module._save_sources(sources)
+
+    main_module._recover_interrupted_processing_jobs()
+
+    entry = next(s for s in client.get("/api/sources").json() if s["id"] == source_id)
+    assert entry["processing_status"] == "error"
+    assert entry["processing_error"]
+
+
 def test_reprocess_source_without_audio_file_returns_400(client):
     create_res = client.post("/api/sources", json={"title": "Quelle", "text": "Text."})
     source_id = create_res.json()["id"]
@@ -1725,6 +1784,28 @@ def test_update_source_changes_metadata_and_rechunks(client):
 
     list_res = client.get("/api/sources")
     assert list_res.json()[0]["title"] == "Neuer Titel"
+
+
+def test_update_source_clears_error_state_on_successful_edit(client):
+    """Nutzerwunsch (2026-08-03): ein manueller Edit ist die Reparatur fuer
+    eine Quelle, deren automatischer Import fehlgeschlagen ist - danach darf
+    sie nicht mehr als "error" markiert bleiben."""
+    create_res = client.post("/api/sources", json={"title": "Quelle", "text": "Text."})
+    source_id = create_res.json()["id"]
+    sources = main_module._load_sources()
+    sources[source_id]["processing_status"] = "error"
+    sources[source_id]["processing_step"] = None
+    sources[source_id]["processing_error"] = "Verarbeitung durch Server-Neustart unterbrochen."
+    main_module._save_sources(sources)
+
+    update_res = client.put(
+        f"/api/sources/{source_id}",
+        json={"title": "Quelle", "text": "Von Hand nachgetragener Text."},
+    )
+
+    assert update_res.status_code == 200
+    entry = next(s for s in client.get("/api/sources").json() if s["id"] == source_id)
+    assert entry["processing_status"] is None
 
 
 def test_update_source_returns_404_for_unknown_id(client):
@@ -3798,7 +3879,7 @@ def test_update_source_clears_broken_status_when_url_removed(client, monkeypatch
 def test_track_background_job_keeps_drained_event_cleared_while_running():
     assert main_module._in_flight_jobs_drained.is_set()
 
-    with main_module._track_background_job():
+    with main_module._track_background_job("src-1"):
         assert not main_module._in_flight_jobs_drained.is_set()
 
     assert main_module._in_flight_jobs_drained.is_set()
@@ -3813,7 +3894,7 @@ def test_track_background_job_handles_overlapping_jobs():
     release_first = threading.Event()
 
     def slow_job():
-        with main_module._track_background_job():
+        with main_module._track_background_job("src-1"):
             started_first.set()
             release_first.wait(timeout=5)
 
@@ -3822,7 +3903,7 @@ def test_track_background_job_handles_overlapping_jobs():
     started_first.wait(timeout=5)
 
     assert not main_module._in_flight_jobs_drained.is_set()
-    with main_module._track_background_job():
+    with main_module._track_background_job("src-2"):
         # zweiter, gleichzeitig laufender Job - Drained darf jetzt erst
         # recht nicht gesetzt sein
         assert not main_module._in_flight_jobs_drained.is_set()
@@ -3847,7 +3928,7 @@ def test_shutdown_hook_waits_for_in_flight_job_to_finish(monkeypatch):
     release = threading.Event()
 
     def slow_job():
-        with main_module._track_background_job():
+        with main_module._track_background_job("src-1"):
             release.wait(timeout=5)
 
     t = threading.Thread(target=slow_job, daemon=True)
@@ -3867,3 +3948,49 @@ def test_shutdown_hook_waits_for_in_flight_job_to_finish(monkeypatch):
     assert elapsed < 5  # muss NICHT das volle Grace-Timeout ausschoepfen
     assert elapsed >= 0.15
     t.join(timeout=5)
+
+
+def test_shutdown_hook_marks_source_interrupted_by_deploy_when_grace_expires(client, monkeypatch):
+    """Nutzerwunsch (2026-08-03): reicht die Wartezeit nicht (z.B. eine sehr
+    lange Audio-Transkription), muss die betroffene Quelle ein Merkmal
+    bekommen, damit _recover_interrupted_processing_jobs sie beim naechsten
+    Start automatisch neu einreihen kann, statt sie nur als Fehler zu
+    markieren."""
+    monkeypatch.setattr(main_module, "BACKGROUND_JOB_SHUTDOWN_GRACE_SECONDS", 0.05)
+    source_id = client.post("/api/sources", json={"title": "Quelle", "text": "Text."}).json()["id"]
+    sources = main_module._load_sources()
+    sources[source_id]["processing_status"] = "running"
+    main_module._save_sources(sources)
+
+    release = threading.Event()
+
+    def slow_job():
+        with main_module._track_background_job(source_id):
+            release.wait(timeout=5)
+
+    t = threading.Thread(target=slow_job, daemon=True)
+    t.start()
+    time.sleep(0.02)  # sicherstellen, dass der Job wirklich laeuft
+
+    main_module._wait_for_background_jobs_on_shutdown()
+
+    entry = main_module._load_sources()[source_id]
+    assert entry["interrupted_by_deploy"] is True
+
+    release.set()
+    t.join(timeout=5)
+
+
+def test_shutdown_hook_does_not_mark_source_when_job_finishes_in_time(client):
+    source_id = client.post("/api/sources", json={"title": "Quelle", "text": "Text."}).json()["id"]
+    sources = main_module._load_sources()
+    sources[source_id]["processing_status"] = "running"
+    main_module._save_sources(sources)
+
+    with main_module._track_background_job(source_id):
+        pass
+
+    main_module._wait_for_background_jobs_on_shutdown()
+
+    entry = main_module._load_sources()[source_id]
+    assert "interrupted_by_deploy" not in entry
