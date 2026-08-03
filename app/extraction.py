@@ -1,5 +1,6 @@
 import base64
 import io
+import os
 import re
 import shutil
 import subprocess
@@ -15,6 +16,7 @@ import trafilatura
 from openai import OpenAI
 from pypdf import PdfReader
 from youtube_transcript_api import YouTubeTranscriptApi
+from youtube_transcript_api.proxies import WebshareProxyConfig
 
 # Manche Server (Bot-/Hotlink-Schutz, z.B. bei WordPress-gehosteten Podcast-
 # Medien) lehnen Requests ohne "Accept"-Header mit HTTP 406 ab, selbst mit
@@ -72,6 +74,26 @@ def _fetch_youtube_metadata(url: str) -> dict:
     }
 
 
+def _youtube_transcript_api() -> YouTubeTranscriptApi:
+    """Backlog #200 (2026-08-03): YouTube blockiert automatisierte
+    Transkript-Anfragen von Cloud-/Rechenzentrums-IPs (Fehler
+    "RequestBlocked") - auf Produktion (Hetzner) schlägt der direkte Zugriff
+    daher zuverlässig fehl, lokal (Heim-/Büro-IP) funktioniert derselbe Code
+    anstandslos. Ein Residential-Proxy (von youtube_transcript_api offiziell
+    unterstützt) umgeht das, indem die Anfrage über eine unauffällige
+    Heim-IP läuft statt direkt vom Server aus. Ohne gesetzte
+    WEBSHARE_PROXY_*-Variablen (Dev/Stabil, Standardfall) bleibt das
+    Verhalten unverändert - erst auf dem Produktivserver, sobald dort ein
+    Webshare-Konto hinterlegt ist, greift der Proxy."""
+    username = os.environ.get("WEBSHARE_PROXY_USERNAME", "")
+    password = os.environ.get("WEBSHARE_PROXY_PASSWORD", "")
+    if username and password:
+        return YouTubeTranscriptApi(
+            proxy_config=WebshareProxyConfig(proxy_username=username, proxy_password=password)
+        )
+    return YouTubeTranscriptApi()
+
+
 def _extract_youtube(url: str) -> dict:
     video_id = _extract_video_id(url)
     if not video_id:
@@ -80,23 +102,16 @@ def _extract_youtube(url: str) -> dict:
     # Fix (2026-08-03): Metadaten- und Transkript-Abruf sind zwei komplett
     # unabhängige Anfragen an YouTube (unterschiedliche Endpunkte) - vorher
     # brach ein Fehlschlag der Transkript-Abfrage (z.B. RequestBlocked, siehe
-    # unten) die Funktion sofort ab, BEVOR die Metadaten je abgerufen wurden.
-    # Titel/Datum sollen aber auch dann vorausgefüllt werden, wenn nur das
-    # Transkript scheitert - der Quellen-Pfleger muss den Text dann zwar
-    # manuell einfügen, spart sich aber wenigstens das Abtippen der Metadaten.
+    # _youtube_transcript_api) die Funktion sofort ab, BEVOR die Metadaten je
+    # abgerufen wurden. Titel/Datum sollen aber auch dann vorausgefüllt
+    # werden, wenn nur das Transkript scheitert - der Quellen-Pfleger muss
+    # den Text dann zwar manuell einfügen, spart sich aber wenigstens das
+    # Abtippen der Metadaten.
     metadata = _fetch_youtube_metadata(url)
 
-    # Bekannte Einschränkung (2026-08-03): YouTube blockiert automatisierte
-    # Transkript-Anfragen von Cloud-/Rechenzentrums-IPs (Fehler
-    # "RequestBlocked") - auf Produktion (Hetzner) schlägt dieser Teil daher
-    # zuverlässig fehl, lokal (Heim-/Büro-IP) funktioniert derselbe Code
-    # anstandslos. Ohne einen kostenpflichtigen Residential-Proxy (von
-    # youtube_transcript_api offiziell unterstützt, siehe deren
-    # Dokumentation) lässt sich das nicht beheben - der manuelle
-    # Copy-Paste-Fallback im Formular bleibt bis dahin der Weg für Produktion.
     text = ""
     try:
-        api = YouTubeTranscriptApi()
+        api = _youtube_transcript_api()
         try:
             fetched = api.fetch(video_id, languages=["de", "en"])
         except Exception:
