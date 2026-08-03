@@ -584,6 +584,7 @@ document.getElementById('popover-load').addEventListener('click', async () => {
         fillForm({ title: data.title, url });
         showForm();
         setTextFieldPending(true, 'pdf-text-pending-hint');
+        setListenUrlFieldVisible(true);
         return;
       }
       if (extractYoutubeVideoId(url)) {
@@ -605,7 +606,7 @@ document.getElementById('popover-load').addEventListener('click', async () => {
     }
     fillForm({ title: data.title, authors: data.authors, date: data.date, url, text: data.text });
     showForm();
-    setListenUrlFieldVisible(data.is_audio);
+    setListenUrlFieldVisible(data.is_audio || data.is_pdf);
   } catch (err) {
     status.textContent = t('common.errorPrefix') + err.message;
   } finally {
@@ -666,12 +667,15 @@ document.getElementById('popover-upload').addEventListener('click', async () => 
       fillForm({ title: data.title });
       showForm();
       setTextFieldPending(true, 'pdf-text-pending-hint');
-      setListenUrlFieldVisible(false);
+      setListenUrlFieldVisible(true);
       return;
     }
     fillForm({ title: data.title, authors: data.authors, date: data.date, text: data.text });
     showForm();
-    setListenUrlFieldVisible(isAudio);
+    // Nutzerwunsch (2026-08-03): Anhör-/Verweis-URL jetzt auch fuer PDFs -
+    // dieser Handler kennt nur die beiden Upload-Typen Audio und PDF, isAudio
+    // ist daher hier gleichbedeutend mit "nicht PDF".
+    setListenUrlFieldVisible(true);
   } catch (err) {
     status.textContent = t('common.errorPrefix') + err.message;
   }
@@ -1103,9 +1107,15 @@ function buildEditPanel(s, options = {}) {
 
   const listenUrlField = buildFieldLabel('import.fieldListenUrl', 'listen-url', s.listen_url, 'url');
   const listenUrlInput = listenUrlField.input;
-  if (s.has_audio) {
+  // Nutzerwunsch (2026-08-03): das Feld existiert im Datenmodell schon
+  // lange fuer Audio-Quellen (Verweis auf die Podcast-/Anhoer-Seite) - PDFs
+  // profitieren genauso davon (Verweis auf die Seite, auf der das PDF
+  // abgerufen werden kann), nur der Audio-Player darunter bleibt
+  // audio-spezifisch.
+  if (s.has_audio || s.has_pdf) {
     form.appendChild(listenUrlField.label);
-
+  }
+  if (s.has_audio) {
     const audioPreviewLabel = document.createElement('label');
     const audioPreviewText = document.createElement('span');
     audioPreviewText.textContent = t('import.audioPreviewLabel');
