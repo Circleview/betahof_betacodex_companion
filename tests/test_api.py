@@ -3783,3 +3783,87 @@ def test_update_source_clears_broken_status_when_url_removed(client, monkeypatch
     assert raw[source_id]["url_reachable"] is None
     assert raw[source_id]["url_reason_code"] is None
     assert raw[source_id]["url_checked_at"] is None
+
+
+# Backlog (Vorfall 2026-08-03): ein Blue/Green-Deploy sendet dem alten
+# Prozess SIGTERM, sobald der neue Slot gesund ist - uvicorns eigenes
+# "graceful shutdown" wartet dabei nur auf offene HTTP-Requests, nicht auf
+# unsere eigenen Hintergrund-Threads (Embedding+Zusammenfassung, PDF-OCR,
+# Audio-Transkription). Ein Import, der genau waehrend eines Deploys noch
+# verarbeitet wurde, blieb dadurch fuer immer auf processing_status=
+# "pending" stehen (real beobachtet auf Produktion). _track_background_job()
+# + der Shutdown-Hook unten sollen das verhindern.
+
+
+def test_track_background_job_keeps_drained_event_cleared_while_running():
+    assert main_module._in_flight_jobs_drained.is_set()
+
+    with main_module._track_background_job():
+        assert not main_module._in_flight_jobs_drained.is_set()
+
+    assert main_module._in_flight_jobs_drained.is_set()
+
+
+def test_track_background_job_handles_overlapping_jobs():
+    """Zwei gleichzeitig laufende Hintergrund-Jobs duerfen den Drained-
+    Status nicht schon setzen, solange noch EINER von beiden laeuft - sonst
+    koennte ein Deploy mitten in einen zweiten, noch laufenden Import
+    hineinplatzen."""
+    started_first = threading.Event()
+    release_first = threading.Event()
+
+    def slow_job():
+        with main_module._track_background_job():
+            started_first.set()
+            release_first.wait(timeout=5)
+
+    t = threading.Thread(target=slow_job, daemon=True)
+    t.start()
+    started_first.wait(timeout=5)
+
+    assert not main_module._in_flight_jobs_drained.is_set()
+    with main_module._track_background_job():
+        # zweiter, gleichzeitig laufender Job - Drained darf jetzt erst
+        # recht nicht gesetzt sein
+        assert not main_module._in_flight_jobs_drained.is_set()
+
+    # Erster Job laeuft noch (release_first noch nicht gesetzt) - Drained
+    # muss weiterhin false sein, auch nachdem der zweite fertig ist.
+    assert not main_module._in_flight_jobs_drained.is_set()
+
+    release_first.set()
+    t.join(timeout=5)
+    assert main_module._in_flight_jobs_drained.is_set()
+
+
+def test_shutdown_hook_returns_quickly_when_nothing_in_flight():
+    start = time.monotonic()
+    main_module._wait_for_background_jobs_on_shutdown()
+    assert time.monotonic() - start < 1
+
+
+def test_shutdown_hook_waits_for_in_flight_job_to_finish(monkeypatch):
+    monkeypatch.setattr(main_module, "BACKGROUND_JOB_SHUTDOWN_GRACE_SECONDS", 5)
+    release = threading.Event()
+
+    def slow_job():
+        with main_module._track_background_job():
+            release.wait(timeout=5)
+
+    t = threading.Thread(target=slow_job, daemon=True)
+    t.start()
+    time.sleep(0.05)  # sicherstellen, dass der Job wirklich laeuft
+
+    def release_soon():
+        time.sleep(0.2)
+        release.set()
+
+    threading.Thread(target=release_soon, daemon=True).start()
+
+    start = time.monotonic()
+    main_module._wait_for_background_jobs_on_shutdown()
+    elapsed = time.monotonic() - start
+
+    assert elapsed < 5  # muss NICHT das volle Grace-Timeout ausschoepfen
+    assert elapsed >= 0.15
+    t.join(timeout=5)

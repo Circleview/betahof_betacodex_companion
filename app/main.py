@@ -1,3 +1,4 @@
+import contextlib
 import hashlib
 import hmac
 import json
@@ -584,6 +585,47 @@ _vectorstore_write_lock = threading.Lock()
 _sources_write_lock = threading.Lock()
 
 
+# Fix (2026-08-03, Vorfall auf Produktion): ein Blue/Green-Deploy sendet dem
+# alten Prozess SIGTERM, sobald der neue Slot gesund ist - uvicorns eigenes
+# "graceful shutdown" wartet dabei nur auf offene HTTP-Requests, nicht auf
+# unsere eigenen Hintergrund-Threads (Embedding+Zusammenfassung, PDF-OCR,
+# Audio-Transkription). Ein Import, der genau während eines Deploys noch
+# verarbeitet wurde, wurde dadurch mitten in der Verarbeitung abgebrochen
+# und blieb für immer auf processing_status="pending" stehen (Text und
+# Zusammenfassung nie gespeichert). _track_background_job() markiert einen
+# laufenden Job, der Shutdown-Hook unten wartet beim Beenden kurz (bounded)
+# darauf, dass alle laufenden Jobs fertig werden, bevor der Prozess endet.
+_in_flight_background_jobs = 0
+_in_flight_jobs_lock = threading.Lock()
+_in_flight_jobs_drained = threading.Event()
+_in_flight_jobs_drained.set()
+
+# Muss unter dem TimeoutStopSec der systemd-Unit bleiben (siehe deploy.sh/
+# systemd-Unit-Doku), sonst killt systemd den Prozess ohnehin per SIGKILL,
+# bevor dieser Hook fertig warten konnte.
+BACKGROUND_JOB_SHUTDOWN_GRACE_SECONDS = 240
+
+
+@contextlib.contextmanager
+def _track_background_job():
+    global _in_flight_background_jobs
+    with _in_flight_jobs_lock:
+        _in_flight_background_jobs += 1
+        _in_flight_jobs_drained.clear()
+    try:
+        yield
+    finally:
+        with _in_flight_jobs_lock:
+            _in_flight_background_jobs -= 1
+            if _in_flight_background_jobs <= 0:
+                _in_flight_jobs_drained.set()
+
+
+@app.on_event("shutdown")
+def _wait_for_background_jobs_on_shutdown() -> None:
+    _in_flight_jobs_drained.wait(timeout=BACKGROUND_JOB_SHUTDOWN_GRACE_SECONDS)
+
+
 def _finalize_extracted_text(source_id: str, lang: str, text: str, failure_i18n_key: str) -> None:
     """Gemeinsamer Ablauf ab dem Punkt, an dem der Volltext einer Quelle
     feststeht (oder leer ist, siehe unten): chunkt/indiziert die Quelle,
@@ -749,14 +791,15 @@ def _process_pdf_ocr(source_id: str, lang: str = i18n.DEFAULT_LANG) -> None:
     Zeitpunkt schon in PDF_DIR (add_source speichert sie synchron, nur die
     Texterkennung selbst ist der langsame Teil) - analog zu
     _process_audio_transcription."""
-    pdf_path = _existing_pdf_file(source_id)
-    _run_deferred_text_extraction(
-        source_id,
-        lang,
-        initial_step="ocr",
-        compute_text=lambda: extraction.ocr_pdf_with_ai(pdf_path.read_bytes()) if pdf_path else "",
-        failure_i18n_key="pdf_ocr_failed",
-    )
+    with _track_background_job():
+        pdf_path = _existing_pdf_file(source_id)
+        _run_deferred_text_extraction(
+            source_id,
+            lang,
+            initial_step="ocr",
+            compute_text=lambda: extraction.ocr_pdf_with_ai(pdf_path.read_bytes()) if pdf_path else "",
+            failure_i18n_key="pdf_ocr_failed",
+        )
 
 
 # Backlog #113: Audio-Transkriptionen liefen bisher völlig unbegrenzt
@@ -786,7 +829,8 @@ def _audio_transcription_worker() -> None:
     while True:
         source_id, lang = _audio_transcription_queue.get()
         try:
-            _process_audio_transcription(source_id, lang)
+            with _track_background_job():
+                _process_audio_transcription(source_id, lang)
         except Exception:
             # Ein unerwarteter Fehler hier darf den Worker nicht beenden -
             # sonst bliebe die gesamte restliche Warteschlange für den Rest
@@ -1012,46 +1056,48 @@ def _finish_synchronous_import(
     processing_status="pending" geantwortet hat - kein Sonderfall nötig, die
     Quelle existiert in sources.json in beiden Fällen schon (siehe
     _create_pending_source), bevor dieser Thread gestartet wird."""
-    with _sources_write_lock:
-        sources = _load_sources()
-        if source_id not in sources:
+    with _track_background_job():
+        with _sources_write_lock:
+            sources = _load_sources()
+            if source_id not in sources:
+                done_event.set()
+                return
+            sources[source_id]["processing_step"] = "indexing"
+            _save_sources(sources)
+
+        try:
+            chunk_embeddings = embeddings.embed_passages(chunks)
+            with _vectorstore_write_lock:
+                chunk_count = _store_chunks(source_id, source, chunks, chunk_embeddings)
+        except Exception as exc:
+            outcome["error"] = exc
+            with _sources_write_lock:
+                sources = _load_sources()
+                if source_id in sources:
+                    sources[source_id]["processing_status"] = "error"
+                    sources[source_id]["processing_step"] = None
+                    sources[source_id]["processing_error"] = str(exc)
+                    _save_sources(sources)
             done_event.set()
             return
-        sources[source_id]["processing_step"] = "indexing"
-        _save_sources(sources)
 
-    try:
-        chunk_embeddings = embeddings.embed_passages(chunks)
-        with _vectorstore_write_lock:
-            chunk_count = _store_chunks(source_id, source, chunks, chunk_embeddings)
-    except Exception as exc:
-        outcome["error"] = exc
+        outcome["chunk_count"] = chunk_count
         with _sources_write_lock:
             sources = _load_sources()
             if source_id in sources:
-                sources[source_id]["processing_status"] = "error"
+                sources[source_id]["text"] = text
+                sources[source_id]["chunk_count"] = chunk_count
+                sources[source_id]["processing_status"] = None
                 sources[source_id]["processing_step"] = None
-                sources[source_id]["processing_error"] = str(exc)
+                sources[source_id]["processing_error"] = None
                 _save_sources(sources)
+        # Muss NACH dem Speichern des Ergebnisses, aber VOR der (potenziell
+        # mehrere Sekunden dauernden) Zusammenfassung gesetzt werden - eine
+        # noch wartende add_source-Anfrage soll durch die Zusammenfassung
+        # nicht zusätzlich blockiert werden, die läuft komplett unabhängig
+        # weiter (aber weiterhin unter _track_background_job, siehe oben).
         done_event.set()
-        return
-
-    outcome["chunk_count"] = chunk_count
-    with _sources_write_lock:
-        sources = _load_sources()
-        if source_id in sources:
-            sources[source_id]["text"] = text
-            sources[source_id]["chunk_count"] = chunk_count
-            sources[source_id]["processing_status"] = None
-            sources[source_id]["processing_step"] = None
-            sources[source_id]["processing_error"] = None
-            _save_sources(sources)
-    # Muss NACH dem Speichern des Ergebnisses, aber VOR der (potenziell
-    # mehrere Sekunden dauernden) Zusammenfassung gesetzt werden - eine noch
-    # wartende add_source-Anfrage soll durch die Zusammenfassung nicht
-    # zusätzlich blockiert werden, die läuft komplett unabhängig weiter.
-    done_event.set()
-    _generate_summary_background(source_id, text)
+        _generate_summary_background(source_id, text)
 
 
 @app.post("/api/sources", response_model=SourceOut)
