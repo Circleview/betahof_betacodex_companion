@@ -588,6 +588,29 @@ def _is_deferred_pdf_import(source: SourceIn) -> bool:
     return bool(source.url) and extraction.looks_like_pdf(source.url)
 
 
+def _normalize_url_for_comparison(url: str) -> str:
+    """Spiegelt static/import.js#normalizeUrlForComparison serverseitig -
+    verschiedene YouTube-URL-Formen (youtu.be/watch/shorts) fuer dasselbe
+    Video sollen als Duplikat erkannt werden, alle anderen URLs werden nur
+    um Groß-/Kleinschreibung und einen abschließenden Slash bereinigt."""
+    video_id = extraction.extract_youtube_video_id(url)
+    if video_id:
+        return f"youtube:{video_id.lower()}"
+    return url.strip().rstrip("/").lower()
+
+
+def _find_existing_source_by_url(sources: dict, url: str) -> dict | None:
+    normalized = _normalize_url_for_comparison(url)
+    if not normalized:
+        return None
+    for entry in sources.values():
+        if entry.get("deleted_at") or not entry.get("url"):
+            continue
+        if _normalize_url_for_comparison(entry["url"]) == normalized:
+            return entry
+    return None
+
+
 # Serialisiert nur den kurzen "chunken + in Chroma schreiben"-Abschnitt
 # von _process_audio_transcription - app/vectorstore.py hat selbst keine
 # Locks, zwei gleichzeitig fertig werdende Hintergrund-Jobs könnten sich
@@ -1223,6 +1246,17 @@ def add_source(
     _user: str = Depends(require_role(users.QUELLEN_PFLEGER)),
     x_lang: str = Header(default=i18n.DEFAULT_LANG),
 ):
+    if source.url:
+        # Serverseitiges Gegenstück zum Frontend-Check (findExistingSourceByUrl
+        # in import.js) - das Frontend prüft nur gegen den zuletzt geladenen
+        # allSources-Stand und schützt daher nicht vor gleichzeitigen Imports
+        # derselben URL oder direkten API-Aufrufen ohne UI.
+        existing = _find_existing_source_by_url(_load_sources(), source.url)
+        if existing:
+            raise HTTPException(
+                400, i18n.get_message("url_already_exists", x_lang, title=existing["title"])
+            )
+
     deferred_audio = _is_deferred_audio_import(source)
     deferred_pdf = _is_deferred_pdf_import(source)
     deferred = deferred_audio or deferred_pdf

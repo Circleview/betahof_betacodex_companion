@@ -285,6 +285,77 @@ def test_add_source_rejects_empty_text(client):
     assert response.status_code == 400
 
 
+# Backlog (2026-08-03): serverseitiger Duplikat-Schutz - das Frontend prüft
+# schon vor dem Absenden gegen den zuletzt geladenen Quellenstand, aber nur
+# ein Backend-Check schützt auch vor gleichzeitigen Imports oder direkten
+# API-Aufrufen ohne UI.
+
+
+def test_add_source_rejects_duplicate_url(client):
+    first = client.post(
+        "/api/sources",
+        json={"title": "Original", "url": "https://example.org/artikel", "text": "Erster Text."},
+    )
+    assert first.status_code == 200
+
+    duplicate = client.post(
+        "/api/sources",
+        json={"title": "Duplikat", "url": "https://example.org/artikel", "text": "Zweiter Text."},
+    )
+    assert duplicate.status_code == 400
+    assert "Original" in duplicate.json()["detail"]
+
+
+def test_add_source_rejects_duplicate_url_ignoring_trailing_slash_and_case(client):
+    first = client.post(
+        "/api/sources",
+        json={"title": "Original", "url": "https://Example.org/Artikel/", "text": "Erster Text."},
+    )
+    assert first.status_code == 200
+
+    duplicate = client.post(
+        "/api/sources",
+        json={"title": "Duplikat", "url": "https://example.org/artikel", "text": "Zweiter Text."},
+    )
+    assert duplicate.status_code == 400
+
+
+def test_add_source_rejects_duplicate_youtube_url_in_different_formats(client):
+    first = client.post(
+        "/api/sources",
+        json={
+            "title": "Original",
+            "url": "https://www.youtube.com/watch?v=abc123XYZ_",
+            "text": "Erster Text.",
+        },
+    )
+    assert first.status_code == 200
+
+    duplicate = client.post(
+        "/api/sources",
+        json={"title": "Duplikat", "url": "https://youtu.be/abc123XYZ_", "text": "Zweiter Text."},
+    )
+    assert duplicate.status_code == 400
+
+
+def test_add_source_allows_same_url_after_original_was_deleted(client):
+    first = client.post(
+        "/api/sources",
+        json={"title": "Original", "url": "https://example.org/artikel-2", "text": "Erster Text."},
+    )
+    assert first.status_code == 200
+    source_id = first.json()["id"]
+
+    delete_response = client.delete(f"/api/sources/{source_id}")
+    assert delete_response.status_code == 204
+
+    recreated = client.post(
+        "/api/sources",
+        json={"title": "Neu", "url": "https://example.org/artikel-2", "text": "Neuer Text."},
+    )
+    assert recreated.status_code == 200
+
+
 def test_add_source_returns_pending_when_embedding_is_slow(client, monkeypatch):
     # Fix: sehr große Dateien (viele Chunks -> langes lokales Embedding)
     # blockierten bisher den kompletten Request. Timeout künstlich sehr klein

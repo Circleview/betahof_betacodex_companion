@@ -44,7 +44,7 @@ def _is_youtube_url(url: str) -> bool:
     return "youtube.com" in host or "youtu.be" in host
 
 
-def _extract_video_id(url: str) -> str | None:
+def extract_youtube_video_id(url: str) -> str | None:
     parsed = urlparse(url)
     host = parsed.netloc.lower()
     if "youtu.be" in host:
@@ -74,7 +74,7 @@ def _fetch_youtube_metadata(url: str) -> dict:
 
 
 def _extract_youtube(url: str) -> dict:
-    video_id = _extract_video_id(url)
+    video_id = extract_youtube_video_id(url)
     if not video_id:
         return {"title": "", "authors": [], "date": "", "text": "", "extracted": False}
 

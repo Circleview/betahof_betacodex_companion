@@ -2,6 +2,7 @@ MESSAGES = {
     "de": {
         "text_empty": "Text darf nicht leer sein.",
         "no_chunks": "Aus dem Text konnten keine Chunks erzeugt werden.",
+        "url_already_exists": "Diese URL wurde bereits importiert: \"{title}\".",
         "source_not_found": "Quelle nicht gefunden.",
         "author_not_found": "Autor:in nicht gefunden.",
         "audit_entry_not_found": "Änderungs-Log-Eintrag nicht gefunden.",
@@ -46,6 +47,7 @@ MESSAGES = {
     "en": {
         "text_empty": "Text must not be empty.",
         "no_chunks": "No chunks could be created from the text.",
+        "url_already_exists": "This URL has already been imported: \"{title}\".",
         "source_not_found": "Source not found.",
         "author_not_found": "Author not found.",
         "audit_entry_not_found": "Change log entry not found.",
