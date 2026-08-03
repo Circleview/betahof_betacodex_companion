@@ -156,6 +156,60 @@ def test_check_url_reports_ssl_error_reason_code():
         }
 
 
+def _incomplete_chain_error():
+    err = ssl.SSLCertVerificationError(
+        "certificate verify failed: unable to get local issuer certificate"
+    )
+    err.verify_code = 20
+    err.verify_message = "unable to get local issuer certificate"
+    return urllib.error.URLError(err)
+
+
+def test_check_url_treats_incomplete_certificate_chain_as_reachable():
+    # Vorfall (2026-08-03): der Server schickt sein Zertifikat, aber nicht
+    # das dazugehoerige Zwischenzertifikat mit - ein Browser laedt das
+    # fehlende Zertifikat automatisch selbst nach und zeigt die Seite ganz
+    # normal an. Der zweite Versuch ohne Kettenpruefung soll das nachbilden.
+    with patch(
+        "app.monitoring.urllib.request.urlopen",
+        side_effect=[_incomplete_chain_error(), _cm_response(200)],
+    ):
+        assert check_url("https://example.org") == {
+            "reachable": True,
+            "status_code": 200,
+            "reason_code": None,
+        }
+
+
+def test_check_url_still_reports_other_cert_errors_as_broken():
+    # Abgrenzung: ein ECHTER Zertifikatsfehler (hier simuliert per
+    # anderem verify_code, z.B. abgelaufenes Zertifikat) darf NICHT den
+    # Kettenpruefung-Fallback ausloesen - Browser wuerden hierfuer
+    # ebenfalls eine Warnung zeigen.
+    err = ssl.SSLCertVerificationError("certificate has expired")
+    err.verify_code = 10  # X509_V_ERR_CERT_HAS_EXPIRED
+    with patch(
+        "app.monitoring.urllib.request.urlopen", side_effect=urllib.error.URLError(err)
+    ):
+        assert check_url("https://example.org") == {
+            "reachable": False,
+            "status_code": None,
+            "reason_code": "ssl_error",
+        }
+
+
+def test_check_url_falls_back_to_ssl_error_when_relaxed_retry_also_fails():
+    with patch(
+        "app.monitoring.urllib.request.urlopen",
+        side_effect=[_incomplete_chain_error(), socket.timeout("timed out")],
+    ):
+        assert check_url("https://example.org") == {
+            "reachable": False,
+            "status_code": None,
+            "reason_code": "timeout",
+        }
+
+
 def test_check_url_reports_connection_error_reason_code():
     error = urllib.error.URLError(ConnectionRefusedError("Connection refused"))
     with patch("app.monitoring.urllib.request.urlopen", side_effect=error):

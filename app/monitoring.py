@@ -18,15 +18,51 @@ _REQUEST_HEADERS = {
 }
 
 
-def _request(url: str, method: str) -> dict:
+def _request(url: str, method: str, context: ssl.SSLContext | None = None) -> dict:
     req = urllib.request.Request(url, method=method, headers=_REQUEST_HEADERS)
-    with urllib.request.urlopen(req, timeout=TIMEOUT_SECONDS) as resp:
+    with urllib.request.urlopen(req, timeout=TIMEOUT_SECONDS, context=context) as resp:
         reachable = resp.status < 400
         return {
             "reachable": reachable,
             "status_code": resp.status,
             "reason_code": None if reachable else "http_error",
         }
+
+
+# Vorfall (2026-08-03): 14 Quellen derselben Domain wurden als broken
+# markiert, obwohl sie im Browser normal aufrufbar waren - der Server
+# schickt sein eigenes Zertifikat, aber nicht das dazugehörige
+# Zwischenzertifikat mit. Ein echter Browser lädt das fehlende Zertifikat
+# automatisch selbst nach ("AIA Chasing") und bemerkt den Fehler gar nicht;
+# urllib kann das nicht und bricht ab. X509_V_ERR_UNABLE_TO_GET_ISSUER_
+# CERT_LOCALLY (OpenSSL-Code 20) ist genau dieser Sonderfall - andere
+# Zertifikatsfehler (abgelaufen, falscher Hostname, selbstsigniert) haben
+# einen anderen Code und durchlaufen diesen Fallback bewusst NICHT.
+_INCOMPLETE_CHAIN_VERIFY_CODE = 20
+
+_RELAXED_CHAIN_CONTEXT = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+_RELAXED_CHAIN_CONTEXT.check_hostname = False
+_RELAXED_CHAIN_CONTEXT.verify_mode = ssl.CERT_NONE
+
+
+def _is_incomplete_chain_error(reason: object) -> bool:
+    return (
+        isinstance(reason, ssl.SSLCertVerificationError)
+        and getattr(reason, "verify_code", None) == _INCOMPLETE_CHAIN_VERIFY_CODE
+    )
+
+
+def _request_with_chain_fallback(url: str, method: str) -> dict:
+    """Wie _request(), aber mit dem oben beschriebenen zweiten Versuch ohne
+    Kettenprüfung, falls (und nur falls) genau die unvollständige Kette der
+    Grund war. Reicht andere Fehler unverändert weiter, damit die
+    bestehende Klassifizierung in check_url() greift."""
+    try:
+        return _request(url, method)
+    except urllib.error.URLError as err:
+        if not _is_incomplete_chain_error(err.reason):
+            raise
+        return _request(url, method, context=_RELAXED_CHAIN_CONTEXT)
 
 
 def _classify_http_error(err: urllib.error.HTTPError) -> dict:
@@ -68,11 +104,11 @@ def _classify_url_error(err: urllib.error.URLError) -> dict:
 
 def check_url(url: str) -> dict:
     try:
-        return _request(url, "HEAD")
+        return _request_with_chain_fallback(url, "HEAD")
     except urllib.error.HTTPError as err:
         if err.code == 405:
             try:
-                return _request(url, "GET")
+                return _request_with_chain_fallback(url, "GET")
             except urllib.error.HTTPError as get_err:
                 return _classify_http_error(get_err)
             except urllib.error.URLError as get_url_err:
