@@ -82,6 +82,8 @@
   "import.audioTranscriptionPending": "Audioquelle erkannt - der Text wird nach dem Import automatisch im Hintergrund erzeugt.",
   "import.audioTextPendingHint": "Der Text wird beim Import automatisch aus der Audiodatei erzeugt.",
   "import.pdfTextPendingHint": "In der PDF-Datei wurde keine Text-Ebene gefunden (z.B. bei gescannten Dokumenten). Der Text wird nach dem Import automatisch per KI-Texterkennung erzeugt - das kann je nach Seitenzahl einige Minuten dauern.",
+  "import.youtubeTranscriptFallbackHint": "Das Transkript konnte nicht automatisch geladen werden. So geht's von Hand: 1) Video-URL bei youtube-transcript.io einfügen, 2) Transkript kopieren, 3) hier ins Textfeld einfügen.",
+  "import.youtubeTranscriptFallbackLinkLabel": "youtube-transcript.io öffnen",
   "import.fileFieldLabel": "PDF- oder Audio-Datei",
   "import.uploadButton": "Hochladen",
   "import.pleaseChooseFile": "Bitte eine Datei auswählen.",

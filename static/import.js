@@ -408,6 +408,29 @@ function setTextFieldPending(pending, hintElementId) {
   );
 }
 
+// Backlog #201 (2026-08-03): auf Produktion blockiert YouTube automatisierte
+// Transkript-Anfragen (siehe app/extraction.py) - anders als bei Audio-
+// Transkription/PDF-OCR gibt es dafür KEINEN Hintergrund-Job, der den Text
+// nachliefert (setTextFieldPending waere hier also irrefuehrend: das Feld
+// bleibt bewusst sichtbar UND required, die Person muss den Text selbst
+// einfuegen). Zusaetzlich zum bestehenden generischen "extractionEmpty"-
+// Status-Text erscheint hier ein klickbarer Link zum externen Transkript-
+// Dienst plus kurzer Anleitung - baut das Element bei Bedarf einmalig aus
+// JS auf (data-i18n kann nur textContent setzen, hier wird aber ein
+// verschachtelter <a>-Link innerhalb des Hinweistexts gebraucht).
+function setYoutubeTranscriptFallbackHintVisible(visible) {
+  const hint = document.getElementById('youtube-transcript-fallback-hint');
+  hint.classList.toggle('hidden', !visible);
+  if (!visible || hint.childNodes.length) return;
+  hint.append(t('import.youtubeTranscriptFallbackHint') + ' ');
+  const link = document.createElement('a');
+  link.href = 'https://www.youtube-transcript.io/';
+  link.target = '_blank';
+  link.rel = 'noopener noreferrer';
+  link.textContent = t('import.youtubeTranscriptFallbackLinkLabel');
+  hint.appendChild(link);
+}
+
 // Die meisten Audio-Direktlinks (z.B. die eigentliche mp3-Datei) stammen von
 // einer Website/einem Blogbeitrag, der die Folge einbettet - dieses Feld
 // existiert im Datenmodell schon lange (listen_url, siehe Bearbeiten-
@@ -433,6 +456,7 @@ function fillForm({
   document.getElementById('restricted').checked = restricted;
   document.getElementById('listen-url').value = '';
   setTextFieldPending(false, null);
+  setYoutubeTranscriptFallbackHintVisible(false);
   setListenUrlFieldVisible(false);
 }
 
@@ -560,6 +584,18 @@ document.getElementById('popover-load').addEventListener('click', async () => {
         fillForm({ title: data.title, url });
         showForm();
         setTextFieldPending(true, 'pdf-text-pending-hint');
+        return;
+      }
+      if (extractYoutubeVideoId(url)) {
+        // Backlog #201: YouTube blockiert automatisierte Transkript-
+        // Anfragen auf Produktion (siehe app/extraction.py) - Titel/Datum
+        // kommen trotzdem an (davon unabhaengige Anfrage, siehe v0.46.3),
+        // nur der Text muss hier manuell per externem Dienst nachgetragen
+        // werden.
+        status.textContent = '';
+        fillForm({ title: data.title, authors: data.authors, date: data.date, url });
+        showForm();
+        setYoutubeTranscriptFallbackHintVisible(true);
         return;
       }
       status.textContent = t('import.extractionEmpty');

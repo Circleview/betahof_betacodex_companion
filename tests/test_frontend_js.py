@@ -721,3 +721,101 @@ def test_update_broken_links_badge_hidden_without_fetch_for_non_pfleger():
     sie ohnehin 403) - das Badge wird stattdessen sofort ausgeblendet."""
     output = _run_update_broken_links_badge(visible=False, fetch_response=None)
     assert output == {"hidden": True}
+
+
+# Backlog #201 (2026-08-03): klickbarer Link zu youtube-transcript.io + kurze
+# Anleitung, wenn die automatische YouTube-Transkript-Extraktion fehlschlägt.
+
+
+def _run_youtube_transcript_fallback_script(action_js: str) -> dict:
+    js_source = (STATIC_DIR / "import.js").read_text()
+    extract_id_match = re.search(r"function extractYoutubeVideoId\(url\) \{.*?\n\}", js_source, re.S)
+    hint_match = re.search(
+        r"function setYoutubeTranscriptFallbackHintVisible\(visible\) \{.*?\n\}", js_source, re.S
+    )
+    assert extract_id_match, "extractYoutubeVideoId wurde in import.js nicht gefunden."
+    assert hint_match, "setYoutubeTranscriptFallbackHintVisible wurde in import.js nicht gefunden."
+
+    script = f"""
+function t(key) {{
+  const dict = {{
+    'import.youtubeTranscriptFallbackHint': 'Hinweistext.',
+    'import.youtubeTranscriptFallbackLinkLabel': 'Link-Label',
+  }};
+  return dict[key] || key;
+}}
+
+function makeElement() {{
+  const children = [];
+  return {{
+    classList: {{
+      hidden: true,
+      toggle(cls, force) {{ if (cls === 'hidden') this.hidden = force; }},
+    }},
+    get childNodes() {{ return children; }},
+    appendChild(el) {{ children.push(el); return el; }},
+    append(text) {{ children.push({{ textNode: text }}); }},
+  }};
+}}
+
+const hintEl = makeElement();
+global.document = {{
+  getElementById: (id) => (id === 'youtube-transcript-fallback-hint' ? hintEl : null),
+  createElement: (tag) => ({{ tagName: tag }}),
+}};
+
+{extract_id_match.group(0)}
+
+{hint_match.group(0)}
+
+{action_js}
+"""
+    result = subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True)
+    return json.loads(result.stdout)
+
+
+def test_youtube_transcript_fallback_hint_hidden_by_default():
+    output = _run_youtube_transcript_fallback_script(
+        "setYoutubeTranscriptFallbackHintVisible(false);"
+        "console.log(JSON.stringify({ hidden: hintEl.classList.hidden, childCount: hintEl.childNodes.length }));"
+    )
+    assert output == {"hidden": True, "childCount": 0}
+
+
+def test_youtube_transcript_fallback_hint_shows_instructions_and_link():
+    output = _run_youtube_transcript_fallback_script(
+        "setYoutubeTranscriptFallbackHintVisible(true);"
+        "console.log(JSON.stringify({"
+        "  hidden: hintEl.classList.hidden,"
+        "  childCount: hintEl.childNodes.length,"
+        "  linkHref: hintEl.childNodes[1].href,"
+        "  linkTarget: hintEl.childNodes[1].target,"
+        "  linkText: hintEl.childNodes[1].textContent,"
+        "}));"
+    )
+    assert output["hidden"] is False
+    assert output["childCount"] == 2
+    assert output["linkHref"] == "https://www.youtube-transcript.io/"
+    assert output["linkTarget"] == "_blank"
+    assert output["linkText"] == "Link-Label"
+
+
+def test_youtube_transcript_fallback_hint_does_not_duplicate_link_on_repeated_calls():
+    output = _run_youtube_transcript_fallback_script(
+        "setYoutubeTranscriptFallbackHintVisible(true);"
+        "setYoutubeTranscriptFallbackHintVisible(false);"
+        "setYoutubeTranscriptFallbackHintVisible(true);"
+        "console.log(JSON.stringify({ childCount: hintEl.childNodes.length }));"
+    )
+    assert output == {"childCount": 2}
+
+
+def test_extract_youtube_video_id_handles_watch_and_short_urls():
+    output = _run_youtube_transcript_fallback_script(
+        "console.log(JSON.stringify({"
+        "  watch: extractYoutubeVideoId('https://www.youtube.com/watch?v=abc123&t=42s'),"
+        "  short: extractYoutubeVideoId('https://youtu.be/abc123'),"
+        "  other: extractYoutubeVideoId('https://example.org/artikel'),"
+        "}));"
+    )
+    assert output == {"watch": "abc123", "short": "abc123", "other": None}

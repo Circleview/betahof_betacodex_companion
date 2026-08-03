@@ -82,6 +82,8 @@
   "import.audioTranscriptionPending": "Audio source detected - the text will be generated automatically in the background after import.",
   "import.audioTextPendingHint": "The text will be generated automatically from the audio file on import.",
   "import.pdfTextPendingHint": "No text layer was found in the PDF file (e.g. for scanned documents). The text will be generated automatically via AI text recognition after import - this can take a few minutes depending on the page count.",
+  "import.youtubeTranscriptFallbackHint": "The transcript couldn't be loaded automatically. To do it manually: 1) paste the video URL at youtube-transcript.io, 2) copy the transcript, 3) paste it into the text field here.",
+  "import.youtubeTranscriptFallbackLinkLabel": "Open youtube-transcript.io",
   "import.fileFieldLabel": "PDF or audio file",
   "import.uploadButton": "Upload",
   "import.pleaseChooseFile": "Please choose a file.",
