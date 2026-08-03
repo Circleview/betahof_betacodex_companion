@@ -77,23 +77,39 @@ def _extract_youtube(url: str) -> dict:
     if not video_id:
         return {"title": "", "authors": [], "date": "", "text": "", "extracted": False}
 
-    api = YouTubeTranscriptApi()
+    # Fix (2026-08-03): Metadaten- und Transkript-Abruf sind zwei komplett
+    # unabhängige Anfragen an YouTube (unterschiedliche Endpunkte) - vorher
+    # brach ein Fehlschlag der Transkript-Abfrage (z.B. RequestBlocked, siehe
+    # unten) die Funktion sofort ab, BEVOR die Metadaten je abgerufen wurden.
+    # Titel/Datum sollen aber auch dann vorausgefüllt werden, wenn nur das
+    # Transkript scheitert - der Quellen-Pfleger muss den Text dann zwar
+    # manuell einfügen, spart sich aber wenigstens das Abtippen der Metadaten.
+    metadata = _fetch_youtube_metadata(url)
+
+    # Bekannte Einschränkung (2026-08-03): YouTube blockiert automatisierte
+    # Transkript-Anfragen von Cloud-/Rechenzentrums-IPs (Fehler
+    # "RequestBlocked") - auf Produktion (Hetzner) schlägt dieser Teil daher
+    # zuverlässig fehl, lokal (Heim-/Büro-IP) funktioniert derselbe Code
+    # anstandslos. Ohne einen kostenpflichtigen Residential-Proxy (von
+    # youtube_transcript_api offiziell unterstützt, siehe deren
+    # Dokumentation) lässt sich das nicht beheben - der manuelle
+    # Copy-Paste-Fallback im Formular bleibt bis dahin der Weg für Produktion.
+    text = ""
     try:
+        api = YouTubeTranscriptApi()
         try:
             fetched = api.fetch(video_id, languages=["de", "en"])
         except Exception:
             transcript_list = api.list(video_id)
             transcript = next(iter(transcript_list))
             fetched = transcript.fetch()
+        # Fließtext statt Zeilen mit Zeitstempel-Präfix - für die spätere
+        # Verwendung als Antwort-Kontext ist der reine, lesbare Wortlaut
+        # hilfreicher als eine mit Sprungmarken durchsetzte Liste.
+        text = " ".join(s.text.strip() for s in fetched if s.text.strip())
+        text = re.sub(r"\s+", " ", text).strip()
     except Exception:
-        return {"title": "", "authors": [], "date": "", "text": "", "extracted": False}
-
-    # Fließtext statt Zeilen mit Zeitstempel-Präfix - für die spätere
-    # Verwendung als Antwort-Kontext ist der reine, lesbare Wortlaut
-    # hilfreicher als eine mit Sprungmarken durchsetzte Liste.
-    text = " ".join(s.text.strip() for s in fetched if s.text.strip())
-    text = re.sub(r"\s+", " ", text).strip()
-    metadata = _fetch_youtube_metadata(url)
+        pass
 
     return {
         "title": metadata["title"],

@@ -486,10 +486,36 @@ def test_extract_youtube_handles_transcript_fetch_failure():
     fake_api = MagicMock()
     fake_api.fetch.side_effect = Exception("boom")
     fake_api.list.side_effect = Exception("boom")
-    with patch("app.extraction.YouTubeTranscriptApi", return_value=fake_api):
+    with (
+        patch("app.extraction.YouTubeTranscriptApi", return_value=fake_api),
+        patch("app.extraction._fetch_youtube_metadata", return_value={"title": "", "date": ""}),
+    ):
         result = _extract_youtube("https://www.youtube.com/watch?v=abc123")
 
     assert result["extracted"] is False
+
+
+def test_extract_youtube_still_fills_metadata_when_transcript_is_blocked():
+    """Regression-Schutz (2026-08-03): auf Produktion (Cloud-IP) blockiert
+    YouTube automatisierte Transkript-Anfragen (RequestBlocked) - Titel und
+    Datum kommen aus einer davon unabhaengigen Anfrage und sollen trotzdem
+    ankommen, statt durch den fruehen Abbruch verloren zu gehen."""
+    fake_api = MagicMock()
+    fake_api.fetch.side_effect = Exception("RequestBlocked: YouTube is blocking requests from your IP")
+    fake_api.list.side_effect = Exception("RequestBlocked: YouTube is blocking requests from your IP")
+    with (
+        patch("app.extraction.YouTubeTranscriptApi", return_value=fake_api),
+        patch(
+            "app.extraction._fetch_youtube_metadata",
+            return_value={"title": "Ein Video", "date": "2024-01-01"},
+        ),
+    ):
+        result = _extract_youtube("https://www.youtube.com/watch?v=abc123")
+
+    assert result["extracted"] is False
+    assert result["text"] == ""
+    assert result["title"] == "Ein Video"
+    assert result["date"] == "2024-01-01"
 
 
 def _fake_rate_limit_error() -> openai.RateLimitError:
