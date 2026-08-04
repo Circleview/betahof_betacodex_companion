@@ -2778,6 +2778,34 @@ details a {
   text-align: left;
 }
 
+/* Backlog (2026-08-04): #url-popover/#file-popover auf Mobile NICHT mehr als
+   schwebendes Overlay (ein erster Versuch legte sie per position:absolute
+   über die volle Breite der Kopfzeile, schwebte damit aber weiterhin ÜBER
+   dem Seiteninhalt statt ihn wie gewünscht akkordeonartig nach unten zu
+   schieben) - import.js hängt das jeweilige Popover-Element bei Bedarf
+   stattdessen in #mobile-import-slot um (normaler Dokumentfluss zwischen
+   Kopfzeile und Quellenliste). Dieselben Formularfelder/IDs wandern dabei
+   nur zu einem anderen Elternknoten, kein Duplikat nötig - .accordion-panel
+   ersetzt lediglich die schwebende Popover-Positionierung durch einen
+   normalen Block, analog zu .jobs-bar/.search-bar. Bewusst NICHT in die
+   @media-Regel unten gepackt: die Klasse wird ohnehin nur von isMobileLayout()
+   in import.js vergeben, doppelte Bedingung wäre redundant.*/
+.popover.accordion-panel {
+  position: relative;
+  top: auto;
+  left: auto;
+  right: auto;
+  transform: none;
+  width: auto;
+  margin: 0 0 1rem 0;
+  box-shadow: none;
+  padding: 1rem 2.5rem 1rem 1rem;
+}
+
+.popover.accordion-panel .popover-arrow {
+  display: none;
+}
+
 @media (max-width: 480px) {
   .popover {
     position: static;
@@ -2796,37 +2824,6 @@ details a {
      verschieben. */
   #jobs-popover {
     display: none !important;
-  }
-
-  /* Backlog (2026-08-03): #url-popover/#file-popover litten am selben
-     Problem wie #jobs-popover oben - als position:static-Flex-Item
-     innerhalb von .quelltyp-item--anchor sprengte ein geöffnetes Popover
-     (Label + breites Eingabefeld) die schmale, nur an den paar Icons
-     bemessene Icon-Spalte und schob damit die übrigen Kreis-Buttons der
-     Zeile beiseite/aus dem sichtbaren Bereich. Lösung: sowohl
-     .quelltyp-item--anchor als auch #quelltyp-bereich selbst bleiben hier
-     bewusst position:static, sodass das absolut positionierte Popover
-     stattdessen beim nächsten positionierten Vorfahren .section-heading-row
-     andockt (spannt die volle Breite der Kopfzeile, nicht nur die der
-     Icon-Spalte) - ein erster Versuch mit #quelltyp-bereich als
-     Bezugsrahmen ergab per Live-Test nur ~120px Breite (so breit wie die
-     Icon-Zeile selbst), praktisch unbenutzbar. */
-  .quelltyp-item--anchor {
-    position: static;
-  }
-
-  .section-heading-row {
-    position: relative;
-  }
-
-  .section-heading-row .popover {
-    position: absolute;
-    left: 0;
-    right: 0;
-    top: calc(100% + 0.75rem);
-    width: auto;
-    margin-top: 0;
-    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.12);
   }
 
   /* Fix: "Alle Quellen neu indizieren" ist ein seltener Wartungs-Button

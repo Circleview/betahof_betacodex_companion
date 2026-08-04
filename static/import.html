@@ -88,6 +88,12 @@
 
           <div id="url-popover" class="popover hidden">
             <div class="popover-arrow"></div>
+            <button type="button" id="url-popover-close" class="jobs-bar-close accordion-close-btn hidden" data-i18n-title="import.closeButtonTitle">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="18" y1="6" x2="6" y2="18"></line>
+                <line x1="6" y1="6" x2="18" y2="18"></line>
+              </svg>
+            </button>
             <label><span data-i18n="import.urlPopoverLabel"></span>
               <input type="url" id="popover-url" placeholder="https://...">
             </label>
@@ -106,6 +112,12 @@
 
           <div id="file-popover" class="popover hidden">
             <div class="popover-arrow"></div>
+            <button type="button" id="file-popover-close" class="jobs-bar-close accordion-close-btn hidden" data-i18n-title="import.closeButtonTitle">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="18" y1="6" x2="6" y2="18"></line>
+                <line x1="6" y1="6" x2="18" y2="18"></line>
+              </svg>
+            </button>
             <label><span data-i18n="import.fileFieldLabel"></span>
               <input type="file" id="popover-file" accept="application/pdf,audio/mpeg,audio/wav,audio/x-m4a,audio/mp4,audio/flac,audio/ogg,.mp3,.wav,.m4a,.flac,.ogg,.aac">
             </label>
@@ -192,6 +204,14 @@
       <span id="source-filter-label"></span> <strong id="source-filter-name"></strong>
       &ndash; <button type="button" id="source-filter-clear" class="link-button" data-i18n="import.showAll"></button>
     </p>
+    <!-- Backlog (2026-08-04): Ziel-Elternknoten für #url-popover/#file-popover
+         auf Mobile - import.js hängt das jeweils geöffnete Popover hier ein,
+         damit es als normaler Block im Dokumentfluss den restlichen Inhalt
+         akkordeonartig nach unten schiebt statt als Overlay darüber zu
+         schweben (siehe .accordion-panel in style.css). Auf Desktop bleibt
+         dieser Slot leer, die Popover bleiben dort in ihrer ursprünglichen
+         Position innerhalb der Icon-Leiste. -->
+    <div id="mobile-import-slot"></div>
     <div id="jobs-bar" class="jobs-bar hidden">
       <button type="button" id="jobs-bar-close" class="jobs-bar-close" data-i18n-title="import.closeButtonTitle">
         <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">

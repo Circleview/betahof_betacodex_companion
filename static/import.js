@@ -8,6 +8,14 @@ const filePopover = document.getElementById('file-popover');
 const quelltypBereich = document.getElementById('quelltyp-bereich');
 const reindexBereich = document.getElementById('reindex-bereich');
 const brokenLinksBtn = document.getElementById('typ-broken-links');
+const mobileImportSlot = document.getElementById('mobile-import-slot');
+// Ursprünglicher Elternknoten (die schmale Icon-Spalte, siehe
+// .quelltyp-item--anchor) - wird beim Öffnen auf Mobile gegen
+// mobileImportSlot getauscht (siehe setPopoverAccordionMode) und beim
+// nächsten Öffnen auf Desktop wieder hergestellt. Muss VOR jeder Umhängung
+// eingelesen werden, deshalb hier ganz am Modulanfang.
+const urlPopoverHome = urlPopover.parentElement;
+const filePopoverHome = filePopover.parentElement;
 
 const EDIT_ICON =
   '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" ' +
@@ -370,6 +378,21 @@ function isMobileLayout() {
   return window.matchMedia('(max-width: 480px)').matches;
 }
 
+// Backlog (2026-08-04): Nutzerwunsch - #url-popover/#file-popover sollen auf
+// Mobile nicht mehr als (schwebendes oder als Overlay über der Seite
+// liegendes) Popover erscheinen, sondern wie ein Akkordeon den restlichen
+// Seiteninhalt nach unten schieben, mit einem kleinen Kreuz zum Schließen.
+// Statt das Popover zu duplizieren (zwei Sets derselben Formularfelder mit
+// unterschiedlichen IDs, wie es die reine Anzeige-Liste bei
+// #jobs-list/#jobs-bar-list tut), wird hier dasselbe Element mit all seinen
+// IDs/Event-Listenern einfach an einen anderen Elternknoten gehängt -
+// dokumentInterne Referenzen (getElementById) bleiben davon unberührt.
+function setPopoverAccordionMode(popover, home, closeBtn, accordionMode) {
+  (accordionMode ? mobileImportSlot : home).appendChild(popover);
+  popover.classList.toggle('accordion-panel', accordionMode);
+  closeBtn.classList.toggle('hidden', !accordionMode);
+}
+
 function showForm() {
   importBereich.classList.remove('hidden');
   urlPopover.classList.add('hidden');
@@ -485,10 +508,14 @@ function closeSearchBar() {
   renderSourceList(currentSourceList);
 }
 
+const urlPopoverCloseBtn = document.getElementById('url-popover-close');
+const filePopoverCloseBtn = document.getElementById('file-popover-close');
+
 document.getElementById('typ-url').addEventListener('click', () => {
   importBereich.classList.add('hidden');
   filePopover.classList.add('hidden');
   closeSearchBar();
+  setPopoverAccordionMode(urlPopover, urlPopoverHome, urlPopoverCloseBtn, isMobileLayout());
   urlPopover.classList.toggle('hidden');
   document.getElementById('popover-status').textContent = '';
   if (!urlPopover.classList.contains('hidden')) {
@@ -505,9 +532,13 @@ document.getElementById('typ-file').addEventListener('click', () => {
   importBereich.classList.add('hidden');
   urlPopover.classList.add('hidden');
   closeSearchBar();
+  setPopoverAccordionMode(filePopover, filePopoverHome, filePopoverCloseBtn, isMobileLayout());
   filePopover.classList.toggle('hidden');
   document.getElementById('upload-status').textContent = '';
 });
+
+urlPopoverCloseBtn.addEventListener('click', () => urlPopover.classList.add('hidden'));
+filePopoverCloseBtn.addEventListener('click', () => filePopover.classList.add('hidden'));
 
 document.getElementById('typ-jobs').addEventListener('click', () => {
   importBereich.classList.add('hidden');
