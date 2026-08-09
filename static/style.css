@@ -1005,10 +1005,18 @@ body:not(.chat-started) #question-form {
   }
 }
 
-/* Ohne konfigurierten Turnstile-Site-Key bleibt der Container leer und darf
-   keinen Platz in der Eingabezeile beanspruchen. */
+/* Backlog (2026-08-09): #turnstile-container im Frage-Formular ist bewusst
+   KEIN Flex-Item mehr innerhalb von #question-form (siehe index.html) -
+   solange createTurnstileWidget() noch lädt, ist der Container kurz weder
+   :empty noch .turnstile-verified und nahm als Flex-Geschwister von
+   Mikrofon-/Absenden-Button sichtbar Platz in der Eingabezeile weg (das
+   Mikrofon-Icon sprang zur Seite und zurück). Als eigener Block direkt
+   NACH dem Formular betrifft ein sichtbares Widget höchstens den Abstand
+   zum Footer, nie mehr die Eingabezeile selbst. Margin nur wirksam, wenn
+   der Container tatsächlich sichtbar ist (:empty/.turnstile-verified
+   weiter unten setzen ohnehin display:none). */
 .turnstile-container {
-  flex-shrink: 0;
+  margin-top: 0.75rem;
 }
 
 .turnstile-container:empty {
