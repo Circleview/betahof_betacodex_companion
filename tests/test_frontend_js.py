@@ -52,6 +52,164 @@ console.log(JSON.stringify(rates));
     result = subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True)
     return json.loads(result.stdout)
 
+def _run_append_title_text(source_obj):
+    """Führt static/question.js#appendTitleText per Node real aus, mit
+    minimalen DOM-Stubs (kein volles jsdom nötig - die Funktion nutzt nur
+    createElement/createTextNode/appendChild/addEventListener)."""
+    js_source = (STATIC_DIR / "question.js").read_text()
+    match = re.search(r"function appendTitleText.*?\n\}", js_source, re.S)
+    assert match, "appendTitleText wurde in question.js nicht gefunden."
+    func_source = match.group(0)
+    script = f"""
+function t(key) {{ return key; }}
+class FakeNode {{
+  constructor(type, value) {{
+    this.type = type;
+    this.value = value;
+    this.children = [];
+  }}
+  appendChild(child) {{ this.children.push(child); return child; }}
+  addEventListener() {{}}
+}}
+const document = {{
+  createElement: (tag) => new FakeNode('element:' + tag, null),
+  createTextNode: (text) => new FakeNode('text', text),
+}};
+
+{func_source}
+
+const container = new FakeNode('container', null);
+appendTitleText(container, {json.dumps(source_obj)});
+console.log(JSON.stringify(container.children.map((c) => ({{
+  type: c.type,
+  value: c.value,
+  href: c.href || null,
+  className: c.className || null,
+  textContent: c.textContent || null,
+}}))));
+"""
+    result = subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True)
+    return json.loads(result.stdout)
+
+
+def test_append_title_text_links_title_when_url_present():
+    children = _run_append_title_text({"title": "Ein Artikel", "url": "https://beispiel.org/artikel"})
+    assert len(children) == 1
+    assert children[0]["type"] == "element:a"
+    assert children[0]["href"] == "https://beispiel.org/artikel"
+    assert children[0]["textContent"] == "Ein Artikel"
+    assert children[0]["className"] == "citation-title-link"
+
+
+def test_append_title_text_prefers_listen_url_over_url():
+    children = _run_append_title_text(
+        {"title": "Ein Podcast", "url": "https://beispiel.org/seite", "listen_url": "https://beispiel.org/audio.mp3"}
+    )
+    assert children[0]["href"] == "https://beispiel.org/audio.mp3"
+
+
+def test_append_title_text_renders_plain_text_without_url():
+    children = _run_append_title_text({"title": "Ein Buch ohne URL", "url": None})
+    assert len(children) == 1
+    assert children[0]["type"] == "text"
+    assert children[0]["value"] == "Ein Buch ohne URL"
+
+
+def _run_append_exclude_web_page_button(*, is_pfleger, source_obj, fetch_ok=True):
+    """Führt static/question.js#appendExcludeWebPageButton per Node real aus,
+    inkl. simuliertem Klick (ruft den registrierten click-Listener direkt
+    auf) - mit minimalen Stubs für hasPflegerRole/fetch/t/getLang (kein
+    volles jsdom nötig, siehe _run_append_title_text)."""
+    js_source = (STATIC_DIR / "question.js").read_text()
+    match = re.search(r"function appendExcludeWebPageButton.*?\n\}", js_source, re.S)
+    assert match, "appendExcludeWebPageButton wurde in question.js nicht gefunden."
+    func_source = match.group(0)
+    script = f"""
+function t(key) {{ return key; }}
+function getLang() {{ return 'de'; }}
+function hasPflegerRole() {{ return {json.dumps(is_pfleger)}; }}
+const EDIT_ICON = '<svg></svg>';
+let fetchCalls = [];
+global.fetch = async (url, options) => {{
+  fetchCalls.push({{ url, options }});
+  return {{ ok: {json.dumps(fetch_ok)} }};
+}};
+class FakeNode {{
+  constructor(type) {{
+    this.type = type;
+    this.children = [];
+    this.className = '';
+    this.disabled = false;
+    this.listeners = {{}};
+    this.classList = {{ add: (cls) => {{ this.className += ' ' + cls; }} }};
+  }}
+  appendChild(child) {{ this.children.push(child); return child; }}
+  addEventListener(evt, fn) {{ this.listeners[evt] = fn; }}
+  setAttribute() {{}}
+}}
+const document = {{ createElement: (tag) => new FakeNode('element:' + tag) }};
+
+{func_source}
+
+const container = new FakeNode('container');
+appendExcludeWebPageButton(container, {json.dumps(source_obj)});
+async function main() {{
+  const btn = container.children[0];
+  if (btn && btn.listeners.click) {{
+    await btn.listeners.click({{ stopPropagation: () => {{}} }});
+  }}
+  console.log(JSON.stringify({{
+    appended: !!btn,
+    className: btn ? btn.className : null,
+    disabled: btn ? btn.disabled : null,
+    title: btn ? btn.title : null,
+    fetchCalls,
+  }}));
+}}
+main();
+"""
+    result = subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True)
+    return json.loads(result.stdout)
+
+
+def test_exclude_web_page_button_not_shown_for_non_pfleger():
+    output = _run_append_exclude_web_page_button(
+        is_pfleger=False,
+        source_obj={"source_id": "page-1", "allowlist_entry_id": "entry-1"},
+    )
+    assert output["appended"] is False
+
+
+def test_exclude_web_page_button_not_shown_without_allowlist_entry_id():
+    output = _run_append_exclude_web_page_button(
+        is_pfleger=True, source_obj={"source_id": "page-1", "allowlist_entry_id": None}
+    )
+    assert output["appended"] is False
+
+
+def test_exclude_web_page_button_click_calls_exclude_endpoint():
+    output = _run_append_exclude_web_page_button(
+        is_pfleger=True,
+        source_obj={"source_id": "page-1", "allowlist_entry_id": "entry-1"},
+    )
+    assert output["appended"] is True
+    assert len(output["fetchCalls"]) == 1
+    assert output["fetchCalls"][0]["url"] == "/api/web-allowlist/entry-1/pages/page-1/exclude"
+    assert output["fetchCalls"][0]["options"]["method"] == "POST"
+    assert output["disabled"] is True
+    assert output["title"] == "common.webPageExcluded"
+
+
+def test_exclude_web_page_button_reenables_on_failed_request():
+    output = _run_append_exclude_web_page_button(
+        is_pfleger=True,
+        source_obj={"source_id": "page-1", "allowlist_entry_id": "entry-1"},
+        fetch_ok=False,
+    )
+    assert output["disabled"] is False
+    assert output["title"] == "common.excludeWebPage"
+
+
 APPEND_CALL_RE = re.compile(
     r"\b(?:appendChild|append|insertBefore|prepend|replaceChild|insertAdjacentElement|appendTimelineRow)\s*\("
 )

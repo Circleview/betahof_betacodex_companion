@@ -103,6 +103,18 @@ class ChunkRef(BaseModel):
     text: str
     summary: Optional[str] = None
     highlighted_texts: list[str] = []
+    # Backlog: LLM/Internet-Fallback bei dünner Quellenlage - kennzeichnet
+    # Chunks aus der separaten Web-Fallback-Collection (statt aus den
+    # kuratierten Quellen) für die dezente Kennzeichnung im Frontend
+    # (question.js: buildSourceInfo).
+    is_web_fallback: bool = False
+    # Nutzerwunsch: Quellen-Pfleger:innen/System-Admins sollen eine
+    # erkennbar unpassende Web-Fallback-Quelle direkt aus der
+    # Konversationsansicht heraus ausschließen können (siehe question.js:
+    # appendExcludeWebPageButton) - dafür wird hier die zugehörige
+    # web_allowlist-Eintrags-ID mitgegeben (nur bei Web-Fallback-Chunks
+    # gesetzt, sonst None).
+    allowlist_entry_id: Optional[str] = None
 
 
 class RequestLinkIn(BaseModel):
@@ -248,3 +260,46 @@ class VersionOut(BaseModel):
 
 class TurnstileConfigOut(BaseModel):
     site_key: str
+
+
+class WebAllowlistEntryIn(BaseModel):
+    url_prefix: str
+    label: str
+    reason: str
+    max_pages: int = 50
+
+
+class WebAllowlistEntryOut(BaseModel):
+    id: str
+    url_prefix: str
+    label: str
+    reason: str
+    added_by: str
+    added_at: str
+    reviewed_at: Optional[str] = None
+    max_pages: int
+    page_count: int = 0
+    needs_review: bool = False
+    indexing_status: Optional[str] = None
+    selection_mode: str = "negativ"
+
+
+class WebIndexPageOut(BaseModel):
+    id: str
+    allowlist_entry_id: str
+    url: str
+    title: str
+    date: Optional[str] = None
+    indexed_at: str
+    chunk_count: int
+    excluded: bool = False
+
+
+class WebCandidateOut(BaseModel):
+    id: str
+    allowlist_entry_id: str
+    url: str
+    title: str
+    snippet: str
+    relevance_score: float
+    status: str

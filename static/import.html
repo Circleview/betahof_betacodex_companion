@@ -32,36 +32,6 @@
 
 <h2 data-i18n="import.title"></h2>
 
-<section id="import-bereich" class="hidden">
-  <form id="source-form">
-    <label><span data-i18n="import.fieldTitle"></span>
-      <input type="text" id="title" required>
-    </label>
-    <div id="create-author-date-row"></div>
-    <label><span data-i18n="import.fieldUrl"></span>
-      <input type="url" id="url">
-    </label>
-    <label id="listen-url-label" class="hidden"><span data-i18n="import.fieldListenUrl"></span>
-      <input type="url" id="listen-url">
-    </label>
-    <label id="text-field-label"><span data-i18n="import.fieldText"></span>
-      <textarea id="text" rows="10" required></textarea>
-    </label>
-    <p id="audio-text-pending-hint" class="hidden" data-i18n="import.audioTextPendingHint"></p>
-    <p id="pdf-text-pending-hint" class="hidden" data-i18n="import.pdfTextPendingHint"></p>
-    <p id="youtube-transcript-fallback-hint" class="hidden"></p>
-    <label class="checkbox-label">
-      <input type="checkbox" id="restricted">
-      <span data-i18n="import.restrictedLabel"></span>
-    </label>
-    <div class="create-form-actions">
-      <button type="submit" id="import-submit-button" data-i18n="import.importButton"></button>
-      <button type="button" id="import-cancel-button" class="link-button" data-i18n="common.cancel"></button>
-    </div>
-  </form>
-  <p id="import-status"></p>
-</section>
-
 <datalist id="author-suggestions"></datalist>
 
 <section id="quellen-liste-bereich" tabindex="-1">
@@ -149,6 +119,37 @@
             <ul id="jobs-list"></ul>
           </div>
         </div>
+        <!-- Backlog: LLM/Internet-Fallback bei dünner Quellenlage - Pflege
+             der freigegebenen externen Domains/Pfade (nur für Quellen-
+             Pfleger:innen/Admins sichtbar, siehe
+             updateSourceManagementVisibility). Das Warn-Icon erscheint,
+             sobald mindestens ein Eintrag zur Jahresprüfung fällig ist
+             (siehe updateWebAllowlistButton). -->
+        <button type="button" id="typ-web-allowlist" class="circle-button circle-button--sm" data-i18n-title="import.webAllowlistTitle">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="9"></circle>
+            <ellipse cx="12" cy="12" rx="4" ry="9"></ellipse>
+            <line x1="3" y1="12" x2="21" y2="12"></line>
+          </svg>
+          <!-- Nutzerwunsch: Indizierungsstatus als fortlaufender Kreis am
+               Globus-Icon, analog zum Fortschrittsring bei #typ-jobs - nur
+               sichtbar, solange app/web_crawler.py für mindestens einen
+               Eintrag läuft (siehe renderWebAllowlistIcon in import.js). -->
+          <svg id="web-allowlist-icon-ring" class="web-allowlist-icon-ring hidden" viewBox="0 0 32 32" width="32" height="32">
+            <circle cx="16" cy="16" r="14" fill="none" stroke="var(--color-border)" stroke-width="2"></circle>
+            <circle id="web-allowlist-icon-progress" cx="16" cy="16" r="14" fill="none" stroke="var(--color-accent)"
+              stroke-width="2" stroke-linecap="round" stroke-dasharray="87.9" stroke-dashoffset="87.9"
+              transform="rotate(-90 16 16)"></circle>
+          </svg>
+          <span id="web-allowlist-warning" class="jobs-icon-warning hidden">
+            <svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor"
+              stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 3.5 2 20h20L12 3.5z"></path>
+              <line x1="12" y1="9.5" x2="12" y2="14"></line>
+              <circle cx="12" cy="17" r="0.6" fill="currentColor" stroke="none"></circle>
+            </svg>
+          </span>
+        </button>
       </div>
       <div class="sort-toolbar">
         <button type="button" id="sort-author" class="sort-button active" data-i18n-title="import.sortByAuthor">
@@ -225,6 +226,69 @@
       <label><span data-i18n="import.searchPopoverLabel"></span>
         <input type="search" id="search-input" data-i18n-placeholder="import.searchPlaceholder">
       </label>
+    </div>
+    <!-- Nutzerwunsch: Konsistenz mit den übrigen Import-Varianten (URL/Datei/
+         Website) - #import-bereich saß ursprünglich als eigene <section> VOR
+         der Icon-Leiste/Quellenliste, klappte beim Öffnen also weit oben auf
+         der Seite auf statt direkt unter dem geklickten Papier-Icon. Sitzt
+         jetzt wie #search-bar/#web-allowlist-bereich hier im Werkzeugleisten-
+         Bereich. -->
+    <section id="import-bereich" class="hidden">
+      <form id="source-form">
+        <label><span data-i18n="import.fieldTitle"></span>
+          <input type="text" id="title" required>
+        </label>
+        <div id="create-author-date-row"></div>
+        <label><span data-i18n="import.fieldUrl"></span>
+          <input type="url" id="url">
+        </label>
+        <label id="listen-url-label" class="hidden"><span data-i18n="import.fieldListenUrl"></span>
+          <input type="url" id="listen-url">
+        </label>
+        <label id="text-field-label"><span data-i18n="import.fieldText"></span>
+          <textarea id="text" rows="10" required></textarea>
+        </label>
+        <p id="audio-text-pending-hint" class="hidden" data-i18n="import.audioTextPendingHint"></p>
+        <p id="pdf-text-pending-hint" class="hidden" data-i18n="import.pdfTextPendingHint"></p>
+        <p id="youtube-transcript-fallback-hint" class="hidden"></p>
+        <label class="checkbox-label">
+          <input type="checkbox" id="restricted">
+          <span data-i18n="import.restrictedLabel"></span>
+        </label>
+        <div class="create-form-actions">
+          <button type="submit" id="import-submit-button" data-i18n="import.importButton"></button>
+          <button type="button" id="import-cancel-button" class="link-button" data-i18n="common.cancel"></button>
+        </div>
+      </form>
+      <p id="import-status"></p>
+    </section>
+    <!-- Backlog: LLM/Internet-Fallback bei dünner Quellenlage - Unterbereich
+         von "Quellen verwalten", per typ-web-allowlist-Button auf-/zuklappbar.
+         Nutzerwunsch: gleiche Position/gleiches Verhalten wie #search-bar
+         (klappt direkt hier über der Quellenliste auf, statt weit unten im
+         Dokument zu sitzen, wo es bei einer langen Liste ohne Scrollen gar
+         nicht sichtbar wäre) - nur für Quellen-Pfleger:innen/Admins sichtbar. -->
+    <div id="web-allowlist-bereich" class="web-allowlist-panel hidden">
+      <h3 data-i18n="import.webAllowlistHeading"></h3>
+      <p class="web-allowlist-hint" data-i18n="import.webAllowlistHint"></p>
+      <form id="web-allowlist-form">
+        <label><span data-i18n="import.webAllowlistUrlPrefixLabel"></span>
+          <input type="url" id="web-allowlist-url-prefix" placeholder="https://beispiel.org/blog" required>
+        </label>
+        <label><span data-i18n="import.webAllowlistLabelLabel"></span>
+          <input type="text" id="web-allowlist-label">
+        </label>
+        <label><span data-i18n="import.webAllowlistReasonLabel"></span>
+          <textarea id="web-allowlist-reason" rows="3" required></textarea>
+        </label>
+        <label><span data-i18n="import.webAllowlistMaxPagesLabel"></span>
+          <input type="number" id="web-allowlist-max-pages" min="1" max="500" value="50">
+        </label>
+        <button type="submit" data-i18n="import.webAllowlistAddButton"></button>
+        <p id="web-allowlist-status"></p>
+      </form>
+      <ul id="web-allowlist-pending-list" class="web-allowlist-pending-list hidden"></ul>
+      <ul id="web-allowlist-list"></ul>
     </div>
     <div id="alphabet-jump-bar" class="alphabet-jump-bar hidden"></div>
     <ul id="source-list"></ul>

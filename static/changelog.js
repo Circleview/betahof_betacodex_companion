@@ -74,6 +74,8 @@ const ACTION_ICON = {
   author_profile_updated: { icon: EDIT_ICON, cls: 'updated' },
   author_renamed: { icon: EDIT_ICON, cls: 'updated' },
   author_bio_generated: { icon: EDIT_ICON, cls: 'updated' },
+  web_page_excluded: { icon: TRASH_ICON, cls: 'deleted' },
+  web_page_included: { icon: PLUS_ICON, cls: 'created' },
 };
 
 const ACTION_LABEL_KEYS = {
@@ -85,6 +87,8 @@ const ACTION_LABEL_KEYS = {
   author_profile_updated: 'changelog.actionAuthorProfileUpdated',
   author_renamed: 'changelog.actionAuthorRenamed',
   author_bio_generated: 'changelog.actionAuthorBioGenerated',
+  web_page_excluded: 'changelog.actionWebPageExcluded',
+  web_page_included: 'changelog.actionWebPageIncluded',
 };
 
 const FIELD_LABEL_KEYS = {

@@ -90,6 +90,14 @@ Assistent das offen, statt zu spekulieren.
   "Quellen"-Menüpunkt macht auf defekte Links aufmerksam (von jeder Seite
   aus sichtbar), ein Filter-Button in der Quellenübersicht zeigt gezielt
   die betroffenen Quellen.
+- Website-Wissensquellen: freigegebene externe Websites (z. B. Blogs von
+  Expert:innen) werden wöchentlich im Hintergrund gecrawlt und fließen als
+  automatischer Fallback in Antworten ein, wenn die kuratierten Quellen zum
+  Thema nichts hergeben – dezent im Chat gekennzeichnet, mit
+  Schnell-Ausschließen-Button für einzelne, erkennbar unpassende Seiten
+  direkt aus der Konversationsansicht. Für neue Websites ohne verlässliche
+  URL-Struktur wählt eine KI-gestützte Positivselektion gezielt einzelne
+  Artikel statt automatisch alles unterhalb der URL zu übernehmen.
 
 ### Nachvollziehbarkeit & Rechte
 
@@ -323,6 +331,9 @@ Commit-/Tag-Nachrichten in Git.
 
 | Version | Wesentliche Änderungen |
 |---|---|
+| v0.49 | Backlog: Website-Wissensquellen als automatischer Fallback bei dünner Quellenlage (Negativ-/Positivselektion, wöchentlicher Hintergrund-Crawl, dezente Kennzeichnung im Chat, Schnell-Ausschließen-Button für Pfleger:innen); Lorem-Ipsum-Platzhaltertexte werden beim Website-Import erkannt und ausgeschlossen; fehlende Autor:innen/Datum werden in der Konversationsansicht nicht mehr als Platzhaltertext angezeigt |
+| v0.48 | Backlog #202: Konversationsverlauf wird an /api/ask mitgeschickt (vermeidet Wiederholungen bei Folgefragen); Mobile-Popover als echtes Akkordeon statt Overlay; Mikrofon-Icon-Sprung beim Laden der Konversationsseite behoben |
+| v0.47 | Backlog: serverseitige Duplikat-Prüfung beim Anlegen von Quellen per URL; URL-/Datei-Popover im Quellenverzeichnis auf Mobile über volle Zeilenbreite statt Icon-Spalte |
 | v0.46 | Wöchentliche Link-Prüfung + Warn-Badge am "Quellen"-Menüpunkt mit Filter für defekte Quellen |
 | v0.45 | Backlog #190: Live-Transkript während Spracheingabe |
 | v0.44 | Backlog #183/#184: Login-Bereich mobil als Aufklapp-Bereich statt Popover, dynamisch wachsendes Frage-Eingabefeld (inkl. Zittern-Fix) |

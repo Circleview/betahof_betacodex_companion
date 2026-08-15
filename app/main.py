@@ -6,6 +6,7 @@ import os
 import queue
 import re
 import subprocess
+import sys
 import tempfile
 import threading
 import time
@@ -41,6 +42,10 @@ from app import (
     tts,
     users,
     vectorstore,
+    web_allowlist,
+    web_candidates,
+    web_crawler,
+    web_index,
 )
 from app.models import (
     AdminUserOut,
@@ -74,6 +79,10 @@ from app.models import (
     UrlCheckOut,
     UrlIn,
     VersionOut,
+    WebAllowlistEntryIn,
+    WebAllowlistEntryOut,
+    WebCandidateOut,
+    WebIndexPageOut,
     WhoAmIOut,
 )
 
@@ -1032,6 +1041,137 @@ def _summary_backfill_worker() -> None:
 
 
 threading.Thread(target=_summary_backfill_worker, daemon=True).start()
+
+
+# Backlog: LLM/Internet-Fallback bei dünner Quellenlage - Nutzerwunsch, dass
+# die erweiterte Suche zur Antwortzeit "sehr schnell" gehen und Nutzer:innen
+# vom Fallback "nichts merken" sollen. Deshalb läuft das eigentliche Crawlen/
+# Indizieren (Netzwerk-Anfragen, Textextraktion, Embedding) NIE innerhalb
+# von ask() (siehe dortige Web-Fallback-Erweiterung), sondern ausschließlich
+# hier im Hintergrund, im selben wöchentlichen Rhythmus wie der URL-
+# Gesundheits-Check oben - _ask_event_stream fragt zur Laufzeit nur noch die
+# fertig indizierte Chroma-Collection ab (vectorstore.query_web), genauso
+# schnell wie die normale Quellensuche. Ein neu angelegter Eintrag würde
+# sonst bis zu eine Woche auf den nächsten Sweep warten - deshalb stößt
+# add_web_allowlist_entry() zusätzlich einen einmaligen Sofort-Crawl NUR für
+# diesen einen Eintrag an (_index_new_web_allowlist_entry), ebenfalls in
+# einem eigenen Hintergrund-Thread, damit die Antwort auf POST
+# /api/web-allowlist selbst weiterhin sofort zurückkommt.
+WEB_ALLOWLIST_CRAWL_INTERVAL_SECONDS = 7 * 24 * 3600
+
+
+# Nutzerfeedback (real reproduziert, siehe app/web_crawler.py-Kommentar):
+# manche Websites lassen den Crawl in einem Python-Thread unbegrenzt hängen,
+# selbst mit Timeout - der eigentliche Aufruf läuft deshalb in einem
+# eigenen Unterprozess (app/web_crawl_subprocess.py), der bei Bedarf
+# zuverlässig per Timeout beendet werden kann.
+#
+# Nutzerfeedback (real reproduziert für sichtart.at/Positivselektion): bei
+# 180s lag zu wenig Sicherheitsabstand zu web_crawler.CRAWL_TIME_BUDGET_
+# SECONDS (120s) - die Positivselektion braucht pro Kandidat zusätzlich ein
+# Embedding + eine Vectorstore-Abfrage gegen den kuratierten Bestand (siehe
+# _relevance_score_against_curated_corpus), dazu kommen Modell-Ladezeit und
+# der Sitemap-Abruf selbst, die NICHT im 120s-Budget mitgezählt werden. Der
+# Unterprozess wurde dadurch regelmäßig vom äußeren Timeout abgewürgt, bevor
+# er überhaupt fertig war - mit reichlich Sicherheitsabstand (statt den
+# Wert nur knapp zu erhöhen), damit dasselbe nicht bei einer etwas
+# langsameren Website erneut passiert.
+WEB_ALLOWLIST_SUBPROCESS_TIMEOUT_SECONDS = 300
+
+
+def _run_web_crawl_subprocess(entry_id: str, url_prefix: str, max_pages: int) -> int:
+    """Startet app/web_crawl_subprocess.py als eigenen Unterprozess und gibt
+    dessen Exit-Code zurück (0 = Erfolg). Eigene Funktion statt inline in
+    _index_web_allowlist_entry_with_status, damit Tests genau diese eine
+    Stelle durch einen Fake ersetzen können, ohne echte Unterprozesse/
+    Netzwerkzugriffe auszulösen (siehe tests/test_api.py)."""
+    result = subprocess.run(
+        [sys.executable, "-m", "app.web_crawl_subprocess", entry_id, url_prefix, str(max_pages)],
+        cwd=str(BASE_DIR),
+        timeout=WEB_ALLOWLIST_SUBPROCESS_TIMEOUT_SECONDS,
+    )
+    return result.returncode
+
+
+def _index_web_allowlist_entry_with_status(entry_id: str, url_prefix: str, max_pages: int) -> None:
+    """Nutzerwunsch: Fortschrittsring am Globus-Icon (siehe import.js:
+    renderWebAllowlistIcon) - "running" während des Crawls, damit Quellen-
+    Pfleger:innen sehen, wann eine Website fertig indiziert ist, statt nur
+    an einer sich wöchentlich ändernden Seitenzahl raten zu müssen. Von
+    beiden Aufrufstellen genutzt (Sofort-Crawl + wöchentlicher Sweep).
+
+    Nutzerfeedback (real reproduziert): ein Server-Neustart löst sofort
+    einen wöchentlichen Sweep-Durchlauf aus (siehe _web_allowlist_crawl_
+    worker) - läuft zufällig zeitgleich noch ein Sofort-Crawl desselben
+    Eintrags (z.B. gerade erst angelegt/manuell erneut angestoßen), würden
+    beide unabhängig voneinander dieselben URLs entdecken und indizieren -
+    doppelte Seiten mit unterschiedlichen page_ids in web_index.py. Ein
+    einfacher Status-Check VOR dem Start genügt hier (kein echtes Lock
+    nötig): das Risiko eines exakt gleichzeitigen zweiten Check-Aufrufs ist
+    verschwindend klein gegenüber der Laufzeit eines ganzen Crawls."""
+    current = web_allowlist.get_entry(entry_id)
+    if current is not None and current.get("indexing_status") == "running":
+        return
+    web_allowlist.set_indexing_status(entry_id, "running")
+    try:
+        returncode = _run_web_crawl_subprocess(entry_id, url_prefix, max_pages)
+    except subprocess.TimeoutExpired:
+        web_allowlist.set_indexing_status(entry_id, "error")
+        raise
+    if returncode != 0:
+        web_allowlist.set_indexing_status(entry_id, "error")
+        raise RuntimeError(f"web_crawl_subprocess für {entry_id} beendete sich mit Code {returncode}")
+    web_allowlist.set_indexing_status(entry_id, None)
+
+
+def _run_web_allowlist_crawl_once() -> None:
+    for entry_id, entry in web_allowlist.list_entries().items():
+        try:
+            _index_web_allowlist_entry_with_status(
+                entry_id, entry["url_prefix"], entry.get("max_pages", web_allowlist.DEFAULT_MAX_PAGES)
+            )
+        except Exception:
+            # Ein einzelner fehlschlagender Eintrag (z.B. Website gerade
+            # nicht erreichbar) darf die übrigen Einträge nicht blockieren.
+            continue
+
+
+def _web_allowlist_crawl_worker() -> None:
+    while True:
+        try:
+            _run_web_allowlist_crawl_once()
+        except Exception:
+            pass
+        time.sleep(WEB_ALLOWLIST_CRAWL_INTERVAL_SECONDS)
+
+
+def _recover_interrupted_web_allowlist_indexing() -> None:
+    """Nach einem Server-Neustart/-Absturz kann kein Eintrag mehr wirklich
+    "running" sein (der Hintergrund-Thread, der das gesetzt hat, existiert
+    nicht mehr) - ein real beobachteter Fall: ein kurzlebiges Diagnose-
+    Skript importierte app.main, startete dadurch selbst einen Crawl-
+    Worker-Thread, und wurde beendet, während dieser noch lief. Als
+    daemon=True-Thread wird er dabei ohne jede Aufräumung abgewürgt - der
+    Fortschrittsring am Globus-Icon (siehe import.js) blieb dadurch
+    dauerhaft "drehend" hängen, obwohl gar kein Crawl mehr lief. Setzt jeden
+    verwaisten "running"-Status still zurück, BEVOR der eigentliche
+    wöchentliche Sweep-Thread startet."""
+    for entry_id, entry in web_allowlist.list_entries().items():
+        if entry.get("indexing_status") == "running":
+            web_allowlist.set_indexing_status(entry_id, None)
+
+
+_recover_interrupted_web_allowlist_indexing()
+threading.Thread(target=_web_allowlist_crawl_worker, daemon=True).start()
+
+
+def _index_new_web_allowlist_entry(entry_id: str, url_prefix: str, max_pages: int) -> None:
+    try:
+        _index_web_allowlist_entry_with_status(entry_id, url_prefix, max_pages)
+    except Exception:
+        # Der wöchentliche Sweep (_web_allowlist_crawl_worker) versucht es
+        # ohnehin erneut - ein fehlschlagender Sofort-Lauf ist unkritisch.
+        pass
 
 
 def _recover_interrupted_processing_jobs() -> None:
@@ -2029,6 +2169,218 @@ def get_broken_links_count(_user: str = Depends(require_role(users.QUELLEN_PFLEG
     return BrokenLinksCountOut(count=count)
 
 
+# Backlog: LLM/Internet-Fallback bei dünner Quellenlage - eine freigegebene
+# Domain/Sektion gilt nach einem Jahr ohne erneute menschliche Bestätigung
+# als prüfungsfällig (Redaktionslinie einer Website kann sich ändern, ohne
+# dass die URL selbst bricht - der bestehende url_reachable-Check bei den
+# normalen Quellen würde das nicht erkennen).
+WEB_ALLOWLIST_REVIEW_INTERVAL_DAYS = 365
+
+
+def _web_allowlist_entry_needs_review(reviewed_at: str | None, now: datetime) -> bool:
+    if not reviewed_at:
+        return True
+    try:
+        reviewed = datetime.fromisoformat(reviewed_at)
+    except ValueError:
+        return True
+    if reviewed.tzinfo is None:
+        reviewed = reviewed.replace(tzinfo=timezone.utc)
+    return (now - reviewed).days >= WEB_ALLOWLIST_REVIEW_INTERVAL_DAYS
+
+
+@app.get("/api/web-allowlist", response_model=list[WebAllowlistEntryOut])
+def list_web_allowlist_entries(_user: str = Depends(require_role(users.QUELLEN_PFLEGER))):
+    now = datetime.now(timezone.utc)
+    return [
+        WebAllowlistEntryOut(
+            id=entry_id,
+            page_count=web_index.active_page_count_for_entry(entry_id),
+            needs_review=_web_allowlist_entry_needs_review(entry.get("reviewed_at"), now),
+            **entry,
+        )
+        for entry_id, entry in web_allowlist.list_entries().items()
+    ]
+
+
+@app.post("/api/web-allowlist", response_model=WebAllowlistEntryOut, status_code=201)
+def add_web_allowlist_entry(
+    payload: WebAllowlistEntryIn,
+    _user: str = Depends(require_role(users.QUELLEN_PFLEGER)),
+    x_lang: str = Header(default=i18n.DEFAULT_LANG),
+):
+    url_prefix = payload.url_prefix.strip()
+    if not url_prefix.startswith(("http://", "https://")):
+        raise HTTPException(400, i18n.get_message("web_allowlist_invalid_url", x_lang))
+    reason = payload.reason.strip()
+    if not reason:
+        raise HTTPException(400, i18n.get_message("web_allowlist_reason_required", x_lang))
+    entry = web_allowlist.add_entry(
+        url_prefix=url_prefix,
+        label=payload.label.strip() or url_prefix,
+        reason=reason,
+        added_by=_user,
+        added_at=datetime.now(timezone.utc).isoformat(),
+        max_pages=payload.max_pages,
+    )
+    threading.Thread(
+        target=_index_new_web_allowlist_entry,
+        args=(entry["id"], url_prefix, payload.max_pages),
+        daemon=True,
+    ).start()
+    return WebAllowlistEntryOut(page_count=0, needs_review=False, **entry)
+
+
+@app.post("/api/web-allowlist/{entry_id}/mark-reviewed", response_model=WebAllowlistEntryOut)
+def mark_web_allowlist_entry_reviewed(
+    entry_id: str,
+    _user: str = Depends(require_role(users.QUELLEN_PFLEGER)),
+    x_lang: str = Header(default=i18n.DEFAULT_LANG),
+):
+    entry = web_allowlist.mark_reviewed(entry_id, datetime.now(timezone.utc).isoformat())
+    if entry is None:
+        raise HTTPException(404, i18n.get_message("web_allowlist_entry_not_found", x_lang))
+    return WebAllowlistEntryOut(
+        page_count=web_index.active_page_count_for_entry(entry_id), needs_review=False, **entry
+    )
+
+
+@app.delete("/api/web-allowlist/{entry_id}", status_code=204)
+def delete_web_allowlist_entry(
+    entry_id: str,
+    _user: str = Depends(require_role(users.QUELLEN_PFLEGER)),
+    x_lang: str = Header(default=i18n.DEFAULT_LANG),
+):
+    if not web_allowlist.delete_entry(entry_id):
+        raise HTTPException(404, i18n.get_message("web_allowlist_entry_not_found", x_lang))
+    # Gecrawlte Unterseiten UND ihre Chunks in der separaten Chroma-Collection
+    # gehören zu genau diesem Eintrag - ohne diese Aufräumung blieben nach
+    # dem Entfernen einer Freigabe verwaiste Web-Fallback-Treffer bestehen.
+    for page_id in web_index.delete_pages_for_entry(entry_id):
+        vectorstore.delete_web_page_chunks(page_id)
+    web_candidates.delete_candidates_for_entry(entry_id)
+
+
+# Nutzerwunsch: einzelne indizierte Seiten (z.B. werbliche Inhalte innerhalb
+# einer sonst passenden Website) sollen gezielt vom Fallback ausgeschlossen
+# werden können, ohne die ganze Freigabe zu löschen - Ausklapp-Liste je
+# Eintrag in import.js. Ausschluss/Wiederaufnahme löscht/erzeugt KEINE
+# Chunks neu (siehe vectorstore.query_web), sondern setzt nur ein Flag -
+# beides ist damit sofort wirksam.
+@app.get("/api/web-allowlist/{entry_id}/pages", response_model=list[WebIndexPageOut])
+def list_web_allowlist_pages(
+    entry_id: str,
+    _user: str = Depends(require_role(users.QUELLEN_PFLEGER)),
+    x_lang: str = Header(default=i18n.DEFAULT_LANG),
+):
+    if web_allowlist.get_entry(entry_id) is None:
+        raise HTTPException(404, i18n.get_message("web_allowlist_entry_not_found", x_lang))
+    return [
+        WebIndexPageOut(id=page_id, **page)
+        for page_id, page in web_index.pages_for_entry(entry_id).items()
+    ]
+
+
+@app.post("/api/web-allowlist/{entry_id}/pages/{page_id}/exclude", response_model=WebIndexPageOut)
+def exclude_web_allowlist_page(
+    entry_id: str,
+    page_id: str,
+    _user: str = Depends(require_role(users.QUELLEN_PFLEGER)),
+    x_lang: str = Header(default=i18n.DEFAULT_LANG),
+):
+    page = web_index.get_page(page_id)
+    if page is None or page.get("allowlist_entry_id") != entry_id:
+        raise HTTPException(404, i18n.get_message("web_allowlist_page_not_found", x_lang))
+    updated = web_index.set_excluded(page_id, True)
+    audit.log_action(
+        _user, "web_page_excluded", "web_page", page_id, page.get("title") or page.get("url")
+    )
+    return WebIndexPageOut(**updated)
+
+
+@app.post("/api/web-allowlist/{entry_id}/pages/{page_id}/include", response_model=WebIndexPageOut)
+def include_web_allowlist_page(
+    entry_id: str,
+    page_id: str,
+    _user: str = Depends(require_role(users.QUELLEN_PFLEGER)),
+    x_lang: str = Header(default=i18n.DEFAULT_LANG),
+):
+    page = web_index.get_page(page_id)
+    if page is None or page.get("allowlist_entry_id") != entry_id:
+        raise HTTPException(404, i18n.get_message("web_allowlist_page_not_found", x_lang))
+    updated = web_index.set_excluded(page_id, False)
+    audit.log_action(
+        _user, "web_page_included", "web_page", page_id, page.get("title") or page.get("url")
+    )
+    return WebIndexPageOut(**updated)
+
+
+# Nutzerwunsch (Positivselektion): findet index_entry() zu wenige eindeutig
+# zuordenbare Seiten (siehe app/web_crawler.py:POSITIVE_SELECTION_MAX_
+# DISCOVERED), werden stattdessen gegen den bestehenden Quellenbestand
+# bewertete Kandidaten abgelegt (WebAllowlistEntryOut.selection_mode ==
+# "positiv") - Quellen-Pfleger:innen wählen hier gezielt einzelne Seiten
+# zur Aufnahme aus, statt wie sonst üblich bereits indizierte Seiten zu
+# bereinigen. Absteigend nach Relevanz sortiert, damit die vielversprechend-
+# sten Vorschläge zuerst erscheinen (Frontend paginiert clientseitig in
+# 10er-Schritten aus dieser vollständigen Liste).
+@app.get("/api/web-allowlist/{entry_id}/candidates", response_model=list[WebCandidateOut])
+def list_web_allowlist_candidates(
+    entry_id: str,
+    _user: str = Depends(require_role(users.QUELLEN_PFLEGER)),
+    x_lang: str = Header(default=i18n.DEFAULT_LANG),
+):
+    if web_allowlist.get_entry(entry_id) is None:
+        raise HTTPException(404, i18n.get_message("web_allowlist_entry_not_found", x_lang))
+    candidates = [
+        WebCandidateOut(id=candidate_id, **candidate)
+        for candidate_id, candidate in web_candidates.candidates_for_entry(entry_id).items()
+    ]
+    candidates.sort(key=lambda c: c.relevance_score, reverse=True)
+    return candidates
+
+
+@app.post(
+    "/api/web-allowlist/{entry_id}/candidates/{candidate_id}/approve", response_model=WebIndexPageOut
+)
+def approve_web_allowlist_candidate(
+    entry_id: str,
+    candidate_id: str,
+    _user: str = Depends(require_role(users.QUELLEN_PFLEGER)),
+    x_lang: str = Header(default=i18n.DEFAULT_LANG),
+):
+    candidate = web_candidates.get_candidate(candidate_id)
+    if candidate is None or candidate.get("allowlist_entry_id") != entry_id:
+        raise HTTPException(404, i18n.get_message("web_allowlist_candidate_not_found", x_lang))
+    if not web_crawler.index_approved_candidate(entry_id, candidate["url"]):
+        raise HTTPException(502, i18n.get_message("web_allowlist_candidate_index_failed", x_lang))
+    web_candidates.delete_candidate(candidate_id)
+    audit.log_action(_user, "web_candidate_approved", "web_page", candidate_id, candidate.get("title"))
+    page_id, page = next(
+        (pid, p)
+        for pid, p in web_index.pages_for_entry(entry_id).items()
+        if p["url"] == candidate["url"]
+    )
+    return WebIndexPageOut(id=page_id, **page)
+
+
+@app.post(
+    "/api/web-allowlist/{entry_id}/candidates/{candidate_id}/reject", response_model=WebCandidateOut
+)
+def reject_web_allowlist_candidate(
+    entry_id: str,
+    candidate_id: str,
+    _user: str = Depends(require_role(users.QUELLEN_PFLEGER)),
+    x_lang: str = Header(default=i18n.DEFAULT_LANG),
+):
+    candidate = web_candidates.get_candidate(candidate_id)
+    if candidate is None or candidate.get("allowlist_entry_id") != entry_id:
+        raise HTTPException(404, i18n.get_message("web_allowlist_candidate_not_found", x_lang))
+    updated = web_candidates.set_status(candidate_id, "rejected")
+    audit.log_action(_user, "web_candidate_rejected", "web_page", candidate_id, candidate.get("title"))
+    return WebCandidateOut(**updated)
+
+
 @app.get("/api/sources/{source_id}/pdf")
 def get_source_pdf(
     source_id: str,
@@ -2346,6 +2698,26 @@ RELEVANCE_MAX_ADJUSTMENT = 0.15
 # ohne UI.
 ASK_HISTORY_MAX_TURNS = 3
 
+# Backlog: LLM/Internet-Fallback bei dünner Quellenlage - ergänzt die
+# kuratierten Treffer automatisch (kein Opt-in, Nutzer:innen merken nichts
+# davon) um vorab indizierte Web-Fallback-Chunks (siehe app/web_crawler.py).
+# Bewusst NUR eine Vektorsuche gegen die bereits fertig indizierte Collection
+# (vectorstore.query_web) - kein Live-Fetch zur Antwortzeit, damit sich die
+# Antwortzeit dadurch nicht spürbar verändert.
+#
+# Nutzerfeedback (2026-08-15, realer Fall): ursprünglich wurde diese Suche
+# nur ausgelöst, wenn die kuratierten Treffer laut einem Distanz-Schwellwert
+# "dünn" waren. Bei diesem thematisch dicht gefüllten Korpus (Organisations-
+# entwicklung/Beta-Kodex) lag aber praktisch immer IRGENDein kuratierter
+# Treffer nah genug, selbst wenn er das eigentliche Thema der Frage gar
+# nicht behandelte - der Fallback griff dadurch fast nie, obwohl die
+# freigegebene Website die passende Aussage enthielt. Die Suche läuft
+# deshalb jetzt IMMER (rein lokal, kostet keine spürbare Zeit) und die
+# Web-Treffer fließen direkt mit ins Reranking (_rerank_by_relevance) ein -
+# ein wirklich einschlägiger Web-Treffer kann so mehrere nur thematisch
+# benachbarte kuratierte Treffer verdrängen, statt nie eine Chance zu
+# bekommen.
+
 
 def _rerank_by_relevance(
     ids: list[str],
@@ -2513,14 +2885,30 @@ def ask(question: QuestionIn, request: Request, x_lang: str = Header(default=i18
         query_text = f"{history[-1]['question']} {question.question}"
 
     query_embedding = embeddings.embed_query(query_text)
-    results = vectorstore.query(
+    curated_hits = vectorstore.query(
         query_embedding, top_k=question.top_k * RELEVANCE_OVERFETCH_MULTIPLIER
     )
+    # Immer mitabgefragt, siehe Kommentar oben - rein lokal, keine spürbare
+    # Zeitkosten. exclude_page_ids berücksichtigt manuell ausgeschlossene
+    # Einzelseiten (siehe app/web_index.py:set_excluded).
+    web_hits = vectorstore.query_web(
+        query_embedding,
+        top_k=question.top_k * RELEVANCE_OVERFETCH_MULTIPLIER,
+        exclude_page_ids=web_index.excluded_page_ids(),
+    )
 
-    ids = results["ids"][0]
-    documents = results["documents"][0]
-    metadatas = results["metadatas"][0]
-    distances = results["distances"][0]
+    ids = curated_hits["ids"][0] + web_hits["ids"][0]
+    documents = curated_hits["documents"][0] + web_hits["documents"][0]
+    distances = curated_hits["distances"][0] + web_hits["distances"][0]
+    metadatas = list(curated_hits["metadatas"][0])
+    for meta in web_hits["metadatas"][0]:
+        # _rerank_by_relevance liest Quellen-Metadaten einheitlich über
+        # "source_id" - Web-Treffer tragen stattdessen "page_id" (siehe
+        # app/web_crawler.py). sources.get(page_id) findet dort naturgemäß
+        # nichts, relevance_factor() fällt dann auf den neutralen Default-
+        # Score 5 zurück - Web-Treffer werden also rein nach (Chroma-)
+        # Distanz einsortiert, ohne den kuratierten Relevanz-Score-Bonus.
+        metadatas.append({**meta, "source_id": meta["page_id"], "is_web_fallback": True})
 
     if not ids:
         raise HTTPException(400, i18n.get_message("no_matching_chunks", x_lang))
@@ -2535,28 +2923,38 @@ def ask(question: QuestionIn, request: Request, x_lang: str = Header(default=i18
     chunk_refs = []
     llm_chunks = []
     for chunk_id, doc, meta in zip(ids, documents, metadatas):
+        is_web = bool(meta.get("is_web_fallback"))
         # Rückwärtskompatibel lesen: alte, noch nicht neu gespeicherte Chunks
         # haben noch den alten skalaren "author"-Schlüssel statt der Liste.
+        # Web-Treffer tragen seit dem Autor:innen-Fix in app/web_crawler.py
+        # ebenfalls "authors", sofern trafilatura beim Crawlen welche
+        # extrahieren konnte - sonst (Feld fehlt in den Chunk-Metadaten)
+        # bleibt es bei einer leeren Liste, kein gesonderter Fall nötig.
         authors_list = meta.get("authors") or ([meta["author"]] if meta.get("author") else [])
+        # Web-Chunk-Metadaten (siehe app/web_crawler.py) enthalten kein
+        # "date" - direkter []-Zugriff würde dort mit KeyError abbrechen.
+        date = None if is_web else (meta["date"] or None)
         chunk_refs.append(
             ChunkRef(
                 chunk_id=chunk_id,
                 source_id=meta["source_id"],
                 title=meta["title"],
                 authors=authors_list,
-                date=meta["date"] or None,
+                date=date,
                 url=meta["url"] or None,
                 listen_url=meta.get("listen_url") or None,
                 position=meta["position"],
                 text=doc,
                 summary=sources.get(meta["source_id"], {}).get(f"summary_{summary_lang}") or None,
+                is_web_fallback=is_web,
+                allowlist_entry_id=meta.get("allowlist_entry_id") if is_web else None,
             )
         )
         llm_chunks.append(
             {
                 "title": meta["title"],
                 "author": ", ".join(authors_list) or unknown_label,
-                "date": meta["date"] or unknown_label,
+                "date": date or unknown_label,
                 "text": doc,
             }
         )

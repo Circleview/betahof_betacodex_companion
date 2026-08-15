@@ -90,3 +90,40 @@ def test_get_collection_is_thread_safe_and_opens_only_once(tmp_path, monkeypatch
         t.join()
 
     assert call_count["n"] == 1
+
+
+def _reset_web_vectorstore(tmp_path, monkeypatch):
+    monkeypatch.setattr(vectorstore, "DB_PATH", tmp_path / "chroma")
+    monkeypatch.setattr(vectorstore, "_client", None)
+    monkeypatch.setattr(vectorstore, "_web_collection", None)
+
+
+def test_query_web_excludes_given_page_ids(tmp_path, monkeypatch):
+    _reset_web_vectorstore(tmp_path, monkeypatch)
+    vectorstore.add_web_chunks(
+        ["p1::0", "p2::0"],
+        ["Chunk von Seite 1", "Chunk von Seite 2"],
+        [[1.0, 0.0, 0.0], [1.0, 0.0, 0.0]],
+        [
+            {"page_id": "p1", "url": "https://a.org/1", "title": "Seite 1", "position": 0},
+            {"page_id": "p2", "url": "https://a.org/2", "title": "Seite 2", "position": 0},
+        ],
+    )
+
+    result = vectorstore.query_web([1.0, 0.0, 0.0], top_k=5, exclude_page_ids={"p1"})
+
+    assert result["ids"][0] == ["p2::0"]
+
+
+def test_query_web_without_exclusions_returns_everything(tmp_path, monkeypatch):
+    _reset_web_vectorstore(tmp_path, monkeypatch)
+    vectorstore.add_web_chunks(
+        ["p1::0"],
+        ["Chunk"],
+        [[1.0, 0.0, 0.0]],
+        [{"page_id": "p1", "url": "https://a.org", "title": "T", "position": 0}],
+    )
+
+    result = vectorstore.query_web([1.0, 0.0, 0.0], top_k=5)
+
+    assert result["ids"][0] == ["p1::0"]

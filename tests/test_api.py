@@ -25,6 +25,10 @@ from app import (
     tts,
     users,
     vectorstore,
+    web_allowlist,
+    web_candidates,
+    web_crawler,
+    web_index,
 )
 from app import main as main_module
 
@@ -79,6 +83,28 @@ def client(tmp_path, monkeypatch):
     monkeypatch.setattr(vectorstore, "DB_PATH", tmp_path / "chroma")
     monkeypatch.setattr(vectorstore, "_client", None)
     monkeypatch.setattr(vectorstore, "_collection", None)
+    # Backlog: LLM/Internet-Fallback bei dünner Quellenlage - eigene
+    # Collection, eigener Cache-Slot (siehe app/vectorstore.py), muss
+    # zwischen Tests genauso zurückgesetzt werden wie die Haupt-Collection.
+    monkeypatch.setattr(vectorstore, "_web_collection", None)
+    monkeypatch.setattr(web_allowlist, "WEB_ALLOWLIST_FILE", tmp_path / "web_allowlist.json")
+    monkeypatch.setattr(web_index, "WEB_INDEX_FILE", tmp_path / "web_index.json")
+    monkeypatch.setattr(web_candidates, "WEB_CANDIDATES_FILE", tmp_path / "web_candidates.json")
+    # POST /api/web-allowlist stößt seit dem Sofort-Crawl-Fix einen echten
+    # Hintergrund-Thread an (_index_new_web_allowlist_entry in app/main.py).
+    # Der eigentliche Crawl läuft seit dem Unterprozess-Fix (manche Websites
+    # hängen sonst unbegrenzt in einem Python-Thread, siehe app/web_crawler.py-
+    # Kommentar) nicht mehr in-process, sondern über
+    # main_module._run_web_crawl_subprocess() - genau DAS wird hier gemockt,
+    # nicht mehr web_crawler.index_entry direkt (das läuft ja jetzt im
+    # Kindprozess, den ein Mock von index_entry im Testprozess gar nicht mehr
+    # erreichen würde). Ohne dieses Mock würde JEDER Test, der einen
+    # Allowlist-Eintrag über die API anlegt, einen echten Unterprozess mit
+    # echter Netzwerkanfrage auslösen - langsam, flaky und im Extremfall ein
+    # Risiko für echte Produktionsdaten, genau wie beim Audio-Transkriptions-
+    # Vorfall vom 2026-07-28 (siehe Kommentar weiter unten). Tests, die den
+    # Sofort-Crawl selbst gezielt prüfen, überschreiben dieses Mock lokal.
+    monkeypatch.setattr(main_module, "_run_web_crawl_subprocess", lambda entry_id, url_prefix, max_pages: 0)
 
     monkeypatch.setattr(authors, "AUTHORS_FILE", tmp_path / "authors.json")
     monkeypatch.setattr(author_profiles, "AUTHOR_PROFILES_FILE", tmp_path / "author_profiles.json")
@@ -3981,6 +4007,726 @@ def test_broken_links_count_ignores_deleted_sources(client):
 def test_broken_links_count_requires_pfleger_role(anon_client):
     response = anon_client.get("/api/sources/broken-links-count")
     assert response.status_code == 403
+
+
+# Backlog: LLM/Internet-Fallback bei dünner Quellenlage - CRUD für die
+# freigegebenen externen Domains/Pfade (app/web_allowlist.py) sowie die
+# automatische Ergänzung von /api/ask bei dünner kuratierter Trefferlage.
+
+
+def test_add_web_allowlist_entry_creates_reviewed_entry(client):
+    response = client.post(
+        "/api/web-allowlist",
+        json={
+            "url_prefix": "https://beispiel.org/blog",
+            "label": "Beispiel-Blog",
+            "reason": "BetaCodex-nahe Redaktion.",
+            "max_pages": 30,
+        },
+    )
+
+    assert response.status_code == 201
+    data = response.json()
+    assert data["url_prefix"] == "https://beispiel.org/blog"
+    assert data["label"] == "Beispiel-Blog"
+    assert data["reason"] == "BetaCodex-nahe Redaktion."
+    assert data["max_pages"] == 30
+    assert data["added_by"] == PFLEGER
+    assert data["reviewed_at"] == data["added_at"]
+    assert data["page_count"] == 0
+    assert data["needs_review"] is False
+
+
+def test_add_web_allowlist_entry_triggers_immediate_background_crawl(client, monkeypatch):
+    calls = []
+    done = threading.Event()
+
+    def fake_run_web_crawl_subprocess(entry_id, url_prefix, max_pages):
+        calls.append((entry_id, url_prefix, max_pages))
+        done.set()
+        return 0
+
+    monkeypatch.setattr(main_module, "_run_web_crawl_subprocess", fake_run_web_crawl_subprocess)
+
+    response = client.post(
+        "/api/web-allowlist",
+        json={
+            "url_prefix": "https://beispiel.org/blog",
+            "label": "Beispiel-Blog",
+            "reason": "BetaCodex-nahe Redaktion.",
+            "max_pages": 30,
+        },
+    )
+    entry_id = response.json()["id"]
+
+    assert done.wait(timeout=5), "Sofort-Crawl wurde nicht im Hintergrund ausgelöst"
+    assert calls == [(entry_id, "https://beispiel.org/blog", 30)]
+
+
+def test_add_web_allowlist_entry_rejects_invalid_url(client):
+    response = client.post(
+        "/api/web-allowlist", json={"url_prefix": "not-a-url", "label": "", "reason": "Grund"}
+    )
+    assert response.status_code == 400
+
+
+def test_add_web_allowlist_entry_requires_reason(client):
+    response = client.post(
+        "/api/web-allowlist",
+        json={"url_prefix": "https://beispiel.org", "label": "", "reason": "   "},
+    )
+    assert response.status_code == 400
+
+
+def test_add_web_allowlist_entry_defaults_label_to_url_prefix_when_blank(client):
+    response = client.post(
+        "/api/web-allowlist",
+        json={"url_prefix": "https://beispiel.org", "label": "  ", "reason": "Grund"},
+    )
+    assert response.json()["label"] == "https://beispiel.org"
+
+
+def test_web_allowlist_list_requires_pfleger_role(anon_client):
+    response = anon_client.get("/api/web-allowlist")
+    assert response.status_code == 403
+
+
+def test_web_allowlist_add_requires_pfleger_role(anon_client):
+    response = anon_client.post(
+        "/api/web-allowlist",
+        json={"url_prefix": "https://beispiel.org", "label": "", "reason": "Grund"},
+    )
+    assert response.status_code == 403
+
+
+def test_list_web_allowlist_entries_flags_stale_review_as_needing_review(client):
+    web_allowlist.add_entry(
+        url_prefix="https://beispiel.org",
+        label="Beispiel",
+        reason="Grund",
+        added_by=PFLEGER,
+        added_at="2020-01-01T00:00:00+00:00",
+    )
+
+    response = client.get("/api/web-allowlist")
+
+    assert response.json()[0]["needs_review"] is True
+
+
+def test_list_web_allowlist_entries_recent_review_does_not_need_review(client):
+    client.post(
+        "/api/web-allowlist",
+        json={"url_prefix": "https://beispiel.org", "label": "", "reason": "Grund"},
+    )
+
+    response = client.get("/api/web-allowlist")
+
+    assert response.json()[0]["needs_review"] is False
+
+
+def test_list_web_allowlist_entries_reports_indexed_page_count(client):
+    create_res = client.post(
+        "/api/web-allowlist",
+        json={"url_prefix": "https://beispiel.org", "label": "", "reason": "Grund"},
+    )
+    entry_id = create_res.json()["id"]
+    web_index.upsert_page(
+        "page-1",
+        allowlist_entry_id=entry_id,
+        url="https://beispiel.org/a",
+        title="A",
+        indexed_at="2026-01-01T00:00:00+00:00",
+        chunk_count=3,
+    )
+
+    response = client.get("/api/web-allowlist")
+
+    assert response.json()[0]["page_count"] == 1
+
+
+def test_list_web_allowlist_entries_page_count_excludes_excluded_pages(client):
+    # Nutzerwunsch: schließt eine Pfleger:in Seiten aus, soll die angezeigte
+    # Seitenzahl entsprechend sinken (40 Seiten, 20 ausgeschlossen -> 20),
+    # nicht weiterhin die Gesamtzahl aller je gecrawlten Seiten zeigen.
+    create_res = client.post(
+        "/api/web-allowlist",
+        json={"url_prefix": "https://beispiel.org", "label": "", "reason": "Grund"},
+    )
+    entry_id = create_res.json()["id"]
+    web_index.upsert_page(
+        "page-1",
+        allowlist_entry_id=entry_id,
+        url="https://beispiel.org/a",
+        title="A",
+        indexed_at="2026-01-01T00:00:00+00:00",
+        chunk_count=1,
+    )
+    web_index.upsert_page(
+        "page-2",
+        allowlist_entry_id=entry_id,
+        url="https://beispiel.org/b",
+        title="B",
+        indexed_at="2026-01-01T00:00:00+00:00",
+        chunk_count=1,
+    )
+    web_index.set_excluded("page-2", True)
+
+    response = client.get("/api/web-allowlist")
+
+    assert response.json()[0]["page_count"] == 1
+
+
+def test_mark_web_allowlist_entry_reviewed_updates_reviewed_at(client):
+    create_res = client.post(
+        "/api/web-allowlist",
+        json={"url_prefix": "https://beispiel.org", "label": "", "reason": "Grund"},
+    )
+    entry_id = create_res.json()["id"]
+    raw = json.loads(web_allowlist.WEB_ALLOWLIST_FILE.read_text())
+    raw[entry_id]["reviewed_at"] = "2020-01-01T00:00:00+00:00"
+    web_allowlist.WEB_ALLOWLIST_FILE.write_text(json.dumps(raw))
+
+    response = client.post(f"/api/web-allowlist/{entry_id}/mark-reviewed")
+
+    assert response.status_code == 200
+    assert response.json()["needs_review"] is False
+    assert response.json()["reviewed_at"] != "2020-01-01T00:00:00+00:00"
+
+
+def test_mark_web_allowlist_entry_reviewed_returns_404_for_unknown_id(client):
+    response = client.post("/api/web-allowlist/unknown-id/mark-reviewed")
+    assert response.status_code == 404
+
+
+def test_delete_web_allowlist_entry_removes_it_and_its_indexed_pages(client):
+    create_res = client.post(
+        "/api/web-allowlist",
+        json={"url_prefix": "https://beispiel.org", "label": "", "reason": "Grund"},
+    )
+    entry_id = create_res.json()["id"]
+    web_index.upsert_page(
+        "page-1",
+        allowlist_entry_id=entry_id,
+        url="https://beispiel.org/a",
+        title="A",
+        indexed_at="2026-01-01T00:00:00+00:00",
+        chunk_count=1,
+    )
+    vectorstore.add_web_chunks(
+        ["page-1::0"],
+        ["Chunk-Text"],
+        [[1.0, 0.0]],
+        [
+            {
+                "page_id": "page-1",
+                "allowlist_entry_id": entry_id,
+                "url": "https://beispiel.org/a",
+                "title": "A",
+                "position": 0,
+            }
+        ],
+    )
+
+    response = client.delete(f"/api/web-allowlist/{entry_id}")
+
+    assert response.status_code == 204
+    assert web_allowlist.list_entries() == {}
+    assert web_index.pages_for_entry(entry_id) == {}
+    remaining = vectorstore.query_web([1.0, 0.0], top_k=5)
+    assert remaining["ids"][0] == []
+
+
+def test_delete_web_allowlist_entry_returns_404_for_unknown_id(client):
+    response = client.delete("/api/web-allowlist/unknown-id")
+    assert response.status_code == 404
+
+
+def _create_web_allowlist_entry_with_page(client, page_id="page-1", excluded=False):
+    create_res = client.post(
+        "/api/web-allowlist",
+        json={"url_prefix": "https://beispiel.org", "label": "", "reason": "Grund"},
+    )
+    entry_id = create_res.json()["id"]
+    web_index.upsert_page(
+        page_id,
+        allowlist_entry_id=entry_id,
+        url="https://beispiel.org/a",
+        title="Seite A",
+        date="2026-02-01",
+        indexed_at="2026-01-01T00:00:00+00:00",
+        chunk_count=1,
+    )
+    if excluded:
+        web_index.set_excluded(page_id, True)
+    return entry_id
+
+
+def test_list_web_allowlist_pages_returns_pages_for_entry(client):
+    entry_id = _create_web_allowlist_entry_with_page(client)
+
+    response = client.get(f"/api/web-allowlist/{entry_id}/pages")
+
+    assert response.status_code == 200
+    pages = response.json()
+    assert len(pages) == 1
+    assert pages[0]["id"] == "page-1"
+    assert pages[0]["title"] == "Seite A"
+    assert pages[0]["date"] == "2026-02-01"
+    assert pages[0]["excluded"] is False
+
+
+def test_list_web_allowlist_pages_returns_404_for_unknown_entry(client):
+    response = client.get("/api/web-allowlist/unknown-entry/pages")
+    assert response.status_code == 404
+
+
+def test_list_web_allowlist_pages_requires_pfleger_role(anon_client):
+    response = anon_client.get("/api/web-allowlist/unknown-entry/pages")
+    assert response.status_code == 403
+
+
+def test_exclude_web_allowlist_page_sets_excluded_and_logs_audit_entry(client):
+    entry_id = _create_web_allowlist_entry_with_page(client)
+
+    response = client.post(f"/api/web-allowlist/{entry_id}/pages/page-1/exclude")
+
+    assert response.status_code == 200
+    assert response.json()["excluded"] is True
+    assert web_index.get_page("page-1")["excluded"] is True
+    entry = next(e for e in client.get("/api/audit-log").json() if e["action"] == "web_page_excluded")
+    assert entry["target_label"] == "Seite A"
+
+
+def test_include_web_allowlist_page_clears_excluded_and_logs_audit_entry(client):
+    entry_id = _create_web_allowlist_entry_with_page(client, excluded=True)
+
+    response = client.post(f"/api/web-allowlist/{entry_id}/pages/page-1/include")
+
+    assert response.status_code == 200
+    assert response.json()["excluded"] is False
+    assert web_index.get_page("page-1")["excluded"] is False
+    assert any(e["action"] == "web_page_included" for e in client.get("/api/audit-log").json())
+
+
+def test_exclude_web_allowlist_page_returns_404_for_unknown_page(client):
+    entry_id = _create_web_allowlist_entry_with_page(client)
+    response = client.post(f"/api/web-allowlist/{entry_id}/pages/unknown-page/exclude")
+    assert response.status_code == 404
+
+
+def test_exclude_web_allowlist_page_returns_404_when_page_belongs_to_other_entry(client):
+    entry_id = _create_web_allowlist_entry_with_page(client)
+    other_entry_id = client.post(
+        "/api/web-allowlist",
+        json={"url_prefix": "https://andere.org", "label": "", "reason": "Grund"},
+    ).json()["id"]
+
+    response = client.post(f"/api/web-allowlist/{other_entry_id}/pages/page-1/exclude")
+
+    assert response.status_code == 404
+    assert web_index.get_page("page-1")["excluded"] is False
+
+
+def test_add_web_allowlist_entry_defaults_selection_mode_to_negativ(client):
+    response = client.post(
+        "/api/web-allowlist",
+        json={"url_prefix": "https://beispiel.org", "label": "", "reason": "Grund"},
+    )
+    assert response.json()["selection_mode"] == "negativ"
+
+
+def _create_web_allowlist_entry_with_candidate(client, candidate_score=0.5):
+    create_res = client.post(
+        "/api/web-allowlist",
+        json={"url_prefix": "https://beispiel.org", "label": "", "reason": "Grund"},
+    )
+    entry_id = create_res.json()["id"]
+    web_candidates.upsert_candidates(
+        entry_id,
+        [
+            {
+                "url": "https://beispiel.org/kandidat",
+                "title": "Kandidaten-Seite",
+                "snippet": "Ein kurzer Textausschnitt.",
+                "relevance_score": candidate_score,
+            }
+        ],
+    )
+    candidate_id = next(iter(web_candidates.candidates_for_entry(entry_id)))
+    return entry_id, candidate_id
+
+
+def test_list_web_allowlist_candidates_returns_sorted_by_relevance_desc(client):
+    entry_id, _ = _create_web_allowlist_entry_with_candidate(client, candidate_score=0.3)
+    web_candidates.upsert_candidates(
+        entry_id,
+        [
+            {
+                "url": "https://beispiel.org/besser",
+                "title": "Besserer Kandidat",
+                "snippet": "Text.",
+                "relevance_score": 0.9,
+            }
+        ],
+    )
+
+    response = client.get(f"/api/web-allowlist/{entry_id}/candidates")
+
+    assert response.status_code == 200
+    titles = [c["title"] for c in response.json()]
+    assert titles == ["Besserer Kandidat", "Kandidaten-Seite"]
+
+
+def test_list_web_allowlist_candidates_returns_404_for_unknown_entry(client):
+    response = client.get("/api/web-allowlist/unknown-entry/candidates")
+    assert response.status_code == 404
+
+
+def test_list_web_allowlist_candidates_requires_pfleger_role(anon_client):
+    response = anon_client.get("/api/web-allowlist/unknown-entry/candidates")
+    assert response.status_code == 403
+
+
+def test_approve_web_allowlist_candidate_indexes_page_and_logs_audit_entry(client, monkeypatch):
+    entry_id, candidate_id = _create_web_allowlist_entry_with_candidate(client)
+    monkeypatch.setattr(
+        web_crawler, "index_approved_candidate", lambda entry_id, url: web_index.upsert_page(
+            "approved-page",
+            allowlist_entry_id=entry_id,
+            url=url,
+            title="Kandidaten-Seite",
+            indexed_at="2026-01-01T00:00:00+00:00",
+            chunk_count=1,
+        ) or True,
+    )
+
+    response = client.post(f"/api/web-allowlist/{entry_id}/candidates/{candidate_id}/approve")
+
+    assert response.status_code == 200
+    assert response.json()["url"] == "https://beispiel.org/kandidat"
+    assert web_candidates.get_candidate(candidate_id) is None
+    entry = next(e for e in client.get("/api/audit-log").json() if e["action"] == "web_candidate_approved")
+    assert entry["target_label"] == "Kandidaten-Seite"
+
+
+def test_approve_web_allowlist_candidate_returns_502_on_indexing_failure(client, monkeypatch):
+    entry_id, candidate_id = _create_web_allowlist_entry_with_candidate(client)
+    monkeypatch.setattr(web_crawler, "index_approved_candidate", lambda entry_id, url: False)
+
+    response = client.post(f"/api/web-allowlist/{entry_id}/candidates/{candidate_id}/approve")
+
+    assert response.status_code == 502
+    assert web_candidates.get_candidate(candidate_id) is not None
+
+
+def test_approve_web_allowlist_candidate_returns_404_for_unknown_candidate(client):
+    entry_id, _ = _create_web_allowlist_entry_with_candidate(client)
+    response = client.post(f"/api/web-allowlist/{entry_id}/candidates/unknown-id/approve")
+    assert response.status_code == 404
+
+
+def test_approve_web_allowlist_candidate_returns_404_when_candidate_belongs_to_other_entry(client):
+    entry_id, candidate_id = _create_web_allowlist_entry_with_candidate(client)
+    other_entry_id = client.post(
+        "/api/web-allowlist",
+        json={"url_prefix": "https://andere.org", "label": "", "reason": "Grund"},
+    ).json()["id"]
+
+    response = client.post(f"/api/web-allowlist/{other_entry_id}/candidates/{candidate_id}/approve")
+
+    assert response.status_code == 404
+
+
+def test_reject_web_allowlist_candidate_marks_rejected_and_logs_audit_entry(client):
+    entry_id, candidate_id = _create_web_allowlist_entry_with_candidate(client)
+
+    response = client.post(f"/api/web-allowlist/{entry_id}/candidates/{candidate_id}/reject")
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "rejected"
+    assert web_candidates.candidates_for_entry(entry_id) == {}
+    assert any(e["action"] == "web_candidate_rejected" for e in client.get("/api/audit-log").json())
+
+
+def test_reject_web_allowlist_candidate_returns_404_for_unknown_candidate(client):
+    entry_id, _ = _create_web_allowlist_entry_with_candidate(client)
+    response = client.post(f"/api/web-allowlist/{entry_id}/candidates/unknown-id/reject")
+    assert response.status_code == 404
+
+
+def test_delete_web_allowlist_entry_removes_its_candidates(client):
+    entry_id, candidate_id = _create_web_allowlist_entry_with_candidate(client)
+
+    response = client.delete(f"/api/web-allowlist/{entry_id}")
+
+    assert response.status_code == 204
+    assert web_candidates.get_candidate(candidate_id) is None
+
+
+def test_ask_includes_web_fallback_chunk_alongside_curated_results(client):
+    # Nutzerfeedback (2026-08-15): der Web-Fallback wird seither IMMER
+    # mitabgefragt (nicht mehr nur bei "dünner" kuratierter Lage) und fließt
+    # direkt mit ins Reranking ein - hier passt beides (top_k=5) locker
+    # zusammen rein, unabhängig von der genauen Distanz.
+    client.post("/api/sources", json={"title": "Kuratierte Quelle", "text": "Kurzer Text zur Organisation."})
+    vectorstore.add_web_chunks(
+        ["page-1::0"],
+        ["Ergänzender Web-Text zur Führung in Organisationen."],
+        [[1.0, 0.0]],
+        [
+            {
+                "page_id": "page-1",
+                "allowlist_entry_id": "entry-1",
+                "url": "https://beispiel.org/blog/artikel",
+                "title": "Web-Artikel",
+                "position": 0,
+            }
+        ],
+    )
+
+    response = client.post("/api/ask", json={"question": "Wie funktioniert Führung?"})
+
+    result = ask_result(response)
+    web_sources = [s for s in result["sources"] if s["is_web_fallback"]]
+    assert len(web_sources) == 1
+    assert web_sources[0]["title"] == "Web-Artikel"
+    assert web_sources[0]["url"] == "https://beispiel.org/blog/artikel"
+    assert web_sources[0]["authors"] == []
+    # Nutzerwunsch: Quellen-Pfleger:innen sollen eine unpassende Web-
+    # Fallback-Quelle direkt aus der Konversationsansicht ausschließen
+    # können (siehe question.js: appendExcludeWebPageButton) - dafür muss
+    # die zugehörige web_allowlist-Eintrags-ID mitgeliefert werden.
+    assert web_sources[0]["allowlist_entry_id"] == "entry-1"
+    curated_sources = [s for s in result["sources"] if not s["is_web_fallback"]]
+    assert curated_sources[0]["allowlist_entry_id"] is None
+
+
+def test_ask_omits_excluded_web_fallback_page(client):
+    client.post("/api/sources", json={"title": "Kuratierte Quelle", "text": "Kurzer Text zur Organisation."})
+    web_index.upsert_page(
+        "page-1",
+        allowlist_entry_id="entry-1",
+        url="https://beispiel.org/blog/artikel",
+        title="Web-Artikel",
+        indexed_at="2026-01-01T00:00:00+00:00",
+        chunk_count=1,
+    )
+    web_index.set_excluded("page-1", True)
+    vectorstore.add_web_chunks(
+        ["page-1::0"],
+        ["Ergänzender Web-Text zur Führung in Organisationen."],
+        [[1.0, 0.0]],
+        [
+            {
+                "page_id": "page-1",
+                "allowlist_entry_id": "entry-1",
+                "url": "https://beispiel.org/blog/artikel",
+                "title": "Web-Artikel",
+                "position": 0,
+            }
+        ],
+    )
+
+    response = client.post("/api/ask", json={"question": "Wie funktioniert Führung?"})
+
+    result = ask_result(response)
+    assert all(not s["is_web_fallback"] for s in result["sources"])
+
+
+def test_ask_ranks_out_less_relevant_web_fallback_chunk_when_curated_is_closer(client, monkeypatch):
+    """Gegenstück zum nächsten Test: liegt der kuratierte Treffer eindeutig
+    näher am Anfrageembedding als der Web-Treffer, gewinnt bei top_k=1 die
+    kuratierte Quelle - der Web-Treffer verliert auf Basis echten
+    Reranking-Wettbewerbs, nicht mehr über einen pauschalen Schwellwert."""
+    embedding_by_text = {
+        "Näher am Anfrageembedding, kuratierte Quelle.": [1.0, 0.0],
+        "Weiter entfernt, Web-Fallback-Text.": [0.0, 1.0954],
+    }
+    monkeypatch.setattr(embeddings, "embed_passages", lambda texts: [embedding_by_text[t] for t in texts])
+    monkeypatch.setattr(embeddings, "embed_query", lambda text: [0.0, 0.0])
+
+    client.post(
+        "/api/sources",
+        json={"title": "Kuratierte Quelle", "text": "Näher am Anfrageembedding, kuratierte Quelle."},
+    )
+    vectorstore.add_web_chunks(
+        ["page-1::0"],
+        ["Weiter entfernt, Web-Fallback-Text."],
+        [[0.0, 1.0954]],
+        [
+            {
+                "page_id": "page-1",
+                "allowlist_entry_id": "entry-1",
+                "url": "https://beispiel.org",
+                "title": "Web",
+                "position": 0,
+            }
+        ],
+    )
+
+    response = client.post("/api/ask", json={"question": "Frage?", "top_k": 1})
+
+    result = ask_result(response)
+    assert len(result["sources"]) == 1
+    assert result["sources"][0]["is_web_fallback"] is False
+
+
+def test_ask_prefers_more_relevant_web_fallback_chunk_over_curated(client, monkeypatch):
+    """Regressionstest für einen real gemeldeten Fall: eine auf der
+    freigegebenen Website eindeutig vorhandene, passende Aussage wurde nie
+    herangezogen, weil der alte Schwellwert-Trigger bei diesem dicht
+    gefüllten Korpus praktisch nie ausgelöst hat. Liegt der Web-Treffer
+    NÄHER am Anfrageembedding als der kuratierte, muss er ihn bei knappem
+    top_k jetzt verdrängen können."""
+    embedding_by_text = {
+        "Weiter entfernt, kuratierte Quelle.": [0.0, 1.0954],
+        "Näher am Anfrageembedding, Web-Fallback-Text.": [1.0, 0.0],
+    }
+    monkeypatch.setattr(embeddings, "embed_passages", lambda texts: [embedding_by_text[t] for t in texts])
+    monkeypatch.setattr(embeddings, "embed_query", lambda text: [0.0, 0.0])
+
+    client.post(
+        "/api/sources",
+        json={"title": "Kuratierte Quelle", "text": "Weiter entfernt, kuratierte Quelle."},
+    )
+    vectorstore.add_web_chunks(
+        ["page-1::0"],
+        ["Näher am Anfrageembedding, Web-Fallback-Text."],
+        [[1.0, 0.0]],
+        [
+            {
+                "page_id": "page-1",
+                "allowlist_entry_id": "entry-1",
+                "url": "https://beispiel.org/artikel",
+                "title": "Passender Web-Artikel",
+                "position": 0,
+            }
+        ],
+    )
+
+    response = client.post("/api/ask", json={"question": "Frage?", "top_k": 1})
+
+    result = ask_result(response)
+    assert len(result["sources"]) == 1
+    assert result["sources"][0]["is_web_fallback"] is True
+    assert result["sources"][0]["title"] == "Passender Web-Artikel"
+
+
+def test_index_web_allowlist_entry_with_status_skips_when_already_running(client, monkeypatch):
+    # Nutzerfeedback (real reproduziert): ein Server-Neustart löst sofort
+    # einen wöchentlichen Sweep-Durchlauf aus - läuft zufällig zeitgleich
+    # noch ein Sofort-Crawl desselben Eintrags, entstanden sonst doppelte
+    # Seiten mit unterschiedlichen page_ids (beide Läufe kannten sich
+    # gegenseitig nicht).
+    entry = web_allowlist.add_entry(
+        url_prefix="https://a.org", label="A", reason="R", added_by=PFLEGER, added_at="2026-01-01T00:00:00+00:00"
+    )
+    web_allowlist.set_indexing_status(entry["id"], "running")
+    calls = []
+    monkeypatch.setattr(
+        main_module, "_run_web_crawl_subprocess", lambda entry_id, url_prefix, max_pages: calls.append(entry_id) or 0
+    )
+
+    main_module._index_web_allowlist_entry_with_status(entry["id"], "https://a.org", 50)
+
+    assert calls == []
+    assert web_allowlist.get_entry(entry["id"])["indexing_status"] == "running"
+
+
+def test_run_web_allowlist_crawl_once_indexes_each_entry(client, monkeypatch):
+    web_allowlist.add_entry(
+        url_prefix="https://a.org",
+        label="A",
+        reason="R",
+        added_by=PFLEGER,
+        added_at="2026-01-01T00:00:00+00:00",
+    )
+    web_allowlist.add_entry(
+        url_prefix="https://b.org",
+        label="B",
+        reason="R",
+        added_by=PFLEGER,
+        added_at="2026-01-01T00:00:00+00:00",
+    )
+    calls = []
+    monkeypatch.setattr(
+        main_module,
+        "_run_web_crawl_subprocess",
+        lambda entry_id, url_prefix, max_pages: calls.append(url_prefix) or 0,
+    )
+
+    main_module._run_web_allowlist_crawl_once()
+
+    assert set(calls) == {"https://a.org", "https://b.org"}
+
+
+def test_run_web_allowlist_crawl_once_continues_after_one_entry_fails(client, monkeypatch):
+    web_allowlist.add_entry(
+        url_prefix="https://a.org",
+        label="A",
+        reason="R",
+        added_by=PFLEGER,
+        added_at="2026-01-01T00:00:00+00:00",
+    )
+    web_allowlist.add_entry(
+        url_prefix="https://b.org",
+        label="B",
+        reason="R",
+        added_by=PFLEGER,
+        added_at="2026-01-01T00:00:00+00:00",
+    )
+    calls = []
+
+    def fake_run_web_crawl_subprocess(entry_id, url_prefix, max_pages):
+        # Nutzerfeedback: der eigentliche Crawl läuft seit dem Unterprozess-
+        # Fix in einem separaten Prozess - ein Fehlschlag zeigt sich dort als
+        # Exit-Code != 0, nicht mehr als Python-Exception (siehe
+        # app/web_crawl_subprocess.py).
+        if url_prefix == "https://a.org":
+            return 1
+        calls.append(url_prefix)
+        return 0
+
+    monkeypatch.setattr(main_module, "_run_web_crawl_subprocess", fake_run_web_crawl_subprocess)
+
+    main_module._run_web_allowlist_crawl_once()
+
+    assert calls == ["https://b.org"]
+
+
+def test_recover_interrupted_web_allowlist_indexing_resets_stale_running_status(client):
+    # Realer Vorfall: ein abrupt beendeter Prozess (z.B. daemon=True-Thread,
+    # der mitten im Crawl abgewürgt wurde) hinterlässt "running" dauerhaft im
+    # Datenbestand, obwohl gar kein Crawl mehr läuft - der Fortschrittsring
+    # am Globus-Icon bliebe sonst für immer "drehend" hängen.
+    entry = web_allowlist.add_entry(
+        url_prefix="https://a.org", label="A", reason="R", added_by=PFLEGER, added_at="2026-01-01T00:00:00+00:00"
+    )
+    web_allowlist.set_indexing_status(entry["id"], "running")
+
+    main_module._recover_interrupted_web_allowlist_indexing()
+
+    assert web_allowlist.get_entry(entry["id"])["indexing_status"] is None
+
+
+def test_recover_interrupted_web_allowlist_indexing_leaves_other_statuses_untouched(client):
+    entry = web_allowlist.add_entry(
+        url_prefix="https://a.org", label="A", reason="R", added_by=PFLEGER, added_at="2026-01-01T00:00:00+00:00"
+    )
+    web_allowlist.set_indexing_status(entry["id"], "error")
+
+    main_module._recover_interrupted_web_allowlist_indexing()
+
+    assert web_allowlist.get_entry(entry["id"])["indexing_status"] == "error"
+
+
+def test_ask_ignores_web_fallback_collection_when_empty(client):
+    client.post("/api/sources", json={"title": "Kuratierte Quelle", "text": "Kurzer Text."})
+
+    response = client.post("/api/ask", json={"question": "Frage?"})
+
+    result = ask_result(response)
+    assert all(not s["is_web_fallback"] for s in result["sources"])
 
 
 def test_url_reachable_visible_for_anonymous_users_but_reason_hidden(client, anon_client):

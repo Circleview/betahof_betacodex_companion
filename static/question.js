@@ -29,6 +29,18 @@ const EXTERNAL_LINK_ICON =
   '<line x1="10" y1="14" x2="21" y2="3"></line>' +
   "</svg>";
 
+// Backlog: LLM/Internet-Fallback bei dünner Quellenlage - dezente
+// Kennzeichnung von Zitaten aus der Web-Fallback-Collection (siehe
+// app/web_crawler.py), unterscheidbar von den kuratierten Quellen, aber
+// bewusst klein/unaufdringlich (Nutzerwunsch).
+const WEB_FALLBACK_ICON =
+  '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" ' +
+  'stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
+  '<circle cx="12" cy="12" r="9"></circle>' +
+  '<ellipse cx="12" cy="12" rx="4" ry="9"></ellipse>' +
+  '<line x1="3" y1="12" x2="21" y2="12"></line>' +
+  "</svg>";
+
 const MAGIC_ICON =
   '<svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor" stroke="none">' +
   '<path d="M12 2l1.8 5.2L19 9l-5.2 1.8L12 16l-1.8-5.2L5 9l5.2-1.8L12 2z"></path>' +
@@ -98,9 +110,77 @@ function appendSourceLink(container, sourceId) {
   }
 }
 
-function formatYear(dateStr) {
-  if (!dateStr) return t('common.noDate');
-  return dateStr.split('-')[0];
+// Nutzerwunsch: Quellen-Pfleger:innen/System-Admins sollen eine erkennbar
+// unpassende Web-Fallback-Quelle direkt aus der Konversationsansicht
+// ausschließen können, ohne erst über die Quellenübersicht/den dortigen
+// Seiten-Akkordeon (siehe import.js) navigieren zu müssen - "schnell und
+// einfach", da der bestehende exclude-Endpoint ohnehin voll reversibel ist
+// (kein Löschen, nur ein Flag, siehe app/web_index.py:set_excluded), reicht
+// ein einzelner Klick ohne Sicherheitsabfrage. Bewusst KEIN appendSourceLink()
+// wie bei kuratierten Quellen - Web-Fallback-Chunks stehen NICHT im
+// Quellenverzeichnis (kein sources.json-Eintrag, /import.html?edit=...
+// würde ins Leere laufen).
+function appendExcludeWebPageButton(container, s) {
+  if (!hasPflegerRole() || !s.allowlist_entry_id) return;
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'external-link exclude-web-page-button';
+  const label = t('common.excludeWebPage');
+  btn.title = label;
+  btn.setAttribute('aria-label', label);
+  btn.innerHTML = EDIT_ICON;
+  btn.addEventListener('click', async (e) => {
+    // Verhindert, dass ein Klick innerhalb eines <summary> (siehe
+    // buildSourcesList) zusätzlich das umgebende <details>-Element
+    // auf-/zuklappt - analog appendAuthorLinks/appendTitleText.
+    e.stopPropagation();
+    if (btn.disabled) return;
+    btn.disabled = true;
+    try {
+      const res = await fetch(
+        `/api/web-allowlist/${s.allowlist_entry_id}/pages/${encodeURIComponent(s.source_id)}/exclude`,
+        { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Lang': getLang() } }
+      );
+      if (!res.ok) {
+        btn.disabled = false;
+        return;
+      }
+      const excludedLabel = t('common.webPageExcluded');
+      btn.title = excludedLabel;
+      btn.setAttribute('aria-label', excludedLabel);
+      btn.classList.add('exclude-web-page-button--done');
+    } catch (err) {
+      btn.disabled = false;
+    }
+  });
+  container.appendChild(btn);
+}
+
+// Nutzerwunsch: der Titel selbst soll anklickbar sein (nicht nur das kleine
+// Icon am Ende des Chunk-Ausschnitts) - so wie appendAuthorLinks für
+// Autor:innen-Namen, hier aber zur Original-URL statt zum internen
+// Autor:innen-Profil. Gilt einheitlich für kuratierte UND Web-Fallback-
+// Quellen, sofern eine URL vorhanden ist (listen_url hat Vorrang, siehe
+// citationUrl-Definitionen weiter unten).
+function appendTitleText(container, s) {
+  const citationUrl = s.listen_url || s.url;
+  if (!citationUrl) {
+    container.appendChild(document.createTextNode(s.title));
+    return;
+  }
+  const a = document.createElement('a');
+  a.href = citationUrl;
+  a.target = '_blank';
+  a.rel = 'noopener noreferrer';
+  a.className = 'citation-title-link';
+  const label = t('common.openSource');
+  a.title = label;
+  a.textContent = s.title;
+  // Verhindert, dass ein Klick auf den Titel innerhalb eines <summary>
+  // (siehe buildSourcesList) zusätzlich das umgebende <details>-Element
+  // auf-/zuklappt - analog appendAuthorLinks.
+  a.addEventListener('click', (e) => e.stopPropagation());
+  container.appendChild(a);
 }
 
 function truncateWords(text, maxWords) {
@@ -112,10 +192,6 @@ function truncateWords(text, maxWords) {
 }
 
 function appendAuthorLinks(container, authorNames) {
-  if (!authorNames || !authorNames.length) {
-    container.appendChild(document.createTextNode(t('common.unknownAuthor')));
-    return;
-  }
   authorNames.forEach((name, index) => {
     if (index > 0) container.appendChild(document.createTextNode(', '));
     const a = document.createElement('a');
@@ -133,6 +209,25 @@ function appendAuthorLinks(container, authorNames) {
     a.addEventListener('click', (e) => e.stopPropagation());
     container.appendChild(a);
   });
+}
+
+// Nutzerwunsch: fehlende Autor:innen/Datum sollen in der Konversationsansicht
+// NICHT als "unbekannt"/"(ohne Datum)" angezeigt werden - das Fehlen einer
+// Angabe nützt Nutzer:innen nichts und schmälert nur unnötig das Vertrauen
+// in die Quelle. Fehlt eine Angabe, wird der jeweilige Teil einfach
+// weggelassen statt eines Platzhaltertexts (anders als in der
+// Quellenverwaltung, static/import.js, wo Quellen-Pfleger:innen genau das
+// Fehlen erkennen müssen, um es zu beheben).
+function appendCitationHeading(container, s) {
+  appendTitleText(container, s);
+  if (s.authors && s.authors.length) {
+    container.appendChild(document.createTextNode(' – '));
+    appendAuthorLinks(container, s.authors);
+  }
+  const year = s.date ? s.date.split('-')[0] : null;
+  if (year) {
+    container.appendChild(document.createTextNode(` (${year})`));
+  }
 }
 
 function findHighlightRange(text, highlight) {
@@ -175,9 +270,16 @@ function buildSourceInfo(s, highlight) {
 
   const heading = document.createElement('p');
   heading.className = 'citation-card-heading';
-  heading.appendChild(document.createTextNode(`${s.title} – `));
-  appendAuthorLinks(heading, s.authors);
-  heading.appendChild(document.createTextNode(` (${formatYear(s.date)})`));
+  if (s.is_web_fallback) {
+    const badge = document.createElement('span');
+    badge.className = 'web-fallback-badge';
+    badge.innerHTML = WEB_FALLBACK_ICON;
+    const label = t('common.webFallbackSourceTitle');
+    badge.title = label;
+    badge.setAttribute('aria-label', label);
+    heading.appendChild(badge);
+  }
+  appendCitationHeading(heading, s);
   wrapper.appendChild(heading);
 
   const excerpt = document.createElement('p');
@@ -205,7 +307,17 @@ function buildSourceInfo(s, highlight) {
     a.innerHTML = EXTERNAL_LINK_ICON;
     excerpt.appendChild(a);
   }
-  appendSourceLink(excerpt, s.source_id);
+  // Web-Fallback-Chunks stehen NICHT im Quellenverzeichnis (kein
+  // sources.json-Eintrag) - appendSourceLink würde auf einen 404 verlinken.
+  // Der direkte Link zur Original-URL oben deckt "Quelle im Internet
+  // aufsuchen" bereits ab, appendExcludeWebPageButton bietet stattdessen das
+  // dortige Äquivalent zum Bearbeiten-Stift (schnelles Ausschließen einer
+  // erkennbar unpassenden Quelle).
+  if (s.is_web_fallback) {
+    appendExcludeWebPageButton(excerpt, s);
+  } else {
+    appendSourceLink(excerpt, s.source_id);
+  }
 
   return wrapper;
 }
@@ -218,9 +330,7 @@ function buildSourcesList(sources) {
     const details = document.createElement('details');
     details.dataset.chunkId = s.chunk_id;
     const summaryToggle = document.createElement('summary');
-    summaryToggle.appendChild(document.createTextNode(`${s.title} – `));
-    appendAuthorLinks(summaryToggle, s.authors);
-    summaryToggle.appendChild(document.createTextNode(` (${formatYear(s.date)})`));
+    appendCitationHeading(summaryToggle, s);
     details.appendChild(summaryToggle);
     const p = document.createElement('p');
     // Hier bewusst die KI-Zusammenfassung statt des Chunk-Ausschnitts (anders
@@ -251,7 +361,15 @@ function buildSourcesList(sources) {
       a.innerHTML = EXTERNAL_LINK_ICON;
       p.appendChild(a);
     }
-    appendSourceLink(p, s.source_id);
+    // Bugfix: appendSourceLink() wurde hier bisher unbedingt aufgerufen -
+    // bei Web-Fallback-Quellen (kein sources.json-Eintrag) verlinkte das auf
+    // einen 404 (siehe analoge, bereits vorhandene Fallunterscheidung in
+    // buildSourceInfo oben).
+    if (s.is_web_fallback) {
+      appendExcludeWebPageButton(p, s);
+    } else {
+      appendSourceLink(p, s.source_id);
+    }
     details.appendChild(p);
     li.appendChild(details);
     sourcesList.appendChild(li);

@@ -1399,6 +1399,32 @@ body:not(.chat-started) #question-form {
   color: var(--color-accent-hover);
 }
 
+/* Nutzerwunsch: Quellen-Pfleger:innen/System-Admins sollen eine erkennbar
+   unpassende Web-Fallback-Quelle direkt aus der Konversationsansicht
+   ausschließen können (siehe question.js: appendExcludeWebPageButton) -
+   .external-link liefert bereits passendes Icon-Button-Grundlayout, hier
+   nur die button-spezifischen Reset-Regeln (kein <a>) und der Hover-Hinweis
+   auf die (reversible) Wirkung. */
+.exclude-web-page-button {
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+}
+
+.exclude-web-page-button:hover {
+  color: var(--color-warning);
+}
+
+.exclude-web-page-button:disabled {
+  cursor: default;
+}
+
+.exclude-web-page-button--done {
+  color: var(--color-warning);
+  opacity: 0.6;
+}
+
 .citation-card {
   background: var(--color-bg);
   border: 1px solid var(--color-border);
@@ -1413,6 +1439,17 @@ body:not(.chat-started) #question-form {
   margin: 0 0 0.5rem;
 }
 
+/* Backlog: LLM/Internet-Fallback bei dünner Quellenlage - dezente
+   Kennzeichnung, unterscheidet Web-Fallback-Zitate optisch von den
+   kuratierten Quellen, ohne sie hervorzuheben (Nutzerwunsch). */
+.web-fallback-badge {
+  display: inline-flex;
+  align-items: center;
+  margin-right: 0.35rem;
+  color: var(--color-text-muted);
+  vertical-align: -0.05em;
+}
+
 .citation-author-link {
   color: inherit;
   text-decoration: none;
@@ -1420,6 +1457,23 @@ body:not(.chat-started) #question-form {
 
 .citation-author-link:hover {
   color: var(--color-accent);
+}
+
+/* Nutzerwunsch: der Titel soll wie bei den übrigen Quellen anklickbar sein
+   (Absprung zur Original-URL) - nicht nur das kleine Icon am Ende des
+   Chunk-Ausschnitts (.external-link). Dezente Unterstreichung statt
+   Akzentfarbe wie bei .citation-author-link, da ein externer Sprung (nicht
+   internes Filtern) etwas anders signalisiert werden soll. */
+.citation-title-link {
+  color: inherit;
+  text-decoration: underline;
+  text-decoration-color: var(--color-border);
+  text-underline-offset: 2px;
+}
+
+.citation-title-link:hover {
+  color: var(--color-accent);
+  text-decoration-color: currentColor;
 }
 
 .citation-card-text {
@@ -2158,12 +2212,30 @@ body:not(.chat-started) #question-form {
   margin-bottom: 0.9rem;
 }
 
-#typ-jobs {
+#typ-jobs,
+#typ-web-allowlist {
   position: relative;
 }
 
 #typ-jobs.has-error #jobs-icon-progress {
   stroke: var(--color-warning);
+}
+
+/* Nutzerwunsch: Indizierungsstatus als Fortschrittsring am Globus-Icon,
+   im selben statischen Stil wie beim Import (Audio/PDF, siehe
+   #jobs-icon-ring oben) - Füllstand über stroke-dashoffset, ohne Drehung. */
+.web-allowlist-icon-ring {
+  position: absolute;
+  /* Bugfix (Nutzerfeedback, Ring wirkte "verrutscht"): absolut positionierte
+     Elemente richten sich am PADDING-Rand des positionierten Elternelements
+     aus, nicht an dessen äußerem Rand - bei #typ-web-allowlist liegt
+     dazwischen der 1,5px-Rahmen von .circle-button. Mit top/left:0 saß der
+     Ring dadurch 1,5px zu weit unten-rechts und ragte entsprechend über den
+     Button-Rand hinaus. Negative Werte in Rahmenbreite gleichen das aus.
+     */
+  top: -1.5px;
+  left: -1.5px;
+  pointer-events: none;
 }
 
 .jobs-icon-count {
@@ -2236,6 +2308,264 @@ body:not(.chat-started) #question-form {
   color: var(--color-warning);
   font-size: 0.85rem;
   margin: 0.2rem 0;
+}
+
+/* Backlog: LLM/Internet-Fallback bei dünner Quellenlage - Pflegebereich für
+   die freigegebenen externen Domains/Pfade, per typ-web-allowlist-Button
+   auf-/zuklappbar. Gleiches "normaler Seitenfluss statt Popover"-Muster wie
+   .footer-feedback-panel/#search-bar/#jobs-bar (siehe deren Kommentare) -
+   robust bei jeder Bildschirmbreite. */
+#web-allowlist-bereich {
+  padding: 1.5rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  margin-bottom: 2rem;
+}
+
+.web-allowlist-hint {
+  color: var(--color-text-muted);
+  font-size: 0.85rem;
+  margin-bottom: 1.5rem;
+}
+
+#web-allowlist-list {
+  list-style: none;
+  margin: 1.5rem 0 0;
+  padding: 1.5rem 0 0;
+  border-top: 1px solid var(--color-border);
+}
+
+.web-allowlist-item {
+  padding: 0.85rem 0;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.web-allowlist-item:last-child {
+  border-bottom: none;
+}
+
+.web-allowlist-item-heading-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.web-allowlist-item-heading {
+  margin: 0 0 0.25rem;
+}
+
+/* Nutzerwunsch: der Löschen-Link soll nicht zum versehentlichen Klicken
+   einladen - deshalb bewusst klein/dezent statt wie die übrigen Aktionen
+   unten (.web-allowlist-item-actions) in normaler Textgröße. */
+.web-allowlist-delete-link {
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: 0.75rem;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.web-allowlist-delete-link:hover {
+  color: var(--color-warning);
+}
+
+.web-allowlist-delete-link:disabled {
+  cursor: default;
+  text-decoration: none;
+}
+
+.web-allowlist-item-meta {
+  color: var(--color-text-muted);
+  font-size: 0.85rem;
+  margin: 0 0 0.35rem;
+}
+
+.web-allowlist-item-reason {
+  font-size: 0.9rem;
+  margin: 0 0 0.5rem;
+}
+
+.web-allowlist-item-actions {
+  display: flex;
+  gap: 1rem;
+}
+
+/* Nutzerwunsch: einzelne indizierte Seiten je Website gezielt vom Fallback
+   ausschließen/wiederaufnehmen können, per Ausklapp-Liste (<details>, siehe
+   allgemeine details/summary-Basisregeln weiter unten). */
+.web-allowlist-pages {
+  margin-top: 0.6rem;
+  font-size: 0.85rem;
+}
+
+.web-allowlist-pages summary {
+  color: var(--color-text-muted);
+}
+
+.web-allowlist-pages-list {
+  list-style: none;
+  margin: 0.6rem 0 0;
+  padding: 0;
+}
+
+.web-allowlist-page {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.4rem 0.5rem;
+  margin: 0 -0.5rem;
+  border-bottom: 1px solid var(--color-border);
+  border-radius: 4px;
+}
+
+/* Nutzerwunsch: beim Überfahren mit der Maus soll eindeutig erkennbar sein,
+   welche Zeile gerade ausgewählt wäre, bevor man sie ggf. ausschließt. */
+.web-allowlist-page:hover {
+  background: rgba(0, 0, 0, 0.04);
+}
+
+.web-allowlist-page:last-child {
+  border-bottom: none;
+}
+
+.web-allowlist-page-info {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* Ausgeschlossene Seiten bleiben sichtbar (Nutzerwunsch), sollen sich aber
+   klar von aktiv indizierten Seiten abheben - gleiches "ausgegraut"-Muster
+   wie bereits für nicht erreichbare Quellen (siehe .source-row--unreachable). */
+.web-allowlist-page--excluded {
+  opacity: 0.55;
+}
+
+.web-allowlist-page--excluded .web-allowlist-page-info {
+  text-decoration: line-through;
+}
+
+.web-allowlist-review-badge {
+  display: inline-block;
+  padding: 0.05rem 0.5rem;
+  border-radius: 999px;
+  background: var(--color-warning-tint);
+  color: var(--color-warning);
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+/* Nutzerwunsch (Positivselektion): findet index_entry() für eine Website zu
+   wenige eindeutig zuordenbare Unterseiten, schaltet das System automatisch
+   von "Negativselektion" (bereits indizierte Seiten bereinigen) auf
+   "Positivselektion" (Kandidaten gezielt auswählen) um - dieser Hinweis
+   macht den Rollenwechsel für Quellen-Pfleger:innen sichtbar, siehe
+   app/web_crawler.py:_run_positive_selection. */
+.web-allowlist-candidates {
+  margin-top: 0.6rem;
+  font-size: 0.85rem;
+}
+
+.web-allowlist-candidates-hint {
+  display: flex;
+  gap: 0.5rem;
+  align-items: flex-start;
+  padding: 0.5rem 0.65rem;
+  margin: 0 0 0.6rem;
+  border-radius: 6px;
+  background: var(--color-warning-tint);
+  color: var(--color-text);
+}
+
+.web-allowlist-candidates-hint svg {
+  flex-shrink: 0;
+  color: var(--color-warning);
+  margin-top: 0.1rem;
+}
+
+.web-allowlist-candidates-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.web-allowlist-candidate {
+  padding: 0.5rem;
+  margin: 0 -0.5rem;
+  border-bottom: 1px solid var(--color-border);
+  border-radius: 4px;
+}
+
+.web-allowlist-candidate:hover {
+  background: rgba(0, 0, 0, 0.04);
+}
+
+.web-allowlist-candidate:last-child {
+  border-bottom: none;
+}
+
+.web-allowlist-candidate-info {
+  margin: 0 0 0.15rem;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.web-allowlist-candidate-snippet {
+  margin: 0 0 0.35rem;
+  color: var(--color-text-muted);
+}
+
+.web-allowlist-candidate-actions {
+  display: flex;
+  gap: 0.75rem;
+  margin-top: 0.3rem;
+}
+
+.web-allowlist-candidates-empty {
+  color: var(--color-text-muted);
+}
+
+.web-allowlist-candidates-more-btn {
+  margin-top: 0.5rem;
+}
+
+#web-allowlist-form button[type="submit"] {
+  margin-top: 0.5rem;
+}
+
+/* Nutzerwunsch: unmittelbares Feedback direkt unterm Formular, dass eine
+   neu angelegte Website wirklich angelegt wurde und die Verarbeitung
+   begonnen hat - eigene, bewusst schlichtere Liste als die etablierten
+   Einträge (siehe .web-allowlist-item), da hier noch nichts zu bereinigen
+   oder anzuklicken gibt. */
+.web-allowlist-pending-list {
+  list-style: none;
+  margin: 0 0 0.5rem;
+  padding: 0;
+}
+
+.web-allowlist-pending-item {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.6rem 0.7rem;
+  margin-bottom: 0.4rem;
+  border-radius: 6px;
+  background: var(--color-surface);
+}
+
+.web-allowlist-pending-item-heading {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 /* Ohne explizite Spalten-Zuweisung landet das Bearbeiten-Panel im Grid der
