@@ -331,6 +331,7 @@ Commit-/Tag-Nachrichten in Git.
 
 | Version | Wesentliche Änderungen |
 |---|---|
+| v0.49.2 | Fix: Cloudflare Turnstile sprang beim Laden der Konversationsseite kurz sichtbar auf/zu (Eingabezeile bzw. die zentrierte Startansicht verschob sich) - Platzbedarf wird jetzt nur noch reserviert, wenn wirklich eine sichtbare Challenge nötig ist |
 | v0.49.1 | Sicherheits-Fix: pypdf auf 6.16.1 (behebt zwei Dependabot-Meldungen zu Speicher-/Laufzeit-Erschöpfung bei präparierten PDFs, CVE-2026-71870/CVE-2026-71852) |
 | v0.49 | Backlog: Website-Wissensquellen als automatischer Fallback bei dünner Quellenlage (Negativ-/Positivselektion, wöchentlicher Hintergrund-Crawl, dezente Kennzeichnung im Chat, Schnell-Ausschließen-Button für Pfleger:innen); Lorem-Ipsum-Platzhaltertexte werden beim Website-Import erkannt und ausgeschlossen; fehlende Autor:innen/Datum werden in der Konversationsansicht nicht mehr als Platzhaltertext angezeigt |
 | v0.48 | Backlog #202: Konversationsverlauf wird an /api/ask mitgeschickt (vermeidet Wiederholungen bei Folgefragen); Mobile-Popover als echtes Akkordeon statt Overlay; Mikrofon-Icon-Sprung beim Laden der Konversationsseite behoben |

@@ -1012,10 +1012,20 @@ body:not(.chat-started) #question-form {
    Mikrofon-/Absenden-Button sichtbar Platz in der Eingabezeile weg (das
    Mikrofon-Icon sprang zur Seite und zurück). Als eigener Block direkt
    NACH dem Formular betrifft ein sichtbares Widget höchstens den Abstand
-   zum Footer, nie mehr die Eingabezeile selbst. Margin nur wirksam, wenn
-   der Container tatsächlich sichtbar ist (:empty/.turnstile-verified
-   weiter unten setzen ohnehin display:none). */
+   zum Footer, nie mehr die Eingabezeile selbst. */
 .turnstile-container {
+  margin-top: 0;
+}
+
+/* Fix (2026-08-19, gemeldeter "Springen"-Bug): margin-top nur, solange
+   Cloudflare tatsächlich eine sichtbare Challenge zeigt (Klasse wird von
+   turnstile.js per before-/after-interactive-callback gesetzt/entfernt -
+   siehe dortiger Kommentar). Für die weit überwiegende Mehrheit, die nie
+   interagieren muss, bleibt der Container die ganze Zeit ohne jeden
+   Platzbedarf, auch während Cloudflare im Hintergrund sein (dann 0px
+   hohes) iFrame einfügt - dadurch bewegt sich weder die zentrierte
+   Startansicht noch die Eingabezeile selbst mehr. */
+.turnstile-container.turnstile-interactive {
   margin-top: 0.75rem;
 }
 

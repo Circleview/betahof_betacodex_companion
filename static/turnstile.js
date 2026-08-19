@@ -61,6 +61,19 @@ export async function createTurnstileWidget(containerId) {
     // dann nicht mehr :empty), es würde also ohne diesen Callback sichtbar
     // bleiben, obwohl die Bestätigung bereits abgeschlossen ist.
     callback: () => container.classList.add('turnstile-verified'),
+    // Fix (2026-08-19, gemeldeter "Springen"-Bug): der Container wird schon
+    // beim Rendern nicht mehr :empty (Cloudflare fügt sein iFrame ein) - für
+    // die allermeisten Besucher:innen bleibt dieses iFrame aber unsichtbar
+    // und 0px hoch, da fast nie eine echte Interaktion nötig ist. Trotzdem
+    // griff bisher sofort die CSS-Regel für den sichtbaren Zustand (u.a.
+    // margin-top), wodurch die Eingabezeile kurz nach oben/unten sprang -
+    // in der zentrierten Startansicht sogar doppelt, weil die Box dabei
+    // vertikal zentriert bleibt. Diese beiden von Cloudflare extra für genau
+    // diesen Fall vorgesehenen Callbacks feuern NUR, wenn wirklich eine
+    // sichtbare Challenge ansteht - erst dann bekommt der Container per CSS
+    // Platz zugewiesen (siehe .turnstile-interactive in style.css).
+    'before-interactive-callback': () => container.classList.add('turnstile-interactive'),
+    'after-interactive-callback': () => container.classList.remove('turnstile-interactive'),
     // Ohne diesen Callback bleibt ein falsch konfigurierter/nicht für dieses
     // Hostname freigegebener Site-Key komplett stumm (siehe Kommentar oben) -
     // damit landet der Grund wenigstens sichtbar in der Konsole statt in
