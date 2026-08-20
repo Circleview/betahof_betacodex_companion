@@ -331,6 +331,7 @@ Commit-/Tag-Nachrichten in Git.
 
 | Version | Wesentliche Änderungen |
 |---|---|
+| v0.49.4 | Test-Fix: drei CI-Tests warteten nach einem simulierten langsamen Hintergrund-Import mit einem festen `time.sleep(0.5)` statt zu pollen - auf einem langsameren CI-Runner reichte das nicht, wodurch v0.49.3 fälschlich am CI-Gate scheiterte, ohne den eigentlichen Deploy-Fix zu betreffen (siehe v0.49.3) |
 | v0.49.3 | Fix: vage Folgefragen ("Erzähle mehr") lieferten teils "keine Quellen"-Antworten zu Themen, die gerade erst korrekt beantwortet wurden - die Such-Query für Folgefragen wird jetzt per eigenem LLM-Call zu einer eigenständigen, themenspezifischen Suchanfrage umformuliert statt nur Frage-Text zu verketten |
 | v0.49.2 | Fix: Cloudflare Turnstile sprang beim Laden der Konversationsseite kurz sichtbar auf/zu (Eingabezeile bzw. die zentrierte Startansicht verschob sich) - Platzbedarf wird jetzt nur noch reserviert, wenn wirklich eine sichtbare Challenge nötig ist |
 | v0.49.1 | Sicherheits-Fix: pypdf auf 6.16.1 (behebt zwei Dependabot-Meldungen zu Speicher-/Laufzeit-Erschöpfung bei präparierten PDFs, CVE-2026-71870/CVE-2026-71852) |

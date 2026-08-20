@@ -45,6 +45,25 @@ def login(test_client, email, role=None):
     test_client.get(f"/api/auth/verify?token={token}", follow_redirects=False)
 
 
+def wait_until(predicate, timeout=5.0, interval=0.02):
+    """Pollt predicate() bis True statt eine feste Wartezeit zu verstreichen
+    zu lassen (Bug, 2026-08-20: ein fixes time.sleep(0.5) nach einem
+    absichtlich verzögerten Hintergrund-Thread (time.sleep(0.3)) reichte auf
+    einem ausgelasteten CI-Runner nicht - der eigentlich fertige Thread war
+    zum Zeitpunkt der Prüfung noch nicht durchgelaufen, der Test schlug
+    dadurch scheinbar zufällig fehl, obwohl das Feature selbst funktioniert.
+    Reagiert auf einen schnell fertigen Thread sofort, statt immer die volle
+    Wartezeit auszusitzen, und toleriert einen langsamen Runner bis zum
+    timeout - die letzte, fehlschlagende Auswertung liefert dann den echten
+    AssertionError samt Kontext."""
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        if predicate():
+            return
+        time.sleep(interval)
+    assert predicate()
+
+
 def ask_result(response):
     """Testhilfe (Backlog 2026-07-29, Streaming-Antworten): /api/ask liefert
     seitdem NDJSON (eine JSON-Zeile pro Event) statt einer einzelnen JSON-
@@ -405,11 +424,13 @@ def test_add_source_returns_pending_when_embedding_is_slow(client, monkeypatch):
     assert data["text"] == ""
     assert data["chunk_count"] == 0
 
-    time.sleep(0.5)
-    entry = next(s for s in client.get("/api/sources").json() if s["id"] == data["id"])
-    assert entry["processing_status"] is None
-    assert entry["chunk_count"] > 0
-    assert entry["text"] == "Ein langer Beispieltext."
+    def entry():
+        return next(s for s in client.get("/api/sources").json() if s["id"] == data["id"])
+
+    wait_until(lambda: entry()["processing_status"] is None)
+    result = entry()
+    assert result["chunk_count"] > 0
+    assert result["text"] == "Ein langer Beispieltext."
 
 
 def test_add_source_slow_import_still_generates_summary(client, monkeypatch):
@@ -431,9 +452,10 @@ def test_add_source_slow_import_still_generates_summary(client, monkeypatch):
     response = client.post("/api/sources", json={"title": "Quelle", "text": "Text."})
     source_id = response.json()["id"]
 
-    time.sleep(0.5)
-    entry = next(s for s in client.get("/api/sources").json() if s["id"] == source_id)
-    assert entry["summary"] == "Zusammenfassung nach langsamem Import."
+    def entry():
+        return next(s for s in client.get("/api/sources").json() if s["id"] == source_id)
+
+    wait_until(lambda: entry()["summary"] == "Zusammenfassung nach langsamem Import.")
 
 
 def test_add_source_marks_error_when_slow_embedding_fails(client, monkeypatch):
@@ -449,10 +471,11 @@ def test_add_source_marks_error_when_slow_embedding_fails(client, monkeypatch):
     source_id = response.json()["id"]
     assert response.json()["processing_status"] == "pending"
 
-    time.sleep(0.5)
-    entry = next(s for s in client.get("/api/sources").json() if s["id"] == source_id)
-    assert entry["processing_status"] == "error"
-    assert entry["processing_error"]
+    def entry():
+        return next(s for s in client.get("/api/sources").json() if s["id"] == source_id)
+
+    wait_until(lambda: entry()["processing_status"] == "error")
+    assert entry()["processing_error"]
 
 
 def test_add_source_slow_import_appears_in_import_jobs(client, monkeypatch):
