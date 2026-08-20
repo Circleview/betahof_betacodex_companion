@@ -147,6 +147,85 @@ _LANGUAGE_REMINDERS = {
 }
 
 
+_REWRITE_MAX_TOKENS = 60
+
+# Bug (2026-08-20, per Screenshot gemeldet): eine vage Folgefrage wie
+# "Erzähle mehr" trug für sich allein kaum thematischen Anker - die bisherige
+# Such-Query (nur die letzte Frage + aktuelle Frage aneinandergehängt, siehe
+# app/main.py ask()) landete dadurch in diesem dicht gefüllten Korpus
+# komplett am Thema vorbei. Das Modell bekam dann fachfremde Chunks und
+# behauptete fälschlich, es gäbe gar keine Quellen zum gerade erst
+# besprochenen Thema. Fix: die Folgefrage wird jetzt per eigenem, schnellem
+# LLM-Call (selbes günstiges Haiku-Modell wie die eigentliche Antwort) zu
+# einer eigenständigen Suchanfrage umformuliert, die auch ohne Gesprächs-
+# verlauf verständlich ist - das deckt die ganze Klasse vager Folgefragen ab
+# ("und beim zweiten?", "was bedeutet das für Scrum?", Pronomen-Fragen),
+# nicht nur diesen einen Fall.
+REWRITE_SYSTEM_PROMPTS = {
+    "de": (
+        'Du hilfst dabei, aus einem Gesprächsverlauf und einer neuen, für '
+        'sich allein möglicherweise unverständlichen Folgefrage (z. B. '
+        '"Erzähle mehr", "und bei X?") eine eigenständige, für eine Vektor-/'
+        'Volltextsuche optimierte Suchanfrage zu formulieren. Die '
+        'Suchanfrage muss auch OHNE den Gesprächsverlauf verständlich sein '
+        'und die relevanten Fachbegriffe/Themen explizit nennen statt sie '
+        'nur anzudeuten. Antworte AUSSCHLIESSLICH mit der neuen Suchanfrage '
+        '- keine Anführungszeichen, keine Erklärung, kein Meta-Text.'
+    ),
+    "en": (
+        'You help turn a conversation history plus a new follow-up '
+        'question that may be incomprehensible on its own (e.g. "tell me '
+        'more", "what about X?") into a standalone search query optimized '
+        'for vector/full-text search. The search query must be '
+        'understandable WITHOUT the conversation history and must name the '
+        'relevant terms/topics explicitly rather than just alluding to '
+        'them. Reply ONLY with the new search query - no quotation marks, '
+        'no explanation, no meta text.'
+    ),
+}
+
+_REWRITE_USER_PROMPTS = {
+    "de": 'Neue Anschlussfrage: "{question}"\n\nFormuliere daraus eine eigenständige Suchanfrage.',
+    "en": 'New follow-up question: "{question}"\n\nTurn it into a standalone search query.',
+}
+
+
+def rewrite_followup_query(question: str, history: list[dict], lang: str = DEFAULT_LANG) -> str | None:
+    """Formuliert eine vage Folgefrage anhand des Gesprächsverlaufs zu einer
+    eigenständigen, für die Vektorsuche tauglichen Anfrage um (siehe
+    Kommentar bei REWRITE_SYSTEM_PROMPTS). Gibt None zurück, wenn history
+    leer ist (nichts umzuformulieren) oder der LLM-Call fehlschlägt - der
+    Aufrufer (app/main.py ask()) fällt dann auf die einfache String-
+    Verkettung zurück, damit eine Anthropic-Störung nie die komplette
+    Anfrage blockiert."""
+    if not history:
+        return None
+    lang = lang if lang in REWRITE_SYSTEM_PROMPTS else DEFAULT_LANG
+
+    messages = []
+    for turn in history:
+        messages.append({"role": "user", "content": turn["question"]})
+        messages.append({"role": "assistant", "content": turn["answer"]})
+    messages.append(
+        {"role": "user", "content": _REWRITE_USER_PROMPTS[lang].format(question=question)}
+    )
+
+    try:
+        client = _get_client()
+        response = client.messages.create(
+            model=MODEL_NAME,
+            max_tokens=_REWRITE_MAX_TOKENS,
+            system=REWRITE_SYSTEM_PROMPTS[lang],
+            messages=messages,
+        )
+        rewritten = "".join(
+            block.text for block in response.content if getattr(block, "type", None) == "text"
+        ).strip()
+        return rewritten or None
+    except Exception:
+        return None
+
+
 def _build_context(chunks: list[dict], lang: str, author_bios: list[dict] | None) -> str:
     context = "\n\n".join(
         f"[{i + 1}] (Quelle: {c['title']}, {c['author']}, {c['date']})\n{c['text']}"

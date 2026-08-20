@@ -1494,7 +1494,7 @@ def test_ask_caps_history_to_last_turns_even_if_client_sends_more(client, monkey
     ]
 
 
-def test_ask_folds_last_history_question_into_embedding_query(client, monkeypatch):
+def test_ask_uses_rewritten_query_for_history_follow_up(client, monkeypatch):
     client.post(
         "/api/sources",
         json={"title": "Q", "text": "Der BetaCodex beschreibt Prinzipien dezentraler Organisation."},
@@ -1505,6 +1505,36 @@ def test_ask_folds_last_history_question_into_embedding_query(client, monkeypatc
         "embed_query",
         lambda text: captured.setdefault("query_text", text) and [1.0, 0.0] or [1.0, 0.0],
     )
+    monkeypatch.setattr(
+        llm, "rewrite_followup_query", lambda question, history, lang: "BetaCodex und Vertrauen"
+    )
+
+    client.post(
+        "/api/ask",
+        json={
+            "question": "Und wie sieht es mit Vertrauen aus?",
+            "history": [{"question": "Was ist der BetaCodex?", "answer": "Ein Prinzipien-Set [1]."}],
+        },
+    )
+
+    assert captured["query_text"] == "BetaCodex und Vertrauen"
+
+
+def test_ask_falls_back_to_concatenation_when_rewrite_fails(client, monkeypatch):
+    """Fix (2026-08-20): schlägt der Rewrite-Call fehl (z.B. Anthropic-
+    Störung), darf die Anfrage nicht komplett blockiert werden - stattdessen
+    greift die einfache Verkettung aus letzter Frage + aktueller Frage."""
+    client.post(
+        "/api/sources",
+        json={"title": "Q", "text": "Der BetaCodex beschreibt Prinzipien dezentraler Organisation."},
+    )
+    captured = {}
+    monkeypatch.setattr(
+        embeddings,
+        "embed_query",
+        lambda text: captured.setdefault("query_text", text) and [1.0, 0.0] or [1.0, 0.0],
+    )
+    monkeypatch.setattr(llm, "rewrite_followup_query", lambda question, history, lang: None)
 
     client.post(
         "/api/ask",

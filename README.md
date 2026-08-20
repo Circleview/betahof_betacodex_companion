@@ -331,6 +331,7 @@ Commit-/Tag-Nachrichten in Git.
 
 | Version | Wesentliche Änderungen |
 |---|---|
+| v0.49.3 | Fix: vage Folgefragen ("Erzähle mehr") lieferten teils "keine Quellen"-Antworten zu Themen, die gerade erst korrekt beantwortet wurden - die Such-Query für Folgefragen wird jetzt per eigenem LLM-Call zu einer eigenständigen, themenspezifischen Suchanfrage umformuliert statt nur Frage-Text zu verketten |
 | v0.49.2 | Fix: Cloudflare Turnstile sprang beim Laden der Konversationsseite kurz sichtbar auf/zu (Eingabezeile bzw. die zentrierte Startansicht verschob sich) - Platzbedarf wird jetzt nur noch reserviert, wenn wirklich eine sichtbare Challenge nötig ist |
 | v0.49.1 | Sicherheits-Fix: pypdf auf 6.16.1 (behebt zwei Dependabot-Meldungen zu Speicher-/Laufzeit-Erschöpfung bei präparierten PDFs, CVE-2026-71870/CVE-2026-71852) |
 | v0.49 | Backlog: Website-Wissensquellen als automatischer Fallback bei dünner Quellenlage (Negativ-/Positivselektion, wöchentlicher Hintergrund-Crawl, dezente Kennzeichnung im Chat, Schnell-Ausschließen-Button für Pfleger:innen); Lorem-Ipsum-Platzhaltertexte werden beim Website-Import erkannt und ausgeschlossen; fehlende Autor:innen/Datum werden in der Konversationsansicht nicht mehr als Platzhaltertext angezeigt |

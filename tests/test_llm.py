@@ -116,6 +116,55 @@ def test_answer_question_without_history_has_only_the_current_message():
     assert messages[0]["role"] == "user"
 
 
+def _fake_create_client(response_text):
+    client = MagicMock()
+    block = MagicMock(type="text", text=response_text)
+    client.messages.create.return_value = MagicMock(content=[block])
+    return client
+
+
+def test_rewrite_followup_query_returns_none_without_history():
+    """Nichts umzuformulieren ohne Verlauf - darf dafür erst gar keinen
+    LLM-Call auslösen (kein _get_client-Patch nötig, würde sonst crashen)."""
+    assert llm.rewrite_followup_query("Frage?", []) is None
+
+
+def test_rewrite_followup_query_returns_rewritten_text():
+    client = _fake_create_client("BetaCodex und Vertrauen")
+    history = [{"question": "Was ist der BetaCodex?", "answer": "Ein Prinzipien-Set [1]."}]
+    with patch.object(llm, "_get_client", return_value=client):
+        result = llm.rewrite_followup_query("Und wie sieht es mit Vertrauen aus?", history)
+
+    assert result == "BetaCodex und Vertrauen"
+    kwargs = client.messages.create.call_args.kwargs
+    assert kwargs["system"] == llm.REWRITE_SYSTEM_PROMPTS["de"]
+    assert kwargs["messages"][0] == {"role": "user", "content": "Was ist der BetaCodex?"}
+    assert kwargs["messages"][1] == {"role": "assistant", "content": "Ein Prinzipien-Set [1]."}
+    assert "Und wie sieht es mit Vertrauen aus?" in kwargs["messages"][2]["content"]
+
+
+def test_rewrite_followup_query_uses_english_prompt_when_requested():
+    client = _fake_create_client("BetaCodex and trust")
+    history = [{"question": "What is the BetaCodex?", "answer": "A set of principles [1]."}]
+    with patch.object(llm, "_get_client", return_value=client):
+        llm.rewrite_followup_query("And what about trust?", history, lang="en")
+
+    assert client.messages.create.call_args.kwargs["system"] == llm.REWRITE_SYSTEM_PROMPTS["en"]
+
+
+def test_rewrite_followup_query_returns_none_when_llm_call_fails():
+    """Fix (2026-08-20): eine Anthropic-Störung beim Rewrite darf die
+    Anfrage nicht blockieren - app/main.py fällt dann auf die einfache
+    String-Verkettung zurück."""
+    client = MagicMock()
+    client.messages.create.side_effect = RuntimeError("boom")
+    history = [{"question": "Was ist der BetaCodex?", "answer": "Ein Prinzipien-Set [1]."}]
+    with patch.object(llm, "_get_client", return_value=client):
+        result = llm.rewrite_followup_query("Und wie sieht es mit Vertrauen aus?", history)
+
+    assert result is None
+
+
 def test_parse_answer_and_quotes_splits_answer_from_quote_block():
     raw = (
         'Ein Flip ist ein Zustandswechsel [1].\n\n'

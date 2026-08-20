@@ -2874,15 +2874,20 @@ def ask(question: QuestionIn, request: Request, x_lang: str = Header(default=i18
 
     history = [turn.model_dump() for turn in question.history[-ASK_HISTORY_MAX_TURNS:]]
 
-    # Backlog (2026-08-03): eine kurze Folgefrage wie "und bei Vertrauen?"
-    # trägt allein zu wenig thematischen Anker für eine gute Embedding-Suche
-    # - die letzte Frage der Konversation fließt deshalb mit ein. Bewusst nur
-    # die letzte Frage (nicht die ganze Historie oder die Antwort), um die
-    # Suche nicht mit Text zu verwässern, der für die AKTUELLE Frage nicht
-    # mehr relevant ist.
+    # Fix (2026-08-20, per Screenshot gemeldet): eine kurze Folgefrage wie
+    # "Erzähle mehr" trägt allein kaum thematischen Anker - die frühere
+    # Lösung (nur die letzte Frage anhängen) reichte dafür nicht und landete
+    # in einem dicht gefüllten Korpus komplett am Thema vorbei (siehe
+    # llm.rewrite_followup_query für die volle Herleitung). Ein eigener,
+    # schneller LLM-Call formuliert die Folgefrage stattdessen anhand des
+    # Verlaufs zu einer eigenständigen Suchanfrage um. Schlägt der Call fehl
+    # (liefert None), fällt es auf die alte, einfache Verkettung zurück -
+    # eine Anthropic-Störung darf die Anfrage nie komplett blockieren.
     query_text = question.question
     if history:
-        query_text = f"{history[-1]['question']} {question.question}"
+        query_text = llm.rewrite_followup_query(question.question, history, x_lang) or (
+            f"{history[-1]['question']} {question.question}"
+        )
 
     query_embedding = embeddings.embed_query(query_text)
     curated_hits = vectorstore.query(
