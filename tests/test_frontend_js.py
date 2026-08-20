@@ -172,6 +172,136 @@ main();
     return json.loads(result.stdout)
 
 
+def _run_citations_click_sequence(paragraph_text, sources, click_sequence):
+    """Wie _run_make_citations_clickable, führt zusätzlich eine feste Klick-
+    Sequenz (Liste von Button-Indizes, in Auftrittsreihenfolge im Text) aus
+    und gibt die Kartenanzahl nach JEDEM Klick zurück."""
+    js_source = (STATIC_DIR / "question.js").read_text()
+    match = re.search(r"function makeCitationsClickable.*?\n\}", js_source, re.S)
+    assert match, "makeCitationsClickable wurde in question.js nicht gefunden."
+    func_source = match.group(0)
+    script = f"""
+class FakeNode {{
+  constructor(nodeType, tag) {{
+    this.nodeType = nodeType;
+    this.tag = tag || null;
+    this.children = [];
+    this.parentNode = null;
+    this.className = '';
+    this.textContent = '';
+    this.listeners = {{}};
+  }}
+  appendChild(child) {{ child.parentNode = this; this.children.push(child); return child; }}
+  removeChildNode(child) {{
+    const i = this.children.indexOf(child);
+    if (i !== -1) this.children.splice(i, 1);
+  }}
+  remove() {{ if (this.parentNode) this.parentNode.removeChildNode(this); }}
+  closest(tag) {{
+    let n = this;
+    while (n) {{
+      if (n.tag === tag) return n;
+      n = n.parentNode;
+    }}
+    return null;
+  }}
+  insertAdjacentElement(where, el) {{
+    if (!this.parentNode) return;
+    const siblings = this.parentNode.children;
+    const i = siblings.indexOf(this);
+    el.parentNode = this.parentNode;
+    siblings.splice(where === 'afterend' ? i + 1 : i, 0, el);
+  }}
+  replaceChild(newNode, oldNode) {{
+    const i = this.children.indexOf(oldNode);
+    if (i === -1) return;
+    const replacement = newNode.nodeType === 'fragment' ? newNode.children : [newNode];
+    replacement.forEach((c) => {{ c.parentNode = this; }});
+    this.children.splice(i, 1, ...replacement);
+  }}
+  addEventListener(evt, fn) {{ this.listeners[evt] = fn; }}
+}}
+const document = {{
+  createElement: (tag) => new FakeNode('element', tag),
+  createTextNode: (text) => {{ const n = new FakeNode('text'); n.textContent = text; return n; }},
+  createDocumentFragment: () => new FakeNode('fragment'),
+  createTreeWalker: (root) => {{
+    const stack = [];
+    (function collect(node) {{
+      node.children.forEach((child) => {{
+        if (child.nodeType === 'text') stack.push(child);
+        else collect(child);
+      }});
+    }})(root);
+    let i = 0;
+    return {{ nextNode: () => (i < stack.length ? stack[i++] : null) }};
+  }},
+}};
+const NodeFilter = {{ SHOW_TEXT: 4 }};
+
+function buildSourceInfo(source, highlight) {{
+  const marker = document.createElement('div');
+  marker.textContent = 'CARD:' + source.chunk_id + '::' + (highlight || '');
+  return marker;
+}}
+
+{func_source}
+
+const container = new FakeNode('element', 'div');
+const p = document.createElement('p');
+container.appendChild(p);
+p.appendChild(document.createTextNode({json.dumps(paragraph_text)}));
+
+makeCitationsClickable(container, {json.dumps(sources)});
+
+function findButtons(node, acc) {{
+  if (node.tag === 'button') acc.push(node);
+  node.children.forEach((c) => findButtons(c, acc));
+  return acc;
+}}
+const buttons = findButtons(container, []);
+
+function countCards(node) {{
+  let n = node.tag === 'div' && node.className === 'citation-card' ? 1 : 0;
+  node.children.forEach((c) => {{ n += countCards(c); }});
+  return n;
+}}
+
+const results = [];
+for (const index of {json.dumps(click_sequence)}) {{
+  buttons[index].listeners.click();
+  results.push(countCards(container));
+}}
+console.log(JSON.stringify(results));
+"""
+    result = subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True)
+    return json.loads(result.stdout)
+
+
+def test_citation_click_reopens_card_after_two_occurrences_share_a_highlight():
+    """Regressionstest (Bug 2026-08-20, per Screenshot gemeldet): zwei
+    [1]-Vorkommen mit demselben Highlight teilten sich denselben
+    contentKey. Klick auf das ERSTE öffnete die Karte, Klick auf das ZWEITE
+    schloss sie wieder (geteilte Karte) - ein erneuter Klick auf das ZWEITE
+    Vorkommen blieb danach aber wirkungslos (das Highlighting "verschwand"
+    dauerhaft), weil der alte Code den Offen/Zu-Zustand redundant in einer
+    lokalen Variable JE BUTTON hielt, statt ihn einzig in openCards
+    nachzuschlagen."""
+    sources = [{"chunk_id": "chunk-1", "highlighted_texts": ["Gleiches Zitat", "Gleiches Zitat"]}]
+    # Klickreihenfolge: Button 0 auf, Button 1 (geteilte Karte) zu, Button 1
+    # erneut auf - genau der Schritt, der vorher hängen blieb.
+    counts = _run_citations_click_sequence(
+        "Erste Aussage [1]. Zweite Aussage [1].", sources, [0, 1, 1]
+    )
+    assert counts == [1, 0, 1]
+
+
+def test_citation_click_opens_independent_cards_for_different_highlights():
+    sources = [{"chunk_id": "chunk-1", "highlighted_texts": ["Zitat A", "Zitat B"]}]
+    counts = _run_citations_click_sequence("Erste Aussage [1]. Zweite Aussage [1].", sources, [0, 1])
+    assert counts == [1, 2]
+
+
 def test_exclude_web_page_button_not_shown_for_non_pfleger():
     output = _run_append_exclude_web_page_button(
         is_pfleger=False,

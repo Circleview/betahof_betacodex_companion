@@ -331,6 +331,7 @@ Commit-/Tag-Nachrichten in Git.
 
 | Version | Wesentliche Änderungen |
 |---|---|
+| v0.49.5 | Fix: Quellen-Highlighting verschwand teils dauerhaft, wenn eine Antwort denselben Chunk mit identischem Zitat mehrfach referenzierte (seit v0.49.3 durch die treffsichereren Folgefrage-Antworten häufiger) - der Auf-/Zuklapp-Zustand der Quellen-Karten lag redundant in einer Variable je Zitat-Button statt zentral, wodurch er bei geteilten Karten aus dem Takt geriet; `makeCitationsClickable` hatte zuvor keine Testabdeckung, jetzt zwei Regressionstests |
 | v0.49.4 | Test-Fix: drei CI-Tests warteten nach einem simulierten langsamen Hintergrund-Import mit einem festen `time.sleep(0.5)` statt zu pollen - auf einem langsameren CI-Runner reichte das nicht, wodurch v0.49.3 fälschlich am CI-Gate scheiterte, ohne den eigentlichen Deploy-Fix zu betreffen (siehe v0.49.3) |
 | v0.49.3 | Fix: vage Folgefragen ("Erzähle mehr") lieferten teils "keine Quellen"-Antworten zu Themen, die gerade erst korrekt beantwortet wurden - die Such-Query für Folgefragen wird jetzt per eigenem LLM-Call zu einer eigenständigen, themenspezifischen Suchanfrage umformuliert statt nur Frage-Text zu verketten |
 | v0.49.2 | Fix: Cloudflare Turnstile sprang beim Laden der Konversationsseite kurz sichtbar auf/zu (Eingabezeile bzw. die zentrierte Startansicht verschob sich) - Platzbedarf wird jetzt nur noch reserviert, wenn wirklich eine sichtbare Challenge nötig ist |

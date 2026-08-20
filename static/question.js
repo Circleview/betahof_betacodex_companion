@@ -439,28 +439,37 @@ function makeCitationsClickable(container, sources) {
         // unabhaengig davon, ob eine sich zwischenzeitlich aendernde
         // Hervorhebung beim naechsten Klick einen anderen Schluessel
         // ergeben wuerde.
-        let openKey = null;
+        //
+        // Bug (2026-08-20, per Screenshot gemeldet): das ehemalige
+        // zusätzliche `openKey` je Button geriet aus dem Takt, sobald ZWEI
+        // verschiedene Vorkommen denselben contentKey ergaben (z.B. dieselbe
+        // Aussage zweimal zitiert - seit dem Folgefrage-Fix vom selben Tag
+        // deutlich häufiger, da jetzt öfter mehrfach auf denselben, wirklich
+        // treffenden Chunk verwiesen wird). Klick auf Button A öffnete die
+        // Karte und setzte NUR A.openKey; Button B (gleicher Schlüssel) las
+        // beim eigenen Klick openCards.has() als "schon offen" und übernahm
+        // den Schlüssel nur in seine eigene, bis dahin leere openKey-Variable
+        // - schloss A die Karte danach, blieb B.openKey auf den inzwischen
+        // entfernten Schlüssel eingefroren: ein erneuter Klick auf B fand
+        // dort nichts mehr zum Entfernen und öffnete auch nichts Neues mehr.
+        // Fix: der Offen/Zu-Zustand lebt jetzt ausschließlich in openCards
+        // (Wahrheit an einer Stelle statt zwei Kopien je Button/Map).
         btn.addEventListener('click', () => {
-          const paragraph = btn.closest('p') || container;
-          if (openKey !== null) {
-            openCards.get(openKey)?.remove();
-            openCards.delete(openKey);
-            openKey = null;
-            return;
-          }
           const highlights = source.highlighted_texts || [];
           const highlight = highlights[myOccurrence] ?? highlights[0] ?? null;
           const contentKey = `${source.chunk_id}::${highlight || ''}`;
-          if (openCards.has(contentKey)) {
-            openKey = contentKey;
+          const existingCard = openCards.get(contentKey);
+          if (existingCard) {
+            existingCard.remove();
+            openCards.delete(contentKey);
             return;
           }
+          const paragraph = btn.closest('p') || container;
           const card = document.createElement('div');
           card.className = 'citation-card';
           card.appendChild(buildSourceInfo(source, highlight));
           paragraph.insertAdjacentElement('afterend', card);
           openCards.set(contentKey, card);
-          openKey = contentKey;
         });
         // Satzzeichen, die direkt (ohne Leerzeichen) auf die Quellenangabe
         // folgen (z. B. "[1]."), sollen beim Zeilenumbruch nicht von ihr
