@@ -2551,8 +2551,27 @@ def extract_url(payload: UrlIn, _user: str = Depends(require_role(users.QUELLEN_
     return ExtractedSource(**result, is_audio=is_audio, is_pdf=is_pdf)
 
 
-def _normalize_for_match(text: str) -> str:
-    return " ".join(text.split()).lower()
+# Fix (2026-08-20, per Screenshot gemeldet): das "wörtliche" Zitat des LLM
+# im ---QUOTES---Block weicht in der Formatierung leicht vom Original ab
+# (z.B. wird ein geschütztes Leerzeichen \xa0 - typisch bei aus Websites
+# gecrawltem Text - beim Generieren zu einem normalen Leerzeichen normalisiert).
+# Bislang wurde nach erfolgreicher toleranter Prüfung trotzdem der
+# MODELLTEXT als Highlight übernommen - der exakte String-Vergleich im
+# Frontend (findHighlightRange, static/question.js) schlug dadurch fehl,
+# nur die dortige Whitespace-tolerante Regex-Notlösung rettete die Anzeige
+# (und auch nur für reine Whitespace-Abweichungen, nicht z.B. bei
+# Anführungszeichen-Varianten). _find_quote_span() liefert stattdessen die
+# TATSÄCHLICHE Textspanne aus dem Chunk selbst zurück (Original-Whitespace/
+# -Schreibweise), an exakt der vom Zitat referenzierten Stelle - der
+# Frontend-Exakttreffer greift dann direkt, die Regex bleibt nur noch
+# Sicherheitsnetz statt Regelfall.
+def _find_quote_span(doc: str, candidate: str) -> str | None:
+    words = candidate.split()
+    if not words:
+        return None
+    pattern = r"\s+".join(re.escape(word) for word in words)
+    match = re.search(pattern, doc, re.IGNORECASE)
+    return doc[match.start() : match.end()] if match else None
 
 
 # Performance-Fix (2026-07-31, Produktion auf schwächerer Hetzner-CPU
@@ -2638,9 +2657,7 @@ def _compute_occurrence_highlights(
             next_index = used_quote_index.get(citation_number, 0)
             if next_index < len(quotes):
                 used_quote_index[citation_number] = next_index + 1
-                candidate = quotes[next_index]
-                if _normalize_for_match(candidate) in _normalize_for_match(doc):
-                    highlight = candidate
+                highlight = _find_quote_span(doc, quotes[next_index])
 
             if highlight is None:
                 doc_sentences, doc_embeddings = _get_chunk_sentence_embeddings(doc)

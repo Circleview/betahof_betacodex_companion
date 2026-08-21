@@ -52,6 +52,60 @@ console.log(JSON.stringify(rates));
     result = subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True)
     return json.loads(result.stdout)
 
+def _run_find_highlight_range(text, highlight):
+    """Führt static/question.js#findHighlightRange per Node real aus - reine
+    Funktion ohne DOM-Abhängigkeit, bisher OHNE jede Testabdeckung, obwohl
+    sie allein entscheidet, ob überhaupt ein Highlight-<mark> erscheint."""
+    js_source = (STATIC_DIR / "question.js").read_text()
+    match = re.search(r"function findHighlightRange.*?\n\}", js_source, re.S)
+    assert match, "findHighlightRange wurde in question.js nicht gefunden."
+    func_source = match.group(0)
+    script = f"""
+{func_source}
+console.log(JSON.stringify(findHighlightRange({json.dumps(text)}, {json.dumps(highlight)})));
+"""
+    result = subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True)
+    return json.loads(result.stdout)
+
+
+def test_find_highlight_range_returns_exact_match():
+    text = "Jede Liste besitzt einen List-Owner."
+    highlight = "einen List-Owner"
+    range_ = _run_find_highlight_range(text, highlight)
+    assert range_ == [text.index(highlight), text.index(highlight) + len(highlight)]
+
+
+def test_find_highlight_range_tolerates_non_breaking_space_difference():
+    """Regressionstest (Bug 2026-08-20): das Original enthält ein
+    geschütztes Leerzeichen (\xa0, typisch bei aus Websites gecrawltem
+    Text), das LLM-Zitat ein normales - die whitespace-tolerante Regex
+    muss trotzdem greifen, statt gar kein Highlight zu zeigen."""
+    text = "Jede Liste besitzt einen\xa0List-Owner. Diese Rolle endet mit der Liste."
+    highlight = "Jede Liste besitzt einen List-Owner."
+    range_ = _run_find_highlight_range(text, highlight)
+    assert range_ is not None
+    assert text[range_[0] : range_[1]] == "Jede Liste besitzt einen\xa0List-Owner."
+
+
+def test_find_highlight_range_escapes_regex_special_characters():
+    """Ein Zitat mit Markdown-Sternchen (**fett**) oder anderen Regex-
+    Sonderzeichen darf die whitespace-tolerante Suche nicht zum Absturz
+    bringen oder falsch (leer) matchen lassen."""
+    text = "Der **List-Owner** (kurz LO) ist zentral."
+    highlight = "Der **List-Owner** (kurz LO)"
+    range_ = _run_find_highlight_range(text, highlight)
+    assert range_ is not None
+    assert text[range_[0] : range_[1]] == highlight
+
+
+def test_find_highlight_range_returns_null_when_nothing_matches():
+    """Graceful Degradation: findet sich das Highlight nirgends (auch nicht
+    tolerant), gibt es null zurück statt zu crashen - appendTextWithHighlight
+    zeigt dann den vollen Text ohne Hervorhebung, statt Inhalt zu verlieren."""
+    range_ = _run_find_highlight_range("Ein völlig anderer Satz.", "Kommt hier gar nicht vor")
+    assert range_ is None
+
+
 def _run_append_title_text(source_obj):
     """Führt static/question.js#appendTitleText per Node real aus, mit
     minimalen DOM-Stubs (kein volles jsdom nötig - die Funktion nutzt nur
@@ -276,6 +330,138 @@ console.log(JSON.stringify(results));
 """
     result = subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True)
     return json.loads(result.stdout)
+
+
+def _run_citations_click_all_and_read_markers(paragraph_text, sources):
+    """Wie _run_citations_click_sequence, klickt aber JEDEN Button genau
+    einmal (in Textreihenfolge) und gibt pro Klick den Marker-Text der
+    dabei geöffneten Karte zurück - damit prüfbar ist, dass jedes Vorkommen
+    wirklich SEIN EIGENES highlighted_texts[occurrence] bekommt, auch wenn
+    zwischendurch andere Zitatnummern auftauchen (z.B. [1]...[2]...[1])."""
+    js_source = (STATIC_DIR / "question.js").read_text()
+    match = re.search(r"function makeCitationsClickable.*?\n\}", js_source, re.S)
+    assert match, "makeCitationsClickable wurde in question.js nicht gefunden."
+    func_source = match.group(0)
+    script = f"""
+class FakeNode {{
+  constructor(nodeType, tag) {{
+    this.nodeType = nodeType;
+    this.tag = tag || null;
+    this.children = [];
+    this.parentNode = null;
+    this.className = '';
+    this.textContent = '';
+    this.listeners = {{}};
+  }}
+  appendChild(child) {{ child.parentNode = this; this.children.push(child); return child; }}
+  removeChildNode(child) {{
+    const i = this.children.indexOf(child);
+    if (i !== -1) this.children.splice(i, 1);
+  }}
+  remove() {{ if (this.parentNode) this.parentNode.removeChildNode(this); }}
+  closest(tag) {{
+    let n = this;
+    while (n) {{
+      if (n.tag === tag) return n;
+      n = n.parentNode;
+    }}
+    return null;
+  }}
+  insertAdjacentElement(where, el) {{
+    if (!this.parentNode) return;
+    const siblings = this.parentNode.children;
+    const i = siblings.indexOf(this);
+    el.parentNode = this.parentNode;
+    siblings.splice(where === 'afterend' ? i + 1 : i, 0, el);
+  }}
+  replaceChild(newNode, oldNode) {{
+    const i = this.children.indexOf(oldNode);
+    if (i === -1) return;
+    const replacement = newNode.nodeType === 'fragment' ? newNode.children : [newNode];
+    replacement.forEach((c) => {{ c.parentNode = this; }});
+    this.children.splice(i, 1, ...replacement);
+  }}
+  addEventListener(evt, fn) {{ this.listeners[evt] = fn; }}
+}}
+const document = {{
+  createElement: (tag) => new FakeNode('element', tag),
+  createTextNode: (text) => {{ const n = new FakeNode('text'); n.textContent = text; return n; }},
+  createDocumentFragment: () => new FakeNode('fragment'),
+  createTreeWalker: (root) => {{
+    const stack = [];
+    (function collect(node) {{
+      node.children.forEach((child) => {{
+        if (child.nodeType === 'text') stack.push(child);
+        else collect(child);
+      }});
+    }})(root);
+    let i = 0;
+    return {{ nextNode: () => (i < stack.length ? stack[i++] : null) }};
+  }},
+}};
+const NodeFilter = {{ SHOW_TEXT: 4 }};
+
+function buildSourceInfo(source, highlight) {{
+  const marker = document.createElement('div');
+  marker.textContent = 'CARD:' + source.chunk_id + '::' + (highlight || '');
+  return marker;
+}}
+
+{func_source}
+
+const container = new FakeNode('element', 'div');
+const p = document.createElement('p');
+container.appendChild(p);
+p.appendChild(document.createTextNode({json.dumps(paragraph_text)}));
+
+makeCitationsClickable(container, {json.dumps(sources)});
+
+function findButtons(node, acc) {{
+  if (node.tag === 'button') acc.push(node);
+  node.children.forEach((c) => findButtons(c, acc));
+  return acc;
+}}
+const buttons = findButtons(container, []);
+
+function findCard(node) {{
+  if (node.tag === 'div' && node.className === 'citation-card') return node;
+  for (const c of node.children) {{
+    const found = findCard(c);
+    if (found) return found;
+  }}
+  return null;
+}}
+
+const markers = buttons.map((btn) => {{
+  btn.listeners.click();
+  const card = findCard(container);
+  const marker = card ? card.children[0].textContent : null;
+  btn.listeners.click(); // gleich wieder schliessen, damit sich Karten nicht ueberlappen
+  return marker;
+}});
+console.log(JSON.stringify(markers));
+"""
+    result = subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True)
+    return json.loads(result.stdout)
+
+
+def test_citation_click_maps_each_occurrence_to_its_own_highlight_across_interleaved_numbers():
+    """Stellt sicher, dass myOccurrence korrekt PRO ZITATNUMMER zählt, auch
+    wenn zwischen zwei [1]-Vorkommen ein [2] eines anderen Chunks liegt -
+    das zweite [1] darf nicht versehentlich das Highlight des [2] oder das
+    globale dritte Vorkommen bekommen."""
+    sources = [
+        {"chunk_id": "chunk-1", "highlighted_texts": ["Erstes Zitat A", "Zweites Zitat A"]},
+        {"chunk_id": "chunk-2", "highlighted_texts": ["Einziges Zitat B"]},
+    ]
+    markers = _run_citations_click_all_and_read_markers(
+        "Aussage eins [1]. Aussage zwei [2]. Aussage drei [1].", sources
+    )
+    assert markers == [
+        "CARD:chunk-1::Erstes Zitat A",
+        "CARD:chunk-2::Einziges Zitat B",
+        "CARD:chunk-1::Zweites Zitat A",
+    ]
 
 
 def test_citation_click_reopens_card_after_two_occurrences_share_a_highlight():

@@ -1709,6 +1709,42 @@ def test_ask_falls_back_to_local_highlight_when_llm_quote_not_found_in_chunk(cli
     ]
 
 
+def test_ask_uses_original_chunk_whitespace_not_llm_quote_for_highlight(client, monkeypatch):
+    """Regressionstest (Bug 2026-08-20, per Screenshot gemeldet): das
+    "wörtliche" LLM-Zitat normalisiert Formatierungs-Eigenheiten des
+    Originals leicht (hier: ein geschütztes Leerzeichen \xa0 - typisch bei
+    aus Websites gecrawltem Text - wird zu einem normalen Leerzeichen).
+    Der exakte String-Vergleich im Frontend (findHighlightRange) fand das
+    LLM-Zitat dadurch nicht mehr im Chunk-Text. highlighted_texts muss die
+    TATSÄCHLICHE Textspanne aus dem Chunk liefern (inkl. \xa0), nicht die
+    vom Modell leicht geglättete Fassung."""
+    client.post(
+        "/api/sources",
+        json={
+            "title": "BetaCodex Quelle",
+            "authors": ["Autor Y"],
+            "text": "Jede Liste besitzt einen\xa0List-Owner. Diese Rolle endet mit der Liste.",
+        },
+    )
+    monkeypatch.setattr(
+        llm,
+        "stream_answer_question",
+        lambda question, chunks, lang="de", author_bios=None, history=None: iter([
+            "Antwort [1].\n\n---QUOTES---\n"
+            # Das Modell gibt ein normales statt des geschützten Leerzeichens
+            # wieder - genau der real beobachtete Fall.
+            '[1]: "Jede Liste besitzt einen List-Owner."\n'
+        ]),
+    )
+
+    response = client.post("/api/ask", json={"question": "Was ist ein List-Owner?"})
+
+    assert response.status_code == 200
+    highlight = ask_result(response)["sources"][0]["highlighted_texts"][0]
+    assert highlight == "Jede Liste besitzt einen\xa0List-Owner."
+    assert "\xa0" in highlight
+
+
 def test_ask_skips_eager_local_highlight_computation_for_cited_chunks(client, monkeypatch):
     """Performance-Regression: _best_local_sentence wurde bislang EAGER für
     JEDEN zurückgegebenen Chunk aufgerufen (mehrere Sekunden zusätzliches
