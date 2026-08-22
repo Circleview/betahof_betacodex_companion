@@ -2472,6 +2472,12 @@ def get_source_audio(
 
 @app.get("/api/import-jobs", response_model=list[ImportJobOut])
 def list_import_jobs(_user: str = Depends(require_role(users.QUELLEN_PFLEGER))):
+    # Fix (2026-08-23, per Nutzerfeedback): delete_source() setzt beim
+    # weichen Löschen bewusst NUR deleted_at, lässt processing_status einer
+    # zuvor fehlgeschlagenen Quelle aber unangetastet stehen (kein Grund,
+    # das beim Löschen extra zu bereinigen) - ohne diesen Filter blieb eine
+    # gelöschte, fehlgeschlagene Quelle trotzdem für immer in der
+    # Fehler-Warteschlange/dem Jobs-Badge sichtbar.
     sources = _load_sources()
     return [
         ImportJobOut(
@@ -2482,7 +2488,7 @@ def list_import_jobs(_user: str = Depends(require_role(users.QUELLEN_PFLEGER))):
             processing_error=entry.get("processing_error"),
         )
         for source_id, entry in sources.items()
-        if entry.get("processing_status")
+        if entry.get("processing_status") and not entry.get("deleted_at")
     ]
 
 

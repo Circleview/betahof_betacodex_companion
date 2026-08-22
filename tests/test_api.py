@@ -664,6 +664,23 @@ def test_import_jobs_lists_pending_and_error_but_not_done(client, monkeypatch):
     assert done_id not in job_ids
 
 
+def test_import_jobs_excludes_soft_deleted_sources(client, monkeypatch):
+    """Regressionstest (Bug 2026-08-23, per Nutzerfeedback): delete_source()
+    setzt beim weichen Löschen nur deleted_at, lässt einen zuvor
+    fehlgeschlagenen processing_status aber unverändert stehen - eine
+    gelöschte, fehlgeschlagene Quelle blieb dadurch für immer in der
+    Fehler-Warteschlange/dem Jobs-Badge sichtbar."""
+    create_res = _create_deferred_audio_source(client, monkeypatch)
+    source_id = create_res.json()["id"]
+    monkeypatch.setattr(extraction, "transcribe_audio", lambda path, **kw: ("", "boom"))
+    main_module._process_audio_transcription(source_id)
+    assert source_id in {job["id"] for job in client.get("/api/import-jobs").json()}
+
+    client.delete(f"/api/sources/{source_id}")
+
+    assert source_id not in {job["id"] for job in client.get("/api/import-jobs").json()}
+
+
 def test_reprocess_source_retries_and_can_then_succeed(client, monkeypatch):
     create_res = _create_deferred_audio_source(client, monkeypatch)
     source_id = create_res.json()["id"]
