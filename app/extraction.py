@@ -559,7 +559,15 @@ def _render_pdf_pages_to_images(data: bytes, dpi: int = 150) -> list[bytes]:
 def _ocr_page(image_bytes: bytes) -> str:
     """Transkribiert eine einzelne Seite. Gibt bei jedem Fehler (API-Fehler,
     fehlender Key, Netzwerkfehler) einen leeren String zurück statt zu
-    crashen - gleiche defensive Konvention wie _transcribe_chunk."""
+    crashen - gleiche defensive Konvention wie _transcribe_chunk.
+
+    Fix (2026-08-23, per realem Produktions-Vorfall): der ursprüngliche
+    Fehler ging dabei bisher komplett verloren - ein leerer String sieht für
+    _finalize_extracted_text (app/main.py) identisch aus wie "Seite enthält
+    keinen Text" (siehe _OCR_SYSTEM_PROMPT), es blieb also nirgends eine
+    Spur, WARUM die Texterkennung wirklich fehlschlug. Auf stderr drucken
+    reicht hier (landet im journalctl-Log wie jede andere uvicorn-Ausgabe) -
+    ein eigenes Logging-Setup gibt es in diesem Projekt bewusst nicht."""
     client = _get_anthropic_client()
     try:
         message = client.messages.create(
@@ -584,7 +592,8 @@ def _ocr_page(image_bytes: bytes) -> str:
             ],
         )
         return message.content[0].text.strip()
-    except Exception:
+    except Exception as e:
+        print(f"[OCR] _ocr_page fehlgeschlagen: {e!r}", file=sys.stderr)
         return ""
 
 
@@ -596,7 +605,8 @@ def ocr_pdf_with_ai(data: bytes) -> str:
     app/main.py) statt die Vorschau/das Anlegen der Quelle zu blockieren."""
     try:
         pages = _render_pdf_pages_to_images(data)
-    except Exception:
+    except Exception as e:
+        print(f"[OCR] _render_pdf_pages_to_images fehlgeschlagen: {e!r}", file=sys.stderr)
         return ""
     texts = [_ocr_page(page) for page in pages]
     return "\n\n".join(t for t in texts if t)

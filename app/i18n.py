@@ -2,6 +2,7 @@ MESSAGES = {
     "de": {
         "text_empty": "Text darf nicht leer sein.",
         "no_chunks": "Aus dem Text konnten keine Chunks erzeugt werden.",
+        "pdf_upload_not_found": "Die hochgeladene PDF-Datei wurde nicht mehr gefunden - bitte erneut hochladen.",
         "url_already_exists": "Diese URL wurde bereits importiert: \"{title}\".",
         "web_allowlist_invalid_url": "Bitte eine vollständige URL mit http:// oder https:// angeben.",
         "web_allowlist_reason_required": "Bitte eine Begründung angeben.",
@@ -53,6 +54,7 @@ MESSAGES = {
     "en": {
         "text_empty": "Text must not be empty.",
         "no_chunks": "No chunks could be created from the text.",
+        "pdf_upload_not_found": "The uploaded PDF file was no longer found - please upload it again.",
         "url_already_exists": "This URL has already been imported: \"{title}\".",
         "web_allowlist_invalid_url": "Please provide a full URL starting with http:// or https://.",
         "web_allowlist_reason_required": "Please provide a reason.",

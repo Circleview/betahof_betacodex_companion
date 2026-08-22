@@ -126,7 +126,6 @@ AUDIO_DIR = DATA_DIR / "audio"
 AUDIO_UPLOAD_STAGING_DIR = DATA_DIR / "audio_uploads"
 
 DATA_DIR.mkdir(exist_ok=True)
-users.ensure_bootstrap_admin(os.environ.get("SYSTEM_ADMIN_EMAIL", ""))
 
 
 def _get_version() -> str:
@@ -147,7 +146,31 @@ def _get_version() -> str:
 
 APP_VERSION = _get_version()
 
-app = FastAPI(title="BetaCodex Wissensassistent")
+
+# Fix (2026-08-23, realer Datenverlust auf Dev): alle Hintergrund-Threads
+# (Audio-Transkription, URL-Gesundheits-Check, Web-Allowlist-Crawl,
+# Zusammenfassungs-Nachzug) sowie die Einmal-Aufräumarbeiten beim Start
+# liefen bisher UNBEDINGT beim bloßen Import dieses Moduls - nicht erst bei
+# einem echten Server-Start. Jedes `python3 -c "from app import main"`
+# (z.B. für einen schnellen Syntax-Check) UND sogar der Import durch die
+# Test-Suite selbst (test_api.py: `from app import main as main_module`)
+# haben dadurch echte Hintergrund-Threads mit echten Netzwerk-/API-
+# Aufrufen auf die ECHTEN Dev-Daten gestartet, lange bevor irgendein
+# Test-Mock oder tmp_path-Monkeypatch greifen konnte - deckt sich mit dem
+# im Code selbst dokumentierten realen Vorfall vom 2026-07-28 (nebenläufige,
+# unsynchronisierte Hintergrund-Threads, "Lost Update" auf sources.json).
+# Über das ASGI-Lifespan-Protokoll starten diese Threads jetzt nur noch bei
+# einem ECHTEN Server-Start (uvicorn) - ein bloßer Modul-Import (Skripte,
+# Tests) hat ab jetzt keine Seiteneffekte mehr. Siehe
+# _start_background_workers() weiter unten für die eigentliche Liste.
+@contextlib.asynccontextmanager
+async def lifespan(app: FastAPI):
+    _start_background_workers()
+    yield
+    _wait_for_background_jobs_on_shutdown()
+
+
+app = FastAPI(title="BetaCodex Wissensassistent", lifespan=lifespan)
 
 
 # Backlog #58: einzige externe Host, die die App tatsächlich als Ressource
@@ -389,8 +412,12 @@ def _prepare_chunks(source: SourceIn, lang: str) -> tuple[list[str], list[list[f
     return chunks, chunk_embeddings
 
 
+def _pdf_upload_staging_path(upload_id: str) -> Path:
+    return PDF_UPLOAD_STAGING_DIR / f"{upload_id}.pdf"
+
+
 def _consume_pdf_upload(source_id: str, upload_id: str) -> None:
-    staged_path = PDF_UPLOAD_STAGING_DIR / f"{upload_id}.pdf"
+    staged_path = _pdf_upload_staging_path(upload_id)
     if not staged_path.exists():
         return
     PDF_DIR.mkdir(parents=True, exist_ok=True)
@@ -686,7 +713,6 @@ def _track_background_job(source_id: str):
                 _in_flight_jobs_drained.set()
 
 
-@app.on_event("shutdown")
 def _wait_for_background_jobs_on_shutdown() -> None:
     finished_in_time = _in_flight_jobs_drained.wait(timeout=BACKGROUND_JOB_SHUTDOWN_GRACE_SECONDS)
     if finished_in_time:
@@ -930,6 +956,14 @@ def _audio_transcription_worker() -> None:
             _audio_transcription_queue.task_done()
 
 
+# Fix (2026-08-23): bewusst NICHT in _start_background_workers() (siehe dort/
+# lifespan oben) - anders als die übrigen Worker tickt dieser Pool nicht
+# sofort gegen echte Daten, sondern blockiert rein reaktiv auf .get(), bis
+# irgendwo add_source() etwas einreiht (immer erst NACH einem echten Request,
+# also nie beim bloßen Modul-Import). Ohne laufende Worker bliebe außerdem
+# jeder Test, der wie _create_deferred_audio_source() auf
+# _audio_transcription_queue.join() wartet, für immer hängen - der Pool darf
+# also unabhängig vom echten Server-Start immer laufen.
 for _ in range(AUDIO_TRANSCRIPTION_WORKER_COUNT):
     threading.Thread(target=_audio_transcription_worker, daemon=True).start()
 
@@ -1003,9 +1037,6 @@ def _url_health_check_worker() -> None:
         time.sleep(URL_HEALTH_CHECK_INTERVAL_SECONDS)
 
 
-threading.Thread(target=_url_health_check_worker, daemon=True).start()
-
-
 # Nutzerwunsch (2026-08-03): fehlende Zusammenfassungen (egal ob durch die
 # Retries in _generate_summary_background immer noch nicht gelungen, oder
 # aus der Zeit vor diesem Fix) automatisch nachziehen - laeuft nach
@@ -1038,9 +1069,6 @@ def _summary_backfill_worker() -> None:
             # nicht dauerhaft beenden - naechster Versuch beim naechsten Takt.
             pass
         time.sleep(SUMMARY_BACKFILL_INTERVAL_SECONDS)
-
-
-threading.Thread(target=_summary_backfill_worker, daemon=True).start()
 
 
 # Backlog: LLM/Internet-Fallback bei dünner Quellenlage - Nutzerwunsch, dass
@@ -1161,10 +1189,6 @@ def _recover_interrupted_web_allowlist_indexing() -> None:
             web_allowlist.set_indexing_status(entry_id, None)
 
 
-_recover_interrupted_web_allowlist_indexing()
-threading.Thread(target=_web_allowlist_crawl_worker, daemon=True).start()
-
-
 def _index_new_web_allowlist_entry(entry_id: str, url_prefix: str, max_pages: int) -> None:
     try:
         _index_web_allowlist_entry_with_status(entry_id, url_prefix, max_pages)
@@ -1228,9 +1252,6 @@ def _recover_interrupted_processing_jobs() -> None:
         ).start()
 
 
-_recover_interrupted_processing_jobs()
-
-
 def _warm_up_local_models() -> None:
     embeddings.preload_model()
     vectorstore.preload()
@@ -1244,7 +1265,25 @@ def _warm_up_local_models() -> None:
 # eine echte Anfrage zufällig genau die kurze Warm-up-Phase, wartet sie
 # dank des Locks in embeddings._get_model/vectorstore._get_collection auf
 # genau dieses eine Laden, statt selbst ein zweites zu starten.
-threading.Thread(target=_warm_up_local_models, daemon=True).start()
+
+
+def _start_background_workers() -> None:
+    """Bündelt die INTERVALL-basierten Hintergrund-Threads + Einmal-
+    Aufräumarbeiten beim Start (siehe Kommentar bei lifespan() weiter oben) -
+    wird ausschließlich von dort aufgerufen, bei einem echten ASGI-Server-
+    Start. Der Audio-Transkriptions-Worker-Pool ist bewusst NICHT hier drin
+    (siehe eigener Fix-Kommentar bei dessen Start weiter oben) - er tickt
+    rein reaktiv statt sofort gegen echte Daten und muss deshalb immer schon
+    laufen. Reihenfolge entspricht der bisherigen, rein zeilenweisen
+    Ausführung beim Modul-Import: jede Aufräum-Funktion läuft weiterhin VOR
+    dem zugehörigen Sweep-Thread."""
+    users.ensure_bootstrap_admin(os.environ.get("SYSTEM_ADMIN_EMAIL", ""))
+    threading.Thread(target=_url_health_check_worker, daemon=True).start()
+    threading.Thread(target=_summary_backfill_worker, daemon=True).start()
+    _recover_interrupted_web_allowlist_indexing()
+    threading.Thread(target=_web_allowlist_crawl_worker, daemon=True).start()
+    _recover_interrupted_processing_jobs()
+    threading.Thread(target=_warm_up_local_models, daemon=True).start()
 
 
 def _reindex_all_sources() -> None:
@@ -1396,6 +1435,21 @@ def add_source(
             raise HTTPException(
                 400, i18n.get_message("url_already_exists", x_lang, title=existing["title"])
             )
+
+    # Fix (2026-08-23, per realem Produktions-Vorfall): pdf_upload_id kam
+    # bisher unhinterfragt bis zu _consume_pdf_upload() weiter unten durch -
+    # war die hochgeladene Datei zu dem Zeitpunkt schon nicht mehr da (z.B.
+    # ein bereits verwendeter/veralteter upload_id-Wert), legte add_source()
+    # trotzdem klaglos eine "deferred_pdf"-Quelle an. Der spätere Hintergrund-
+    # Job (_process_pdf_ocr) fand dann natürlich auch keine PDF-Datei, brach
+    # mit leerem Text ab und landete als "Texterkennung fehlgeschlagen" -
+    # ununterscheidbar von einem ECHTEN KI-Vision-Fehlschlag, obwohl die
+    # KI-Texterkennung dabei nie auch nur aufgerufen wurde. Früh und
+    # synchron prüfen, damit ein derartiger Fall sofort eine klare
+    # Fehlermeldung bekommt, statt lautlos Wochen später als rätselhafter
+    # OCR-Fehler wieder aufzutauchen.
+    if source.pdf_upload_id and not _pdf_upload_staging_path(source.pdf_upload_id).exists():
+        raise HTTPException(400, i18n.get_message("pdf_upload_not_found", x_lang))
 
     deferred_audio = _is_deferred_audio_import(source)
     deferred_pdf = _is_deferred_pdf_import(source)

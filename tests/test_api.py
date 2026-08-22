@@ -3151,6 +3151,36 @@ def test_add_source_with_pdf_upload_id_persists_file(client, monkeypatch):
     assert entry["has_pdf"] is True
 
 
+def test_add_source_rejects_pdf_upload_id_with_missing_staged_file(client):
+    """Regressionstest (Bug 2026-08-23, per realem Produktions-Vorfall): ein
+    pdf_upload_id, dessen hochgeladene Datei nicht mehr existiert (z.B.
+    bereits verwendeter/veralteter Wert), führte bisher klaglos zu einer
+    angelegten Quelle, deren Hintergrund-OCR-Job garantiert scheitert - mit
+    der irreführenden Meldung "Texterkennung fehlgeschlagen", obwohl die
+    KI-Texterkennung nie aufgerufen wurde. add_source() muss das synchron
+    UND FRÜH ablehnen, statt eine zum Scheitern verurteilte Quelle
+    anzulegen."""
+    response = client.post(
+        "/api/sources",
+        json={"title": "Aus PDF", "text": "", "pdf_upload_id": "nie-hochgeladen"},
+    )
+
+    assert response.status_code == 400
+    assert client.get("/api/sources").json() == []
+
+
+def test_add_source_with_pdf_upload_id_and_manual_text_still_validates_upload(client):
+    """Die Prüfung greift unabhängig davon, ob gleichzeitig schon Text
+    manuell eingegeben wurde (dann wäre die Quelle selbst nicht "deferred",
+    die PDF-Datei würde aber trotzdem nie existieren)."""
+    response = client.post(
+        "/api/sources",
+        json={"title": "Aus PDF", "text": "Von Hand eingegeben.", "pdf_upload_id": "nie-hochgeladen"},
+    )
+
+    assert response.status_code == 400
+
+
 def test_extract_audio_upload_returns_immediately_without_transcribing(client, monkeypatch):
     # Transkription kann Minuten dauern und läuft deshalb erst als
     # Hintergrund-Job nach dem Anlegen der Quelle - die Upload-Vorschau
