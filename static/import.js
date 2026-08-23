@@ -1934,7 +1934,7 @@ function buildSourceDetails(s, citationUrl) {
   container.className = 'source-summary';
 
   const summaryEl = renderSummaryWithTerms(s.summary, s.key_terms);
-  prependAiIcon(summaryEl);
+  if (s.summary_ai_generated) prependAiIcon(summaryEl);
   container.appendChild(summaryEl);
   if (citationUrl) appendOpenLink(summaryEl, citationUrl);
 

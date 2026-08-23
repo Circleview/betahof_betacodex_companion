@@ -558,6 +558,7 @@ def _to_source_out(
     lang = lang if lang in ("de", "en") else i18n.DEFAULT_LANG
     data["summary"] = data.get(f"summary_{lang}") or ""
     data["key_terms"] = data.get(f"key_terms_{lang}") or []
+    data["summary_ai_generated"] = data.get(f"summary_ai_generated_{lang}", True)
     data["has_pdf"] = (PDF_DIR / f"{data['id']}.pdf").exists()
     data["has_audio"] = _existing_audio_file(data["id"]) is not None
     return SourceOut(**data)
@@ -601,8 +602,36 @@ def _generate_summary_background(source_id: str, text: str) -> None:
         sources[source_id]["summary_en"] = result["en"]["summary"]
         sources[source_id]["key_terms_de"] = result["de"]["key_terms"]
         sources[source_id]["key_terms_en"] = result["en"]["key_terms"]
+        sources[source_id]["summary_ai_generated_de"] = True
+        sources[source_id]["summary_ai_generated_en"] = True
         _save_sources(sources)
         _register_all_terms(source_id, sources[source_id])
+
+
+def _translate_summary_background(source_id: str, summary_text: str, target_lang: str) -> None:
+    # Nutzerwunsch (2026-08-23): eine von Hand überarbeitete Zusammenfassung
+    # soll automatisch in die jeweils andere Sprache übersetzt werden, statt
+    # dort einen inhaltlich abweichenden (oder veralteten) Stand stehen zu
+    # lassen. Läuft im Hintergrund, damit der Speicher-Request selbst nicht
+    # auf den langsamen KI-Aufruf warten muss.
+    translated = summarization.translate_summary(summary_text, target_lang)
+    if not translated:
+        return
+    with _sources_write_lock:
+        sources = _load_sources()
+        if _source_is_missing(sources, source_id):
+            return
+        # Erneute Prüfung unmittelbar vor dem Schreiben (analog
+        # _generate_author_bio_one_lang): die Übersetzung dauert mehrere
+        # Sekunden - in dieser Zeit könnte die Zielsprache inzwischen selbst
+        # von Hand überarbeitet worden sein. Eine soeben gespeicherte
+        # manuelle Fassung darf die automatische Übersetzung nie
+        # kommentarlos überschreiben.
+        if sources[source_id].get(f"summary_ai_generated_{target_lang}") is False:
+            return
+        sources[source_id][f"summary_{target_lang}"] = translated
+        sources[source_id][f"summary_ai_generated_{target_lang}"] = False
+        _save_sources(sources)
 
 
 def _is_deferred_audio_import(source: SourceIn) -> bool:
@@ -869,6 +898,7 @@ def _process_audio_transcription(source_id: str, lang: str = i18n.DEFAULT_LANG) 
         entry["processing_status"] = "running"
         entry["processing_step"] = "transcribe"
         known_segments = {int(k): v for k, v in (entry.get("processing_segments") or {}).items()}
+        known_names = entry.get("authors") or []
         _save_sources(sources)
 
     def on_segment_success(index: int, total: int, segment_text: str) -> None:
@@ -885,7 +915,10 @@ def _process_audio_transcription(source_id: str, lang: str = i18n.DEFAULT_LANG) 
         text, error_detail = "", None
     else:
         text, error_detail = extraction.transcribe_audio(
-            audio_path, known_segments=known_segments, on_segment_success=on_segment_success
+            audio_path,
+            known_segments=known_segments,
+            on_segment_success=on_segment_success,
+            known_names=known_names,
         )
 
     if error_detail:
@@ -1742,11 +1775,20 @@ def update_source(
         )
         if source.summary is not None:
             sources[source_id][f"summary_{x_lang}"] = source.summary
+            # Nutzerwunsch (2026-08-23): eine von Hand überarbeitete
+            # Zusammenfassung gilt ab jetzt als kuratiert - ein späterer KI-
+            # Lauf (generate_source_summary) darf sie nicht mehr
+            # kommentarlos überschreiben (siehe dort).
+            sources[source_id][f"summary_ai_generated_{x_lang}"] = False
         if source.key_terms is not None:
             sources[source_id][f"key_terms_{x_lang}"] = source.key_terms
         if source.relevance_score is not None:
             sources[source_id]["relevance_score"] = source.relevance_score
         _save_sources(sources)
+
+    if source.summary is not None and source.summary.strip():
+        other_lang = "en" if x_lang == "de" else "de"
+        background_tasks.add_task(_translate_summary_background, source_id, source.summary, other_lang)
 
     # VOR unregister_source() erfassen: war dies die letzte Quelle einer
     # Person, würde unregister_source deren Registry-Eintrag kurzzeitig
@@ -1940,7 +1982,9 @@ def get_author_photo(name: str, size: str):
 _GRAPH_MIN_TERM_OCCURRENCES = 2
 
 
-def _build_knowledge_graph() -> KnowledgeGraphOut:
+def _build_knowledge_graph(lang: str = "de") -> KnowledgeGraphOut:
+    lang = lang if lang in ("de", "en") else "de"
+    key_terms_field = f"key_terms_{lang}"
     sources = _load_sources()
     active_sources = {sid: entry for sid, entry in sources.items() if not entry.get("deleted_at")}
 
@@ -1950,7 +1994,7 @@ def _build_knowledge_graph() -> KnowledgeGraphOut:
     # Knoten unverbunden am Rand.
     term_counts: dict[str, int] = {}
     for entry in active_sources.values():
-        for term in set(entry.get("key_terms_de") or []):
+        for term in set(entry.get(key_terms_field) or []):
             term_counts[term] = term_counts.get(term, 0) + 1
     kept_terms = {term for term, count in term_counts.items() if count >= _GRAPH_MIN_TERM_OCCURRENCES}
 
@@ -1965,7 +2009,7 @@ def _build_knowledge_graph() -> KnowledgeGraphOut:
             graph.add_edge(key_a, key_b, weight=1)
 
     for entry in active_sources.values():
-        terms = sorted(set(entry.get("key_terms_de") or []) & kept_terms)
+        terms = sorted(set(entry.get(key_terms_field) or []) & kept_terms)
         for term_a, term_b in itertools.combinations(terms, 2):
             _bump_edge(f"term:{term_a}", f"term:{term_b}")
 
@@ -1977,7 +2021,7 @@ def _build_knowledge_graph() -> KnowledgeGraphOut:
             source = active_sources.get(source_id)
             if not source:
                 continue
-            for term in set(source.get("key_terms_de") or []) & kept_terms:
+            for term in set(source.get(key_terms_field) or []) & kept_terms:
                 _bump_edge(author_key, f"term:{term}")
 
     communities = nx.community.louvain_communities(graph, weight="weight", seed=0)
@@ -2018,8 +2062,9 @@ def _build_knowledge_graph() -> KnowledgeGraphOut:
 
 
 @app.get("/api/knowledge-graph", response_model=KnowledgeGraphOut)
-def get_knowledge_graph():
-    return _build_knowledge_graph()
+def get_knowledge_graph(x_lang: str = Header(default=i18n.DEFAULT_LANG)):
+    lang = x_lang if x_lang in ("de", "en") else i18n.DEFAULT_LANG
+    return _build_knowledge_graph(lang)
 
 
 def _find_author(name: str) -> dict | None:
@@ -2904,6 +2949,20 @@ def generate_source_summary(
     if _source_is_missing(sources, source_id):
         raise HTTPException(404, i18n.get_message("source_not_found", x_lang))
     text = sources[source_id].get("text", "")
+    lang = x_lang if x_lang in ("de", "en") else i18n.DEFAULT_LANG
+
+    # Nutzerwunsch (2026-08-23): eine von Hand überarbeitete Zusammenfassung
+    # (summary_ai_generated_{lang} explizit False, siehe update_source) gilt
+    # als kuratiert und darf ein erneuter KI-Lauf nie kommentarlos
+    # überschreiben. Sind BEIDE Sprachen geschützt, lohnt sich nicht einmal
+    # der (kostenpflichtige) API-Aufruf.
+    if sources[source_id].get("summary_ai_generated_de") is False and sources[source_id].get(
+        "summary_ai_generated_en"
+    ) is False:
+        return SummaryOut(
+            summary=sources[source_id].get(f"summary_{lang}", ""),
+            key_terms=sources[source_id].get(f"key_terms_{lang}", []),
+        )
 
     # generate_bilingual_summary ist der langsame KI-Aufruf - die Momentaufnahme
     # von oben deshalb NICHT für den späteren Schreibvorgang wiederverwenden
@@ -2914,27 +2973,31 @@ def generate_source_summary(
         if _source_is_missing(sources, source_id):
             raise HTTPException(404, i18n.get_message("source_not_found", x_lang))
         before = dict(sources[source_id])
-        sources[source_id]["summary_de"] = result["de"]["summary"]
-        sources[source_id]["summary_en"] = result["en"]["summary"]
-        sources[source_id]["key_terms_de"] = result["de"]["key_terms"]
-        sources[source_id]["key_terms_en"] = result["en"]["key_terms"]
+        if sources[source_id].get("summary_ai_generated_de") is not False:
+            sources[source_id]["summary_de"] = result["de"]["summary"]
+            sources[source_id]["key_terms_de"] = result["de"]["key_terms"]
+            sources[source_id]["summary_ai_generated_de"] = True
+        if sources[source_id].get("summary_ai_generated_en") is not False:
+            sources[source_id]["summary_en"] = result["en"]["summary"]
+            sources[source_id]["key_terms_en"] = result["en"]["key_terms"]
+            sources[source_id]["summary_ai_generated_en"] = True
         title = sources[source_id].get("title", source_id)
         _save_sources(sources)
         _register_all_terms(source_id, sources[source_id])
+        after = dict(sources[source_id])
 
     changes = _diff_fields(
         before,
         {
-            "summary_de": result["de"]["summary"],
-            "summary_en": result["en"]["summary"],
-            "key_terms_de": result["de"]["key_terms"],
-            "key_terms_en": result["en"]["key_terms"],
+            "summary_de": after["summary_de"],
+            "summary_en": after["summary_en"],
+            "key_terms_de": after["key_terms_de"],
+            "key_terms_en": after["key_terms_en"],
         },
     )
     if changes:
         audit.log_change(_user, "source_summary_generated", "source", source_id, title, changes)
-    lang = x_lang if x_lang in ("de", "en") else i18n.DEFAULT_LANG
-    return SummaryOut(summary=result[lang]["summary"], key_terms=result[lang]["key_terms"])
+    return SummaryOut(summary=after[f"summary_{lang}"], key_terms=after[f"key_terms_{lang}"])
 
 
 @app.post("/api/extract-pdf-upload", response_model=ExtractedUpload)

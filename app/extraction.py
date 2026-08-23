@@ -249,19 +249,29 @@ def _format_diarized_text(result) -> str:
     return "\n\n".join(lines)
 
 
-def _transcribe_chunk_once(data: bytes, filename: str) -> str:
+def _transcribe_chunk_once(data: bytes, filename: str, prompt: str | None = None) -> str:
     """Ein einzelner, ungeschützter Transkriptionsversuch - Exceptions werden
     NICHT abgefangen, das übernimmt _transcribe_chunk_with_retries, die
     zwischen vorübergehenden (wiederholbaren) und endgültigen Fehlern
-    unterscheiden muss."""
+    unterscheiden muss.
+
+    prompt: optionaler Vokabular-Hinweis (siehe transcribe_audio) - OpenAIs
+    Transkriptions-Endpunkt nutzt einen mitgegebenen Prompt u.a. dafür,
+    unbekannte/seltene Eigennamen eher in der dort vorkommenden Schreibweise
+    zu erkennen, statt sie phonetisch zu verballhornen."""
     extension = Path(filename).suffix.lower()
     client = _get_openai_client()
+    # Die SDK-Signatur erwartet für "prompt" str | Omit (kein None) - ohne
+    # Vokabular-Hinweis wird das Argument deshalb ganz weggelassen statt
+    # explizit None zu übergeben.
+    prompt_kwargs = {"prompt": prompt} if prompt else {}
     if extension in _DIARIZE_EXTENSIONS:
         result = client.audio.transcriptions.create(
             model="gpt-4o-transcribe-diarize",
             file=(filename, data),
             response_format="diarized_json",
             chunking_strategy="auto",
+            **prompt_kwargs,
         )
         return _format_diarized_text(result)
 
@@ -269,6 +279,7 @@ def _transcribe_chunk_once(data: bytes, filename: str) -> str:
         model="whisper-1",
         file=(filename, data),
         response_format="text",
+        **prompt_kwargs,
     )
     return str(result).strip()
 
@@ -304,7 +315,9 @@ _SEGMENT_RETRY_DELAYS_SECONDS = [30, 90]
 _MIN_CHARS_PER_MINUTE = 100
 
 
-def _transcribe_chunk_with_retries(data: bytes, filename: str, duration_seconds: float | None) -> tuple[str, str | None]:
+def _transcribe_chunk_with_retries(
+    data: bytes, filename: str, duration_seconds: float | None, prompt: str | None = None
+) -> tuple[str, str | None]:
     """Transkribiert EINEN Abschnitt mit Wiederholungen bei vorübergehenden
     Fehlern und einer Plausibilitätsprüfung des Ergebnisses. Gibt (text,
     fehlerdetail) zurück - fehlerdetail ist None bei Erfolg, text ist dann
@@ -316,7 +329,7 @@ def _transcribe_chunk_with_retries(data: bytes, filename: str, duration_seconds:
     for attempt in range(attempts):
         is_last_attempt = attempt == attempts - 1
         try:
-            text = _transcribe_chunk_once(data, filename)
+            text = _transcribe_chunk_once(data, filename, prompt)
         except Exception as exc:
             detail = f"{type(exc).__name__}: {exc}"
             if is_last_attempt or not isinstance(exc, _RETRYABLE_OPENAI_ERRORS):
@@ -401,6 +414,7 @@ def transcribe_audio(
     path: Path,
     known_segments: dict[int, str] | None = None,
     on_segment_success: Callable[[int, int, str], None] | None = None,
+    known_names: list[str] | None = None,
 ) -> tuple[str, str | None]:
     """Transkribiert eine Audiodatei beliebiger Größe: Dateien über dem
     OpenAI-Limit werden zuerst per split_audio_file() in Abschnitte
@@ -422,6 +436,13 @@ def transcribe_audio(
     für einen erneuten "Retry"-Versuch (kein doppeltes Bezahlen bereits
     erfolgreicher Abschnitte) als auch für einen Server-Neustart mitten in
     einer langen Datei.
+    known_names: Nutzerfeedback (2026-08-23) - prominente Namen (z.B. Niels
+    Pflaeging, Silke Hermann) wurden in Transkripten wiederholt falsch
+    verstanden/geschrieben. Als Vokabular-Hinweis (OpenAIs "prompt"-
+    Parameter) an die Transkription weitergereicht, um die richtige
+    Schreibweise wahrscheinlicher zu machen - typischerweise die für diese
+    Quelle bereits eingetragenen Autor:innen, siehe _process_audio_
+    transcription in app/main.py.
 
     Rückgabe: (text, fehlerdetail). fehlerdetail ist None nur bei
     VOLLSTÄNDIGEM Erfolg aller Abschnitte - scheitert auch nur ein
@@ -433,13 +454,14 @@ def transcribe_audio(
     total = len(segments)
     is_split = total > 1 or (segments and segments[0] != path)
     texts: dict[int, str] = dict(known_segments or {})
+    prompt = ", ".join(name.strip() for name in known_names if name and name.strip()) if known_names else None
 
     for index, segment_path in enumerate(segments):
         if index in texts:
             continue
         duration = _audio_duration_seconds(segment_path)
         text, error_detail = _transcribe_chunk_with_retries(
-            segment_path.read_bytes(), segment_path.name, duration
+            segment_path.read_bytes(), segment_path.name, duration, prompt
         )
         if error_detail:
             if is_split:

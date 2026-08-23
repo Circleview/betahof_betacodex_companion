@@ -173,6 +173,26 @@ def client(tmp_path, monkeypatch):
 
     monkeypatch.setattr(anthropic, "Anthropic", _fail_on_real_anthropic_client)
 
+    # Dasselbe Sicherheitsnetz für OpenAI (app/extraction.py: Audio-
+    # Transkription/PDF-Vision) - ein fehlender Mock würde hier sonst nicht
+    # nur eine echte Anfrage auslösen, sondern zusätzlich in
+    # _transcribe_chunk_with_retries auf einen (bei fehlendem/ungültigem
+    # API-Key wahrscheinlichen) Fehler mit bis zu 30+90 Sekunden echtem
+    # time.sleep() zwischen den Wiederholungen laufen - genau das hat die
+    # Suite bei mehreren betroffenen Tests spürbar über Minuten verlangsamt.
+    # extraction.py bindet die Klasse per "from openai import OpenAI" lokal
+    # (nicht per "import openai" + spätem Attributzugriff wie beim
+    # Anthropic-Fall oben) - gepatcht werden muss deshalb der lokale Name
+    # extraction.OpenAI, nicht openai.OpenAI.
+    def _fail_on_real_openai_client(*args, **kwargs):
+        raise RuntimeError(
+            "Echter openai.OpenAI()-Client in einem Test angefordert - fehlt "
+            "ein Mock für die aufrufende Funktion? (siehe Kommentar in der "
+            "client-Fixture, Vorfall 2026-08-23)"
+        )
+
+    monkeypatch.setattr(extraction, "OpenAI", _fail_on_real_openai_client)
+
     monkeypatch.setattr(authors, "AUTHORS_FILE", tmp_path / "authors.json")
     monkeypatch.setattr(author_profiles, "AUTHOR_PROFILES_FILE", tmp_path / "author_profiles.json")
     monkeypatch.setattr(author_photos, "AUTHOR_PHOTOS_DIR", tmp_path / "author_photos")
@@ -184,6 +204,13 @@ def client(tmp_path, monkeypatch):
     # Netzwerkanfrage auslösen (langsam/flaky). Tests, die das Caching selbst
     # gezielt prüfen, überschreiben dieses Mock lokal.
     monkeypatch.setattr(author_photos, "cache_photo", lambda name, url: False)
+    # PUT /api/sources/{id} stößt seit dem Auto-Übersetzungs-Fix (2026-08-23)
+    # bei jeder gesetzten summary einen echten Hintergrund-Übersetzungs-
+    # Aufruf an (_translate_summary_background in app/main.py) - ohne dieses
+    # Mock würde JEDER Test, der eine Quelle mit summary speichert, eine
+    # echte Anthropic-Anfrage auslösen. Tests, die die Übersetzung selbst
+    # gezielt prüfen, überschreiben dieses Mock lokal.
+    monkeypatch.setattr(summarization, "translate_summary", lambda text, target_lang="de": "")
     monkeypatch.setattr(users, "USERS_FILE", tmp_path / "users.json")
     monkeypatch.setattr(terms, "TERMS_FILE", tmp_path / "terms.json")
     monkeypatch.setattr(audit, "AUDIT_LOG_FILE", tmp_path / "audit_log.json")
@@ -588,7 +615,9 @@ def test_concurrent_add_source_calls_do_not_lose_data(client):
     assert expected_titles <= titles
 
 
-def _create_deferred_audio_source(client, monkeypatch, title="Podcast-Folge", url="https://cdn.example.org/episode.mp3"):
+def _create_deferred_audio_source(
+    client, monkeypatch, title="Podcast-Folge", url="https://cdn.example.org/episode.mp3", authors=None
+):
     """Legt eine Audio-URL-Quelle mit leerem Text an, OHNE dass der
     eingeplante Hintergrund-Job dabei wirklich läuft. Wichtig: seit Backlog
     #113 landet der Job nicht mehr über BackgroundTasks (die der TestClient
@@ -607,7 +636,9 @@ def _create_deferred_audio_source(client, monkeypatch, title="Podcast-Folge", ur
     # den No-Op statt der echten Verarbeitung einplanen.
     real_process = main_module._process_audio_transcription
     monkeypatch.setattr(main_module, "_process_audio_transcription", lambda *a, **kw: None)
-    response = client.post("/api/sources", json={"title": title, "text": "", "url": url})
+    response = client.post(
+        "/api/sources", json={"title": title, "text": "", "url": url, "authors": authors or []}
+    )
     main_module._audio_transcription_queue.join()
     monkeypatch.setattr(main_module, "_process_audio_transcription", real_process)
     return response
@@ -638,6 +669,23 @@ def test_process_audio_transcription_fills_text_and_indexes(client, monkeypatch)
 
     answer = client.post("/api/ask", json={"question": "Was steht in der Folge?"})
     assert answer.status_code == 200
+
+
+def test_process_audio_transcription_passes_known_authors_as_transcription_prompt(client, monkeypatch):
+    """Regressionstest (Nutzerfeedback 2026-08-23): die für die Quelle
+    bereits eingetragenen Autor:innen sollen als Vokabular-Hinweis an die
+    Transkription weitergereicht werden, damit deren Namen mit größerer
+    Wahrscheinlichkeit richtig geschrieben erkannt werden."""
+    create_res = _create_deferred_audio_source(client, monkeypatch, authors=["Niels Pflaeging", "Silke Hermann"])
+    source_id = create_res.json()["id"]
+    calls = []
+    monkeypatch.setattr(
+        extraction, "transcribe_audio", lambda path, **kw: calls.append(kw.get("known_names")) or ("Text.", None)
+    )
+
+    main_module._process_audio_transcription(source_id)
+
+    assert calls == [["Niels Pflaeging", "Silke Hermann"]]
 
 
 def test_process_audio_transcription_triggers_summary_generation(client, monkeypatch):
@@ -679,7 +727,7 @@ def test_process_audio_transcription_keeps_successful_segments_for_next_attempt(
     create_res = _create_deferred_audio_source(client, monkeypatch)
     source_id = create_res.json()["id"]
 
-    def fake_transcribe(path, known_segments=None, on_segment_success=None):
+    def fake_transcribe(path, known_segments=None, on_segment_success=None, known_names=None):
         on_segment_success(0, 2, "Abschnitt 1 (erfolgreich)")
         return "", "Abschnitt 2/2: RateLimitError: zu viele Anfragen"
 
@@ -690,7 +738,7 @@ def test_process_audio_transcription_keeps_successful_segments_for_next_attempt(
     assert raw["processing_status"] == "error"
     assert raw["processing_segments"] == {"0": "Abschnitt 1 (erfolgreich)"}
 
-    def fake_transcribe_retry(path, known_segments=None, on_segment_success=None):
+    def fake_transcribe_retry(path, known_segments=None, on_segment_success=None, known_names=None):
         assert known_segments == {0: "Abschnitt 1 (erfolgreich)"}
         return "--- Teil 1 ---\n\nAbschnitt 1 (erfolgreich)\n\n--- Teil 2 ---\n\nAbschnitt 2 (jetzt auch)", None
 
@@ -2728,6 +2776,143 @@ def test_generate_source_summary_requires_pfleger_role(client, anon_client):
 def test_generate_source_summary_unknown_source_returns_404(client):
     response = client.post("/api/sources/does-not-exist/generate-summary")
     assert response.status_code == 404
+
+
+def test_update_source_summary_edit_marks_language_as_not_ai_generated(client):
+    create_res = client.post("/api/sources", json={"title": "Quelle", "text": "Text."})
+    source_id = create_res.json()["id"]
+
+    client.put(
+        f"/api/sources/{source_id}",
+        json={"title": "Quelle", "text": "Text.", "summary": "Von Hand überarbeitet."},
+    )
+
+    stored = next(s for s in client.get("/api/sources").json() if s["id"] == source_id)
+    assert stored["summary"] == "Von Hand überarbeitet."
+    assert stored["summary_ai_generated"] is False
+
+
+def test_update_source_summary_edit_triggers_background_translation(client, monkeypatch):
+    create_res = client.post("/api/sources", json={"title": "Quelle", "text": "Text."})
+    source_id = create_res.json()["id"]
+    calls = []
+    monkeypatch.setattr(
+        summarization, "translate_summary", lambda text, target_lang="de": calls.append((text, target_lang)) or "Translated."
+    )
+
+    client.put(
+        f"/api/sources/{source_id}",
+        json={"title": "Quelle", "text": "Text.", "summary": "Von Hand überarbeitet."},
+    )
+
+    assert calls == [("Von Hand überarbeitet.", "en")]
+    stored_en = client.get("/api/sources", headers={"X-Lang": "en"}).json()
+    stored_en = next(s for s in stored_en if s["id"] == source_id)
+    assert stored_en["summary"] == "Translated."
+    assert stored_en["summary_ai_generated"] is False
+
+
+def test_update_source_summary_edit_does_not_translate_when_summary_unset(client, monkeypatch):
+    create_res = client.post("/api/sources", json={"title": "Quelle", "text": "Text."})
+    source_id = create_res.json()["id"]
+    calls = []
+    monkeypatch.setattr(summarization, "translate_summary", lambda text, target_lang="de": calls.append(text))
+
+    client.put(f"/api/sources/{source_id}", json={"title": "Neuer Titel", "text": "Text."})
+
+    assert calls == []
+
+
+def test_update_source_summary_edit_skips_translation_when_result_empty(client, monkeypatch):
+    create_res = client.post("/api/sources", json={"title": "Quelle", "text": "Text."})
+    source_id = create_res.json()["id"]
+    monkeypatch.setattr(summarization, "translate_summary", lambda text, target_lang="de": "")
+
+    client.put(
+        f"/api/sources/{source_id}",
+        json={"title": "Quelle", "text": "Text.", "summary": "Von Hand überarbeitet."},
+    )
+
+    stored_en = next(
+        s for s in client.get("/api/sources", headers={"X-Lang": "en"}).json() if s["id"] == source_id
+    )
+    assert stored_en["summary"] == ""
+    assert stored_en["summary_ai_generated"] is True
+
+
+def test_translate_summary_background_does_not_overwrite_newer_manual_edit(client, monkeypatch):
+    """Race-Schutz: läuft die Übersetzung noch, während die Zielsprache
+    inzwischen selbst von Hand überarbeitet wurde, darf die Übersetzung die
+    frische manuelle Fassung nicht kommentarlos überschreiben."""
+    create_res = client.post("/api/sources", json={"title": "Quelle", "text": "Text."})
+    source_id = create_res.json()["id"]
+
+    main_module._translate_summary_background(source_id, "Alte Übersetzungsgrundlage.", "en")
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(summarization, "translate_summary", lambda text, target_lang="de": "Verspätete Übersetzung.")
+        # Zielsprache "en" wurde inzwischen (simuliert) von Hand überarbeitet.
+        client.put(
+            f"/api/sources/{source_id}",
+            json={"title": "Quelle", "text": "Text.", "summary": "Frisch von Hand auf Englisch."},
+            headers={"X-Lang": "en"},
+        )
+        main_module._translate_summary_background(source_id, "Alte Übersetzungsgrundlage.", "en")
+
+    stored_en = next(
+        s for s in client.get("/api/sources", headers={"X-Lang": "en"}).json() if s["id"] == source_id
+    )
+    assert stored_en["summary"] == "Frisch von Hand auf Englisch."
+    assert stored_en["summary_ai_generated"] is False
+
+
+def test_generate_source_summary_skips_manually_edited_language(client, monkeypatch):
+    create_res = client.post("/api/sources", json={"title": "Quelle", "text": "Text."})
+    source_id = create_res.json()["id"]
+    client.put(
+        f"/api/sources/{source_id}",
+        json={"title": "Quelle", "text": "Text.", "summary": "Von Hand überarbeitet (Deutsch)."},
+    )
+    monkeypatch.setattr(
+        summarization,
+        "generate_bilingual_summary",
+        lambda text: {
+            "de": {"summary": "Neue KI-Zusammenfassung.", "key_terms": ["Neu"]},
+            "en": {"summary": "New AI summary.", "key_terms": ["New"]},
+        },
+    )
+
+    response_de = client.post(f"/api/sources/{source_id}/generate-summary")
+    response_en = client.post(f"/api/sources/{source_id}/generate-summary", headers={"X-Lang": "en"})
+
+    assert response_de.json()["summary"] == "Von Hand überarbeitet (Deutsch)."
+    assert response_en.json()["summary"] == "New AI summary."
+    stored = client.get("/api/sources").json()
+    stored = next(s for s in stored if s["id"] == source_id)
+    assert stored["summary_ai_generated"] is False
+
+
+def test_generate_source_summary_skips_api_call_when_both_languages_protected(client, monkeypatch):
+    create_res = client.post("/api/sources", json={"title": "Quelle", "text": "Text."})
+    source_id = create_res.json()["id"]
+    client.put(
+        f"/api/sources/{source_id}",
+        json={"title": "Quelle", "text": "Text.", "summary": "Deutsch von Hand."},
+    )
+    client.put(
+        f"/api/sources/{source_id}",
+        json={"title": "Quelle", "text": "Text.", "summary": "English by hand."},
+        headers={"X-Lang": "en"},
+    )
+
+    def fail_if_called(text):
+        raise AssertionError("generate_bilingual_summary hätte nicht aufgerufen werden dürfen")
+
+    monkeypatch.setattr(summarization, "generate_bilingual_summary", fail_if_called)
+
+    response = client.post(f"/api/sources/{source_id}/generate-summary")
+
+    assert response.status_code == 200
+    assert response.json()["summary"] == "Deutsch von Hand."
 
 
 def test_list_authors_includes_empty_profile_fields_by_default(client):
@@ -5464,14 +5649,14 @@ def test_shutdown_hook_does_not_mark_source_when_job_finishes_in_time(client):
     assert "interrupted_by_deploy" not in entry
 
 
-def _set_key_terms(source_id: str, terms: list[str]) -> None:
-    """Hilfsfunktion für die Explore-Graph-Tests: setzt key_terms_de direkt,
-    ohne den vollen update_source()-Zyklus (Chunking/Embeddings) durchlaufen
-    zu müssen - gleiches Muster wie andere Tests, die main_module._load_
-    sources()/_save_sources() direkt nutzen (siehe z.B. test_shutdown_hook_*
-    oben)."""
+def _set_key_terms(source_id: str, terms: list[str], lang: str = "de") -> None:
+    """Hilfsfunktion für die Explore-Graph-Tests: setzt key_terms_{lang}
+    direkt, ohne den vollen update_source()-Zyklus (Chunking/Embeddings)
+    durchlaufen zu müssen - gleiches Muster wie andere Tests, die
+    main_module._load_sources()/_save_sources() direkt nutzen (siehe z.B.
+    test_shutdown_hook_* oben)."""
     sources = main_module._load_sources()
-    sources[source_id]["key_terms_de"] = terms
+    sources[source_id][f"key_terms_{lang}"] = terms
     main_module._save_sources(sources)
 
 
@@ -5487,6 +5672,28 @@ def test_knowledge_graph_includes_authors_and_terms_occurring_at_least_twice(cli
     node_ids = {n["id"] for n in data["nodes"]}
     assert "author:Autor Eins" in node_ids
     assert "term:Selbstorganisation" in node_ids
+
+
+def test_knowledge_graph_uses_english_key_terms_when_requested(client):
+    """Regressionstest (Nutzerfeedback 2026-08-23): das Explore-Netzwerk
+    blieb beim Umschalten auf Englisch weiterhin deutsch, weil der
+    Endpoint hart auf key_terms_de verdrahtet war."""
+    source_id = client.post("/api/sources", json={"title": "Q1", "text": "Text."}).json()["id"]
+    _set_key_terms(source_id, ["Selbstorganisation", "Dezentralisierung"], lang="de")
+    _set_key_terms(source_id, ["Self-organization", "Decentralization"], lang="en")
+    source_id_2 = client.post("/api/sources", json={"title": "Q2", "text": "Text."}).json()["id"]
+    _set_key_terms(source_id_2, ["Selbstorganisation", "Beyond Budgeting"], lang="de")
+    _set_key_terms(source_id_2, ["Self-organization", "Beyond Budgeting"], lang="en")
+
+    data_de = client.get("/api/knowledge-graph").json()
+    data_en = client.get("/api/knowledge-graph", headers={"X-Lang": "en"}).json()
+
+    de_ids = {n["id"] for n in data_de["nodes"]}
+    en_ids = {n["id"] for n in data_en["nodes"]}
+    assert "term:Selbstorganisation" in de_ids
+    assert "term:Self-organization" not in de_ids
+    assert "term:Self-organization" in en_ids
+    assert "term:Selbstorganisation" not in en_ids
 
 
 def test_knowledge_graph_excludes_terms_occurring_only_once(client):

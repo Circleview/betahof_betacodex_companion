@@ -563,6 +563,39 @@ def test_transcribe_chunk_falls_back_to_whisper_for_flac():
     assert kwargs["response_format"] == "text"
 
 
+def test_transcribe_chunk_once_passes_prompt_to_whisper():
+    """Regressionstest (Nutzerfeedback 2026-08-23): prominente Namen wie
+    Niels Pflaeging/Silke Hermann wurden in Transkripten wiederholt falsch
+    verstanden - ein Vokabular-Hinweis (OpenAIs "prompt"-Parameter) soll die
+    richtige Schreibweise wahrscheinlicher machen."""
+    client = MagicMock()
+    client.audio.transcriptions.create.return_value = "Text."
+    with patch.object(extraction, "_get_openai_client", return_value=client):
+        _transcribe_chunk_once(b"fake-flac-bytes", "aufnahme.flac", prompt="Niels Pflaeging, Silke Hermann")
+
+    assert client.audio.transcriptions.create.call_args.kwargs["prompt"] == "Niels Pflaeging, Silke Hermann"
+
+
+def test_transcribe_chunk_once_passes_prompt_to_diarize_model():
+    client = MagicMock()
+    client.audio.transcriptions.create.return_value = _fake_diarized_result([("A", "Hallo.")])
+    with patch.object(extraction, "_get_openai_client", return_value=client):
+        _transcribe_chunk_once(b"fake-mp3-bytes", "episode.mp3", prompt="Niels Pflaeging")
+
+    assert client.audio.transcriptions.create.call_args.kwargs["prompt"] == "Niels Pflaeging"
+
+
+def test_transcribe_chunk_once_omits_prompt_kwarg_when_not_given():
+    """Die SDK-Signatur erwartet str | Omit statt str | None - ein explizites
+    None würde als ungültiger Wert an die API weitergereicht."""
+    client = MagicMock()
+    client.audio.transcriptions.create.return_value = "Text."
+    with patch.object(extraction, "_get_openai_client", return_value=client):
+        _transcribe_chunk_once(b"fake-flac-bytes", "aufnahme.flac")
+
+    assert "prompt" not in client.audio.transcriptions.create.call_args.kwargs
+
+
 def test_transcribe_chunk_once_raises_on_error_instead_of_swallowing():
     # Bug vom 2026-07-29: _transcribe_chunk verschluckte jeden Fehler und
     # lieferte "" zurück - dadurch verschwand ein gescheiterter Abschnitt
@@ -796,6 +829,39 @@ def test_transcribe_audio_returns_single_chunk_text_unchanged(tmp_path):
 
     assert text == "Nur ein Teil."
     assert error_detail is None
+
+
+def test_transcribe_audio_builds_prompt_from_known_names(tmp_path):
+    audio_path = tmp_path / "episode.mp3"
+    audio_path.write_bytes(b"fake-bytes")
+
+    with patch.object(extraction, "split_audio_file", return_value=[audio_path]), \
+         patch.object(extraction, "_transcribe_chunk_with_retries", return_value=("Text.", None)) as mock_transcribe:
+        transcribe_audio(audio_path, known_names=["Niels Pflaeging", "Silke Hermann"])
+
+    assert mock_transcribe.call_args.args[3] == "Niels Pflaeging, Silke Hermann"
+
+
+def test_transcribe_audio_omits_prompt_when_no_known_names(tmp_path):
+    audio_path = tmp_path / "episode.mp3"
+    audio_path.write_bytes(b"fake-bytes")
+
+    with patch.object(extraction, "split_audio_file", return_value=[audio_path]), \
+         patch.object(extraction, "_transcribe_chunk_with_retries", return_value=("Text.", None)) as mock_transcribe:
+        transcribe_audio(audio_path)
+
+    assert mock_transcribe.call_args.args[3] is None
+
+
+def test_transcribe_audio_ignores_blank_known_names(tmp_path):
+    audio_path = tmp_path / "episode.mp3"
+    audio_path.write_bytes(b"fake-bytes")
+
+    with patch.object(extraction, "split_audio_file", return_value=[audio_path]), \
+         patch.object(extraction, "_transcribe_chunk_with_retries", return_value=("Text.", None)) as mock_transcribe:
+        transcribe_audio(audio_path, known_names=["Niels Pflaeging", "  ", ""])
+
+    assert mock_transcribe.call_args.args[3] == "Niels Pflaeging"
 
 
 def test_transcribe_audio_concatenates_multiple_segments_with_part_markers(tmp_path):

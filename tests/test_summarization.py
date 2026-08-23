@@ -319,3 +319,52 @@ def test_generate_author_bio_uses_english_prompt_when_requested():
         summarization.generate_author_bio("Jane Doe", ["Title: Text."], lang="en")
 
     assert client.messages.create.call_args.kwargs["system"] == summarization.BIO_SYSTEM_PROMPTS["en"]
+
+
+def test_translate_summary_returns_tool_result():
+    client = _fake_tool_client({"translation": "Translated summary."})
+    with patch.object(summarization, "_get_client", return_value=client):
+        result = summarization.translate_summary("Eine deutsche Zusammenfassung.", target_lang="en")
+
+    assert result == "Translated summary."
+
+
+def test_translate_summary_returns_empty_when_no_tool_use_block():
+    block = MagicMock()
+    block.type = "text"
+    client = MagicMock()
+    client.messages.create.return_value.content = [block]
+    with patch.object(summarization, "_get_client", return_value=client):
+        result = summarization.translate_summary("Text.", target_lang="en")
+
+    assert result == ""
+
+
+def test_translate_summary_returns_empty_on_api_error():
+    client = MagicMock()
+    client.messages.create.side_effect = RuntimeError("boom")
+    with patch.object(summarization, "_get_client", return_value=client):
+        result = summarization.translate_summary("Text.", target_lang="en")
+
+    assert result == ""
+
+
+def test_translate_summary_returns_empty_for_blank_text():
+    result = summarization.translate_summary("   ", target_lang="en")
+    assert result == ""
+
+
+def test_translate_summary_uses_target_language_prompt():
+    client = _fake_tool_client({"translation": "Übersetzung."})
+    with patch.object(summarization, "_get_client", return_value=client):
+        summarization.translate_summary("Summary text.", target_lang="de")
+
+    assert client.messages.create.call_args.kwargs["system"] == summarization.TRANSLATE_SYSTEM_PROMPTS["de"]
+
+
+def test_translate_summary_defaults_to_german_for_unknown_target_lang():
+    client = _fake_tool_client({"translation": "Übersetzung."})
+    with patch.object(summarization, "_get_client", return_value=client):
+        summarization.translate_summary("Text.", target_lang="fr")
+
+    assert client.messages.create.call_args.kwargs["system"] == summarization.TRANSLATE_SYSTEM_PROMPTS["de"]

@@ -23,6 +23,15 @@ const svg = d3.select('#explore-graph');
 const CLUSTER_COLOR_COUNT = 10;
 const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
+// Nutzerfeedback (2026-08-23): das Netzwerk blieb beim Umschalten der
+// Sprache deutsch, weil loadGraph() bis dahin nur einmal beim Laden der
+// Seite lief - siehe i18n:changed-Listener weiter unten. Ein erneuter
+// renderGraph()-Aufruf muss dafür die alte SVG-Zeichnung/Simulation/den
+// alten Such-Handler zuerst vollständig entfernen, sonst würde sich ein
+// zweites, unabhängig weiterlaufendes Netzwerk übereinanderlegen.
+let currentSimulation = null;
+let currentSearchHandler = null;
+
 function nodeUrl(node) {
   return node.type === 'author'
     ? `/import.html?author=${encodeURIComponent(node.label)}`
@@ -86,6 +95,13 @@ function renderGraph(data) {
   const width = wrapEl.clientWidth;
   const height = wrapEl.clientHeight;
 
+  currentSimulation?.stop();
+  if (currentSearchHandler) {
+    searchInput.removeEventListener('input', currentSearchHandler);
+    currentSearchHandler = null;
+  }
+  svg.selectAll('*').remove();
+
   svg.attr('viewBox', [0, 0, width, height]).attr('width', '100%').attr('height', '100%');
   const container = svg.append('g');
   const zoomBehavior = d3
@@ -133,6 +149,7 @@ function renderGraph(data) {
     // insgesamt zügiger zur Ruhe kommen statt lange nachzuzittern.
     .velocityDecay(0.55)
     .alphaDecay(0.05);
+  currentSimulation = simulation;
 
   const link = container
     .append('g')
@@ -298,7 +315,7 @@ function renderGraph(data) {
     simulation.on('tick', ticked);
   }
 
-  searchInput.addEventListener('input', () => {
+  currentSearchHandler = () => {
     const query = normalizeSearch(searchInput.value);
     if (!query) {
       node.classed('explore-node--dimmed', false);
@@ -308,13 +325,15 @@ function renderGraph(data) {
     const matchedIds = new Set(nodes.filter((d) => normalizeSearch(d.label).includes(query)).map((d) => d.id));
     node.classed('explore-node--dimmed', (d) => !matchedIds.has(d.id));
     link.classed('explore-edge--dimmed', (d) => !matchedIds.has(d.source.id) && !matchedIds.has(d.target.id));
-  });
+  };
+  searchInput.addEventListener('input', currentSearchHandler);
 }
 
 async function loadGraph() {
   statusEl.textContent = t('explore.loading');
   statusEl.classList.remove('hidden');
   wrapEl.classList.add('hidden');
+  searchInput.value = '';
   try {
     const res = await fetch('/api/knowledge-graph', { headers: { 'X-Lang': getLang() } });
     if (!res.ok) throw new Error('request failed');
@@ -333,3 +352,10 @@ async function loadGraph() {
 }
 
 loadGraph();
+
+// Nutzerfeedback (2026-08-23): das Netzwerk selbst (Knoten-Beschriftungen
+// aus key_terms_de/en) blieb beim Sprachwechsel unverändert deutsch - die
+// statischen Oberflächentexte (Überschrift, Suchfeld-Platzhalter etc.)
+// wurden zwar schon über data-i18n aktualisiert, die Graphdaten aber nie
+// neu vom Server geladen. Läuft nach demselben Muster wie import.js.
+document.addEventListener('i18n:changed', loadGraph);

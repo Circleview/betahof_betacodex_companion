@@ -30,6 +30,7 @@ class SourceOut(BaseModel):
     text: str
     restricted: bool = False
     summary: str = ""
+    summary_ai_generated: bool = True
     key_terms: list[str] = []
     has_pdf: bool = False
     has_audio: bool = False

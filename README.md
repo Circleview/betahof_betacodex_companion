@@ -88,7 +88,9 @@ Assistent das offen, statt zu spekulieren.
 ### Quellen pflegen (Quellen-Pfleger:innen)
 
 - Import per Copy/Paste, URL/Blogpost, PDF-Upload, YouTube-Link oder
-  Audio-/Podcast-Datei (automatische Transkription) – für jeden Typ gibt
+  Audio-/Podcast-Datei (automatische Transkription, mit den bereits
+  eingetragenen Autor:innen-Namen als Vokabular-Hinweis gegen
+  wiederkehrende Fehlschreibungen prominenter Namen) – für jeden Typ gibt
   es einen manuellen Fallback, falls die automatische Extraktion
   scheitert.
 - Größere Verarbeitungsschritte (z. B. Audio-Transkription) laufen im
@@ -100,7 +102,10 @@ Assistent das offen, statt zu spekulieren.
   extern gehostete Bilder (z. B. LinkedIn-Links mit eingebautem
   Ablaufdatum) nicht nach einigen Wochen wieder "kaputtgehen".
 - KI-gestützte Zusammenfassung + Begriffs-Querverweise beim Import,
-  jederzeit nachträglich auslösbar.
+  jederzeit nachträglich auslösbar. Eine von Hand überarbeitete
+  Zusammenfassung wird automatisch in die jeweils andere Sprache
+  übersetzt und danach nicht mehr von einer erneuten KI-Generierung
+  überschrieben.
 - Bearbeiten inline in der Quellenliste; Löschen ist ein Papierkorb mit
   Rückholfrist statt eines endgültigen Vorgangs.
 - Relevanz-Score pro Quelle (1–10) für die spätere Sortierung/Gewichtung.
@@ -349,6 +354,7 @@ Commit-/Tag-Nachrichten in Git.
 
 | Version | Wesentliche Änderungen |
 |---|---|
+| v0.52.0 | Neu: eine von Hand überarbeitete Quellen-Zusammenfassung wird automatisch in die jeweils andere Sprache übersetzt und ist danach vor künftigen KI-Neugenerierungen geschützt (das KI-Icon erscheint nur noch bei tatsächlich unveränderten KI-Zusammenfassungen). Fix: das Explore-Netzwerk blieb beim Umschalten der Oberflächensprache bisher deutsch - Backend und Frontend laden die Knoten-Beschriftungen jetzt sprachabhängig neu. Neu: bei der Audio-Transkription werden die für eine Quelle bereits eingetragenen Autor:innen-Namen (z. B. Niels Pflaeging, Silke Hermann) als Vokabular-Hinweis an Whisper/GPT-4o-Transcribe übergeben, um wiederkehrende Fehlschreibungen prominenter Namen zu reduzieren. Fix (Testinfrastruktur): ein zweiter, dem Anthropic-Vorfall aus v0.51.0 entsprechender Kostenschutz - ein ungemockter echter OpenAI-Client in Tests konnte über die eingebaute Wiederholungslogik (bis zu 30+90 Sekunden Wartezeit) die Testsuite spürbar verlangsamen |
 | v0.51.0 | Neu: "Explore"-Modus (Netzwerk-Icon im Header) - Schlagworte und Autor:innen der gesamten Quellensammlung als interaktives, thematisch geclustertes Netzwerk (D3.js, automatische Community-Erkennung). Klick auf einen Knoten hebt ihn samt direkter Nachbarn hervor und zentriert ihn, "Öffnen in neuem Tab"-Icons springen von dort zur gefilterten Quellenliste; erneuter Klick setzt zurück. Dazu: lokaler Foto-Cache für Autor:innen-Profilbilder (behebt wiederkehrend "kaputte" Fotos durch abgelaufene externe Links, z. B. LinkedIn-CDN-URLs mit eingebautem Ablaufdatum) in zwei Auflösungen (Vita: groß, Explore-Netzwerk: klein), inkl. täglichem Selbstheilungs-Worker. Fix: Autor:innen-Namen werden im KI-generierten Schlagwort-Highlighting der Quellen-Zusammenfassungen nicht mehr hervorgehoben (Namensabgleich war zu fehleranfällig). Fix: der tägliche Quellen-Vorschlags-Worker löste in der Testsuite bei praktisch jedem Test eine echte, kostenpflichtige Websuche aus - jetzt sauber gemockt, zusätzlich ein generelles Sicherheitsnetz gegen unbeabsichtigte echte Anthropic-API-Aufrufe in Tests |
 | v0.50.2 | Fix: Quellen-Vorschläge zeigten teils auf nicht existierende Seiten - das Modell füllt das `submit_candidates`-Tool als eigenen, von der eigentlichen Websuche entkoppelten Aufruf und konnte dabei plausibel klingende, aber nie tatsächlich gefundene URLs erfinden. Jeder Kandidat wird jetzt hart gegen die echten Suchergebnis-URLs desselben Websuche-Calls geprüft (`web_search_tool_result`-Block) - nicht verifizierbare Kandidaten fallen lautlos raus, statt eine tote Quelle vorzuschlagen |
 | v0.50.1 | Fix: der tägliche Nachschub-Lauf für Quellen-Vorschläge fand mit nur 2 befragten Autor:innen pro Tag viel weniger, als sich durch Annehmen/Ablehnen leeren ließ - `SOURCE_SUGGESTION_AUTHORS_PER_RUN` auf 6 erhöht, damit der Vorrat spürbar schneller in Richtung des Ziels (100) wächst; Produktions-Vorrat einmalig manuell auf 68 aufgefüllt. Dazu Header-Feinschliff: mehr Abstand zwischen Nutzername und Trennlinie im mobilen Header, und der Nutzername blendet sich jetzt synchron mit dem Marken-Namen aus/ein, wenn der Sticky-Header beim Scrollen kollabiert/expandiert |

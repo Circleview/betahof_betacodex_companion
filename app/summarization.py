@@ -178,6 +178,45 @@ def generate_bilingual_summary(text: str) -> dict:
     return result or empty
 
 
+_TRANSLATE_TOOL = {
+    "name": "provide_translation",
+    "description": "Liefert die Übersetzung des Textes.",
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "translation": {"type": "string"},
+        },
+        "required": ["translation"],
+    },
+}
+
+TRANSLATE_SYSTEM_PROMPTS = {
+    "de": """Du übersetzt den folgenden Zusammenfassungstext sinngemäß und stilistisch passend ins Deutsche und rufst dafür das bereitgestellte Werkzeug auf. Gib ausschließlich die Übersetzung selbst zurück, ohne Anmerkungen.""",
+    "en": """You translate the following summary text faithfully and in a matching style into English, and call the provided tool with the result. Return exclusively the translation itself, without any notes.""",
+}
+
+
+def translate_summary(text: str, target_lang: str = DEFAULT_LANG) -> str:
+    """Übersetzt einen (ggf. von Hand überarbeiteten) Zusammenfassungstext in
+    die jeweils andere Sprache - genutzt, wenn eine Quellen-Pfleger:in eine
+    Zusammenfassung manuell bearbeitet (siehe update_source in app/main.py),
+    damit beide Sprachversionen inhaltlich synchron bleiben, ohne die
+    gesamte Zusammenfassung unabhängig neu generieren zu müssen (das würde
+    inhaltlich von der gerade kuratierten Fassung abweichen)."""
+    target_lang = target_lang if target_lang in TRANSLATE_SYSTEM_PROMPTS else DEFAULT_LANG
+    text = text.strip()
+    if not text:
+        return ""
+
+    try:
+        data = _call_tool(TRANSLATE_SYSTEM_PROMPTS[target_lang], _TRANSLATE_TOOL, text[:MAX_INPUT_CHARS])
+        if not data:
+            return ""
+        return (data.get("translation") or "").strip()
+    except Exception:
+        return ""
+
+
 def extract_key_terms(text: str, lang: str = DEFAULT_LANG) -> list[str]:
     """Leitet NUR Schlagworte aus einem bereits vorhandenen (ggf. von Hand
     überarbeiteten) Zusammenfassungstext ab, ohne die Zusammenfassung selbst
