@@ -339,11 +339,20 @@ header h1 {
   position: absolute;
   top: 100%;
   right: 0;
-  margin-top: 0.3rem;
+  margin-top: 0.4rem;
   font-size: 0.7rem;
   color: var(--color-text-muted);
   white-space: nowrap;
   pointer-events: none;
+  transition: opacity 0.25s ease;
+}
+
+/* Nutzerwunsch (2026-08-23): der Nutzername soll beim Sticky-Kollabieren
+   des Headers genau wie der Marken-Name ausgeblendet werden, statt als
+   einziges Text-Element neben der kompakten Icon-Leiste stehen zu
+   bleiben. */
+#site-header.site-header--compact .auth-username-label {
+  opacity: 0;
 }
 
 /* #auth-widget-Präfix erhöht die Spezifität bewusst über die gemeinsame
@@ -1326,8 +1335,9 @@ body:not(.chat-started) #question-form {
        absolut positionierte Nutzername unter dem Login-Icon
        (.auth-username-label) braucht diesen zusätzlichen Platz, sonst landet
        er auf der border-bottom-Trennlinie statt (wie am Desktop) klar
-       darüber. */
-    padding-bottom: 1.6rem;
+       darüber. Nutzerfeedback (2026-08-23): der bisherige Wert wirkte trotzdem
+       noch zu knapp - mehr Luft zwischen Nutzername und Trennlinie. */
+    padding-bottom: 2.1rem;
     margin-bottom: 0.85rem;
   }
 

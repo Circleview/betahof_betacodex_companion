@@ -1070,9 +1070,17 @@ def _url_health_check_worker() -> None:
 SOURCE_SUGGESTION_INTERVAL_SECONDS = 24 * 3600
 SOURCE_SUGGESTION_QUEUE_TARGET = 100
 # Wie viele bekannte Autor:innen pro Lauf zusätzlich zur themenbasierten
-# Suche befragt werden - bewusst klein, um die Anzahl der (kostenpflichtigen)
-# Websuche-Calls pro Woche gering zu halten.
-SOURCE_SUGGESTION_AUTHORS_PER_RUN = 2
+# Suche befragt werden.
+# Nutzerfeedback (2026-08-23): mit ursprünglich 2 wuchs der Vorrat viel
+# langsamer, als er sich durch Annehmen/Ablehnen leeren lässt - ein
+# einzelner Pfleger konnte den gesamten Tagesertrag (2 Autor:innen + 1
+# Themensuche, je bis zu 5 Treffer) in wenigen Minuten aufbrauchen und
+# stand dann bis zum nächsten Tageslauf vor einer leeren Liste. Höher
+# gesetzt, damit der tägliche Automatismus spürbar schneller in Richtung
+# SOURCE_SUGGESTION_QUEUE_TARGET wächst - kostet proportional mehr
+# (kostenpflichtige) Websuche-Calls pro Tag, bleibt aber ein einmaliger,
+# fester Tages-Mehrpreis statt eines häufigeren Takts.
+SOURCE_SUGGESTION_AUTHORS_PER_RUN = 6
 
 
 def _build_source_suggestion_topic_seed() -> str:
