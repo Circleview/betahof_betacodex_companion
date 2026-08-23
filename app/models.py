@@ -303,3 +303,14 @@ class WebCandidateOut(BaseModel):
     snippet: str
     relevance_score: float
     status: str
+
+
+class SourceSuggestionOut(BaseModel):
+    id: str
+    url: str
+    title: str
+    reason: str
+    discovered_via: str
+    author_hint: Optional[str] = None
+    status: str
+    discovered_at: str

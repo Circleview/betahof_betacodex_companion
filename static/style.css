@@ -82,6 +82,38 @@ h3 {
   flex-shrink: 0;
 }
 
+/* Nutzerwunsch (2026-08-23): eleganter Ein-/Ausblende-Übergang für den
+   Marken-NAMEN neben dem Punkt, sobald der (sticky) Header beim
+   Herunterscrollen "geklebt" ist - siehe initStickyHeaderCollapse() in
+   header.js, die dafür die Klasse .site-header--compact setzt. max-width
+   statt display:none/visibility, damit der Übergang animierbar bleibt UND
+   der dabei freiwerdende Platz auf Mobile automatisch den Header-Umbruch
+   (Titel + Icons in eine Zeile, siehe @media weiter unten) mit auflöst -
+   ohne das wäre der Titel zwar unsichtbar, würde aber weiter Breite
+   beanspruchen und die Zeile künstlich umbrechen lassen. */
+.brand-name {
+  display: inline-block;
+  overflow: hidden;
+  white-space: nowrap;
+  max-width: 320px;
+  opacity: 1;
+  transform: translateX(0);
+  transition: max-width 0.4s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.25s ease,
+    transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+#site-header.site-header--compact .brand-name {
+  max-width: 0;
+  opacity: 0;
+  transform: translateX(-8px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .brand-name {
+    transition: none;
+  }
+}
+
 /* Fix: Klick auf "BetaCodex Companion" öffnet die Konversationsseite mit
    leerer Konversation (siehe brand-link-Click-Handler in init-footer.js).
    Übernimmt die Flex-Ausrichtung der generischen h1-Regel, da diese jetzt
@@ -173,6 +205,41 @@ header {
   padding-bottom: 1.5rem;
   margin-bottom: 1.5rem;
   border-bottom: 1px solid var(--color-border);
+}
+
+/* Nutzerwunsch (2026-08-23): Konversation/Quellen/Fragen-Log/Änderungs-Log
+   teilen sich #site-header (siehe header.js) - der Header läuft beim
+   Herunterscrollen leicht nach oben mit und bleibt dann dicht am oberen
+   Rand (nicht bündig, siehe top-Wert) hängen (position: sticky übernimmt
+   beides von allein: das "Mitlaufen" UND das Einrasten, kein JS nötig).
+   Bewusst NICHT auf die schlichten Rechts-/Fehlerseiten (404, Datenschutz,
+   Early-Access) angewendet, die nur den bloßen Marken-Namen ohne Icons
+   zeigen. Eigenes Hintergrund nötig, sonst scheint darunter wegscrollender
+   Inhalt durch die (nur beim Nicht-Sticky-Zustand unsichtbare) Lücke über
+   der Trennlinie.
+   Fix (Nutzerfeedback): der kleine Abstand zum Rand (top) lässt selbst eine
+   Lücke zwischen Viewport-Oberkante und eingerastetem Header frei, durch
+   die darunter wegscrollender Text sichtbar würde (die Lücke gehört ja noch
+   zum normalen Seitenfluss, nicht zum Header selbst) - das ::before deckt
+   genau diesen schmalen Streifen fest mit der Hintergrundfarbe ab, dauerhaft
+   viewport-fixiert statt nur sticky, damit er auch dann weiß/dunkel bleibt,
+   wenn der Header selbst noch gar nicht eingerastet ist. */
+#site-header {
+  position: sticky;
+  top: 0.5rem;
+  z-index: 20;
+  background: var(--color-bg);
+}
+
+#site-header::before {
+  content: '';
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 0.5rem;
+  background: var(--color-bg);
+  z-index: 21;
 }
 
 header h1 {
@@ -1701,6 +1768,17 @@ body:not(.chat-started) #question-form {
   border-left: 1px solid var(--color-border);
 }
 
+/* Nutzerwunsch (2026-08-23): reicht die Breite nicht für alle Icons in
+   einer Zeile, soll die Suche (.search-toolbar) NICHT in eine neue Zeile
+   umbrechen - stattdessen blendet initSourceToolbarOverflow() (import.js)
+   die Sortierung nach Autor:in/Datum samt ihrer eigenen Trennlinie aus.
+   Doppelte Klasse (statt nur .sort-toolbar--hidden-for-space) erhöht
+   bewusst die Spezifität über die spätere .sort-toolbar { display: flex }
+   -Regel hinaus, unabhängig von der Reihenfolge im Stylesheet. */
+.sort-toolbar.sort-toolbar--hidden-for-space {
+  display: none;
+}
+
 /* Backlog #94, zweiter Anlauf: statt eines Popovers (auf Mobile unpraktikabel,
    auf Desktop schwer sauber am rechts sitzenden Icon auszurichten, siehe
    git-Historie dieser Datei) klappt hier ein Suchbereich in voller Breite
@@ -2527,6 +2605,25 @@ body:not(.chat-started) #question-form {
   border-bottom: none;
 }
 
+/* Nutzerwunsch (2026-08-23): abgelehnte (und angenommene) Quellen-
+   Vorschläge verschwinden mit einer einfachen Transition statt abrupt zu
+   verschwinden - Dauer muss zu SOURCE_SUGGESTION_LEAVE_MS in import.js
+   passen (dort per setTimeout statt transitionend, da hier mehrere
+   Eigenschaften gleichzeitig übergehen). */
+.web-allowlist-candidate--leaving {
+  transition: opacity 0.2s ease, transform 0.2s ease;
+  opacity: 0;
+  transform: translateX(-8px);
+  pointer-events: none;
+}
+
+/* Nachrückender Vorschlag (aus dem bereits geladenen Vorrat, siehe
+   removeSourceSuggestionRow) blendet am Ende der Liste elegant ein -
+   dieselbe Animation wie neue Chat-Nachrichten (chat-message-in). */
+.web-allowlist-candidate--entering {
+  animation: chat-message-in 0.3s ease;
+}
+
 .web-allowlist-candidate-info {
   margin: 0 0 0.15rem;
   min-width: 0;
@@ -2984,7 +3081,20 @@ body:not(.chat-started) #question-form {
     gap: 2rem;
   }
 
-  .quellen-liste-body--author-filtered #source-filter-status {
+  .quellen-liste-body--author-filtered #source-filter-status,
+  /* Fix (Nutzerfeedback 2026-08-23): Suche, Jobs-Warteschlange, Website-
+     Verwaltung, Quellen-Vorschläge und alle Import-Formulare (Text/URL/
+     Datei, siehe #mobile-import-slot) sind direkte Geschwister von
+     #source-list/#author-info-panel innerhalb von #quellen-liste-body -
+     ohne eigenes flex-basis:100% wurden sie beim Öffnen (unhidden) selbst
+     zu schmalen Flex-Items NEBEN der Zwei-Spalten-Reihe statt wie gewohnt
+     als volle Zeile DARÜBER zu erscheinen. */
+  .quellen-liste-body--author-filtered #mobile-import-slot,
+  .quellen-liste-body--author-filtered #jobs-bar,
+  .quellen-liste-body--author-filtered #search-bar,
+  .quellen-liste-body--author-filtered #import-bereich,
+  .quellen-liste-body--author-filtered #web-allowlist-bereich,
+  .quellen-liste-body--author-filtered #source-suggestions-bereich {
     order: -1;
     flex-basis: 100%;
   }

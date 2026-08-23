@@ -180,12 +180,55 @@ function renderHeaderShell() {
   header.replaceChildren(h1, actions);
 }
 
+// Nutzerwunsch (2026-08-23): der Marken-NAME (nicht der Punkt) soll sich
+// elegant ausblenden, sobald der (sticky, siehe style.css #site-header)
+// Header beim Herunterscrollen wirklich "geklebt" ist - d.h. sein oberer
+// Rand hat den Sticky-Versatz (CSS top) erreicht. Jede Aufwärtsbewegung -
+// unabhängig davon, wie tief man auf der Seite gescrollt hat - blendet ihn
+// sofort wieder ein, bewusst NICHT erst wieder am Seitenanfang (Nutzerwunsch:
+// "wie diese modernen, eleganten Transitionen z.B. auf dem iPhone", analog
+// zur Safari-Werkzeugleiste auf iOS). rAF-Throttling, damit der scroll-Handler
+// nicht öfter als einmal pro Frame läuft.
+function initStickyHeaderCollapse() {
+  const header = document.getElementById('site-header');
+  if (!header) return;
+  const STUCK_TOLERANCE_PX = 4;
+  let lastScrollY = window.scrollY;
+  let ticking = false;
+
+  function update() {
+    const currentScrollY = window.scrollY;
+    const scrollingDown = currentScrollY > lastScrollY;
+    const stickyTop = parseFloat(getComputedStyle(header).top) || 0;
+    const isStuck = header.getBoundingClientRect().top <= stickyTop + STUCK_TOLERANCE_PX;
+    if (scrollingDown && isStuck) {
+      header.classList.add('site-header--compact');
+    } else if (!scrollingDown) {
+      header.classList.remove('site-header--compact');
+    }
+    lastScrollY = currentScrollY;
+    ticking = false;
+  }
+
+  window.addEventListener(
+    'scroll',
+    () => {
+      if (!ticking) {
+        ticking = true;
+        requestAnimationFrame(update);
+      }
+    },
+    { passive: true },
+  );
+}
+
 export async function initHeader() {
   await initI18n();
   await initAuth();
   renderHeaderShell();
   applyNavTexts();
   updateNavVisibility();
+  initStickyHeaderCollapse();
   document.addEventListener('i18n:changed', applyNavTexts);
   onAuthChange(updateNavVisibility);
 }

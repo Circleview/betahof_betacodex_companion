@@ -1196,6 +1196,200 @@ def test_update_broken_links_badge_hidden_without_fetch_for_non_pfleger():
     output = _run_update_broken_links_badge(visible=False, fetch_response=None)
     assert output == {"hidden": True}
 
+
+def _run_sticky_header_collapse(steps: list[tuple[int, float]]) -> list[bool]:
+    """Führt static/header.js#initStickyHeaderCollapse per Node aus. Jeder
+    Schritt in `steps` ist (scrollY, headerRectTop) - simuliert ein
+    scroll-Event samt aktuellem getBoundingClientRect().top des Headers
+    (steuert, ob er gerade "geklebt" ist). requestAnimationFrame wird
+    synchron gestubbt (kein echtes Throttling nötig, um die reine Logik zu
+    testen). Rückgabe: ob die Klasse 'site-header--compact' nach jedem
+    Schritt gesetzt ist."""
+    js_source = (STATIC_DIR / "header.js").read_text()
+    match = re.search(r"function initStickyHeaderCollapse.*?\n\}", js_source, re.S)
+    assert match, "initStickyHeaderCollapse wurde in header.js nicht gefunden."
+    func_source = match.group(0)
+    steps_js = json.dumps([{"scrollY": s[0], "top": s[1]} for s in steps])
+    script = f"""
+let headerRectTop = 0;
+let classes = new Set();
+const header = {{
+  classList: {{
+    add: (c) => classes.add(c),
+    remove: (c) => classes.delete(c),
+  }},
+  getBoundingClientRect: () => ({{ top: headerRectTop }}),
+}};
+global.document = {{ getElementById: (id) => (id === 'site-header' ? header : null) }};
+global.getComputedStyle = () => ({{ top: '8px' }});
+global.requestAnimationFrame = (fn) => fn();
+let scrollHandler = null;
+global.window = {{
+  scrollY: 0,
+  addEventListener: (evt, fn, opts) => {{ if (evt === 'scroll') scrollHandler = fn; }},
+}};
+
+{func_source}
+
+initStickyHeaderCollapse();
+
+const results = [];
+for (const step of {steps_js}) {{
+  headerRectTop = step.top;
+  window.scrollY = step.scrollY;
+  scrollHandler();
+  results.push(classes.has('site-header--compact'));
+}}
+console.log(JSON.stringify(results));
+"""
+    result = subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True)
+    return json.loads(result.stdout)
+
+
+def test_sticky_header_stays_expanded_while_scrolling_down_before_it_sticks():
+    """Solange der Header seinen Sticky-Versatz (CSS top) noch nicht erreicht
+    hat (rect.top deutlich größer), ist er noch nicht "geklebt" - der Titel
+    darf trotz Scrollens nach unten noch nicht ausgeblendet werden."""
+    results = _run_sticky_header_collapse([(20, 40), (60, 20)])
+    assert results == [False, False]
+
+
+def test_sticky_header_collapses_once_stuck_while_scrolling_down():
+    results = _run_sticky_header_collapse([(20, 40), (300, 8)])
+    assert results == [False, True]
+
+
+def test_sticky_header_expands_immediately_on_any_upward_scroll_regardless_of_depth():
+    """Regressionstest (Nutzerwunsch 2026-08-23): das Wiedereinblenden reagiert
+    auf die Scroll-RICHTUNG, nicht auf eine Positions-Schwelle - selbst tief
+    in der Seite (weit von scrollY=0 entfernt) blendet ein einziger Klick
+    nach oben den Titel sofort wieder ein, wie bei der iOS-Safari-
+    Werkzeugleiste, statt erst am Seitenanfang."""
+    results = _run_sticky_header_collapse([(300, 8), (280, 8)])
+    assert results == [True, False]
+
+
+def test_sticky_header_never_collapses_at_page_top():
+    results = _run_sticky_header_collapse([(0, 8), (0, 8)])
+    assert results == [False, False]
+
+
+def _run_source_suggestion_row_click(action: str, *, fetch_ok: bool = True) -> dict:
+    """Führt static/import.js#renderSourceSuggestionRow per Node aus und
+    simuliert einen Klick auf "Annehmen" oder "Ablehnen" - mit minimalen
+    Stubs für fetch/t/devUserHeaders (kein volles jsdom nötig, siehe
+    _run_append_title_text). openUrlPopoverWithUrl (separate Funktion,
+    siehe import.js) wird durch einen Spy ersetzt, der nur festhält, ob und
+    mit welcher URL er aufgerufen wurde - hier geht es um die Annehmen/
+    Ablehnen-Logik selbst, nicht um den Popover-Mechanismus (der bereits
+    über extractAndFillFromUrl/den bestehenden #popover-load-Test-Pfad
+    abgedeckt ist)."""
+    js_source = (STATIC_DIR / "import.js").read_text()
+    match = re.search(r"function renderSourceSuggestionRow.*?\n\}", js_source, re.S)
+    assert match, "renderSourceSuggestionRow wurde in import.js nicht gefunden."
+    func_source = match.group(0)
+    script = f"""
+function t(key) {{ return key; }}
+function devUserHeaders() {{ return {{}}; }}
+let openUrlPopoverCalledWith = null;
+function openUrlPopoverWithUrl(url) {{ openUrlPopoverCalledWith = url; }}
+// removeSourceSuggestionRow (Nachrücken samt Fade-Transitionen) hat eine
+// eigene, dedizierte Testabdeckung weiter unten - hier interessiert nur,
+// ob decide() sie mit der richtigen Zeile/ID aufruft.
+let removeSourceSuggestionRowCalledWith = null;
+function removeSourceSuggestionRow(li, id) {{
+  removeSourceSuggestionRowCalledWith = id;
+  li.remove();
+}}
+let fetchCalls = [];
+global.fetch = async (url, options) => {{
+  fetchCalls.push({{ url, options }});
+  return {{ ok: {json.dumps(fetch_ok)} }};
+}};
+
+class FakeNode {{
+  constructor(tag) {{
+    this.tag = tag;
+    this.children = [];
+    this.parentNode = null;
+    this.className = '';
+    this.textContent = '';
+    this.disabled = false;
+    this.listeners = {{}};
+    this.classList = {{
+      add: (cls) => {{ this.className += ' ' + cls; }},
+      toggle: (cls, force) => {{}},
+    }};
+  }}
+  appendChild(child) {{ child.parentNode = this; this.children.push(child); return child; }}
+  addEventListener(evt, fn) {{ this.listeners[evt] = fn; }}
+  remove() {{ this.removed = true; }}
+}}
+const document = {{ createElement: (tag) => new FakeNode(tag) }};
+
+{func_source}
+
+const suggestion = {{
+  id: 'sug-1',
+  url: 'https://beispiel.org/artikel',
+  title: 'Ein Artikel',
+  reason: 'Passt gut.',
+}};
+const row = renderSourceSuggestionRow(suggestion);
+
+function findButtons(node, acc) {{
+  node.children.forEach((c) => {{
+    if (c.tag === 'button') acc.push(c);
+    findButtons(c, acc);
+  }});
+  return acc;
+}}
+const buttons = findButtons(row, []);
+const acceptBtn = buttons[0];
+const rejectBtn = buttons[1];
+
+async function main() {{
+  await ({json.dumps(action)} === 'accept' ? acceptBtn : rejectBtn).listeners.click();
+  console.log(JSON.stringify({{
+    fetchUrl: fetchCalls[0] ? fetchCalls[0].url : null,
+    fetchMethod: fetchCalls[0] ? fetchCalls[0].options.method : null,
+    rowRemoved: !!row.removed,
+    removeSourceSuggestionRowCalledWith,
+    openUrlPopoverCalledWith,
+    acceptDisabled: acceptBtn.disabled,
+    rejectDisabled: rejectBtn.disabled,
+  }}));
+}}
+main();
+"""
+    result = subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True)
+    return json.loads(result.stdout)
+
+
+def test_source_suggestion_row_accept_calls_accept_endpoint_and_opens_url_popover():
+    output = _run_source_suggestion_row_click("accept")
+    assert output["fetchUrl"] == "/api/source-suggestions/sug-1/accept"
+    assert output["fetchMethod"] == "POST"
+    assert output["rowRemoved"] is True
+    assert output["removeSourceSuggestionRowCalledWith"] == "sug-1"
+    assert output["openUrlPopoverCalledWith"] == "https://beispiel.org/artikel"
+
+
+def test_source_suggestion_row_reject_calls_reject_endpoint_without_opening_popover():
+    output = _run_source_suggestion_row_click("reject")
+    assert output["fetchUrl"] == "/api/source-suggestions/sug-1/reject"
+    assert output["rowRemoved"] is True
+    assert output["removeSourceSuggestionRowCalledWith"] == "sug-1"
+    assert output["openUrlPopoverCalledWith"] is None
+
+
+def test_source_suggestion_row_reenables_buttons_on_failed_request():
+    output = _run_source_suggestion_row_click("reject", fetch_ok=False)
+    assert output["rowRemoved"] is False
+    assert output["acceptDisabled"] is False
+    assert output["rejectDisabled"] is False
+
+
 def _run_render_jobs_list_error_job_click(button_index: int, *, clicks: int = 1) -> dict:
     """Führt static/import.js#renderJobsListInto per Node aus und simuliert
     Klicks auf den Retry- oder den neuen Abbrechen-Button eines
@@ -1307,7 +1501,6 @@ def test_error_job_cancel_button_deletes_source_on_second_click():
     assert output["fetchMethod"] == "DELETE"
     assert output["fetchImportJobsCalled"] is True
     assert output["loadSourcesCalled"] is True
-
 
 
 # Backlog (2026-08-03): der Broken-Links-Filter-Button in der Quellen-
@@ -1472,3 +1665,206 @@ def test_extract_youtube_video_id_handles_watch_and_short_urls():
         "}));"
     )
     assert output == {"watch": "abc123", "short": "abc123", "other": None}
+
+
+def _run_source_toolbar_overflow(steps: list[dict]) -> list[bool]:
+    """Führt static/import.js#initSourceToolbarOverflow per Node aus. Jeder
+    Schritt setzt actions.clientWidth neu und feuert den (gestubbten)
+    ResizeObserver-Callback - simuliert damit ein Breiter-/Schmaler-Ziehen
+    des Fensters. Rückgabe: ob .sort-toolbar nach jedem Schritt via
+    'sort-toolbar--hidden-for-space' ausgeblendet ist. Icon-Gruppe (200px)
+    und Suche (53px) sind immer sichtbar, Sortierung (93px) ist das
+    einzige Element, das die Funktion selbst ein-/ausblendet."""
+    js_source = (STATIC_DIR / "import.js").read_text()
+    match = re.search(r"function initSourceToolbarOverflow.*?\n\}", js_source, re.S)
+    assert match, "initSourceToolbarOverflow wurde in import.js nicht gefunden."
+    func_source = match.group(0)
+    steps_js = json.dumps([s["clientWidth"] for s in steps])
+    script = f"""
+class FakeNode {{
+  constructor(width) {{
+    this._width = width;
+    this._classes = new Set(['sort-toolbar']);
+    this.children = [];
+    this.classList = {{
+      add: (c) => this._classes.add(c),
+      remove: (c) => this._classes.delete(c),
+      toggle: (c, force) => {{
+        const has = this._classes.has(c);
+        const next = force === undefined ? !has : force;
+        if (next) this._classes.add(c); else this._classes.delete(c);
+      }},
+      contains: (c) => this._classes.has(c),
+    }};
+  }}
+  getBoundingClientRect() {{ return {{ width: this._width }}; }}
+}}
+
+const iconGroup = new FakeNode(200);
+const sortToolbar = new FakeNode(93);
+const searchToolbar = new FakeNode(53);
+const actions = new FakeNode(0);
+actions.children = [iconGroup, sortToolbar, searchToolbar];
+actions.clientWidth = 1000;
+const row = new FakeNode(0);
+
+global.document = {{
+  querySelector: (sel) => {{
+    if (sel === '.section-heading-row') return row;
+    if (sel === '.section-heading-actions') return actions;
+    if (sel === '.sort-toolbar') return sortToolbar;
+    return null;
+  }},
+}};
+global.getComputedStyle = (el) => ({{
+  columnGap: '20px',
+  display: el === sortToolbar
+    ? (el._classes.has('sort-toolbar') && el._classes.has('sort-toolbar--hidden-for-space') ? 'none' : 'flex')
+    : 'flex',
+}});
+let resizeCallback = null;
+global.ResizeObserver = class {{
+  constructor(cb) {{ resizeCallback = cb; }}
+  observe() {{}}
+}};
+
+{func_source}
+
+initSourceToolbarOverflow();
+
+const results = [];
+for (const clientWidth of {steps_js}) {{
+  actions.clientWidth = clientWidth;
+  resizeCallback();
+  results.push(sortToolbar._classes.has('sort-toolbar--hidden-for-space'));
+}}
+console.log(JSON.stringify(results));
+"""
+    result = subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True)
+    return json.loads(result.stdout)
+
+
+def test_source_toolbar_hides_sort_toolbar_when_too_narrow_for_all_icons():
+    results = _run_source_toolbar_overflow([{"clientWidth": 300}])
+    assert results == [True]
+
+
+def test_source_toolbar_shows_sort_toolbar_when_search_still_fits():
+    results = _run_source_toolbar_overflow([{"clientWidth": 400}])
+    assert results == [False]
+
+
+def test_source_toolbar_reshows_sort_toolbar_after_widening_again():
+    """Regressionstest (Nutzerwunsch 2026-08-23): ein ResizeObserver direkt
+    auf .section-heading-actions haette hier NICHT ausgereicht - sobald
+    .sort-toolbar einmal ausgeblendet ist, schrumpft die Box auf die
+    verbleibenden Icons und aendert sich beim Wiederverbreitern des Fensters
+    nicht mehr von selbst (kein neues Resize-Ereignis). initSourceToolbar
+    Overflow() beobachtet daher bewusst .section-heading-row statt
+    .section-heading-actions."""
+    results = _run_source_toolbar_overflow([{"clientWidth": 300}, {"clientWidth": 400}])
+    assert results == [True, False]
+
+
+def _run_remove_source_suggestion_row(*, reserve_ids: list[str], visible_ids: list[str] = None) -> dict:
+    """Führt static/import.js#removeSourceSuggestionRow per Node aus -
+    prüft sowohl den SOFORTIGEN Zustand (Fade-Out-Klasse, Entfernung aus
+    sourceSuggestionsVisible) als auch den Zustand NACH Ablauf von
+    SOURCE_SUGGESTION_LEAVE_MS (tatsächliche DOM-Entfernung, Nachrücken aus
+    sourceSuggestionsReserve samt Fade-In-Klasse). renderSourceSuggestionRow
+    wird durch einen Spy ersetzt - hier geht es nur um die Nachrück-
+    Choreographie selbst, nicht um den Zeilenaufbau (separat abgedeckt).
+    Entfernt wird immer die Zeile mit id 'a'."""
+    js_source = (STATIC_DIR / "import.js").read_text()
+    match = re.search(r"function removeSourceSuggestionRow.*?\n\}", js_source, re.S)
+    assert match, "removeSourceSuggestionRow wurde in import.js nicht gefunden."
+    func_source = match.group(0)
+    reserve_js = json.dumps([{"id": rid} for rid in reserve_ids])
+    visible_js = json.dumps([{"id": rid} for rid in (visible_ids if visible_ids is not None else ["a", "b"])])
+    script = f"""
+class FakeNode {{
+  constructor() {{
+    this._classes = new Set();
+    this.classList = {{ add: (c) => this._classes.add(c) }};
+    this.removed = false;
+  }}
+  remove() {{ this.removed = true; }}
+}}
+
+const SOURCE_SUGGESTION_LEAVE_MS = 5;
+let sourceSuggestionsVisible = {visible_js};
+let sourceSuggestionsReserve = {reserve_js};
+const listChildren = [];
+const sourceSuggestionsList = {{ appendChild: (el) => {{ listChildren.push(el); }} }};
+const emptyHiddenCalls = [];
+const sourceSuggestionsEmpty = {{ classList: {{ toggle: (cls, force) => emptyHiddenCalls.push(force) }} }};
+let buttonVisibilityCalls = 0;
+function updateSourceSuggestionsButtonVisibility() {{ buttonVisibilityCalls++; }}
+let renderCalledWith = null;
+function renderSourceSuggestionRow(s) {{
+  renderCalledWith = s;
+  return new FakeNode();
+}}
+
+{func_source}
+
+const li = new FakeNode();
+removeSourceSuggestionRow(li, 'a');
+const immediate = {{
+  hasLeavingClass: li._classes.has('web-allowlist-candidate--leaving'),
+  removedImmediately: li.removed,
+  visibleRightAfter: sourceSuggestionsVisible.map((s) => s.id),
+}};
+
+async function main() {{
+  await new Promise((resolve) => setTimeout(resolve, SOURCE_SUGGESTION_LEAVE_MS + 20));
+  console.log(JSON.stringify({{
+    immediate,
+    removedAfterTimeout: li.removed,
+    visibleAfterTimeout: sourceSuggestionsVisible.map((s) => s.id),
+    reserveAfterTimeout: sourceSuggestionsReserve.map((s) => s.id),
+    promotedCount: listChildren.length,
+    promotedHasEnteringClass: listChildren[0] ? listChildren[0]._classes.has('web-allowlist-candidate--entering') : null,
+    renderCalledWith,
+    emptyHiddenCalls,
+    buttonVisibilityCalls,
+  }}));
+}}
+main();
+"""
+    result = subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True)
+    return json.loads(result.stdout)
+
+
+def test_remove_source_suggestion_row_fades_out_immediately_without_removing():
+    """Regressionstest: der Fade-Out darf nicht abrupt sein - die Zeile
+    bekommt sofort die Übergangs-Klasse, wird aber erst nach Ablauf der
+    Transition tatsächlich aus dem DOM entfernt."""
+    output = _run_remove_source_suggestion_row(reserve_ids=[])
+    assert output["immediate"]["hasLeavingClass"] is True
+    assert output["immediate"]["removedImmediately"] is False
+    assert output["immediate"]["visibleRightAfter"] == ["b"]
+
+
+def test_remove_source_suggestion_row_promotes_next_reserve_item_with_entering_class():
+    """Regressionstest (Nutzerwunsch 2026-08-23): rückt sofort (ohne neue
+    Websuche) den nächsten Vorschlag aus dem bereits geladenen Vorrat nach,
+    sobald einer entschieden wurde - mit Fade-In-Klasse am Ende der Liste."""
+    output = _run_remove_source_suggestion_row(reserve_ids=["c", "d"])
+    assert output["removedAfterTimeout"] is True
+    assert output["visibleAfterTimeout"] == ["b", "c"]
+    assert output["reserveAfterTimeout"] == ["d"]
+    assert output["promotedCount"] == 1
+    assert output["promotedHasEnteringClass"] is True
+    assert output["renderCalledWith"] == {"id": "c"}
+    assert output["buttonVisibilityCalls"] == 1
+
+
+def test_remove_source_suggestion_row_shows_empty_state_when_nothing_left():
+    """War 'a' die letzte sichtbare Zeile und der Vorrat ebenfalls leer,
+    muss der Empty-State-Hinweis nach dem Entfernen sichtbar werden (toggle
+    'hidden' mit force=false)."""
+    output = _run_remove_source_suggestion_row(reserve_ids=[], visible_ids=["a"])
+    assert output["promotedCount"] == 0
+    assert output["visibleAfterTimeout"] == []
+    assert output["emptyHiddenCalls"][-1] is False

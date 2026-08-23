@@ -20,6 +20,8 @@ from app import (
     monitoring,
     question_log,
     ratelimit,
+    source_discovery,
+    source_suggestions,
     summarization,
     terms,
     tts,
@@ -109,6 +111,14 @@ def client(tmp_path, monkeypatch):
     monkeypatch.setattr(web_allowlist, "WEB_ALLOWLIST_FILE", tmp_path / "web_allowlist.json")
     monkeypatch.setattr(web_index, "WEB_INDEX_FILE", tmp_path / "web_index.json")
     monkeypatch.setattr(web_candidates, "WEB_CANDIDATES_FILE", tmp_path / "web_candidates.json")
+    monkeypatch.setattr(
+        source_suggestions, "SOURCE_SUGGESTIONS_FILE", tmp_path / "source_suggestions.json"
+    )
+    monkeypatch.setattr(
+        source_suggestions,
+        "SOURCE_SUGGESTION_WEIGHTS_FILE",
+        tmp_path / "source_suggestion_weights.json",
+    )
     # POST /api/web-allowlist stößt seit dem Sofort-Crawl-Fix einen echten
     # Hintergrund-Thread an (_index_new_web_allowlist_entry in app/main.py).
     # Der eigentliche Crawl läuft seit dem Unterprozess-Fix (manche Websites
@@ -4588,6 +4598,201 @@ def test_reject_web_allowlist_candidate_returns_404_for_unknown_candidate(client
     entry_id, _ = _create_web_allowlist_entry_with_candidate(client)
     response = client.post(f"/api/web-allowlist/{entry_id}/candidates/unknown-id/reject")
     assert response.status_code == 404
+
+
+def _create_source_suggestion(*, url="https://beispiel.org/artikel", author_hint=None):
+    suggestion_id = source_suggestions.add_suggestion(
+        {
+            "url": url,
+            "title": "Ein Artikel",
+            "reason": "Passt thematisch zur Sammlung.",
+            "discovered_via": "author" if author_hint else "topic",
+            "author_hint": author_hint,
+        },
+        "2026-01-01T00:00:00+00:00",
+    )
+    return suggestion_id
+
+
+def test_list_source_suggestions_returns_only_pending(client):
+    pending_id = _create_source_suggestion(url="https://a.org")
+    rejected_id = _create_source_suggestion(url="https://b.org")
+    source_suggestions.set_status(rejected_id, "rejected")
+
+    response = client.get("/api/source-suggestions")
+
+    assert response.status_code == 200
+    assert [s["id"] for s in response.json()] == [pending_id]
+
+
+def test_list_source_suggestions_requires_pfleger_role(anon_client):
+    response = anon_client.get("/api/source-suggestions")
+    assert response.status_code == 403
+
+
+def test_accept_source_suggestion_only_changes_status_and_weight(client):
+    """Nutzerkorrektur: "Annehmen" legt bewusst KEINE Quelle an - das
+    Frontend öffnet stattdessen das bestehende URL-Formular. Der Endpunkt
+    selbst darf also nur den Status ändern."""
+    suggestion_id = _create_source_suggestion(author_hint="Niels Pflaeging")
+
+    response = client.post(f"/api/source-suggestions/{suggestion_id}/accept")
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "accepted"
+    assert client.get("/api/sources").json() == []
+    weights = source_suggestions._load_weights()
+    assert weights["authors"]["Niels Pflaeging"] == 1
+    assert weights["domains"]["beispiel.org"] == 1
+    assert any(e["action"] == "source_suggestion_accepted" for e in client.get("/api/audit-log").json())
+
+
+def test_accept_source_suggestion_returns_404_for_unknown_id(client):
+    response = client.post("/api/source-suggestions/unknown-id/accept")
+    assert response.status_code == 404
+
+
+def test_reject_source_suggestion_marks_rejected_and_lowers_weight(client):
+    suggestion_id = _create_source_suggestion(author_hint="Niels Pflaeging")
+
+    response = client.post(f"/api/source-suggestions/{suggestion_id}/reject")
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "rejected"
+    weights = source_suggestions._load_weights()
+    assert weights["authors"]["Niels Pflaeging"] == -1
+    assert any(e["action"] == "source_suggestion_rejected" for e in client.get("/api/audit-log").json())
+
+
+def test_reject_source_suggestion_returns_404_for_unknown_id(client):
+    response = client.post("/api/source-suggestions/unknown-id/reject")
+    assert response.status_code == 404
+
+
+def test_undo_accept_source_suggestion_restores_pending_and_weight(client):
+    suggestion_id = _create_source_suggestion(author_hint="Niels Pflaeging")
+    client.post(f"/api/source-suggestions/{suggestion_id}/accept")
+    entry = next(
+        e for e in client.get("/api/audit-log").json() if e["action"] == "source_suggestion_accepted"
+    )
+
+    response = client.post(f"/api/audit-log/{entry['id']}/revert")
+
+    assert response.status_code == 200
+    assert source_suggestions.get_suggestion(suggestion_id)["status"] == "pending"
+    assert source_suggestions._load_weights()["authors"]["Niels Pflaeging"] == 0
+    # Der Vorschlag taucht dadurch wieder in der Warteschlange auf.
+    assert suggestion_id in {s["id"] for s in client.get("/api/source-suggestions").json()}
+
+
+def test_undo_reject_source_suggestion_restores_pending_and_weight(client):
+    suggestion_id = _create_source_suggestion(author_hint="Niels Pflaeging")
+    client.post(f"/api/source-suggestions/{suggestion_id}/reject")
+    entry = next(
+        e for e in client.get("/api/audit-log").json() if e["action"] == "source_suggestion_rejected"
+    )
+
+    response = client.post(f"/api/audit-log/{entry['id']}/revert")
+
+    assert response.status_code == 200
+    assert source_suggestions.get_suggestion(suggestion_id)["status"] == "pending"
+    assert source_suggestions._load_weights()["authors"]["Niels Pflaeging"] == 0
+
+
+def test_run_source_suggestion_discovery_once_stops_at_queue_target(client, monkeypatch):
+    monkeypatch.setattr(main_module, "SOURCE_SUGGESTION_QUEUE_TARGET", 2)
+    monkeypatch.setattr(
+        source_discovery,
+        "discover_by_author",
+        lambda author, known, excluded, max_results=5: [
+            {"url": "https://a.org", "title": "A", "reason": "R", "discovered_via": "author", "author_hint": author}
+        ],
+    )
+    monkeypatch.setattr(
+        source_discovery,
+        "discover_by_topic",
+        lambda seed, known, excluded, max_results=5: [
+            {"url": "https://b.org", "title": "B", "reason": "R", "discovered_via": "topic", "author_hint": None},
+            {"url": "https://c.org", "title": "C", "reason": "R", "discovered_via": "topic", "author_hint": None},
+        ],
+    )
+
+    main_module._run_source_suggestion_discovery_once()
+
+    pending = source_suggestions.list_suggestions(status="pending")
+    assert len(pending) == 2
+
+
+def test_run_source_suggestion_discovery_once_interleaves_prolific_author_with_topic(client, monkeypatch):
+    """Nutzerfeedback (2026-08-23): eine Autorin/ein Autor mit sehr vielen
+    Veröffentlichungen (z.B. Alfie Kohn) darf mit einer einzigen Anfrage
+    nicht die gesamte Warteschlange füllen - erst reihum je einen Kandidaten
+    aus jeder Gruppe nehmen, statt eine Gruppe komplett auszuschöpfen."""
+    client.post("/api/sources", json={"title": "Q", "text": "Text.", "authors": ["Vielschreiber"]})
+    monkeypatch.setattr(main_module, "SOURCE_SUGGESTION_QUEUE_TARGET", 2)
+    monkeypatch.setattr(
+        source_suggestions, "pick_next_authors", lambda names, n: ["Vielschreiber"]
+    )
+    monkeypatch.setattr(
+        source_discovery,
+        "discover_by_author",
+        lambda author, known, excluded, max_results=5: [
+            {"url": f"https://viel.org/{i}", "title": f"V{i}", "reason": "R", "discovered_via": "author", "author_hint": author}
+            for i in range(5)
+        ],
+    )
+    monkeypatch.setattr(
+        source_discovery,
+        "discover_by_topic",
+        lambda seed, known, excluded, max_results=5: [
+            {"url": "https://thema.org/1", "title": "T", "reason": "R", "discovered_via": "topic", "author_hint": None}
+        ],
+    )
+
+    main_module._run_source_suggestion_discovery_once()
+
+    pending = source_suggestions.list_suggestions(status="pending").values()
+    discovered_via = sorted(s["discovered_via"] for s in pending)
+    # Bei nur 2 freien Plätzen darf nicht beides von "Vielschreiber" kommen -
+    # der Themenvorschlag muss dank Durchmischung mit reinrutschen.
+    assert discovered_via == ["author", "topic"]
+
+
+def test_run_source_suggestion_discovery_once_skips_already_known_urls(client, monkeypatch):
+    client.post("/api/sources", json={"title": "Q", "text": "Text.", "url": "https://a.org"})
+    monkeypatch.setattr(
+        source_discovery,
+        "discover_by_author",
+        lambda author, known, excluded, max_results=5: [],
+    )
+    monkeypatch.setattr(
+        source_discovery,
+        "discover_by_topic",
+        lambda seed, known, excluded, max_results=5: [
+            {"url": "https://a.org", "title": "A", "reason": "R", "discovered_via": "topic", "author_hint": None}
+        ],
+    )
+
+    main_module._run_source_suggestion_discovery_once()
+
+    assert source_suggestions.list_suggestions(status="pending") == {}
+
+
+def test_run_source_suggestion_discovery_once_does_nothing_when_queue_already_full(client, monkeypatch):
+    monkeypatch.setattr(main_module, "SOURCE_SUGGESTION_QUEUE_TARGET", 1)
+    _create_source_suggestion(url="https://existing.org")
+    called = {"n": 0}
+
+    def fail_if_called(*args, **kwargs):
+        called["n"] += 1
+        return []
+
+    monkeypatch.setattr(source_discovery, "discover_by_author", fail_if_called)
+    monkeypatch.setattr(source_discovery, "discover_by_topic", fail_if_called)
+
+    main_module._run_source_suggestion_discovery_once()
+
+    assert called["n"] == 0
 
 
 def test_delete_web_allowlist_entry_removes_its_candidates(client):

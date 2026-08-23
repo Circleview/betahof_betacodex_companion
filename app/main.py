@@ -1,6 +1,7 @@
 import contextlib
 import hashlib
 import hmac
+import itertools
 import json
 import os
 import queue
@@ -37,6 +38,8 @@ from app import (
     monitoring,
     question_log,
     ratelimit,
+    source_discovery,
+    source_suggestions,
     summarization,
     terms,
     tts,
@@ -71,6 +74,7 @@ from app.models import (
     RequestLinkIn,
     SourceIn,
     SourceOut,
+    SourceSuggestionOut,
     SpeechIn,
     SummaryOut,
     TermOut,
@@ -149,20 +153,21 @@ APP_VERSION = _get_version()
 
 # Fix (2026-08-23, realer Datenverlust auf Dev): alle Hintergrund-Threads
 # (Audio-Transkription, URL-Gesundheits-Check, Web-Allowlist-Crawl,
-# Zusammenfassungs-Nachzug) sowie die Einmal-Aufräumarbeiten beim Start
-# liefen bisher UNBEDINGT beim bloßen Import dieses Moduls - nicht erst bei
-# einem echten Server-Start. Jedes `python3 -c "from app import main"`
-# (z.B. für einen schnellen Syntax-Check) UND sogar der Import durch die
-# Test-Suite selbst (test_api.py: `from app import main as main_module`)
-# haben dadurch echte Hintergrund-Threads mit echten Netzwerk-/API-
-# Aufrufen auf die ECHTEN Dev-Daten gestartet, lange bevor irgendein
-# Test-Mock oder tmp_path-Monkeypatch greifen konnte - deckt sich mit dem
-# im Code selbst dokumentierten realen Vorfall vom 2026-07-28 (nebenläufige,
-# unsynchronisierte Hintergrund-Threads, "Lost Update" auf sources.json).
-# Über das ASGI-Lifespan-Protokoll starten diese Threads jetzt nur noch bei
-# einem ECHTEN Server-Start (uvicorn) - ein bloßer Modul-Import (Skripte,
-# Tests) hat ab jetzt keine Seiteneffekte mehr. Siehe
-# _start_background_workers() weiter unten für die eigentliche Liste.
+# Quellen-Vorschlag-Suche, Zusammenfassungs-Nachzug) sowie die Einmal-
+# Aufräumarbeiten beim Start liefen bisher UNBEDINGT beim bloßen Import
+# dieses Moduls - nicht erst bei einem echten Server-Start. Jedes
+# `python3 -c "from app import main"` (z.B. für einen schnellen Syntax-
+# Check) UND sogar der Import durch die Test-Suite selbst (test_api.py:
+# `from app import main as main_module`) haben dadurch echte Hintergrund-
+# Threads mit echten Netzwerk-/API-Aufrufen auf die ECHTEN Dev-Daten
+# gestartet, lange bevor irgendein Test-Mock oder tmp_path-Monkeypatch
+# greifen konnte - deckt sich mit dem im Code selbst dokumentierten realen
+# Vorfall vom 2026-07-28 (nebenläufige, unsynchronisierte Hintergrund-
+# Threads, "Lost Update" auf sources.json). Über das ASGI-Lifespan-Protokoll
+# starten diese Threads jetzt nur noch bei einem ECHTEN Server-Start
+# (uvicorn) - ein bloßer Modul-Import (Skripte, Tests) hat ab jetzt keine
+# Seiteneffekte mehr. Siehe _start_background_workers() weiter unten für die
+# eigentliche Liste.
 @contextlib.asynccontextmanager
 async def lifespan(app: FastAPI):
     _start_background_workers()
@@ -1037,6 +1042,100 @@ def _url_health_check_worker() -> None:
         time.sleep(URL_HEALTH_CHECK_INTERVAL_SECONDS)
 
 
+# Nutzerwunsch (2026-08-22): die Quellenlage soll nicht nur wachsen, wenn
+# jemand von Hand eine URL einreicht - der Companion soll selbst im
+# offenen Web nach passenden neuen Text-Quellen suchen (app/
+# source_discovery.py, Claudes Web-Search-Tool) und sie als kleine
+# Vorschlagsliste ablegen (app/source_suggestions.py). Läuft nach demselben
+# Sleep-Loop-Muster wie der URL-Gesundheits-Check oben.
+# Nutzerwunsch (2026-08-23): die Liste im Frontend soll IMMER 5 sichtbare
+# Vorschläge zeigen und beim Annehmen/Ablehnen sofort (ohne auf eine neue,
+# mehrere Sekunden dauernde Websuche zu warten) aus bereits vorhandenem
+# Vorrat nachrücken - SOURCE_SUGGESTION_QUEUE_TARGET ist deshalb bewusst
+# GRÖSSER als die im Frontend sichtbaren 5 (siehe
+# SOURCE_SUGGESTIONS_VISIBLE_COUNT in import.js), damit dieser Vorrat
+# überhaupt existiert. Der tägliche Lauf hier befüllt nur diesen
+# Hintergrund-Vorrat, das Nachrücken selbst ist reine Frontend-Logik ohne
+# weiteren Backend-Aufruf.
+# Nutzerwunsch (Nachtrag): Vorrat auf 100 erhöht und Takt von wöchentlich
+# auf täglich verkürzt, damit er "sich immer wieder füllt, solange das Web
+# noch gute Vorschläge bereithält" - kostet trotzdem nichts Zusätzliches an
+# den meisten Tagen, da _run_source_suggestion_discovery_once() sofort ohne
+# jede Websuche abbricht, sobald der Vorrat das Ziel schon erreicht hat
+# (nur die Prüfung selbst läuft täglich, echte - kostenpflichtige -
+# Websuchen nur bei tatsächlichem Bedarf). Die bereits bestehende
+# Autor:innen-Durchmischung (pick_next_authors/zip_longest weiter unten,
+# siehe deren eigene Kommentare) verhindert dabei weiterhin, dass ein
+# einzelner vielschreibender Autor den Vorrat dominiert.
+SOURCE_SUGGESTION_INTERVAL_SECONDS = 24 * 3600
+SOURCE_SUGGESTION_QUEUE_TARGET = 100
+# Wie viele bekannte Autor:innen pro Lauf zusätzlich zur themenbasierten
+# Suche befragt werden - bewusst klein, um die Anzahl der (kostenpflichtigen)
+# Websuche-Calls pro Woche gering zu halten.
+SOURCE_SUGGESTION_AUTHORS_PER_RUN = 2
+
+
+def _build_source_suggestion_topic_seed() -> str:
+    sources = _load_sources()
+    lines = []
+    for entry in list(sources.values())[:30]:
+        if entry.get("deleted_at"):
+            continue
+        terms_de = entry.get("key_terms_de") or []
+        lines.append(f"- {entry.get('title', '')} ({', '.join(terms_de)})")
+    return "\n".join(lines)
+
+
+def _run_source_suggestion_discovery_once() -> None:
+    pending = source_suggestions.list_suggestions(status="pending")
+    if len(pending) >= SOURCE_SUGGESTION_QUEUE_TARGET:
+        return
+    known = {
+        entry["url"] for entry in _load_sources().values() if entry.get("url")
+    } | source_suggestions.known_urls()
+    excluded_domains = source_suggestions.blocked_domains()
+
+    groups: list[list[dict]] = []
+    author_names = [a["name"] for a in authors.list_authors()]
+    for author in source_suggestions.pick_next_authors(author_names, SOURCE_SUGGESTION_AUTHORS_PER_RUN):
+        groups.append(source_discovery.discover_by_author(author, known, excluded_domains))
+    groups.append(
+        source_discovery.discover_by_topic(_build_source_suggestion_topic_seed(), known, excluded_domains)
+    )
+    # Nutzerfeedback (2026-08-23): Autor:innen mit sehr vielen
+    # Veröffentlichungen (z.B. Alfie Kohn) können mit einer einzigen Anfrage
+    # schon die ganze Warteschlange füllen, ohne dass sich die Quellenlage
+    # in der Breite verbessert. Reihum je einen Kandidaten aus jeder Gruppe
+    # (jede angefragte Autorin/jeder Autor + die Themensuche) statt eine
+    # Gruppe komplett auszuschöpfen, bevor die nächste überhaupt zum Zug
+    # kommt - bei begrenzten remaining_slots (siehe unten) kommt so
+    # garantiert eine Mischung an, nicht nur die ergiebigste Einzelquelle.
+    found = [c for round_ in itertools.zip_longest(*groups) for c in round_ if c is not None]
+
+    discovered_at = datetime.now(timezone.utc).isoformat()
+    remaining_slots = SOURCE_SUGGESTION_QUEUE_TARGET - len(pending)
+    seen_urls: set[str] = set()
+    added = 0
+    for candidate in found:
+        if added >= remaining_slots:
+            break
+        url = candidate.get("url")
+        if not url or url in known or url in seen_urls:
+            continue
+        seen_urls.add(url)
+        source_suggestions.add_suggestion(candidate, discovered_at)
+        added += 1
+
+
+def _source_suggestion_discovery_worker() -> None:
+    while True:
+        try:
+            _run_source_suggestion_discovery_once()
+        except Exception:
+            pass
+        time.sleep(SOURCE_SUGGESTION_INTERVAL_SECONDS)
+
+
 # Nutzerwunsch (2026-08-03): fehlende Zusammenfassungen (egal ob durch die
 # Retries in _generate_summary_background immer noch nicht gelungen, oder
 # aus der Zeit vor diesem Fix) automatisch nachziehen - laeuft nach
@@ -1279,6 +1378,7 @@ def _start_background_workers() -> None:
     dem zugehörigen Sweep-Thread."""
     users.ensure_bootstrap_admin(os.environ.get("SYSTEM_ADMIN_EMAIL", ""))
     threading.Thread(target=_url_health_check_worker, daemon=True).start()
+    threading.Thread(target=_source_suggestion_discovery_worker, daemon=True).start()
     threading.Thread(target=_summary_backfill_worker, daemon=True).start()
     _recover_interrupted_web_allowlist_indexing()
     threading.Thread(target=_web_allowlist_crawl_worker, daemon=True).start()
@@ -2145,6 +2245,25 @@ def _revert_author_changes(name: str, changes: dict, x_lang: str) -> None:
     author_profiles.set_profile(name, **kwargs)
 
 
+def _revert_source_suggestion_changes(suggestion_id: str, changes: dict, x_lang: str) -> None:
+    # Deutlich einfacher als ein Quellen-Revert: Annehmen/Ablehnen ändert
+    # nur den Status der Vorschlags-Zeile selbst (siehe accept/reject_
+    # source_suggestion oben) - keine damit verknüpfte, angelegte Quelle,
+    # die hier mit rückgängig gemacht werden müsste.
+    suggestion = source_suggestions.get_suggestion(suggestion_id)
+    if suggestion is None:
+        raise HTTPException(400, i18n.get_message("audit_revert_failed", x_lang))
+    old_status = changes["status"]["old"]
+    new_status = changes["status"]["new"]
+    source_suggestions.set_status(suggestion_id, old_status)
+    # War die rückgängig gemachte Aktion ein Accept (+1), zieht der Revert
+    # die Gewichtung wieder ab, und umgekehrt bei einem Reject (-1).
+    delta = -1 if new_status == "accepted" else 1
+    source_suggestions.adjust_weight(
+        author_hint=suggestion.get("author_hint"), url=suggestion["url"], delta=delta
+    )
+
+
 @app.post("/api/audit-log/{entry_id}/revert", response_model=MessageOut)
 def revert_audit_entry(
     entry_id: str,
@@ -2175,6 +2294,8 @@ def revert_audit_entry(
         _revert_source_changes(entity_id, changes, x_lang)
     elif entity_type == "author":
         _revert_author_changes(entity_id, changes, x_lang)
+    elif entity_type == "source_suggestion":
+        _revert_source_suggestion_changes(entity_id, changes, x_lang)
     else:
         raise HTTPException(400, i18n.get_message("audit_revert_failed", x_lang))
 
@@ -2433,6 +2554,68 @@ def reject_web_allowlist_candidate(
     updated = web_candidates.set_status(candidate_id, "rejected")
     audit.log_action(_user, "web_candidate_rejected", "web_page", candidate_id, candidate.get("title"))
     return WebCandidateOut(**updated)
+
+
+@app.get("/api/source-suggestions", response_model=list[SourceSuggestionOut])
+def list_source_suggestions(_user: str = Depends(require_role(users.QUELLEN_PFLEGER))):
+    suggestions = [
+        SourceSuggestionOut(id=sid, **s)
+        for sid, s in source_suggestions.list_suggestions(status="pending").items()
+    ]
+    suggestions.sort(key=lambda s: s.discovered_at)
+    return suggestions
+
+
+@app.post("/api/source-suggestions/{suggestion_id}/accept", response_model=SourceSuggestionOut)
+def accept_source_suggestion(
+    suggestion_id: str,
+    _user: str = Depends(require_role(users.QUELLEN_PFLEGER)),
+    x_lang: str = Header(default=i18n.DEFAULT_LANG),
+):
+    # Legt bewusst KEINE Quelle an - das Frontend öffnet stattdessen das
+    # bestehende "Quelle per URL"-Formular mit der hier zurückgegebenen URL
+    # vorausgefüllt (siehe static/import.js), Extraktion/Review/Speichern
+    # laufen 1:1 über den bereits existierenden manuellen Import-Pfad.
+    suggestion = source_suggestions.get_suggestion(suggestion_id)
+    if suggestion is None:
+        raise HTTPException(404, i18n.get_message("source_suggestion_not_found", x_lang))
+    updated = source_suggestions.set_status(suggestion_id, "accepted")
+    source_suggestions.adjust_weight(
+        author_hint=suggestion.get("author_hint"), url=suggestion["url"], delta=1
+    )
+    audit.log_change(
+        _user,
+        "source_suggestion_accepted",
+        "source_suggestion",
+        suggestion_id,
+        suggestion.get("title"),
+        {"status": {"old": "pending", "new": "accepted"}},
+    )
+    return SourceSuggestionOut(**updated)
+
+
+@app.post("/api/source-suggestions/{suggestion_id}/reject", response_model=SourceSuggestionOut)
+def reject_source_suggestion(
+    suggestion_id: str,
+    _user: str = Depends(require_role(users.QUELLEN_PFLEGER)),
+    x_lang: str = Header(default=i18n.DEFAULT_LANG),
+):
+    suggestion = source_suggestions.get_suggestion(suggestion_id)
+    if suggestion is None:
+        raise HTTPException(404, i18n.get_message("source_suggestion_not_found", x_lang))
+    updated = source_suggestions.set_status(suggestion_id, "rejected")
+    source_suggestions.adjust_weight(
+        author_hint=suggestion.get("author_hint"), url=suggestion["url"], delta=-1
+    )
+    audit.log_change(
+        _user,
+        "source_suggestion_rejected",
+        "source_suggestion",
+        suggestion_id,
+        suggestion.get("title"),
+        {"status": {"old": "pending", "new": "rejected"}},
+    )
+    return SourceSuggestionOut(**updated)
 
 
 @app.get("/api/sources/{source_id}/pdf")

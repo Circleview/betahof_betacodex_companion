@@ -150,6 +150,22 @@
             </svg>
           </span>
         </button>
+        <!-- Nutzerwunsch: proaktive Quellen-Vorschläge aus dem offenen Web
+             (app/source_discovery.py) - eigenes Icon neben dem Globus, da
+             es sich (anders als die Website-Verwaltung) um komplett neue,
+             noch unbekannte Domains/Autor:innen handelt. Nutzerfeedback:
+             kein Badge - da praktisch immer mindestens ein Vorschlag
+             vorliegt, wäre er dauerhaft aktiv und damit bedeutungslos.
+             Stattdessen verschwindet das ganze Icon (siehe
+             updateSourceSuggestionsButtonVisibility in import.js), sobald
+             es wirklich mal keine offenen Vorschläge gibt - startet daher
+             hier bereits hidden, bis der erste Ladevorgang das Gegenteil
+             zeigt. -->
+        <button type="button" id="typ-source-suggestions" class="circle-button circle-button--sm hidden" data-i18n-title="import.sourceSuggestionsTitle">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-3.5 10.9c.6.4 1 .8 1 1.6h5c0-.8.4-1.2 1-1.6A6 6 0 0 0 12 3Z"></path>
+          </svg>
+        </button>
       </div>
       <div class="sort-toolbar">
         <button type="button" id="sort-author" class="sort-button active" data-i18n-title="import.sortByAuthor">
@@ -289,6 +305,15 @@
       </form>
       <ul id="web-allowlist-pending-list" class="web-allowlist-pending-list hidden"></ul>
       <ul id="web-allowlist-list"></ul>
+    </div>
+    <!-- Nutzerwunsch: proaktive Quellen-Vorschläge, per typ-source-
+         suggestions-Button auf-/zuklappbar - gleiche Position/gleiches
+         Verhalten wie #web-allowlist-bereich, nur für Quellen-Pfleger:innen/
+         Admins sichtbar. -->
+    <div id="source-suggestions-bereich" class="web-allowlist-panel hidden">
+      <h3 data-i18n="import.sourceSuggestionsHeading"></h3>
+      <p id="source-suggestions-empty" class="web-allowlist-hint hidden" data-i18n="import.sourceSuggestionsEmpty"></p>
+      <ul id="source-suggestions-list"></ul>
     </div>
     <div id="alphabet-jump-bar" class="alphabet-jump-bar hidden"></div>
     <ul id="source-list"></ul>

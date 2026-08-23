@@ -25,6 +25,12 @@ const webAllowlistList = document.getElementById('web-allowlist-list');
 const webAllowlistPendingList = document.getElementById('web-allowlist-pending-list');
 const webAllowlistForm = document.getElementById('web-allowlist-form');
 
+// Nutzerwunsch: proaktive Quellen-Vorschläge aus dem offenen Web.
+const sourceSuggestionsBtn = document.getElementById('typ-source-suggestions');
+const sourceSuggestionsBereich = document.getElementById('source-suggestions-bereich');
+const sourceSuggestionsList = document.getElementById('source-suggestions-list');
+const sourceSuggestionsEmpty = document.getElementById('source-suggestions-empty');
+
 const EDIT_ICON =
   '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" ' +
   'stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
@@ -243,10 +249,13 @@ function updateSourceManagementVisibility() {
     urlPopover.classList.add('hidden');
     filePopover.classList.add('hidden');
     webAllowlistBereich.classList.add('hidden');
+  sourceSuggestionsBereich.classList.add('hidden');
+    sourceSuggestionsBereich.classList.add('hidden');
     stopJobsPolling();
   } else {
     startJobsPolling();
     loadWebAllowlist();
+    loadSourceSuggestions();
   }
 }
 
@@ -566,6 +575,7 @@ document.getElementById('typ-text').addEventListener('click', () => {
   urlPopover.classList.add('hidden');
   filePopover.classList.add('hidden');
   webAllowlistBereich.classList.add('hidden');
+  sourceSuggestionsBereich.classList.add('hidden');
   document.getElementById('jobs-popover').classList.add('hidden');
   document.getElementById('jobs-bar').classList.add('hidden');
   closeSearchBar();
@@ -598,6 +608,7 @@ document.getElementById('typ-url').addEventListener('click', () => {
   importBereich.classList.add('hidden');
   filePopover.classList.add('hidden');
   webAllowlistBereich.classList.add('hidden');
+  sourceSuggestionsBereich.classList.add('hidden');
   closeSearchBar();
   setPopoverAccordionMode(urlPopover, urlPopoverHome, urlPopoverCloseBtn, isMobileLayout());
   urlPopover.classList.toggle('hidden');
@@ -616,6 +627,7 @@ document.getElementById('typ-file').addEventListener('click', () => {
   importBereich.classList.add('hidden');
   urlPopover.classList.add('hidden');
   webAllowlistBereich.classList.add('hidden');
+  sourceSuggestionsBereich.classList.add('hidden');
   closeSearchBar();
   setPopoverAccordionMode(filePopover, filePopoverHome, filePopoverCloseBtn, isMobileLayout());
   filePopover.classList.toggle('hidden');
@@ -630,6 +642,7 @@ document.getElementById('typ-jobs').addEventListener('click', () => {
   urlPopover.classList.add('hidden');
   filePopover.classList.add('hidden');
   webAllowlistBereich.classList.add('hidden');
+  sourceSuggestionsBereich.classList.add('hidden');
   closeSearchBar();
   if (isMobileLayout()) {
     document.getElementById('jobs-popover').classList.add('hidden');
@@ -649,6 +662,7 @@ document.getElementById('typ-search').addEventListener('click', () => {
   urlPopover.classList.add('hidden');
   filePopover.classList.add('hidden');
   webAllowlistBereich.classList.add('hidden');
+  sourceSuggestionsBereich.classList.add('hidden');
   document.getElementById('jobs-popover').classList.add('hidden');
   document.getElementById('jobs-bar').classList.add('hidden');
   searchBarOpen = !searchBarOpen;
@@ -663,6 +677,7 @@ document.getElementById('typ-web-allowlist').addEventListener('click', () => {
   importBereich.classList.add('hidden');
   urlPopover.classList.add('hidden');
   filePopover.classList.add('hidden');
+  sourceSuggestionsBereich.classList.add('hidden');
   document.getElementById('jobs-popover').classList.add('hidden');
   document.getElementById('jobs-bar').classList.add('hidden');
   closeSearchBar();
@@ -675,8 +690,22 @@ document.getElementById('typ-web-allowlist').addEventListener('click', () => {
   webAllowlistBereich.classList.toggle('hidden');
 });
 
-document.getElementById('popover-load').addEventListener('click', async () => {
-  const url = document.getElementById('popover-url').value.trim();
+document.getElementById('typ-source-suggestions').addEventListener('click', () => {
+  importBereich.classList.add('hidden');
+  urlPopover.classList.add('hidden');
+  filePopover.classList.add('hidden');
+  webAllowlistBereich.classList.add('hidden');
+  document.getElementById('jobs-popover').classList.add('hidden');
+  document.getElementById('jobs-bar').classList.add('hidden');
+  closeSearchBar();
+  sourceSuggestionsBereich.classList.toggle('hidden');
+});
+
+// Rumpf des #popover-load-Klick-Handlers (Extraktion + Formular-Befüllung),
+// als eigene Funktion herausgezogen (Nutzerwunsch: Quellen-Vorschläge
+// "Annehmen" soll denselben Weg wie ein manueller URL-Import nehmen) - reiner
+// Extract-Cut, keine Verhaltensänderung für den bestehenden Klick-Handler.
+async function extractAndFillFromUrl(url) {
   const status = document.getElementById('popover-status');
   const loadBtn = document.getElementById('popover-load');
   if (!url) {
@@ -750,6 +779,10 @@ document.getElementById('popover-load').addEventListener('click', async () => {
     loadBtn.disabled = false;
     loadBtn.textContent = t('import.loadButton');
   }
+}
+
+document.getElementById('popover-load').addEventListener('click', () => {
+  extractAndFillFromUrl(document.getElementById('popover-url').value.trim());
 });
 
 const AUDIO_UPLOAD_EXTENSIONS = ['.mp3', '.wav', '.m4a', '.ogg', '.flac', '.aac', '.mp4', '.mpeg', '.mpga', '.webm'];
@@ -2824,6 +2857,160 @@ function renderWebAllowlistIcon(entries) {
   }
 }
 
+// Nutzerwunsch: proaktive Quellen-Vorschläge aus dem offenen Web (app/
+// source_discovery.py) - "Annehmen" legt bewusst KEINE Quelle direkt an,
+// sondern öffnet das bestehende URL-Popover vorausgefüllt (siehe
+// extractAndFillFromUrl oben) - Extraktion/Review/Speichern laufen 1:1 wie
+// beim manuellen Import.
+//
+// Nutzerwunsch (2026-08-23): die Liste soll IMMER SOURCE_SUGGESTIONS_
+// VISIBLE_COUNT Vorschläge zeigen, sofern der Backend-Vorrat das hergibt -
+// beim Annehmen/Ablehnen rückt sofort (ohne neue Websuche abzuwarten, siehe
+// SOURCE_SUGGESTION_QUEUE_TARGET in app/main.py) der nächste Vorschlag aus
+// dem beim Laden bereits mitgelieferten Rest nach. Zwei getrennte Arrays
+// statt einer einzigen Liste: sourceSuggestionsVisible sind die aktuell
+// gerenderten Zeilen, sourceSuggestionsReserve der noch nicht gezeigte
+// Rest, aus dem genau EIN Element pro Entscheidung nachrückt.
+const SOURCE_SUGGESTIONS_VISIBLE_COUNT = 5;
+let sourceSuggestionsVisible = [];
+let sourceSuggestionsReserve = [];
+
+// Nutzerfeedback (2026-08-23): kein Warn-Badge am Lampen-Icon - da praktisch
+// immer mindestens ein Vorschlag vorliegt, wäre es dauerhaft aktiv und damit
+// bedeutungslos. Stattdessen verschwindet das Icon selbst vollständig,
+// sobald es wirklich mal keine offenen Vorschläge gibt (weder sichtbar noch
+// im Vorrat) - inkl. Schließen der Vorschlagsliste, falls die gerade offen
+// war (sonst gäbe es keinen Weg mehr, sie zuzuklappen, da genau dieses Icon
+// dafür fehlt).
+function updateSourceSuggestionsButtonVisibility() {
+  const hasAny = sourceSuggestionsVisible.length > 0 || sourceSuggestionsReserve.length > 0;
+  sourceSuggestionsBtn.classList.toggle('hidden', !hasAny);
+  if (!hasAny) sourceSuggestionsBereich.classList.add('hidden');
+}
+
+function openUrlPopoverWithUrl(url) {
+  sourceSuggestionsBereich.classList.add('hidden');
+  importBereich.classList.add('hidden');
+  filePopover.classList.add('hidden');
+  setPopoverAccordionMode(urlPopover, urlPopoverHome, urlPopoverCloseBtn, isMobileLayout());
+  urlPopover.classList.remove('hidden');
+  document.getElementById('popover-status').textContent = '';
+  document.getElementById('popover-url').value = url;
+  extractAndFillFromUrl(url);
+}
+
+function renderSourceSuggestionRow(suggestion) {
+  const li = document.createElement('li');
+  li.className = 'web-allowlist-candidate';
+
+  const info = document.createElement('p');
+  info.className = 'web-allowlist-candidate-info';
+  const link = document.createElement('a');
+  link.href = suggestion.url;
+  link.target = '_blank';
+  link.rel = 'noopener noreferrer';
+  // Nutzerfeedback: Standard-Blau des Browsers passt nicht ins Design -
+  // dieselbe Klasse wie bei Quellentitel-Links in der Konversationsansicht
+  // (static/style.css), statt dem Browser-Default zu überlassen.
+  link.className = 'citation-title-link';
+  link.textContent = suggestion.title;
+  info.appendChild(link);
+  li.appendChild(info);
+
+  const reason = document.createElement('p');
+  reason.className = 'web-allowlist-candidate-snippet';
+  reason.textContent = suggestion.reason;
+  li.appendChild(reason);
+
+  const actions = document.createElement('div');
+  actions.className = 'web-allowlist-candidate-actions';
+  const acceptBtn = document.createElement('button');
+  acceptBtn.type = 'button';
+  acceptBtn.className = 'link-button';
+  acceptBtn.textContent = t('import.sourceSuggestionAcceptButton');
+  const rejectBtn = document.createElement('button');
+  rejectBtn.type = 'button';
+  rejectBtn.className = 'link-button';
+  rejectBtn.textContent = t('import.sourceSuggestionRejectButton');
+
+  async function decide(action) {
+    acceptBtn.disabled = true;
+    rejectBtn.disabled = true;
+    try {
+      const res = await fetch(`/api/source-suggestions/${suggestion.id}/${action}`, {
+        method: 'POST',
+        headers: devUserHeaders(),
+      });
+      if (!res.ok) throw new Error('failed');
+      // Nutzerwunsch: "Abgelehnte Quellen verschwinden mit einer einfachen
+      // Transition" - gilt hier bewusst für beide Aktionen (Annehmen UND
+      // Ablehnen), damit eine Zeile nie abrupt verschwindet. Erst nach
+      // Ablauf der CSS-Transition (removeSourceSuggestionRow) tatsächlich
+      // aus dem DOM entfernen und ggf. nachrücken lassen.
+      removeSourceSuggestionRow(li, suggestion.id);
+      if (action === 'accept') {
+        openUrlPopoverWithUrl(suggestion.url);
+      }
+    } catch (err) {
+      acceptBtn.disabled = false;
+      rejectBtn.disabled = false;
+    }
+  }
+
+  acceptBtn.addEventListener('click', () => decide('accept'));
+  rejectBtn.addEventListener('click', () => decide('reject'));
+  actions.appendChild(acceptBtn);
+  actions.appendChild(rejectBtn);
+  li.appendChild(actions);
+  return li;
+}
+
+// Dauer MUSS zur CSS-Transition auf .web-allowlist-candidate--leaving
+// passen (siehe style.css) - setTimeout statt transitionend, da dort
+// mehrere Eigenschaften gleichzeitig übergehen (transitionend würde sonst
+// mehrfach feuern) und "eine einfache Transition" (Nutzerwunsch) keinen
+// Sonderfall-Code dafür braucht.
+const SOURCE_SUGGESTION_LEAVE_MS = 200;
+
+// Nutzerwunsch (2026-08-23): entfernt eine entschiedene Zeile mit
+// Fade-Out und lässt danach - sofern vorhanden - sofort den nächsten
+// Vorschlag aus dem bereits geladenen Vorrat mit Fade-In nachrücken, damit
+// die Liste wenn möglich immer SOURCE_SUGGESTIONS_VISIBLE_COUNT Zeilen
+// zeigt, ohne auf eine neue (mehrere Sekunden dauernde) Websuche zu warten.
+function removeSourceSuggestionRow(li, id) {
+  li.classList.add('web-allowlist-candidate--leaving');
+  sourceSuggestionsVisible = sourceSuggestionsVisible.filter((s) => s.id !== id);
+  setTimeout(() => {
+    li.remove();
+    if (sourceSuggestionsReserve.length > 0) {
+      const next = sourceSuggestionsReserve.shift();
+      sourceSuggestionsVisible.push(next);
+      const nextLi = renderSourceSuggestionRow(next);
+      nextLi.classList.add('web-allowlist-candidate--entering');
+      sourceSuggestionsList.appendChild(nextLi);
+    }
+    sourceSuggestionsEmpty.classList.toggle('hidden', sourceSuggestionsVisible.length > 0);
+    updateSourceSuggestionsButtonVisibility();
+  }, SOURCE_SUGGESTION_LEAVE_MS);
+}
+
+function renderSourceSuggestionsList() {
+  sourceSuggestionsList.replaceChildren();
+  sourceSuggestionsEmpty.classList.toggle('hidden', sourceSuggestionsVisible.length > 0);
+  sourceSuggestionsVisible.forEach((s) => sourceSuggestionsList.appendChild(renderSourceSuggestionRow(s)));
+}
+
+async function loadSourceSuggestions() {
+  if (!hasPflegerRole()) return;
+  const res = await fetch('/api/source-suggestions', { headers: { 'X-Lang': getLang() } });
+  if (!res.ok) return;
+  const all = await res.json();
+  sourceSuggestionsVisible = all.slice(0, SOURCE_SUGGESTIONS_VISIBLE_COUNT);
+  sourceSuggestionsReserve = all.slice(SOURCE_SUGGESTIONS_VISIBLE_COUNT);
+  renderSourceSuggestionsList();
+  updateSourceSuggestionsButtonVisibility();
+}
+
 async function loadWebAllowlist() {
   if (!hasPflegerRole()) return;
   const res = await fetch('/api/web-allowlist', { headers: { 'X-Lang': getLang() } });
@@ -2967,6 +3154,45 @@ function setSortMode(mode) {
   document.getElementById('sort-date').classList.toggle('active', mode === 'date');
   document.getElementById('source-list').classList.toggle('timeline-mode', mode === 'date');
   renderSourceList(currentSourceList);
+}
+
+// Nutzerwunsch (2026-08-23): Reicht die Breite in der Werkzeugleiste
+// (Quelltyp-Icons + Sortierung + Suche) nicht mehr für alle Icons in einer
+// Zeile, soll NICHT die Suche in eine neue Zeile umbrechen - stattdessen
+// blendet sich die Sortierung nach Autor:in/Datum samt ihrer Trennlinie aus
+// (.sort-toolbar). Ein fester Media-Query-Breakpoint würde hier mal zu früh,
+// mal zu spät greifen, da die Zahl der sichtbaren Quelltyp-Icons laufend je
+// nach Rolle und Zustand wechselt (aktive Jobs, defekte Links) - stattdessen
+// wird die tatsächlich benötigte Breite aller sichtbaren Geschwister
+// gemessen und mit der verfügbaren Breite verglichen. ResizeObserver auf dem
+// Container selbst reicht als einziger Trigger: sowohl eine Fensterbreiten-
+// Änderung als auch ein ein-/ausblendendes Geschwister-Icon verändert bei
+// flex-wrap:wrap auch die (ggf. umbrochene) eigene Höhe des Containers.
+function initSourceToolbarOverflow() {
+  const row = document.querySelector('.section-heading-row');
+  const actions = document.querySelector('.section-heading-actions');
+  const sortToolbar = document.querySelector('.sort-toolbar');
+  if (!row || !actions || !sortToolbar) return;
+
+  function update() {
+    sortToolbar.classList.remove('sort-toolbar--hidden-for-space');
+    const gap = parseFloat(getComputedStyle(actions).columnGap) || 0;
+    const visibleChildren = [...actions.children].filter((el) => getComputedStyle(el).display !== 'none');
+    const neededWidth =
+      visibleChildren.reduce((sum, el) => sum + el.getBoundingClientRect().width, 0) +
+      gap * Math.max(0, visibleChildren.length - 1);
+    sortToolbar.classList.toggle('sort-toolbar--hidden-for-space', neededWidth > actions.clientWidth + 1);
+  }
+
+  // Fix: NICHT .section-heading-actions selbst beobachten - sobald
+  // .sort-toolbar einmal ausgeblendet ist, schrumpft dessen eigene Box auf
+  // die verbleibenden Icons und ändert sich danach nicht mehr, selbst wenn
+  // der Nutzer das Fenster wieder breiter zieht (der Container "merkt"
+  // nichts von mehr verfügbarem Platz, den er ja gar nicht ausfüllen muss).
+  // .section-heading-row dagegen ändert seine Breite zuverlässig mit der
+  // Seitenbreite selbst, unabhängig vom eigenen Sichtbarkeits-Zustand.
+  new ResizeObserver(update).observe(row);
+  update();
 }
 
 async function loadSources() {
@@ -3573,6 +3799,7 @@ document.addEventListener('i18n:changed', () => {
 await initI18n();
 await initAuth();
 updateSourceManagementVisibility();
+initSourceToolbarOverflow();
 onAuthChange(() => {
   updateSourceManagementVisibility();
   loadSources();
