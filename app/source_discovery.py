@@ -76,6 +76,26 @@ gefunden wurde). Nur deutsch- oder englischsprachige Inhalte, keine Bezahlschran
 Video-/Audio-Inhalte."""
 
 
+def _real_search_result_urls(message) -> set[str]:
+    """Sammelt die URLs, die die Websuche in DIESEM Call tatsächlich
+    gefunden hat (message.content enthält dafür eigene
+    "web_search_tool_result"-Blöcke, unabhängig vom separaten
+    submit_candidates-Tool-Call). Grundlage für die Halluzinations-Bremse
+    in _run_discovery weiter unten."""
+    urls: set[str] = set()
+    for block in message.content:
+        if getattr(block, "type", None) != "web_search_tool_result":
+            continue
+        content = getattr(block, "content", None)
+        if not isinstance(content, list):
+            continue  # WebSearchToolResultError statt echter Trefferliste
+        for item in content:
+            url = getattr(item, "url", None)
+            if url:
+                urls.add(url)
+    return urls
+
+
 def _run_discovery(system_prompt: str, user_content: str) -> list[dict]:
     try:
         client = _get_client()
@@ -89,12 +109,21 @@ def _run_discovery(system_prompt: str, user_content: str) -> list[dict]:
             ],
             messages=[{"role": "user", "content": user_content}],
         )
+        # Nutzerfeedback (2026-08-23): das Modell füllt submit_candidates als
+        # EIGENEN, separaten Tool-Call - dabei kann es plausibel klingende,
+        # aber nie tatsächlich gefundene URLs erfinden (Halluzination), statt
+        # strikt aus den echten Websuche-Treffern abzuschreiben. Jeder
+        # Kandidat wird deshalb hart gegen die tatsächlichen Suchergebnis-
+        # URLs DIESES Calls geprüft - nicht verifizierbare Kandidaten fallen
+        # lautlos raus (gleiche Fail-leise-Konvention wie der Rest dieser
+        # Funktion), statt eine tote Quelle vorzuschlagen.
+        real_urls = _real_search_result_urls(message)
         for block in message.content:
             if getattr(block, "type", None) == "tool_use" and block.name == "submit_candidates":
                 return [
                     c
                     for c in block.input.get("candidates") or []
-                    if c.get("url") and c.get("title")
+                    if c.get("url") and c.get("title") and c["url"] in real_urls
                 ]
         return []
     except Exception:

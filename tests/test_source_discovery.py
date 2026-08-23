@@ -3,12 +3,24 @@ from unittest.mock import MagicMock, patch
 from app import source_discovery
 
 
-def _fake_client_with_candidates(candidates):
+def _fake_client_with_candidates(candidates, *, search_result_urls=None):
+    """Baut message.content mit sowohl einem echten web_search_tool_result-
+    Block (Standard: exakt die URLs der übergebenen Kandidaten, damit
+    bestehende Tests unverändert grün bleiben) als auch dem separaten
+    submit_candidates-Tool-Call - siehe _real_search_result_urls in
+    source_discovery.py, die Kandidaten-URLs gegen genau diesen Block
+    verifiziert. search_result_urls explizit abweichend setzen, um einen
+    vom Modell erfundenen (nie tatsächlich gefundenen) Kandidaten zu
+    simulieren."""
     client = MagicMock()
+    if search_result_urls is None:
+        search_result_urls = [c["url"] for c in candidates if c.get("url")]
+    search_block = MagicMock(type="web_search_tool_result")
+    search_block.content = [MagicMock(url=u) for u in search_result_urls]
     tool_use_block = MagicMock(type="tool_use", name="submit_candidates")
     tool_use_block.name = "submit_candidates"
     tool_use_block.input = {"candidates": candidates}
-    client.messages.create.return_value = MagicMock(content=[tool_use_block])
+    client.messages.create.return_value = MagicMock(content=[search_block, tool_use_block])
     return client
 
 
@@ -120,3 +132,42 @@ def test_discover_skips_candidates_missing_url_or_title():
 
     assert len(result) == 1
     assert result[0]["url"] == "https://a.org/ok"
+
+
+def test_discover_filters_out_urls_the_model_never_actually_found():
+    """Regressionstest (Nutzerfeedback 2026-08-23): das Modell füllt
+    submit_candidates als eigenen, von der Websuche entkoppelten Tool-Call -
+    dabei kann es eine plausibel klingende, aber nie tatsächlich per
+    Websuche gefundene URL erfinden. Nur Kandidaten, deren URL wirklich in
+    den echten Suchergebnissen dieses Calls auftaucht, dürfen durchgehen."""
+    candidates = [
+        {"url": "https://echt-gefunden.org/artikel", "title": "Echt", "reason": "R"},
+        {"url": "https://erfunden.org/nie-gefunden", "title": "Erfunden", "reason": "R"},
+    ]
+    client = _fake_client_with_candidates(
+        candidates, search_result_urls=["https://echt-gefunden.org/artikel"]
+    )
+    with patch.object(source_discovery, "_get_client", return_value=client):
+        result = source_discovery.discover_by_topic("Thema", set(), set())
+
+    assert len(result) == 1
+    assert result[0]["url"] == "https://echt-gefunden.org/artikel"
+
+
+def test_discover_returns_empty_list_when_search_result_block_is_an_error():
+    """WebSearchToolResultBlockContent ist entweder eine echte Trefferliste
+    ODER ein WebSearchToolResultError-Objekt (z.B. bei Rate-Limits) - im
+    Fehlerfall gibt es keine verifizierbaren URLs, jeder Kandidat muss dann
+    rausfallen statt ungeprüft durchzugehen."""
+    client = MagicMock()
+    error_block = MagicMock(type="web_search_tool_result")
+    error_block.content = MagicMock()  # kein list -> simuliert WebSearchToolResultError
+    candidates = [{"url": "https://a.org/x", "title": "X", "reason": "R"}]
+    tool_use_block = MagicMock(type="tool_use", name="submit_candidates")
+    tool_use_block.name = "submit_candidates"
+    tool_use_block.input = {"candidates": candidates}
+    client.messages.create.return_value = MagicMock(content=[error_block, tool_use_block])
+    with patch.object(source_discovery, "_get_client", return_value=client):
+        result = source_discovery.discover_by_author("Autor X", set(), set())
+
+    assert result == []
