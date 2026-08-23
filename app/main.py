@@ -14,8 +14,9 @@ import time
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
-from urllib.parse import urlsplit
+from urllib.parse import quote, urlsplit
 
+import networkx as nx
 from dotenv import load_dotenv
 from fastapi import BackgroundTasks, Depends, FastAPI, File, Header, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, RedirectResponse, Response, StreamingResponse
@@ -26,6 +27,7 @@ load_dotenv()
 from app import (
     audit,
     auth,
+    author_photos,
     author_profiles,
     authors,
     captcha,
@@ -64,10 +66,13 @@ from app.models import (
     ExtractedSource,
     ExtractedUpload,
     FeedbackIn,
+    GraphEdge,
+    GraphNode,
     ImportJobOut,
     InviteIn,
     KeyTermsOut,
     KeyTermsPreviewIn,
+    KnowledgeGraphOut,
     MessageOut,
     QuestionIn,
     QuestionLogEntryOut,
@@ -1178,6 +1183,38 @@ def _summary_backfill_worker() -> None:
         time.sleep(SUMMARY_BACKFILL_INTERVAL_SECONDS)
 
 
+# Nutzerwunsch (2026-08-23): externe Autor:innen-Fotos sterben regelmäßig
+# weg (v.a. LinkedIn-CDN-URLs mit eingebautem Ablaufdatum, siehe app/
+# author_photos.py) - dieser tägliche Lauf holt für jede Autorin/jeden
+# Autor mit gesetzter photo_url, die noch nicht (oder nicht mehr aktuell)
+# lokal gecacht ist, das Bild einmalig nach. Deckt automatisch sowohl den
+# initialen Rückstand bereits bestehender Profile als auch künftig neu
+# gesetzte URLs ab, ohne dass jemand manuell einen Backfill anstoßen muss -
+# auch auf Produktion, wo genau dasselbe Problem existiert.
+AUTHOR_PHOTO_CACHE_INTERVAL_SECONDS = 24 * 3600
+
+
+def _cache_missing_author_photos_once() -> None:
+    for author in authors.list_authors():
+        photo_url = author_profiles.get_profile(author["name"]).get("photo_url")
+        if not photo_url:
+            continue
+        if author_photos.cached_source_url(author["name"]) == photo_url and author_photos.has_cached_photo(
+            author["name"]
+        ):
+            continue
+        author_photos.cache_photo(author["name"], photo_url)
+
+
+def _author_photo_cache_worker() -> None:
+    while True:
+        try:
+            _cache_missing_author_photos_once()
+        except Exception:
+            pass
+        time.sleep(AUTHOR_PHOTO_CACHE_INTERVAL_SECONDS)
+
+
 # Backlog: LLM/Internet-Fallback bei dünner Quellenlage - Nutzerwunsch, dass
 # die erweiterte Suche zur Antwortzeit "sehr schnell" gehen und Nutzer:innen
 # vom Fallback "nichts merken" sollen. Deshalb läuft das eigentliche Crawlen/
@@ -1388,6 +1425,7 @@ def _start_background_workers() -> None:
     threading.Thread(target=_url_health_check_worker, daemon=True).start()
     threading.Thread(target=_source_suggestion_discovery_worker, daemon=True).start()
     threading.Thread(target=_summary_backfill_worker, daemon=True).start()
+    threading.Thread(target=_author_photo_cache_worker, daemon=True).start()
     _recover_interrupted_web_allowlist_indexing()
     threading.Thread(target=_web_allowlist_crawl_worker, daemon=True).start()
     _recover_interrupted_processing_jobs()
@@ -1832,15 +1870,31 @@ def list_sources(
     ]
 
 
-def _resolve_profile_for_lang(profile: dict, lang: str) -> dict:
+def _author_photo_urls(name: str) -> dict:
+    # Nutzerwunsch (2026-08-23): unterschiedliche Auflösungen für Vita-Panel
+    # (groß, gute Qualität) und Explore-Graph (klein) - siehe app/
+    # author_photos.py. Leerer String, solange (noch) kein Cache existiert,
+    # z.B. weil die Original-URL nie erreichbar war oder das Caching im
+    # Hintergrund-Worker noch nicht dran war - das Frontend fällt dann auf
+    # photo_url bzw. bei komplett fehlendem Foto auf den bloßen Namen zurück.
+    return {
+        size: f"/api/authors/{quote(name)}/photo/{size}" if author_photos.has_cached_photo(name, size) else ""
+        for size in author_photos.SIZES
+    }
+
+
+def _resolve_profile_for_lang(name: str, profile: dict, lang: str) -> dict:
     # API-seitig bleibt "bio"/"bio_ai_generated" ein einzelnes, sprach-
     # aufgelöstes Feld (wie summary_{lang} bei Quellen) - nur die Speicherung
     # in author_profiles.py ist bilingual (bio_de/bio_en), damit Frontend und
     # Wire-Format unverändert einfach bleiben.
+    photo_urls = _author_photo_urls(name)
     return {
         "bio": profile.get(f"bio_{lang}", ""),
         "bio_ai_generated": profile.get(f"bio_ai_generated_{lang}", False),
         "photo_url": profile.get("photo_url", ""),
+        "photo_small": photo_urls["small"],
+        "photo_large": photo_urls["large"],
         "website": profile.get("website", ""),
         "social_links": profile.get("social_links", []),
     }
@@ -1851,8 +1905,121 @@ def list_authors(x_lang: str = Header(default=i18n.DEFAULT_LANG)):
     lang = x_lang if x_lang in ("de", "en") else i18n.DEFAULT_LANG
     entries = authors.list_authors()
     for entry in entries:
-        entry.update(_resolve_profile_for_lang(author_profiles.get_profile(entry["name"]), lang))
+        entry.update(_resolve_profile_for_lang(entry["name"], author_profiles.get_profile(entry["name"]), lang))
     return entries
+
+
+# Nutzerwunsch (2026-08-23): lokal gecachte Autor:innen-Fotos ausliefern
+# (siehe app/author_photos.py) - öffentlich wie /api/sources selbst, da
+# auch die Vita-Ansicht/der Explore-Graph für alle Besucher:innen sichtbar
+# sind. Eine Woche Cache-Control, da eine einmal erzeugte Datei sich nur
+# durch eine neue photo_url ändert (dann entsteht ohnehin ein neuer,
+# inhaltlich anderer Dateiinhalt unter demselben Pfad - kurzfristig
+# veraltete Browser-Caches sind hier unkritisch).
+@app.get("/api/authors/{name}/photo/{size}")
+def get_author_photo(name: str, size: str):
+    if size not in author_photos.SIZES:
+        raise HTTPException(404)
+    path = author_photos.photo_path(name, size)
+    if not path.exists():
+        raise HTTPException(404)
+    return FileResponse(path, media_type="image/webp", headers={"Cache-Control": "public, max-age=604800"})
+
+
+# Nutzerwunsch (2026-08-23): "Explore"-Modus - ein Schlagwort-/Autor:innen-
+# Netzwerk statt der Konversationsansicht, per neuem Icon in der
+# Kopfzeile erreichbar (siehe static/header.js/explore.js). Knoten:
+# Schlagworte (aus key_terms_de) und Autor:innen; Kanten: zwei Schlagworte
+# sind verbunden, wenn sie in derselben Quelle vorkommen (macht thematisch
+# verwandte Texte indirekt sichtbar), eine Autorin/ein Autor ist mit jedem
+# Schlagwort verbunden, das in ihren/seinen Quellen vorkommt. Wird bei
+# jedem Request frisch berechnet (Datenmenge klein genug, siehe
+# _build_source_suggestion_topic_seed für dasselbe Muster) - damit zeigt
+# ein Rücksprung aus dem Bearbeiten-Modus (import.html) sofort den
+# aktuellen Stand, ganz ohne eigene Cache-Invalidierung.
+_GRAPH_MIN_TERM_OCCURRENCES = 2
+
+
+def _build_knowledge_graph() -> KnowledgeGraphOut:
+    sources = _load_sources()
+    active_sources = {sid: entry for sid, entry in sources.items() if not entry.get("deleted_at")}
+
+    # Nutzerfeedback (2026-08-23): Begriffe, die nur ein einziges Mal in der
+    # gesamten Sammlung vorkommen (oft Extraktionsrauschen wie bloße
+    # Einzelbuchstaben), werden ausgeblendet - sonst hinge ein Großteil der
+    # Knoten unverbunden am Rand.
+    term_counts: dict[str, int] = {}
+    for entry in active_sources.values():
+        for term in set(entry.get("key_terms_de") or []):
+            term_counts[term] = term_counts.get(term, 0) + 1
+    kept_terms = {term for term, count in term_counts.items() if count >= _GRAPH_MIN_TERM_OCCURRENCES}
+
+    graph = nx.Graph()
+    for term in kept_terms:
+        graph.add_node(f"term:{term}")
+
+    def _bump_edge(key_a: str, key_b: str) -> None:
+        if graph.has_edge(key_a, key_b):
+            graph[key_a][key_b]["weight"] += 1
+        else:
+            graph.add_edge(key_a, key_b, weight=1)
+
+    for entry in active_sources.values():
+        terms = sorted(set(entry.get("key_terms_de") or []) & kept_terms)
+        for term_a, term_b in itertools.combinations(terms, 2):
+            _bump_edge(f"term:{term_a}", f"term:{term_b}")
+
+    author_entries = authors.list_authors()
+    for author in author_entries:
+        author_key = f"author:{author['name']}"
+        graph.add_node(author_key)
+        for source_id in author["source_ids"]:
+            source = active_sources.get(source_id)
+            if not source:
+                continue
+            for term in set(source.get("key_terms_de") or []) & kept_terms:
+                _bump_edge(author_key, f"term:{term}")
+
+    communities = nx.community.louvain_communities(graph, weight="weight", seed=0)
+    cluster_of = {node_id: idx for idx, community in enumerate(communities) for node_id in community}
+
+    nodes = [
+        GraphNode(id=f"term:{term}", type="term", label=term, weight=count, cluster=cluster_of[f"term:{term}"])
+        for term, count in term_counts.items()
+        if term in kept_terms
+    ]
+    for author in author_entries:
+        key = f"author:{author['name']}"
+        profile = author_profiles.get_profile(author["name"])
+        # Nutzerwunsch (2026-08-23): im Graphen die kleine, lokal gecachte
+        # Auflösung nutzen (Speicherverbrauch/Kompression, siehe app/
+        # author_photos.py) - existiert noch kein Cache (frisch gesetzt,
+        # Caching im Hintergrund noch nicht durch), übergangsweise die rohe
+        # photo_url, damit nicht bis zum nächsten Tages-Lauf gar kein Foto
+        # erscheint.
+        photo_url = (
+            f"/api/authors/{quote(author['name'])}/photo/small"
+            if author_photos.has_cached_photo(author["name"], "small")
+            else (profile.get("photo_url") or None)
+        )
+        nodes.append(
+            GraphNode(
+                id=key,
+                type="author",
+                label=author["name"],
+                photo_url=photo_url,
+                weight=sum(1 for sid in author["source_ids"] if sid in active_sources),
+                cluster=cluster_of[key],
+            )
+        )
+
+    edges = [GraphEdge(source=a, target=b, weight=data["weight"]) for a, b, data in graph.edges(data=True)]
+    return KnowledgeGraphOut(nodes=nodes, edges=edges)
+
+
+@app.get("/api/knowledge-graph", response_model=KnowledgeGraphOut)
+def get_knowledge_graph():
+    return _build_knowledge_graph()
 
 
 def _find_author(name: str) -> dict | None:
@@ -1929,7 +2096,18 @@ def update_author_profile(
         else None,
         **bio_kwargs,
     )
-    matching.update(_resolve_profile_for_lang(author_profiles.get_profile(name), lang))
+    # Nutzerwunsch (2026-08-23): neue/geänderte photo_url einmalig lokal
+    # cachen (siehe app/author_photos.py) - im Hintergrund-Thread, damit ein
+    # langsamer/unerreichbarer externer Server dieses Speichern nicht
+    # blockiert. Nur bei TATSÄCHLICHER Änderung anstoßen, sonst würde jede
+    # unabhängige Vita-Bearbeitung erneut denselben Download auslösen.
+    if updated_profile["photo_url"] and updated_profile["photo_url"] != before.get("photo_url"):
+        threading.Thread(
+            target=author_photos.cache_photo,
+            args=(matching["name"], updated_profile["photo_url"]),
+            daemon=True,
+        ).start()
+    matching.update(_resolve_profile_for_lang(matching["name"], author_profiles.get_profile(name), lang))
     new_values = {
         field: updated_profile[field]
         for field in (f"bio_{lang}", "photo_url", "website", "social_links")
@@ -1988,6 +2166,7 @@ def _rename_author_entity(old_name: str, new_name: str) -> dict | None:
             authors.register_author(author_name, source_id)
 
     author_profiles.rename_profile(old_name, new_name)
+    author_photos.rename(old_name, new_name)
     return _find_author(new_name)
 
 
@@ -2011,7 +2190,7 @@ def rename_author_endpoint(
     if updated is None:
         raise HTTPException(404, i18n.get_message("author_not_found", x_lang))
     lang = x_lang if x_lang in ("de", "en") else i18n.DEFAULT_LANG
-    updated.update(_resolve_profile_for_lang(author_profiles.get_profile(new_name), lang))
+    updated.update(_resolve_profile_for_lang(new_name, author_profiles.get_profile(new_name), lang))
     audit.log_change(
         _user,
         "author_renamed",

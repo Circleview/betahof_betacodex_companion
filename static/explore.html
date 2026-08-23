@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow, noarchive">
+<meta name="description" content="Explore-Modus des BetaCodex Companion – Schlagworte und Autor:innen der kuratierten Quellensammlung als Netzwerk erkunden.">
+<meta property="og:title" content="Explore – BetaCodex Companion">
+<meta property="og:description" content="Explore-Modus des BetaCodex Companion – Schlagworte und Autor:innen der kuratierten Quellensammlung als Netzwerk erkunden.">
+<meta property="og:type" content="website">
+<meta property="og:image" content="/icons/apple-touch-icon.png">
+<meta name="twitter:card" content="summary">
+<meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#1c1c1c" media="(prefers-color-scheme: dark)">
+<link rel="icon" type="image/png" href="/icons/favicon.png">
+<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+<link rel="manifest" href="/manifest.json">
+<title>Explore &ndash; BetaCodex Companion</title>
+<link rel="stylesheet" href="/style.css">
+<!-- Fürs Feedback-Popover im Footer (Backlog #85) - window.onTurnstileLoad
+     wird zentral von turnstile.js definiert (importiert über footer.js),
+     genau wie auf index.html/import.html/question-log.html. -->
+<script src="https://challenges.cloudflare.com/turnstile/v0/api.js?onload=onTurnstileLoad&render=explicit" async defer></script>
+</head>
+<body>
+<a href="#explore-bereich" class="skip-link" data-i18n="common.skipToContent"></a>
+<header id="site-header">
+  <span id="lang-switcher" class="lang-switcher"></span>
+  <span id="auth-widget" class="auth-widget"></span>
+</header>
+
+<section id="explore-bereich" tabindex="-1">
+  <h2 data-i18n="explore.heading"></h2>
+  <div class="search-bar">
+    <label><span data-i18n="explore.searchLabel"></span>
+      <input type="search" id="explore-search" data-i18n-placeholder="explore.searchPlaceholder" autocomplete="off">
+    </label>
+  </div>
+  <p id="explore-status" data-i18n="explore.loading"></p>
+  <div id="explore-graph-wrap" class="explore-graph-wrap hidden">
+    <svg id="explore-graph" aria-label="Netzwerk aus Schlagworten und Autor:innen"></svg>
+  </div>
+</section>
+
+<footer class="site-footer" id="site-footer"></footer>
+
+<script src="/vendor/d3.min.js"></script>
+<script type="module" src="/init-header.js"></script>
+<script type="module" src="/explore.js"></script>
+<script type="module" src="/init-footer.js"></script>
+</body>
+</html>

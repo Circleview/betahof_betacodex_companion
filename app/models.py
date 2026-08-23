@@ -185,6 +185,8 @@ class AuthorOut(BaseModel):
     bio: str = ""
     bio_ai_generated: bool = False
     photo_url: str = ""
+    photo_small: str = ""
+    photo_large: str = ""
     website: str = ""
     social_links: list[SocialLink] = []
 
@@ -314,3 +316,23 @@ class SourceSuggestionOut(BaseModel):
     author_hint: Optional[str] = None
     status: str
     discovered_at: str
+
+
+class GraphNode(BaseModel):
+    id: str
+    type: str
+    label: str
+    photo_url: Optional[str] = None
+    weight: int
+    cluster: int
+
+
+class GraphEdge(BaseModel):
+    source: str
+    target: str
+    weight: int
+
+
+class KnowledgeGraphOut(BaseModel):
+    nodes: list[GraphNode]
+    edges: list[GraphEdge]

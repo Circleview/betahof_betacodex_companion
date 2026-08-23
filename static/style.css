@@ -12,6 +12,21 @@
   --radius: 6px;
   --font-sans: "Inter", -apple-system, "system-ui", "Segoe UI", Roboto,
     "Helvetica Neue", Arial, sans-serif;
+  /* Explore-Modus (Nutzerwunsch 2026-08-23): eigene, gedeckte Cluster-Palette
+     statt d3.schemeCategory10 pur - Töne, die zum bestehenden warmen
+     Terrakotta-Akzent passen statt eines bunten Regenbogens. Zyklisch per
+     Knoten-Cluster-Index % 10 in explore.js zugewiesen (siehe
+     .explore-node--cluster-N). */
+  --graph-cluster-0: #b22f1c;
+  --graph-cluster-1: #2f6b4f;
+  --graph-cluster-2: #4a5b8c;
+  --graph-cluster-3: #a67c3d;
+  --graph-cluster-4: #6b4e8c;
+  --graph-cluster-5: #3d7c85;
+  --graph-cluster-6: #8c5a3d;
+  --graph-cluster-7: #5c7a3d;
+  --graph-cluster-8: #8c3d6b;
+  --graph-cluster-9: #3d5c8c;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -26,6 +41,16 @@
     --color-accent-tint: rgba(226, 89, 63, 0.14);
     --color-warning: #e0a530;
     --color-warning-tint: rgba(224, 165, 48, 0.14);
+    --graph-cluster-0: #e2593f;
+    --graph-cluster-1: #4f9c74;
+    --graph-cluster-2: #7a8ecf;
+    --graph-cluster-3: #d1a35f;
+    --graph-cluster-4: #a385c7;
+    --graph-cluster-5: #5fa8b0;
+    --graph-cluster-6: #c98a5f;
+    --graph-cluster-7: #8fae5f;
+    --graph-cluster-8: #c76a9c;
+    --graph-cluster-9: #6f8fc7;
   }
 }
 
@@ -255,6 +280,7 @@ header h1 {
 
 #conversation-link,
 #import-link,
+#explore-link,
 #question-log-link,
 #changelog-link {
   position: relative;
@@ -304,6 +330,7 @@ header h1 {
 
 #conversation-link:hover,
 #import-link:hover,
+#explore-link:hover,
 #question-log-link:hover,
 #changelog-link:hover {
   border-color: var(--color-accent);
@@ -339,7 +366,12 @@ header h1 {
   position: absolute;
   top: 100%;
   right: 0;
-  margin-top: 0.4rem;
+  /* Nutzerfeedback (2026-08-23): 0.4rem ließ den Namen zu nah am Icon und
+     zu weit oben im Freiraum vor der Trennlinie wirken - 0.75rem
+     zentriert ihn (bei header padding-bottom: 2.1rem auf Mobile, siehe
+     @media weiter unten) mittig zwischen Icon-Unterkante und Trennlinie,
+     ohne diesen Freiraum insgesamt zu vergrößern. */
+  margin-top: 0.75rem;
   font-size: 0.7rem;
   color: var(--color-text-muted);
   white-space: nowrap;
@@ -1693,21 +1725,6 @@ body:not(.chat-started) #question-form {
   margin-top: 0.5rem;
 }
 
-.term-link {
-  background: none;
-  border: none;
-  padding: 0;
-  margin: 0;
-  font: inherit;
-  color: var(--color-accent);
-  cursor: pointer;
-}
-
-.term-link:hover {
-  color: var(--color-accent-hover);
-  text-decoration: underline;
-}
-
 .term-highlight {
   color: var(--color-text);
   font-weight: 700;
@@ -1715,9 +1732,10 @@ body:not(.chat-started) #question-form {
 
 /* Klickbare Begriffs-Hervorhebung (filtert die Quellenübersicht nach diesem
    Schlagwort) - bewusst optisch identisch zu .term-highlight (schwarz, kein
-   Unterstrich), NICHT wie .term-link in Akzentfarbe, damit ein allgemeines
-   Schlagwort nicht wie ein Autor:innen-Link aussieht. Der Unterstrich beim
-   Hover ist die einzige Erkennbarkeit, dass hier etwas klickbar ist. */
+   Unterstrich). Autor:innen-Namen werden hier grundsätzlich nicht mehr
+   hervorgehoben (siehe highlightTermsInElement in import.js) - der
+   Namensabgleich war zu fehleranfällig. Der Unterstrich beim Hover ist die
+   einzige Erkennbarkeit, dass hier etwas klickbar ist. */
 .term-highlight-button {
   background: none;
   border: none;
@@ -3570,3 +3588,149 @@ details a {
 .embed-popover button[type="button"]:last-child {
   width: 100%;
 }
+
+/* Nutzerwunsch (2026-08-23): "Explore"-Modus - Schlagwort-/Autor:innen-
+   Netzwerk als D3-Force-Graph (siehe explore.js). Gleicher Box-Rahmen wie
+   #chat-column, damit sich der neue Modus optisch nahtlos einfügt. */
+.explore-graph-wrap {
+  height: 70vh;
+  min-height: 460px;
+  max-height: 780px;
+  /* Nutzerwunsch (2026-08-23): reines Weiß statt des leicht warmgrauen
+     --color-surface (wie bei Karten/Panels) - beim dichten Netzwerk sorgt
+     der klarere Kontrast für bessere Lesbarkeit; --color-bg liefert im
+     Dark Mode automatisch die bewährte dunkle Alternative (#1c1c1c), die
+     im Rest der App bereits als Hintergrund verwendet wird. */
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  margin-top: 1rem;
+}
+
+#explore-graph {
+  display: block;
+  width: 100%;
+  height: 100%;
+  cursor: grab;
+}
+
+#explore-graph:active {
+  cursor: grabbing;
+}
+
+.explore-edge {
+  stroke: var(--color-border);
+  stroke-opacity: 0.6;
+  transition: opacity 0.3s ease;
+}
+
+.explore-node {
+  cursor: pointer;
+  transition: opacity 0.3s ease;
+}
+
+.explore-node-circle {
+  stroke: var(--color-bg);
+  stroke-width: 1.5px;
+}
+
+.explore-node-label {
+  font-size: 0.7rem;
+  font-weight: 600;
+  fill: var(--color-text);
+  paint-order: stroke;
+  stroke: var(--color-surface);
+  stroke-width: 3px;
+  stroke-linejoin: round;
+  pointer-events: none;
+  user-select: none;
+}
+
+.explore-node--author .explore-node-circle {
+  fill: var(--color-surface);
+}
+
+/* Cluster-Einfärbung nur für Schlagwort-Knoten - Autor:innen bleiben durch
+   ihr Foto/ihren Namen erkennbar, ihre Zugehörigkeit zeigt sich über die
+   Kantenfarbe zu "ihren" Schlagworten stattdessen indirekt. */
+.explore-node--cluster-0 .explore-node-circle {
+  fill: var(--graph-cluster-0);
+}
+.explore-node--cluster-1 .explore-node-circle {
+  fill: var(--graph-cluster-1);
+}
+.explore-node--cluster-2 .explore-node-circle {
+  fill: var(--graph-cluster-2);
+}
+.explore-node--cluster-3 .explore-node-circle {
+  fill: var(--graph-cluster-3);
+}
+.explore-node--cluster-4 .explore-node-circle {
+  fill: var(--graph-cluster-4);
+}
+.explore-node--cluster-5 .explore-node-circle {
+  fill: var(--graph-cluster-5);
+}
+.explore-node--cluster-6 .explore-node-circle {
+  fill: var(--graph-cluster-6);
+}
+.explore-node--cluster-7 .explore-node-circle {
+  fill: var(--graph-cluster-7);
+}
+.explore-node--cluster-8 .explore-node-circle {
+  fill: var(--graph-cluster-8);
+}
+.explore-node--cluster-9 .explore-node-circle {
+  fill: var(--graph-cluster-9);
+}
+
+/* Nutzerwunsch: Suche dimmt nicht-treffende Knoten/Kanten statt die
+   Simulation neu zu berechnen - reine Opacity-Transition. Dasselbe
+   Klassenpaar nutzt auch die Klick-Nachbarschaftshervorhebung (siehe
+   selectNode() in explore.js). */
+.explore-node--dimmed,
+.explore-edge--dimmed {
+  opacity: 0.12;
+}
+
+/* Nutzerwunsch (2026-08-23): erkennbar machen, WELCHER Knoten gerade
+   angeklickt wurde (statt nur die anderen zu dimmen) - Ring in der
+   Akzentfarbe, dickerer Rand als der normale stroke. */
+.explore-node--selected .explore-node-circle {
+  stroke: var(--color-accent);
+  stroke-width: 3px;
+}
+
+/* Nutzerwunsch (2026-08-23): "In neuem Tab öffnen"-Icon direkt hinter dem
+   Namen - nur an hervorgehobenen (angeklicktem + verbundenen) Knoten
+   sichtbar, siehe .explore-node--show-open-icon in explore.js. */
+.explore-node-open-icon {
+  display: none;
+  cursor: pointer;
+}
+
+.explore-node--show-open-icon .explore-node-open-icon {
+  display: block;
+}
+
+.explore-node-open-icon-hitbox {
+  fill: transparent;
+}
+
+.explore-node-open-icon path {
+  fill: none;
+  stroke: var(--color-accent);
+  stroke-width: 1.3px;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.explore-node-open-icon:hover path {
+  stroke: var(--color-accent-hover);
+}
+
+.explore-search-row {
+  margin-top: 0.5rem;
+}
+

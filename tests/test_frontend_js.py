@@ -1868,3 +1868,217 @@ def test_remove_source_suggestion_row_shows_empty_state_when_nothing_left():
     assert output["promotedCount"] == 0
     assert output["visibleAfterTimeout"] == []
     assert output["emptyHiddenCalls"][-1] is False
+
+
+def _run_explore_js_function(function_pattern: str, call_expr: str):
+    """Führt eine einzelne reine Funktion aus static/explore.js per Node
+    aus - gleiches Extraktions-Muster wie an anderer Stelle in dieser Datei
+    (z.B. _run_find_highlight_range). explore.js selbst bindet u.a. an das
+    globale d3-Objekt und den DOM - hier geht es nur um die eigenständigen,
+    reinen Hilfsfunktionen (nodeUrl/radiusFor/normalizeSearch), die keine
+    dieser Abhängigkeiten brauchen."""
+    js_source = (STATIC_DIR / "explore.js").read_text()
+    match = re.search(function_pattern, js_source, re.S)
+    assert match, f"Muster {function_pattern!r} wurde in explore.js nicht gefunden."
+    func_source = match.group(0)
+    script = f"""
+{func_source}
+console.log(JSON.stringify({call_expr}));
+"""
+    result = subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True)
+    return json.loads(result.stdout)
+
+
+def test_node_url_links_author_nodes_to_the_author_filter():
+    result = _run_explore_js_function(
+        r"function nodeUrl.*?\n\}",
+        "nodeUrl({ type: 'author', label: 'Niels Pflaeging' })",
+    )
+    assert result == "/import.html?author=Niels%20Pflaeging"
+
+
+def test_node_url_links_term_nodes_to_the_term_filter():
+    result = _run_explore_js_function(
+        r"function nodeUrl.*?\n\}",
+        "nodeUrl({ type: 'term', label: 'Beyond Budgeting' })",
+    )
+    assert result == "/import.html?term=Beyond%20Budgeting"
+
+
+def test_radius_for_scales_with_weight_but_is_capped():
+    low = _run_explore_js_function(r"function radiusFor.*?\n\}", "radiusFor({ type: 'term', weight: 1 })")
+    high = _run_explore_js_function(r"function radiusFor.*?\n\}", "radiusFor({ type: 'term', weight: 3 })")
+    capped_at_25 = _run_explore_js_function(r"function radiusFor.*?\n\}", "radiusFor({ type: 'term', weight: 25 })")
+    capped_above_25 = _run_explore_js_function(
+        r"function radiusFor.*?\n\}", "radiusFor({ type: 'term', weight: 500 })"
+    )
+    assert high > low
+    # Nutzerwunsch (implizit über die Bug-Historie dieser Session): ein
+    # extrem häufiges Schlagwort darf die Simulation nicht durch einen
+    # unbegrenzt wachsenden Radius dominieren - gedeckelt bei weight=25.
+    assert capped_at_25 == capped_above_25
+
+
+def test_radius_for_authors_and_terms_use_different_base_size():
+    author = _run_explore_js_function(r"function radiusFor.*?\n\}", "radiusFor({ type: 'author', weight: 0 })")
+    term = _run_explore_js_function(r"function radiusFor.*?\n\}", "radiusFor({ type: 'term', weight: 0 })")
+    assert author > term
+
+
+def test_normalize_search_is_case_insensitive_and_trims():
+    result = _run_explore_js_function(r"function normalizeSearch.*?\n\}", "normalizeSearch('  Dezentralisierung  ')")
+    assert result == "dezentralisierung"
+
+
+def test_neighbor_ids_includes_the_node_itself_and_direct_neighbors():
+    result = _run_explore_js_function(
+        r"function neighborIds.*?\n\}",
+        "[...neighborIds('a', [{ source: 'a', target: 'b' }, { source: 'c', target: 'd' }])].sort()",
+    )
+    assert result == ["a", "b"]
+
+
+def test_neighbor_ids_matches_regardless_of_source_or_target_position():
+    """Eine Kante kann den gesuchten Knoten sowohl als source als auch als
+    target führen - beide Richtungen müssen den jeweils anderen Knoten als
+    Nachbarn liefern."""
+    result = _run_explore_js_function(
+        r"function neighborIds.*?\n\}",
+        "[...neighborIds('b', [{ source: 'a', target: 'b' }, { source: 'b', target: 'c' }])].sort()",
+    )
+    assert result == ["a", "b", "c"]
+
+
+def test_neighbor_ids_accepts_resolved_node_objects_like_after_force_link():
+    """D3s forceLink ersetzt source/target nach der Initialisierung durch
+    echte Knoten-Objekte statt roher IDs - neighborIds muss beides
+    verarbeiten können."""
+    result = _run_explore_js_function(
+        r"function neighborIds.*?\n\}",
+        "[...neighborIds('a', [{ source: { id: 'a' }, target: { id: 'b' } }])].sort()",
+    )
+    assert result == ["a", "b"]
+
+
+def test_neighbor_ids_excludes_unconnected_nodes():
+    result = _run_explore_js_function(
+        r"function neighborIds.*?\n\}",
+        "[...neighborIds('a', [{ source: 'c', target: 'd' }])].sort()",
+    )
+    assert result == ["a"]
+
+
+def _run_highlight_terms_in_element(key_terms, authors, text="Vor Dezentralisierung Max Muster danach."):
+    """Führt static/import.js#highlightTermsInElement per Node aus, mit
+    minimalen DOM-Stubs (kein volles jsdom nötig - die Funktion nutzt nur
+    createTreeWalker/createDocumentFragment/replaceChild). Regressionstest
+    dafür, dass Autor:innen-Namen unter den Schlagworten NICHT mehr
+    hervorgehoben werden (2026-08-23, Nutzerfeedback: Namensabgleich war zu
+    fehleranfällig)."""
+    js_source = (STATIC_DIR / "import.js").read_text()
+    highlight_match = re.search(r"function highlightTermsInElement.*?\n\}", js_source, re.S)
+    escape_match = re.search(r"function escapeRegExp.*?\n\}", js_source, re.S)
+    assert highlight_match, "highlightTermsInElement wurde in import.js nicht gefunden."
+    assert escape_match, "escapeRegExp wurde in import.js nicht gefunden."
+    script = f"""
+class FakeNode {{
+  constructor(nodeType, tag) {{
+    this.nodeType = nodeType;
+    this.tag = tag || null;
+    this.children = [];
+    this.parentNode = null;
+    this.className = '';
+    this.textContent = '';
+    this.listeners = {{}};
+  }}
+  appendChild(child) {{ child.parentNode = this; this.children.push(child); return child; }}
+  replaceChild(newNode, oldNode) {{
+    const i = this.children.indexOf(oldNode);
+    if (i === -1) return;
+    const replacement = newNode.nodeType === 'fragment' ? newNode.children : [newNode];
+    replacement.forEach((c) => {{ c.parentNode = this; }});
+    this.children.splice(i, 1, ...replacement);
+  }}
+  addEventListener(evt, fn) {{ this.listeners[evt] = fn; }}
+  setAttribute() {{}}
+  get textContentDeep() {{
+    if (this.nodeType === 'text') return this.textContent;
+    if (this.children.length === 0) return this.textContent;
+    return this.children.map((c) => c.textContentDeep).join('');
+  }}
+}}
+const document = {{
+  createElement: (tag) => new FakeNode('element', tag),
+  createTextNode: (text) => {{ const n = new FakeNode('text'); n.textContent = text; return n; }},
+  createDocumentFragment: () => new FakeNode('fragment'),
+  createTreeWalker: (root) => {{
+    const stack = [];
+    (function collect(node) {{
+      node.children.forEach((child) => {{
+        if (child.nodeType === 'text') stack.push(child);
+        else collect(child);
+      }});
+    }})(root);
+    let i = 0;
+    return {{ nextNode: () => (i < stack.length ? stack[i++] : null) }};
+  }},
+}};
+const NodeFilter = {{ SHOW_TEXT: 4 }};
+const allAuthors = {json.dumps(authors)};
+function t() {{ return 'Nach diesem Schlagwort filtern'; }}
+function filterByTerm() {{}}
+function filterByAuthor() {{}}
+
+{escape_match.group(0)}
+{highlight_match.group(0)}
+
+const container = new FakeNode('element', 'div');
+container.appendChild(document.createTextNode({json.dumps(text)}));
+highlightTermsInElement(container, {json.dumps(key_terms)});
+
+function findButtons(node, acc) {{
+  if (node.tag === 'button') acc.push({{ className: node.className, text: node.textContentDeep }});
+  node.children.forEach((c) => findButtons(c, acc));
+  return acc;
+}}
+console.log(JSON.stringify(findButtons(container, [])));
+"""
+    result = subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True)
+    return json.loads(result.stdout)
+
+
+def test_highlight_terms_does_not_highlight_a_matching_author_name():
+    buttons = _run_highlight_terms_in_element(
+        key_terms=["Dezentralisierung", "Max Muster"],
+        authors=[{"name": "Max Muster"}],
+    )
+    texts = [b["text"] for b in buttons]
+    assert "Max Muster" not in texts
+    assert "Dezentralisierung" in texts
+
+
+def test_highlight_terms_matches_author_name_case_insensitively():
+    buttons = _run_highlight_terms_in_element(
+        key_terms=["Dezentralisierung", "max muster"],
+        authors=[{"name": "Max Muster"}],
+        text="Vor Dezentralisierung max muster danach.",
+    )
+    texts = [b["text"] for b in buttons]
+    assert "max muster" not in texts
+    assert "Dezentralisierung" in texts
+
+
+def test_highlight_terms_still_highlights_generic_terms_as_term_highlight_button():
+    buttons = _run_highlight_terms_in_element(
+        key_terms=["Dezentralisierung"],
+        authors=[{"name": "Max Muster"}],
+    )
+    assert buttons == [{"className": "term-highlight-button", "text": "Dezentralisierung"}]
+
+
+def test_highlight_terms_no_op_when_all_terms_are_author_names():
+    buttons = _run_highlight_terms_in_element(
+        key_terms=["Max Muster"],
+        authors=[{"name": "Max Muster"}],
+    )
+    assert buttons == []

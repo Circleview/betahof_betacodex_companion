@@ -59,6 +59,25 @@ const CHANGELOG_ICON =
   '<polyline points="17.5 13.8 17.5 16.5 19.8 17.8"></polyline>' +
   '</svg>';
 
+// Nutzerwunsch (2026-08-23): "Explore"-Modus - minimalistisches Netzwerk-
+// Glyph (drei verbundene Knoten), gleicher Stroke-Stil wie CONVERSATION_
+// ICON/IMPORT_ICON oben (stroke-width 2, kein Uhr-Abzeichen nötig).
+// Nutzerfeedback: die Knoten-Kreise wirkten bei dieser winzigen Größe wie
+// ausgefüllte schwarze Punkte statt echter Kreise - fill="var(--color-bg)"
+// "stanzt" die Füllung frei (gleiches Muster wie das Uhr-Abzeichen bei
+// QUESTION_LOG_ICON/CHANGELOG_ICON oben), passt sich damit auch automatisch
+// an Dark Mode an, statt hart auf Weiß zu setzen.
+const EXPLORE_ICON =
+  '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" ' +
+  'stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
+  '<line x1="6" y1="7" x2="18" y2="7"></line>' +
+  '<line x1="6" y1="7" x2="12" y2="17"></line>' +
+  '<line x1="18" y1="7" x2="12" y2="17"></line>' +
+  '<circle cx="6" cy="7" r="3" fill="var(--color-bg)"></circle>' +
+  '<circle cx="18" cy="7" r="3" fill="var(--color-bg)"></circle>' +
+  '<circle cx="12" cy="17" r="3" fill="var(--color-bg)"></circle>' +
+  '</svg>';
+
 // gated: nur für Quellen-Pfleger:innen/System-Admins sichtbar (siehe
 // updateNavVisibility) - Konversation und Quellenverzeichnis bleiben für
 // alle Besucher:innen sichtbar.
@@ -69,6 +88,7 @@ const CHANGELOG_ICON =
 const NAV_LINKS = [
   { id: 'conversation-link', href: '/', icon: CONVERSATION_ICON, titleKey: 'index.viewConversation', gated: false },
   { id: 'import-link', href: '/import.html', icon: IMPORT_ICON, titleKey: 'index.viewSources', gated: false, badge: true },
+  { id: 'explore-link', href: '/explore.html', icon: EXPLORE_ICON, titleKey: 'index.viewExplore', gated: false },
   { id: 'question-log-link', href: '/question-log.html', icon: QUESTION_LOG_ICON, titleKey: 'index.viewQuestionLog', gated: true },
   { id: 'changelog-link', href: '/changelog.html', icon: CHANGELOG_ICON, titleKey: 'index.viewChangelog', gated: true },
 ];

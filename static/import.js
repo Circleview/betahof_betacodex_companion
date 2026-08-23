@@ -1662,7 +1662,16 @@ function escapeRegExp(value) {
 
 function highlightTermsInElement(container, keyTerms) {
   if (!keyTerms || keyTerms.length === 0) return;
-  const pattern = new RegExp(`(${keyTerms.map(escapeRegExp).join('|')})`, 'gi');
+  // Von der KI vorgeschlagene Schlagworte dürfen Eigennamen enthalten, die
+  // zufällig mit einer erfassten Autor:in übereinstimmen - dieser Abgleich
+  // war zu fehleranfällig (z.B. bei Namensgleichheit/-teilen), deshalb werden
+  // solche Treffer grundsätzlich nicht mehr hervorgehoben, auch nicht als
+  // generisches Schlagwort.
+  const filteredTerms = keyTerms.filter(
+    (term) => !allAuthors.some((a) => a.name.toLowerCase() === term.toLowerCase())
+  );
+  if (filteredTerms.length === 0) return;
+  const pattern = new RegExp(`(${filteredTerms.map(escapeRegExp).join('|')})`, 'gi');
   const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
   const textNodes = [];
   let node = walker.nextNode();
@@ -1677,38 +1686,19 @@ function highlightTermsInElement(container, keyTerms) {
     if (parts.length <= 1) return;
     const frag = document.createDocumentFragment();
     parts.forEach((part) => {
-      const isTerm = keyTerms.some((term) => term.toLowerCase() === part.toLowerCase());
+      const isTerm = filteredTerms.some((term) => term.toLowerCase() === part.toLowerCase());
       if (isTerm) {
-        // Eine Hervorhebung, die einer bereits erfassten Autor:in entspricht,
-        // bleibt ein klickbarer Link zum Autor:innen-Profil (auffällig,
-        // Akzentfarbe) - alle anderen Begriffe filtern beim Klick stattdessen
-        // die Quellenübersicht nach diesem Schlagwort (filterByTerm), bewusst
-        // OHNE Link-Optik (keine Akzentfarbe/Unterstreichung im Ruhezustand),
-        // damit allgemeine Schlagworte nicht fälschlich wie Autor:innen-Links
-        // aussehen - siehe .term-highlight-button in style.css.
-        const matchingAuthor = allAuthors.find((a) => a.name.toLowerCase() === part.toLowerCase());
-        if (matchingAuthor) {
-          const btn = document.createElement('button');
-          btn.type = 'button';
-          btn.className = 'term-link';
-          const strong = document.createElement('strong');
-          strong.textContent = part;
-          btn.appendChild(strong);
-          btn.addEventListener('click', () => filterByAuthor(matchingAuthor.name));
-          frag.appendChild(btn);
-        } else {
-          const btn = document.createElement('button');
-          btn.type = 'button';
-          btn.className = 'term-highlight-button';
-          const title = t('import.filterByTermTitle', { term: part });
-          btn.title = title;
-          btn.setAttribute('aria-label', title);
-          const strong = document.createElement('strong');
-          strong.textContent = part;
-          btn.appendChild(strong);
-          btn.addEventListener('click', () => filterByTerm(part));
-          frag.appendChild(btn);
-        }
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'term-highlight-button';
+        const title = t('import.filterByTermTitle', { term: part });
+        btn.title = title;
+        btn.setAttribute('aria-label', title);
+        const strong = document.createElement('strong');
+        strong.textContent = part;
+        btn.appendChild(strong);
+        btn.addEventListener('click', () => filterByTerm(part));
+        frag.appendChild(btn);
       } else if (part) {
         frag.appendChild(document.createTextNode(part));
       }
@@ -3489,9 +3479,10 @@ function buildAuthorInfoView(a) {
   const photoCol = document.createElement('div');
   photoCol.className = 'author-info-photo-col';
 
-  if (a.photo_url) {
+  const vitaPhotoUrl = a.photo_large || a.photo_url;
+  if (vitaPhotoUrl) {
     const img = document.createElement('img');
-    img.src = a.photo_url;
+    img.src = vitaPhotoUrl;
     img.alt = a.name;
     img.className = 'author-photo';
     photoCol.appendChild(img);
@@ -3855,4 +3846,13 @@ if (deepLinkSourceId && allSources.some((s) => s.id === deepLinkSourceId)) {
 const deepLinkAuthor = new URLSearchParams(window.location.search).get('author');
 if (deepLinkAuthor) {
   await filterByAuthor(deepLinkAuthor);
+}
+
+// Deep-Link aus dem Explore-Modus (Klick auf einen Schlagwort-Knoten):
+// /import.html?term=<begriff> filtert direkt auf Quellen mit diesem
+// Schlagwort - dieselbe filterByTerm()-Funktion, die auch die Begriffs-
+// Badges in der Quellenliste selbst nutzen.
+const deepLinkTerm = new URLSearchParams(window.location.search).get('term');
+if (deepLinkTerm) {
+  await filterByTerm(deepLinkTerm);
 }

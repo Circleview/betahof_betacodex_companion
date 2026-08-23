@@ -70,6 +70,21 @@ Assistent das offen, statt zu spekulieren.
   Gespräch. Vorlesetempo ist frei wählbar (1x–2x), die Stimme bleibt dabei
   unverändert in der Tonhöhe.
 
+### Explore-Modus (Netzwerk-Ansicht)
+
+- Schlagworte und Autor:innen der gesamten Quellensammlung als
+  interaktives, animiertes Netzwerk statt einer reinen Liste – öffentlich
+  zugänglich wie die Konversationsansicht.
+- Automatische thematische Clusterbildung (Community-Erkennung) statt
+  eines manuell gepflegten Vokabulars; Knotengröße spiegelt die Anzahl
+  zugehöriger Quellen.
+- Klick auf einen Knoten hebt ihn samt aller direkt verbundenen Nachbarn
+  hervor (der Rest dimmt ab) und zentriert ihn im Bild; erneuter Klick
+  setzt die Ansicht zurück. "Öffnen in neuem Tab"-Icons an den
+  hervorgehobenen Knoten springen direkt zur gefilterten Quellenliste.
+- Freitextsuche hebt passende Knoten hervor, ganz ohne Neuaufbau der
+  Simulation.
+
 ### Quellen pflegen (Quellen-Pfleger:innen)
 
 - Import per Copy/Paste, URL/Blogpost, PDF-Upload, YouTube-Link oder
@@ -81,6 +96,9 @@ Assistent das offen, statt zu spekulieren.
   lassen sich parallel anstoßen.
 - Volltextsuche über den gesamten Quellenbestand, Autor:innen-Verzeichnis
   mit Profilen (Foto, Vita, Website, Social Links, zweisprachig gepflegt).
+  Profilfotos werden lokal in zwei Auflösungen zwischengespeichert, damit
+  extern gehostete Bilder (z. B. LinkedIn-Links mit eingebautem
+  Ablaufdatum) nicht nach einigen Wochen wieder "kaputtgehen".
 - KI-gestützte Zusammenfassung + Begriffs-Querverweise beim Import,
   jederzeit nachträglich auslösbar.
 - Bearbeiten inline in der Quellenliste; Löschen ist ein Papierkorb mit
@@ -331,6 +349,7 @@ Commit-/Tag-Nachrichten in Git.
 
 | Version | Wesentliche Änderungen |
 |---|---|
+| v0.51.0 | Neu: "Explore"-Modus (Netzwerk-Icon im Header) - Schlagworte und Autor:innen der gesamten Quellensammlung als interaktives, thematisch geclustertes Netzwerk (D3.js, automatische Community-Erkennung). Klick auf einen Knoten hebt ihn samt direkter Nachbarn hervor und zentriert ihn, "Öffnen in neuem Tab"-Icons springen von dort zur gefilterten Quellenliste; erneuter Klick setzt zurück. Dazu: lokaler Foto-Cache für Autor:innen-Profilbilder (behebt wiederkehrend "kaputte" Fotos durch abgelaufene externe Links, z. B. LinkedIn-CDN-URLs mit eingebautem Ablaufdatum) in zwei Auflösungen (Vita: groß, Explore-Netzwerk: klein), inkl. täglichem Selbstheilungs-Worker. Fix: Autor:innen-Namen werden im KI-generierten Schlagwort-Highlighting der Quellen-Zusammenfassungen nicht mehr hervorgehoben (Namensabgleich war zu fehleranfällig). Fix: der tägliche Quellen-Vorschlags-Worker löste in der Testsuite bei praktisch jedem Test eine echte, kostenpflichtige Websuche aus - jetzt sauber gemockt, zusätzlich ein generelles Sicherheitsnetz gegen unbeabsichtigte echte Anthropic-API-Aufrufe in Tests |
 | v0.50.2 | Fix: Quellen-Vorschläge zeigten teils auf nicht existierende Seiten - das Modell füllt das `submit_candidates`-Tool als eigenen, von der eigentlichen Websuche entkoppelten Aufruf und konnte dabei plausibel klingende, aber nie tatsächlich gefundene URLs erfinden. Jeder Kandidat wird jetzt hart gegen die echten Suchergebnis-URLs desselben Websuche-Calls geprüft (`web_search_tool_result`-Block) - nicht verifizierbare Kandidaten fallen lautlos raus, statt eine tote Quelle vorzuschlagen |
 | v0.50.1 | Fix: der tägliche Nachschub-Lauf für Quellen-Vorschläge fand mit nur 2 befragten Autor:innen pro Tag viel weniger, als sich durch Annehmen/Ablehnen leeren ließ - `SOURCE_SUGGESTION_AUTHORS_PER_RUN` auf 6 erhöht, damit der Vorrat spürbar schneller in Richtung des Ziels (100) wächst; Produktions-Vorrat einmalig manuell auf 68 aufgefüllt. Dazu Header-Feinschliff: mehr Abstand zwischen Nutzername und Trennlinie im mobilen Header, und der Nutzername blendet sich jetzt synchron mit dem Marken-Namen aus/ein, wenn der Sticky-Header beim Scrollen kollabiert/expandiert |
 | v0.50.0 | Neu: proaktive Quellen-Vorschläge aus dem offenen Web (Glühbirnen-Icon neben der Quellenliste) - ein Hintergrund-Worker sucht täglich per Claudes Web-Search-Tool nach neuen, thematisch/autorenmäßig passenden Text-Quellen (autor:innen- und themenbasiert gemischt, Alfie-Kohn-Monopolisierung durch Durchmischung verhindert) und hält einen Vorrat von bis zu 100 Vorschlägen bereit; die Liste zeigt davon immer bis zu 5 gleichzeitig und rückt beim Annehmen/Ablehnen sofort aus dem Vorrat nach (keine Wartezeit auf eine neue Websuche), mit Fade-Out/Fade-In-Übergängen. "Annehmen" öffnet das bestehende URL-Import-Formular vorausgefüllt statt selbst eine Quelle anzulegen - Review/Speichern laufen 1:1 wie beim manuellen Import. Dazu: neuer Sticky-Header (Titel blendet sich beim Herunterscrollen elegant zum Punkt aus, Icon-Leiste bleibt oben sichtbar), sowie ein Fix für die Autor:innen-Vita-Zweispaltenansicht (Suche/Import-Formular/Jobs/Website-Verwaltung landeten dort fälschlich neben statt oberhalb der Spalten) |

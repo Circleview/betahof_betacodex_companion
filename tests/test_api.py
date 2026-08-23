@@ -3,12 +3,14 @@ import json
 import threading
 import time
 
+import anthropic
 import pytest
 from fastapi.testclient import TestClient
 
 from app import (
     audit,
     auth,
+    author_photos,
     author_profiles,
     authors,
     captcha,
@@ -135,8 +137,53 @@ def client(tmp_path, monkeypatch):
     # Sofort-Crawl selbst gezielt prüfen, überschreiben dieses Mock lokal.
     monkeypatch.setattr(main_module, "_run_web_crawl_subprocess", lambda entry_id, url_prefix, max_pages: 0)
 
+    # Der tägliche Vorschlags-Vorrat-Worker (_source_suggestion_discovery_worker)
+    # läuft seit seiner Einführung sofort einmal beim Start jedes echten
+    # ASGI-Prozesses (_start_background_workers), also auch bei JEDER
+    # TestClient(main_module.app)-Instanziierung hier. _run_source_suggestion_
+    # discovery_once() bricht nur ab, wenn der Vorrat schon SOURCE_SUGGESTION_
+    # QUEUE_TARGET (100) erreicht hat - bei einem frischen tmp_path ist der
+    # Vorrat aber immer leer, ruft also bei praktisch jedem einzelnen Test
+    # echte, kostenpflichtige Anthropic-Websuche-Aufrufe auf (discover_by_topic
+    # läuft sogar unabhängig von vorhandenen Autor:innen). Das machte die
+    # gesamte Suite real netzwerkabhängig und massiv langsam. Tests, die
+    # dieses Verhalten selbst gezielt prüfen, überschreiben diese Mocks lokal.
+    monkeypatch.setattr(source_discovery, "discover_by_author", lambda author, known, excluded: [])
+    monkeypatch.setattr(source_discovery, "discover_by_topic", lambda seed, known, excluded: [])
+
+    # Sicherheitsnetz (Vorfall 2026-08-23: der Vorschlags-Worker oben hat
+    # unbemerkt bei praktisch jedem Test eine echte, kostenpflichtige
+    # Anthropic-Anfrage ausgelöst, weil ein einzelner Aufrufpfad ungemockt
+    # blieb). Statt darauf zu vertrauen, dass jede Funktion, die intern einen
+    # Anthropic-Client braucht (app/extraction.py, app/summarization.py,
+    # app/llm.py, app/source_discovery.py - alle über ein lazygecachtes
+    # `_client = anthropic.Anthropic()`), einzeln gemockt wird, blockiert
+    # dies den echten Client-Konstruktor selbst: ein fehlender Mock führt
+    # dadurch zu einem sofortigen, lauten Testfehler statt einer stillen,
+    # echten (langsamen/teuren) Netzwerkanfrage. Tests, die eine dieser
+    # Funktionen gezielt prüfen, mocken ohnehin schon den jeweiligen
+    # `_get_client`/`_get_anthropic_client` und rufen den echten Konstruktor
+    # dadurch nie auf - für sie ändert dieses Sicherheitsnetz nichts.
+    def _fail_on_real_anthropic_client(*args, **kwargs):
+        raise RuntimeError(
+            "Echter anthropic.Anthropic()-Client in einem Test angefordert - "
+            "fehlt ein Mock für die aufrufende Funktion? (siehe Kommentar in "
+            "der client-Fixture, Vorfall 2026-08-23)"
+        )
+
+    monkeypatch.setattr(anthropic, "Anthropic", _fail_on_real_anthropic_client)
+
     monkeypatch.setattr(authors, "AUTHORS_FILE", tmp_path / "authors.json")
     monkeypatch.setattr(author_profiles, "AUTHOR_PROFILES_FILE", tmp_path / "author_profiles.json")
+    monkeypatch.setattr(author_photos, "AUTHOR_PHOTOS_DIR", tmp_path / "author_photos")
+    monkeypatch.setattr(author_photos, "MANIFEST_FILE", tmp_path / "author_photos" / "_manifest.json")
+    # PUT /api/authors/{name} stößt seit dem Foto-Cache-Fix (2026-08-23) bei
+    # geänderter photo_url einen echten Hintergrund-Thread an (siehe
+    # update_author_profile in app/main.py), der die URL herunterlädt - ohne
+    # dieses Mock würde JEDER Test, der eine photo_url setzt, eine echte
+    # Netzwerkanfrage auslösen (langsam/flaky). Tests, die das Caching selbst
+    # gezielt prüfen, überschreiben dieses Mock lokal.
+    monkeypatch.setattr(author_photos, "cache_photo", lambda name, url: False)
     monkeypatch.setattr(users, "USERS_FILE", tmp_path / "users.json")
     monkeypatch.setattr(terms, "TERMS_FILE", tmp_path / "terms.json")
     monkeypatch.setattr(audit, "AUDIT_LOG_FILE", tmp_path / "audit_log.json")
@@ -5415,3 +5462,256 @@ def test_shutdown_hook_does_not_mark_source_when_job_finishes_in_time(client):
 
     entry = main_module._load_sources()[source_id]
     assert "interrupted_by_deploy" not in entry
+
+
+def _set_key_terms(source_id: str, terms: list[str]) -> None:
+    """Hilfsfunktion für die Explore-Graph-Tests: setzt key_terms_de direkt,
+    ohne den vollen update_source()-Zyklus (Chunking/Embeddings) durchlaufen
+    zu müssen - gleiches Muster wie andere Tests, die main_module._load_
+    sources()/_save_sources() direkt nutzen (siehe z.B. test_shutdown_hook_*
+    oben)."""
+    sources = main_module._load_sources()
+    sources[source_id]["key_terms_de"] = terms
+    main_module._save_sources(sources)
+
+
+def test_knowledge_graph_includes_authors_and_terms_occurring_at_least_twice(client):
+    source_id = client.post(
+        "/api/sources", json={"title": "Q1", "text": "Text.", "authors": ["Autor Eins"]}
+    ).json()["id"]
+    _set_key_terms(source_id, ["Selbstorganisation", "Dezentralisierung"])
+    source_id_2 = client.post("/api/sources", json={"title": "Q2", "text": "Text."}).json()["id"]
+    _set_key_terms(source_id_2, ["Selbstorganisation", "Beyond Budgeting"])
+
+    data = client.get("/api/knowledge-graph").json()
+    node_ids = {n["id"] for n in data["nodes"]}
+    assert "author:Autor Eins" in node_ids
+    assert "term:Selbstorganisation" in node_ids
+
+
+def test_knowledge_graph_excludes_terms_occurring_only_once(client):
+    source_id = client.post("/api/sources", json={"title": "Q1", "text": "Text."}).json()["id"]
+    _set_key_terms(source_id, ["Einzelgänger", "Selbstorganisation"])
+    source_id_2 = client.post("/api/sources", json={"title": "Q2", "text": "Text."}).json()["id"]
+    _set_key_terms(source_id_2, ["Selbstorganisation"])
+
+    data = client.get("/api/knowledge-graph").json()
+    node_ids = {n["id"] for n in data["nodes"]}
+    assert "term:Einzelgänger" not in node_ids
+    assert "term:Selbstorganisation" in node_ids
+
+
+def test_knowledge_graph_connects_coocurring_terms_with_edge(client):
+    source_id = client.post("/api/sources", json={"title": "Q1", "text": "Text."}).json()["id"]
+    _set_key_terms(source_id, ["Alpha", "Beta"])
+    source_id_2 = client.post("/api/sources", json={"title": "Q2", "text": "Text."}).json()["id"]
+    _set_key_terms(source_id_2, ["Alpha", "Beta"])
+
+    data = client.get("/api/knowledge-graph").json()
+    edge = next(
+        e
+        for e in data["edges"]
+        if {e["source"], e["target"]} == {"term:Alpha", "term:Beta"}
+    )
+    assert edge["weight"] == 2
+
+
+def test_knowledge_graph_connects_author_to_their_terms(client):
+    source_id = client.post(
+        "/api/sources", json={"title": "Q1", "text": "Text.", "authors": ["Autorin X"]}
+    ).json()["id"]
+    _set_key_terms(source_id, ["Gamma", "Delta"])
+    source_id_2 = client.post("/api/sources", json={"title": "Q2", "text": "Text."}).json()["id"]
+    _set_key_terms(source_id_2, ["Gamma", "Delta"])
+
+    data = client.get("/api/knowledge-graph").json()
+    edges = {(e["source"], e["target"]) for e in data["edges"]} | {
+        (e["target"], e["source"]) for e in data["edges"]
+    }
+    assert ("author:Autorin X", "term:Gamma") in edges
+
+
+def test_knowledge_graph_includes_author_photo_url(client):
+    client.post("/api/sources", json={"title": "Q1", "text": "Text.", "authors": ["Foto Autor"]})
+    client.put("/api/authors/Foto Autor", json={"photo_url": "https://example.org/foto.jpg"})
+
+    data = client.get("/api/knowledge-graph").json()
+    node = next(n for n in data["nodes"] if n["id"] == "author:Foto Autor")
+    assert node["photo_url"] == "https://example.org/foto.jpg"
+
+
+def test_knowledge_graph_author_without_photo_has_none(client):
+    client.post("/api/sources", json={"title": "Q1", "text": "Text.", "authors": ["Ohne Foto"]})
+
+    data = client.get("/api/knowledge-graph").json()
+    node = next(n for n in data["nodes"] if n["id"] == "author:Ohne Foto")
+    assert node["photo_url"] is None
+
+
+def test_knowledge_graph_excludes_soft_deleted_sources(client):
+    source_id = client.post("/api/sources", json={"title": "Q1", "text": "Text."}).json()["id"]
+    _set_key_terms(source_id, ["Gelöscht Eins", "Gelöscht Zwei"])
+    source_id_2 = client.post("/api/sources", json={"title": "Q2", "text": "Text."}).json()["id"]
+    _set_key_terms(source_id_2, ["Gelöscht Eins", "Gelöscht Zwei"])
+    client.delete(f"/api/sources/{source_id_2}")
+
+    data = client.get("/api/knowledge-graph").json()
+    node_ids = {n["id"] for n in data["nodes"]}
+    # Nach dem Löschen kommt "Gelöscht Eins"/"Gelöscht Zwei" nur noch in
+    # EINER aktiven Quelle vor - unterschreitet die Mindestanzahl von 2.
+    assert "term:Gelöscht Eins" not in node_ids
+
+
+def test_knowledge_graph_cluster_assignment_is_deterministic_across_requests(client):
+    source_id = client.post("/api/sources", json={"title": "Q1", "text": "Text."}).json()["id"]
+    _set_key_terms(source_id, ["Stabil Eins", "Stabil Zwei"])
+    source_id_2 = client.post("/api/sources", json={"title": "Q2", "text": "Text."}).json()["id"]
+    _set_key_terms(source_id_2, ["Stabil Eins", "Stabil Zwei"])
+
+    first = client.get("/api/knowledge-graph").json()
+    second = client.get("/api/knowledge-graph").json()
+    cluster_by_id_first = {n["id"]: n["cluster"] for n in first["nodes"]}
+    cluster_by_id_second = {n["id"]: n["cluster"] for n in second["nodes"]}
+    assert cluster_by_id_first == cluster_by_id_second
+
+
+def test_knowledge_graph_is_public_without_authentication(anon_client):
+    response = anon_client.get("/api/knowledge-graph")
+    assert response.status_code == 200
+
+
+def test_update_author_profile_caches_new_photo_url_in_background(client, monkeypatch):
+    """Regressionstest (Nutzerfeedback 2026-08-23): externe Autor:innen-
+    Fotos (v.a. LinkedIn-CDN-Links mit eingebautem Ablaufdatum) sterben
+    regelmäßig weg - eine neu gesetzte photo_url wird deshalb einmalig im
+    Hintergrund lokal gecacht (siehe app/author_photos.py), ohne den
+    Speicher-Request selbst zu verlangsamen/zu blockieren."""
+    client.post("/api/sources", json={"title": "Q", "text": "Text.", "authors": ["Foto Autor"]})
+    done = threading.Event()
+    calls = []
+
+    def fake_cache_photo(name, url):
+        calls.append((name, url))
+        done.set()
+        return True
+
+    monkeypatch.setattr(author_photos, "cache_photo", fake_cache_photo)
+    client.put("/api/authors/Foto Autor", json={"photo_url": "https://example.org/foto.jpg"})
+
+    assert done.wait(timeout=5), "Foto-Caching wurde nicht im Hintergrund ausgelöst"
+    assert calls == [("Foto Autor", "https://example.org/foto.jpg")]
+
+
+def test_update_author_profile_skips_caching_when_photo_url_unchanged(client, monkeypatch):
+    client.post("/api/sources", json={"title": "Q", "text": "Text.", "authors": ["Foto Autor"]})
+    calls = []
+    monkeypatch.setattr(author_photos, "cache_photo", lambda name, url: calls.append((name, url)))
+    client.put("/api/authors/Foto Autor", json={"photo_url": "https://example.org/foto.jpg"})
+    time.sleep(0.1)
+    calls.clear()
+
+    # Zweite Aktualisierung OHNE Änderung der photo_url (nur die Vita) darf
+    # keinen erneuten Download auslösen.
+    client.put(
+        "/api/authors/Foto Autor",
+        json={"photo_url": "https://example.org/foto.jpg", "bio": "Neue Vita"},
+    )
+    time.sleep(0.1)
+    assert calls == []
+
+
+def test_update_author_profile_recaches_when_photo_url_changes(client, monkeypatch):
+    client.post("/api/sources", json={"title": "Q", "text": "Text.", "authors": ["Foto Autor"]})
+    calls = []
+    monkeypatch.setattr(author_photos, "cache_photo", lambda name, url: calls.append((name, url)))
+    client.put("/api/authors/Foto Autor", json={"photo_url": "https://example.org/alt.jpg"})
+    time.sleep(0.1)
+    calls.clear()
+
+    client.put("/api/authors/Foto Autor", json={"photo_url": "https://example.org/neu.jpg"})
+    time.sleep(0.1)
+    assert calls == [("Foto Autor", "https://example.org/neu.jpg")]
+
+
+def test_rename_author_also_renames_cached_photo(client, monkeypatch):
+    client.post("/api/sources", json={"title": "Q", "text": "Text.", "authors": ["Alter Name"]})
+    calls = []
+    monkeypatch.setattr(author_photos, "rename", lambda old, new: calls.append((old, new)))
+
+    response = client.post("/api/authors/Alter Name/rename", json={"new_name": "Neuer Name"})
+
+    assert response.status_code == 200
+    assert calls == [("Alter Name", "Neuer Name")]
+
+
+def test_get_author_photo_returns_404_when_not_cached(client):
+    client.post("/api/sources", json={"title": "Q", "text": "Text.", "authors": ["Ohne Foto"]})
+    response = client.get("/api/authors/Ohne Foto/photo/small")
+    assert response.status_code == 404
+
+
+def test_get_author_photo_returns_404_for_invalid_size(client):
+    response = client.get("/api/authors/Irgendwer/photo/medium")
+    assert response.status_code == 404
+
+
+def test_get_author_photo_serves_cached_file(client, monkeypatch):
+    import io
+
+    from PIL import Image
+
+    client.post("/api/sources", json={"title": "Q", "text": "Text.", "authors": ["Foto Autor"]})
+
+    def fake_cache_photo(name, url):
+        image = Image.new("RGB", (200, 200), color=(10, 20, 30))
+        for size_name, dimension in author_photos.SIZES.items():
+            resized = image.resize((dimension, dimension))
+            author_photos.AUTHOR_PHOTOS_DIR.mkdir(parents=True, exist_ok=True)
+            resized.save(author_photos.photo_path(name, size_name), "WEBP")
+        return True
+
+    monkeypatch.setattr(author_photos, "cache_photo", fake_cache_photo)
+    client.put("/api/authors/Foto Autor", json={"photo_url": "https://example.org/foto.jpg"})
+    time.sleep(0.1)
+
+    response = client.get("/api/authors/Foto Autor/photo/small")
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "image/webp"
+
+
+def test_list_authors_exposes_photo_small_and_large_when_cached(client, monkeypatch):
+    client.post("/api/sources", json={"title": "Q", "text": "Text.", "authors": ["Foto Autor"]})
+    monkeypatch.setattr(author_photos, "has_cached_photo", lambda name, size="small": True)
+
+    data = client.get("/api/authors").json()
+    entry = next(a for a in data if a["name"] == "Foto Autor")
+    assert entry["photo_small"] == "/api/authors/Foto%20Autor/photo/small"
+    assert entry["photo_large"] == "/api/authors/Foto%20Autor/photo/large"
+
+
+def test_list_authors_photo_small_and_large_empty_without_cache(client):
+    client.post("/api/sources", json={"title": "Q", "text": "Text.", "authors": ["Ohne Foto"]})
+
+    data = client.get("/api/authors").json()
+    entry = next(a for a in data if a["name"] == "Ohne Foto")
+    assert entry["photo_small"] == ""
+    assert entry["photo_large"] == ""
+
+
+def test_knowledge_graph_uses_cached_small_photo_when_available(client, monkeypatch):
+    client.post("/api/sources", json={"title": "Q", "text": "Text.", "authors": ["Foto Autor"]})
+    client.put("/api/authors/Foto Autor", json={"photo_url": "https://example.org/foto.jpg"})
+    monkeypatch.setattr(author_photos, "has_cached_photo", lambda name, size="small": True)
+
+    data = client.get("/api/knowledge-graph").json()
+    node = next(n for n in data["nodes"] if n["id"] == "author:Foto Autor")
+    assert node["photo_url"] == "/api/authors/Foto%20Autor/photo/small"
+
+
+def test_knowledge_graph_falls_back_to_raw_photo_url_when_not_yet_cached(client):
+    client.post("/api/sources", json={"title": "Q", "text": "Text.", "authors": ["Foto Autor"]})
+    client.put("/api/authors/Foto Autor", json={"photo_url": "https://example.org/foto.jpg"})
+
+    data = client.get("/api/knowledge-graph").json()
+    node = next(n for n in data["nodes"] if n["id"] == "author:Foto Autor")
+    assert node["photo_url"] == "https://example.org/foto.jpg"
