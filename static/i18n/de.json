@@ -74,6 +74,8 @@
   "import.processingStepChunking": "Wird zerlegt",
   "import.processingStepIndexing": "Wird indiziert",
   "import.reprocessButton": "Erneut versuchen",
+  "import.cancelImportButton": "Abbrechen",
+  "import.cancelImportConfirmButton": "Sicher? Quelle löschen",
   "import.editDisabledWhileProcessing": "Bearbeiten erst nach Abschluss der Verarbeitung möglich.",
   "import.urlPopoverLabel": "URL (Blogpost/Artikel/YouTube/PDF)",
   "import.loadButton": "Laden",

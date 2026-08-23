@@ -74,6 +74,8 @@
   "import.processingStepChunking": "Chunking",
   "import.processingStepIndexing": "Indexing",
   "import.reprocessButton": "Retry",
+  "import.cancelImportButton": "Cancel",
+  "import.cancelImportConfirmButton": "Sure? Delete source",
   "import.editDisabledWhileProcessing": "Editing is available once processing has finished.",
   "import.urlPopoverLabel": "URL (blog post/article/YouTube/PDF)",
   "import.loadButton": "Load",

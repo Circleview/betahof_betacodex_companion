@@ -2320,6 +2320,12 @@ body:not(.chat-started) #question-form {
   margin: 0.2rem 0;
 }
 
+/* Fix: "Erneut versuchen" und "Abbrechen" klebten ohne Abstand
+   aneinander (beide .link-button mit margin:0). */
+#jobs-list .link-button + .link-button {
+  margin-left: 0.75rem;
+}
+
 /* Backlog: LLM/Internet-Fallback bei dünner Quellenlage - Pflegebereich für
    die freigegebenen externen Domains/Pfade, per typ-web-allowlist-Button
    auf-/zuklappbar. Gleiches "normaler Seitenfluss statt Popover"-Muster wie

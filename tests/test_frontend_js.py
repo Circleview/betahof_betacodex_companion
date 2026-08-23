@@ -1196,6 +1196,119 @@ def test_update_broken_links_badge_hidden_without_fetch_for_non_pfleger():
     output = _run_update_broken_links_badge(visible=False, fetch_response=None)
     assert output == {"hidden": True}
 
+def _run_render_jobs_list_error_job_click(button_index: int, *, clicks: int = 1) -> dict:
+    """Führt static/import.js#renderJobsListInto per Node aus und simuliert
+    Klicks auf den Retry- oder den neuen Abbrechen-Button eines
+    fehlgeschlagenen Jobs - mit minimalen Stubs für fetch/t/devUserHeaders/
+    fetchImportJobs/loadSources (kein volles jsdom nötig, siehe
+    _run_append_title_text)."""
+    js_source = (STATIC_DIR / "import.js").read_text()
+    match = re.search(r"function renderJobsListInto.*?\n\}", js_source, re.S)
+    assert match, "renderJobsListInto wurde in import.js nicht gefunden."
+    func_source = match.group(0)
+    script = f"""
+function t(key) {{ return key; }}
+function devUserHeaders() {{ return {{}}; }}
+function jobStepLabel() {{ return ''; }}
+let fetchImportJobsCalled = false;
+async function fetchImportJobs() {{ fetchImportJobsCalled = true; }}
+let loadSourcesCalled = false;
+async function loadSources() {{ loadSourcesCalled = true; }}
+let fetchCalls = [];
+global.fetch = async (url, options) => {{
+  fetchCalls.push({{ url, options }});
+  return {{ ok: true }};
+}};
+
+class FakeNode {{
+  constructor(tag) {{
+    this.tag = tag;
+    this.children = [];
+    this.className = '';
+    this.textContent = '';
+    this.disabled = false;
+    this.listeners = {{}};
+  }}
+  set innerHTML(v) {{ this.children = []; }}
+  appendChild(child) {{ this.children.push(child); return child; }}
+  addEventListener(evt, fn) {{ this.listeners[evt] = fn; }}
+}}
+const document = {{ createElement: (tag) => new FakeNode(tag) }};
+const cancelConfirmPendingJobIds = new Set();
+
+{func_source}
+
+const jobs = [
+  {{ id: 'job-1', title: 'Kaputte Quelle', processing_status: 'error', processing_error: 'Fehler.' }},
+];
+
+function findButtons(node, acc) {{
+  if (node.tag === 'button') acc.push(node);
+  node.children.forEach((c) => findButtons(c, acc));
+  return acc;
+}}
+
+let list = new FakeNode('ul');
+renderJobsListInto(list, jobs);
+let buttons = findButtons(list, []);
+
+async function main() {{
+  for (let i = 0; i < {clicks}; i++) {{
+    await buttons[{button_index}].listeners.click();
+    // Regressionstest: der 3-Sekunden-Poll-Takt baut die Liste bei JEDEM
+    // Tick neu auf, auch wenn sich nichts geaendert hat (siehe
+    // fetchImportJobs). Simuliert hier zwischen jedem Klick, damit ein
+    // zurueckgesetzter Bestaetigungsstatus nicht unbemerkt bliebe.
+    list = new FakeNode('ul');
+    renderJobsListInto(list, jobs);
+    buttons = findButtons(list, []);
+  }}
+  console.log(JSON.stringify({{
+    buttonCount: buttons.length,
+    fetchUrl: fetchCalls[0] ? fetchCalls[0].url : null,
+    fetchMethod: fetchCalls[0] ? fetchCalls[0].options.method : null,
+    fetchCallCount: fetchCalls.length,
+    buttonText: buttons[{button_index}].textContent,
+    fetchImportJobsCalled,
+    loadSourcesCalled,
+  }}));
+}}
+main();
+"""
+    result = subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True)
+    return json.loads(result.stdout)
+
+
+def test_error_job_shows_retry_and_cancel_buttons():
+    output = _run_render_jobs_list_error_job_click(0, clicks=0)
+    assert output["buttonCount"] == 2
+
+
+def test_error_job_retry_button_calls_reprocess_endpoint():
+    output = _run_render_jobs_list_error_job_click(0, clicks=1)
+    assert output["fetchUrl"] == "/api/sources/job-1/reprocess"
+    assert output["fetchMethod"] == "POST"
+
+
+def test_error_job_cancel_button_requires_second_click_to_confirm():
+    """Regressionstest (Nutzerwunsch 2026-08-23): "Erneut versuchen" kann
+    einen endgültig fehlgeschlagenen Import (z.B. Datei/URL nie erreichbar)
+    nicht retten - ohne einen Abbrechen-Weg blieb so ein Job für immer in
+    der Liste hängen. Erster Klick darf noch NICHTS auslösen (nur die
+    Bestätigung anzeigen), erst der zweite Klick löscht wirklich."""
+    output = _run_render_jobs_list_error_job_click(1, clicks=1)
+    assert output["fetchCallCount"] == 0
+    assert output["buttonText"] == "import.cancelImportConfirmButton"
+
+
+def test_error_job_cancel_button_deletes_source_on_second_click():
+    output = _run_render_jobs_list_error_job_click(1, clicks=2)
+    assert output["fetchUrl"] == "/api/sources/job-1"
+    assert output["fetchMethod"] == "DELETE"
+    assert output["fetchImportJobsCalled"] is True
+    assert output["loadSourcesCalled"] is True
+
+
 
 # Backlog (2026-08-03): der Broken-Links-Filter-Button in der Quellen-
 # übersicht soll komplett verschwinden (nicht nur sein Zähler-Badge), sobald

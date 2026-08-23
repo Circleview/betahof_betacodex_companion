@@ -325,6 +325,37 @@ function renderJobsListInto(list, jobs) {
         }
       });
       li.appendChild(retryBtn);
+
+      // Nutzerwunsch: "Erneut versuchen" kann einen fehlgeschlagenen Import
+      // nicht immer retten (z.B. wenn die zugrunde liegende Datei/URL nie
+      // erreichbar war - reprocess lehnt dann selbst sofort mit "keine
+      // Datei gefunden" ab). Ohne einen direkten Abbrechen-Weg blieb so ein
+      // Job für immer in dieser Liste hängen, das eigentliche Löschen war
+      // nur über die separate Quellenliste möglich. Zweistufige
+      // Bestätigung direkt am Link statt eines nativen confirm()-Dialogs,
+      // gleiches Muster wie beim Löschen einer Website-Quelle.
+      const cancelBtn = document.createElement('button');
+      cancelBtn.type = 'button';
+      cancelBtn.className = 'link-button';
+      cancelBtn.textContent = cancelConfirmPendingJobIds.has(job.id)
+        ? t('import.cancelImportConfirmButton')
+        : t('import.cancelImportButton');
+      cancelBtn.addEventListener('click', async () => {
+        if (!cancelConfirmPendingJobIds.has(job.id)) {
+          cancelConfirmPendingJobIds.add(job.id);
+          cancelBtn.textContent = t('import.cancelImportConfirmButton');
+          return;
+        }
+        cancelBtn.disabled = true;
+        try {
+          await fetch(`/api/sources/${job.id}`, { method: 'DELETE', headers: devUserHeaders() });
+          cancelConfirmPendingJobIds.delete(job.id);
+          await Promise.all([fetchImportJobs(), loadSources()]);
+        } finally {
+          cancelBtn.disabled = false;
+        }
+      });
+      li.appendChild(cancelBtn);
     } else {
       const step = document.createElement('span');
       step.className = 'jobs-list-step';
@@ -341,6 +372,14 @@ function renderJobsList(jobs) {
 }
 
 let previousJobIds = new Set();
+
+// Fix: der 3-Sekunden-Poll-Takt (pollBackgroundImportStatus) ruft
+// renderJobsListInto bei JEDEM Tick neu auf (baut die Buttons komplett neu
+// auf), das warf den "Sicher?"-Bestätigungsstatus des Abbrechen-Buttons
+// weg, bevor der zweite Klick möglich war, wenn dazwischen ein Poll-Takt
+// lag. Zustand deshalb hier auf Modul-Ebene statt in einer lokalen
+// Button-Closure - übersteht den Re-Render.
+const cancelConfirmPendingJobIds = new Set();
 
 async function fetchImportJobs() {
   if (!hasPflegerRole()) return;
