@@ -1454,6 +1454,47 @@ def _warm_up_local_models() -> None:
 # genau dieses eine Laden, statt selbst ein zweites zu starten.
 
 
+def _normalize_pflaeging_spelling_once() -> None:
+    """Einmalige Datenkorrektur (Nutzerwunsch 2026-08-25): "Niels Pfläging"
+    weicht in vorhandenen KI-Zusammenfassungen/Schlagworten von der
+    registrierten Autor:innen-Schreibweise "Niels Pflaeging" ab (siehe
+    data/authors.json) - dadurch griff der Keyword-Autor:innen-Merge im
+    Explore-Netzwerk (_build_knowledge_graph) für ihn nicht, anders als z.B.
+    bei "Jos de Blok". Läuft bei jedem Start, idempotent (ohne verbleibende
+    Treffer ein No-op) - bewusst als Startup-Schritt statt als manuelles
+    Einmal-Skript wie bei der Beta-Kodex-Schreibweise in v0.52.1, damit die
+    Korrektur automatisch über den normalen Deploy auf allen Umgebungen
+    ankommt, ohne direkten Datei-Zugriff auf die Produktionsdaten zu
+    benötigen. Ändert bewusst NUR summary_*/key_terms_* - der rohe
+    Quellentext/Titel bleibt unangetastet, das war nicht Teil des
+    Nutzerwunschs."""
+    OLD_SPELLING = "Pfläging"
+    NEW_SPELLING = "Pflaeging"
+    sources = _load_sources()
+    changed_source_ids = []
+    for source_id, entry in sources.items():
+        touched = False
+        for field in ("summary_de", "summary_en"):
+            value = entry.get(field)
+            if value and OLD_SPELLING in value:
+                entry[field] = value.replace(OLD_SPELLING, NEW_SPELLING)
+                touched = True
+        for field in ("key_terms_de", "key_terms_en"):
+            value = entry.get(field)
+            if value:
+                new_value = [term.replace(OLD_SPELLING, NEW_SPELLING) for term in value]
+                if new_value != value:
+                    entry[field] = new_value
+                    touched = True
+        if touched:
+            changed_source_ids.append(source_id)
+    if not changed_source_ids:
+        return
+    _save_sources(sources)
+    for source_id in changed_source_ids:
+        _register_all_terms(source_id, sources[source_id])
+
+
 def _start_background_workers() -> None:
     """Bündelt die INTERVALL-basierten Hintergrund-Threads + Einmal-
     Aufräumarbeiten beim Start (siehe Kommentar bei lifespan() weiter oben) -
@@ -1465,6 +1506,7 @@ def _start_background_workers() -> None:
     Ausführung beim Modul-Import: jede Aufräum-Funktion läuft weiterhin VOR
     dem zugehörigen Sweep-Thread."""
     users.ensure_bootstrap_admin(os.environ.get("SYSTEM_ADMIN_EMAIL", ""))
+    _normalize_pflaeging_spelling_once()
     threading.Thread(target=_url_health_check_worker, daemon=True).start()
     threading.Thread(target=_source_suggestion_discovery_worker, daemon=True).start()
     threading.Thread(target=_summary_backfill_worker, daemon=True).start()

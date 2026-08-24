@@ -5874,6 +5874,72 @@ def test_knowledge_graph_skips_self_loop_when_author_mentions_own_name(client):
     assert all(e["source"] != e["target"] for e in edges)
 
 
+def test_normalize_pflaeging_spelling_once_fixes_summary_and_key_terms(client):
+    """Nutzerwunsch (2026-08-25): "Niels Pfläging" wich in vorhandenen
+    Zusammenfassungen/Schlagworten von der registrierten Autor:innen-
+    Schreibweise "Niels Pflaeging" ab - genau wie beim Jos-de-Blok-Fall
+    verhinderte das den Keyword-Autor:innen-Merge im Explore-Netzwerk."""
+    source_id = client.post("/api/sources", json={"title": "Q", "text": "Text."}).json()["id"]
+    sources = main_module._load_sources()
+    sources[source_id]["summary_de"] = "Ein Text von Niels Pfläging."
+    sources[source_id]["summary_en"] = "A text by Niels Pfläging."
+    sources[source_id]["key_terms_de"] = ["Niels Pfläging", "Selbstorganisation"]
+    sources[source_id]["key_terms_en"] = ["Niels Pfläging"]
+    main_module._save_sources(sources)
+    main_module._register_all_terms(source_id, sources[source_id])
+
+    main_module._normalize_pflaeging_spelling_once()
+
+    fixed = main_module._load_sources()[source_id]
+    assert fixed["summary_de"] == "Ein Text von Niels Pflaeging."
+    assert fixed["summary_en"] == "A text by Niels Pflaeging."
+    assert fixed["key_terms_de"] == ["Niels Pflaeging", "Selbstorganisation"]
+    assert fixed["key_terms_en"] == ["Niels Pflaeging"]
+
+    term_names = {t["term"] for t in terms.list_terms()}
+    assert "Niels Pflaeging" in term_names
+    assert "Niels Pfläging" not in term_names
+
+
+def test_normalize_pflaeging_spelling_once_leaves_raw_text_and_title_untouched(client):
+    source_id = client.post(
+        "/api/sources", json={"title": "Niels Pfläging im Titel", "text": "Zitat von Niels Pfläging im Text."}
+    ).json()["id"]
+    sources = main_module._load_sources()
+    sources[source_id]["summary_de"] = "Niels Pfläging erklärt etwas."
+    main_module._save_sources(sources)
+
+    main_module._normalize_pflaeging_spelling_once()
+
+    fixed = main_module._load_sources()[source_id]
+    assert fixed["summary_de"] == "Niels Pflaeging erklärt etwas."
+    assert fixed["title"] == "Niels Pfläging im Titel"
+    assert "Niels Pfläging" in fixed["text"]
+
+
+def test_normalize_pflaeging_spelling_once_is_idempotent(client):
+    source_id = client.post("/api/sources", json={"title": "Q", "text": "Text."}).json()["id"]
+    sources = main_module._load_sources()
+    sources[source_id]["summary_de"] = "Von Niels Pfläging."
+    main_module._save_sources(sources)
+
+    main_module._normalize_pflaeging_spelling_once()
+    main_module._normalize_pflaeging_spelling_once()
+
+    assert main_module._load_sources()[source_id]["summary_de"] == "Von Niels Pflaeging."
+
+
+def test_normalize_pflaeging_spelling_once_does_nothing_without_matches(client):
+    source_id = client.post("/api/sources", json={"title": "Q", "text": "Text."}).json()["id"]
+    sources = main_module._load_sources()
+    sources[source_id]["summary_de"] = "Unrelated summary."
+    main_module._save_sources(sources)
+
+    main_module._normalize_pflaeging_spelling_once()
+
+    assert main_module._load_sources()[source_id]["summary_de"] == "Unrelated summary."
+
+
 def test_knowledge_graph_includes_author_photo_url(client):
     client.post("/api/sources", json={"title": "Q1", "text": "Text.", "authors": ["Foto Autor"]})
     client.put("/api/authors/Foto Autor", json={"photo_url": "https://example.org/foto.jpg"})
