@@ -576,13 +576,20 @@ def test_transcribe_chunk_once_passes_prompt_to_whisper():
     assert client.audio.transcriptions.create.call_args.kwargs["prompt"] == "Niels Pflaeging, Silke Hermann"
 
 
-def test_transcribe_chunk_once_passes_prompt_to_diarize_model():
+def test_transcribe_chunk_once_omits_prompt_for_diarize_model():
+    """Fix (real reproduziert auf Produktion, 2026-08-25): gpt-4o-transcribe-
+    diarize lehnt JEDEN gesetzten Prompt pauschal mit 400 ab ("Prompt is not
+    supported for diarization models") - anders als bei whisper-1 oben gibt
+    es hier keinen Vokabular-Hinweis-Mechanismus. Der vorherige Test hier
+    prüfte fälschlich das Gegenteil (an einem gemockten Client unbemerkt),
+    bis ein echter Upload in Produktion mit eingetragenen Autor:innen daran
+    scheiterte."""
     client = MagicMock()
     client.audio.transcriptions.create.return_value = _fake_diarized_result([("A", "Hallo.")])
     with patch.object(extraction, "_get_openai_client", return_value=client):
         _transcribe_chunk_once(b"fake-mp3-bytes", "episode.mp3", prompt="Niels Pflaeging")
 
-    assert client.audio.transcriptions.create.call_args.kwargs["prompt"] == "Niels Pflaeging"
+    assert "prompt" not in client.audio.transcriptions.create.call_args.kwargs
 
 
 def test_transcribe_chunk_once_omits_prompt_kwarg_when_not_given():

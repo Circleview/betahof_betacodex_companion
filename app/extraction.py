@@ -258,7 +258,8 @@ def _transcribe_chunk_once(data: bytes, filename: str, prompt: str | None = None
     prompt: optionaler Vokabular-Hinweis (siehe transcribe_audio) - OpenAIs
     Transkriptions-Endpunkt nutzt einen mitgegebenen Prompt u.a. dafür,
     unbekannte/seltene Eigennamen eher in der dort vorkommenden Schreibweise
-    zu erkennen, statt sie phonetisch zu verballhornen."""
+    zu erkennen, statt sie phonetisch zu verballhornen. Gilt NUR für
+    whisper-1 - siehe Fix-Kommentar unten bei gpt-4o-transcribe-diarize."""
     extension = Path(filename).suffix.lower()
     client = _get_openai_client()
     # Die SDK-Signatur erwartet für "prompt" str | Omit (kein None) - ohne
@@ -266,12 +267,19 @@ def _transcribe_chunk_once(data: bytes, filename: str, prompt: str | None = None
     # explizit None zu übergeben.
     prompt_kwargs = {"prompt": prompt} if prompt else {}
     if extension in _DIARIZE_EXTENSIONS:
+        # Fix (real reproduziert auf Produktion, 2026-08-25): gpt-4o-
+        # transcribe-diarize lehnt JEDEN gesetzten Prompt pauschal mit 400
+        # ab ("Prompt is not supported for diarization models") - anders
+        # als bei whisper-1 unten gibt es hier keinen Vokabular-Hinweis-
+        # Mechanismus, prompt_kwargs wird deshalb bewusst NICHT
+        # durchgereicht. Betraf praktisch jede Audiodatei mit mindestens
+        # einer/einem eingetragenen Autor:in, seit dem Vokabular-Hinweis-
+        # Feature (v0.52.0).
         result = client.audio.transcriptions.create(
             model="gpt-4o-transcribe-diarize",
             file=(filename, data),
             response_format="diarized_json",
             chunking_strategy="auto",
-            **prompt_kwargs,
         )
         return _format_diarized_text(result)
 
