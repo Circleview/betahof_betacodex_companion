@@ -11,6 +11,13 @@ MANY_URLS = [f"https://beispiel.org/{i}" for i in range(5)]
 
 def test_index_entry_indexes_each_discovered_url(tmp_path, monkeypatch):
     monkeypatch.setattr(vectorstore, "DB_PATH", tmp_path / "chroma")
+    # Fix (2026-08-25, siehe app/vectorstore.py:_get_client()): _client wird
+    # seit dem Client-Wiederverwendungs-Fix nicht mehr automatisch mit
+    # DB_PATH neu erzeugt - ohne diesen Reset würde _get_web_collection()
+    # einen ggf. schon von einem anderen Test geöffneten (und auf dessen
+    # tmp_path zeigenden) Client wiederverwenden, statt den hier gesetzten
+    # DB_PATH zu berücksichtigen.
+    monkeypatch.setattr(vectorstore, "_client", None)
     monkeypatch.setattr(vectorstore, "_web_collection", None)
     monkeypatch.setattr(web_index, "WEB_INDEX_FILE", tmp_path / "web_index.json")
 
@@ -37,6 +44,13 @@ def test_index_entry_indexes_each_discovered_url(tmp_path, monkeypatch):
 
 def test_index_entry_stores_extracted_date_per_page(tmp_path, monkeypatch):
     monkeypatch.setattr(vectorstore, "DB_PATH", tmp_path / "chroma")
+    # Fix (2026-08-25, siehe app/vectorstore.py:_get_client()): _client wird
+    # seit dem Client-Wiederverwendungs-Fix nicht mehr automatisch mit
+    # DB_PATH neu erzeugt - ohne diesen Reset würde _get_web_collection()
+    # einen ggf. schon von einem anderen Test geöffneten (und auf dessen
+    # tmp_path zeigenden) Client wiederverwenden, statt den hier gesetzten
+    # DB_PATH zu berücksichtigen.
+    monkeypatch.setattr(vectorstore, "_client", None)
     monkeypatch.setattr(vectorstore, "_web_collection", None)
     monkeypatch.setattr(web_index, "WEB_INDEX_FILE", tmp_path / "web_index.json")
 
@@ -64,6 +78,13 @@ def test_index_entry_stores_extracted_authors_in_chunk_metadata(tmp_path, monkey
     # dadurch berechtigt eine Antwort auf ausdrücklich autor:innen-bezogene
     # Fragen ("...nach Jan Krims?").
     monkeypatch.setattr(vectorstore, "DB_PATH", tmp_path / "chroma")
+    # Fix (2026-08-25, siehe app/vectorstore.py:_get_client()): _client wird
+    # seit dem Client-Wiederverwendungs-Fix nicht mehr automatisch mit
+    # DB_PATH neu erzeugt - ohne diesen Reset würde _get_web_collection()
+    # einen ggf. schon von einem anderen Test geöffneten (und auf dessen
+    # tmp_path zeigenden) Client wiederverwenden, statt den hier gesetzten
+    # DB_PATH zu berücksichtigen.
+    monkeypatch.setattr(vectorstore, "_client", None)
     monkeypatch.setattr(vectorstore, "_web_collection", None)
     monkeypatch.setattr(web_index, "WEB_INDEX_FILE", tmp_path / "web_index.json")
 
@@ -87,6 +108,13 @@ def test_index_entry_omits_authors_key_when_none_extracted(tmp_path, monkeypatch
     # app/main.py:_store_chunks) - der Schlüssel muss bei keinem erkannten
     # Autor ganz weggelassen werden statt "authors": [].
     monkeypatch.setattr(vectorstore, "DB_PATH", tmp_path / "chroma")
+    # Fix (2026-08-25, siehe app/vectorstore.py:_get_client()): _client wird
+    # seit dem Client-Wiederverwendungs-Fix nicht mehr automatisch mit
+    # DB_PATH neu erzeugt - ohne diesen Reset würde _get_web_collection()
+    # einen ggf. schon von einem anderen Test geöffneten (und auf dessen
+    # tmp_path zeigenden) Client wiederverwenden, statt den hier gesetzten
+    # DB_PATH zu berücksichtigen.
+    monkeypatch.setattr(vectorstore, "_client", None)
     monkeypatch.setattr(vectorstore, "_web_collection", None)
     monkeypatch.setattr(web_index, "WEB_INDEX_FILE", tmp_path / "web_index.json")
 
@@ -105,6 +133,13 @@ def test_index_entry_omits_authors_key_when_none_extracted(tmp_path, monkeypatch
 
 def test_index_entry_skips_already_indexed_urls(tmp_path, monkeypatch):
     monkeypatch.setattr(vectorstore, "DB_PATH", tmp_path / "chroma")
+    # Fix (2026-08-25, siehe app/vectorstore.py:_get_client()): _client wird
+    # seit dem Client-Wiederverwendungs-Fix nicht mehr automatisch mit
+    # DB_PATH neu erzeugt - ohne diesen Reset würde _get_web_collection()
+    # einen ggf. schon von einem anderen Test geöffneten (und auf dessen
+    # tmp_path zeigenden) Client wiederverwenden, statt den hier gesetzten
+    # DB_PATH zu berücksichtigen.
+    monkeypatch.setattr(vectorstore, "_client", None)
     monkeypatch.setattr(vectorstore, "_web_collection", None)
     monkeypatch.setattr(web_index, "WEB_INDEX_FILE", tmp_path / "web_index.json")
     web_index.upsert_page(
@@ -133,6 +168,13 @@ def test_index_entry_skips_already_indexed_urls(tmp_path, monkeypatch):
 
 def test_index_entry_respects_max_pages(tmp_path, monkeypatch):
     monkeypatch.setattr(vectorstore, "DB_PATH", tmp_path / "chroma")
+    # Fix (2026-08-25, siehe app/vectorstore.py:_get_client()): _client wird
+    # seit dem Client-Wiederverwendungs-Fix nicht mehr automatisch mit
+    # DB_PATH neu erzeugt - ohne diesen Reset würde _get_web_collection()
+    # einen ggf. schon von einem anderen Test geöffneten (und auf dessen
+    # tmp_path zeigenden) Client wiederverwenden, statt den hier gesetzten
+    # DB_PATH zu berücksichtigen.
+    monkeypatch.setattr(vectorstore, "_client", None)
     monkeypatch.setattr(vectorstore, "_web_collection", None)
     monkeypatch.setattr(web_index, "WEB_INDEX_FILE", tmp_path / "web_index.json")
 
@@ -149,6 +191,13 @@ def test_index_entry_respects_max_pages(tmp_path, monkeypatch):
 
 def test_index_entry_skips_urls_with_empty_extracted_text(tmp_path, monkeypatch):
     monkeypatch.setattr(vectorstore, "DB_PATH", tmp_path / "chroma")
+    # Fix (2026-08-25, siehe app/vectorstore.py:_get_client()): _client wird
+    # seit dem Client-Wiederverwendungs-Fix nicht mehr automatisch mit
+    # DB_PATH neu erzeugt - ohne diesen Reset würde _get_web_collection()
+    # einen ggf. schon von einem anderen Test geöffneten (und auf dessen
+    # tmp_path zeigenden) Client wiederverwenden, statt den hier gesetzten
+    # DB_PATH zu berücksichtigen.
+    monkeypatch.setattr(vectorstore, "_client", None)
     monkeypatch.setattr(vectorstore, "_web_collection", None)
     monkeypatch.setattr(web_index, "WEB_INDEX_FILE", tmp_path / "web_index.json")
 
@@ -169,6 +218,13 @@ def test_index_entry_skips_urls_with_lorem_ipsum_placeholder_text(tmp_path, monk
     # weiterhin unter den indizierten Seiten ("selbst wenn es mathematisch
     # korrekt ist, ergibt das aus Nutzersicht keinen Sinn").
     monkeypatch.setattr(vectorstore, "DB_PATH", tmp_path / "chroma")
+    # Fix (2026-08-25, siehe app/vectorstore.py:_get_client()): _client wird
+    # seit dem Client-Wiederverwendungs-Fix nicht mehr automatisch mit
+    # DB_PATH neu erzeugt - ohne diesen Reset würde _get_web_collection()
+    # einen ggf. schon von einem anderen Test geöffneten (und auf dessen
+    # tmp_path zeigenden) Client wiederverwenden, statt den hier gesetzten
+    # DB_PATH zu berücksichtigen.
+    monkeypatch.setattr(vectorstore, "_client", None)
     monkeypatch.setattr(vectorstore, "_web_collection", None)
     monkeypatch.setattr(web_index, "WEB_INDEX_FILE", tmp_path / "web_index.json")
 
@@ -199,6 +255,13 @@ def test_index_entry_skips_urls_with_lorem_ipsum_placeholder_text(tmp_path, monk
 
 def test_index_entry_continues_after_extraction_error_for_one_url(tmp_path, monkeypatch):
     monkeypatch.setattr(vectorstore, "DB_PATH", tmp_path / "chroma")
+    # Fix (2026-08-25, siehe app/vectorstore.py:_get_client()): _client wird
+    # seit dem Client-Wiederverwendungs-Fix nicht mehr automatisch mit
+    # DB_PATH neu erzeugt - ohne diesen Reset würde _get_web_collection()
+    # einen ggf. schon von einem anderen Test geöffneten (und auf dessen
+    # tmp_path zeigenden) Client wiederverwenden, statt den hier gesetzten
+    # DB_PATH zu berücksichtigen.
+    monkeypatch.setattr(vectorstore, "_client", None)
     monkeypatch.setattr(vectorstore, "_web_collection", None)
     monkeypatch.setattr(web_index, "WEB_INDEX_FILE", tmp_path / "web_index.json")
 
@@ -225,6 +288,13 @@ def test_index_entry_continues_after_extraction_error_for_one_url(tmp_path, monk
 
 def test_index_entry_prefers_post_sitemap_over_full_sitemap_search(tmp_path, monkeypatch):
     monkeypatch.setattr(vectorstore, "DB_PATH", tmp_path / "chroma")
+    # Fix (2026-08-25, siehe app/vectorstore.py:_get_client()): _client wird
+    # seit dem Client-Wiederverwendungs-Fix nicht mehr automatisch mit
+    # DB_PATH neu erzeugt - ohne diesen Reset würde _get_web_collection()
+    # einen ggf. schon von einem anderen Test geöffneten (und auf dessen
+    # tmp_path zeigenden) Client wiederverwenden, statt den hier gesetzten
+    # DB_PATH zu berücksichtigen.
+    monkeypatch.setattr(vectorstore, "_client", None)
     monkeypatch.setattr(vectorstore, "_web_collection", None)
     monkeypatch.setattr(web_index, "WEB_INDEX_FILE", tmp_path / "web_index.json")
 
@@ -253,6 +323,13 @@ def test_index_entry_prefers_post_sitemap_over_full_sitemap_search(tmp_path, mon
 
 def test_index_entry_filters_post_sitemap_urls_by_url_prefix(tmp_path, monkeypatch):
     monkeypatch.setattr(vectorstore, "DB_PATH", tmp_path / "chroma")
+    # Fix (2026-08-25, siehe app/vectorstore.py:_get_client()): _client wird
+    # seit dem Client-Wiederverwendungs-Fix nicht mehr automatisch mit
+    # DB_PATH neu erzeugt - ohne diesen Reset würde _get_web_collection()
+    # einen ggf. schon von einem anderen Test geöffneten (und auf dessen
+    # tmp_path zeigenden) Client wiederverwenden, statt den hier gesetzten
+    # DB_PATH zu berücksichtigen.
+    monkeypatch.setattr(vectorstore, "_client", None)
     monkeypatch.setattr(vectorstore, "_web_collection", None)
     monkeypatch.setattr(web_index, "WEB_INDEX_FILE", tmp_path / "web_index.json")
 
@@ -287,6 +364,13 @@ def test_index_entry_matches_post_sitemap_urls_despite_www_prefix_mismatch(tmp_p
     # ungefilterte Sitemap-Suche zurückgefallen (siehe Kommentar in
     # _url_path_matches_prefix).
     monkeypatch.setattr(vectorstore, "DB_PATH", tmp_path / "chroma")
+    # Fix (2026-08-25, siehe app/vectorstore.py:_get_client()): _client wird
+    # seit dem Client-Wiederverwendungs-Fix nicht mehr automatisch mit
+    # DB_PATH neu erzeugt - ohne diesen Reset würde _get_web_collection()
+    # einen ggf. schon von einem anderen Test geöffneten (und auf dessen
+    # tmp_path zeigenden) Client wiederverwenden, statt den hier gesetzten
+    # DB_PATH zu berücksichtigen.
+    monkeypatch.setattr(vectorstore, "_client", None)
     monkeypatch.setattr(vectorstore, "_web_collection", None)
     monkeypatch.setattr(web_index, "WEB_INDEX_FILE", tmp_path / "web_index.json")
 
@@ -314,6 +398,13 @@ def test_index_entry_matches_post_sitemap_urls_despite_www_prefix_mismatch(tmp_p
 
 def test_index_entry_falls_back_to_full_sitemap_when_post_sitemap_empty(tmp_path, monkeypatch):
     monkeypatch.setattr(vectorstore, "DB_PATH", tmp_path / "chroma")
+    # Fix (2026-08-25, siehe app/vectorstore.py:_get_client()): _client wird
+    # seit dem Client-Wiederverwendungs-Fix nicht mehr automatisch mit
+    # DB_PATH neu erzeugt - ohne diesen Reset würde _get_web_collection()
+    # einen ggf. schon von einem anderen Test geöffneten (und auf dessen
+    # tmp_path zeigenden) Client wiederverwenden, statt den hier gesetzten
+    # DB_PATH zu berücksichtigen.
+    monkeypatch.setattr(vectorstore, "_client", None)
     monkeypatch.setattr(vectorstore, "_web_collection", None)
     monkeypatch.setattr(web_index, "WEB_INDEX_FILE", tmp_path / "web_index.json")
 
@@ -334,6 +425,13 @@ def test_index_entry_falls_back_to_full_sitemap_when_post_sitemap_empty(tmp_path
 
 def test_index_entry_falls_back_to_full_sitemap_when_post_sitemap_fails(tmp_path, monkeypatch):
     monkeypatch.setattr(vectorstore, "DB_PATH", tmp_path / "chroma")
+    # Fix (2026-08-25, siehe app/vectorstore.py:_get_client()): _client wird
+    # seit dem Client-Wiederverwendungs-Fix nicht mehr automatisch mit
+    # DB_PATH neu erzeugt - ohne diesen Reset würde _get_web_collection()
+    # einen ggf. schon von einem anderen Test geöffneten (und auf dessen
+    # tmp_path zeigenden) Client wiederverwenden, statt den hier gesetzten
+    # DB_PATH zu berücksichtigen.
+    monkeypatch.setattr(vectorstore, "_client", None)
     monkeypatch.setattr(vectorstore, "_web_collection", None)
     monkeypatch.setattr(web_index, "WEB_INDEX_FILE", tmp_path / "web_index.json")
 
@@ -354,6 +452,13 @@ def test_index_entry_falls_back_to_full_sitemap_when_post_sitemap_fails(tmp_path
 
 def test_index_entry_returns_zero_when_sitemap_search_fails(tmp_path, monkeypatch):
     monkeypatch.setattr(vectorstore, "DB_PATH", tmp_path / "chroma")
+    # Fix (2026-08-25, siehe app/vectorstore.py:_get_client()): _client wird
+    # seit dem Client-Wiederverwendungs-Fix nicht mehr automatisch mit
+    # DB_PATH neu erzeugt - ohne diesen Reset würde _get_web_collection()
+    # einen ggf. schon von einem anderen Test geöffneten (und auf dessen
+    # tmp_path zeigenden) Client wiederverwenden, statt den hier gesetzten
+    # DB_PATH zu berücksichtigen.
+    monkeypatch.setattr(vectorstore, "_client", None)
     monkeypatch.setattr(vectorstore, "_web_collection", None)
     monkeypatch.setattr(web_index, "WEB_INDEX_FILE", tmp_path / "web_index.json")
 
@@ -369,6 +474,13 @@ def test_index_entry_returns_zero_when_sitemap_search_fails(tmp_path, monkeypatc
 
 def test_index_entry_sets_selection_mode_negativ_on_healthy_yield(tmp_path, monkeypatch):
     monkeypatch.setattr(vectorstore, "DB_PATH", tmp_path / "chroma")
+    # Fix (2026-08-25, siehe app/vectorstore.py:_get_client()): _client wird
+    # seit dem Client-Wiederverwendungs-Fix nicht mehr automatisch mit
+    # DB_PATH neu erzeugt - ohne diesen Reset würde _get_web_collection()
+    # einen ggf. schon von einem anderen Test geöffneten (und auf dessen
+    # tmp_path zeigenden) Client wiederverwenden, statt den hier gesetzten
+    # DB_PATH zu berücksichtigen.
+    monkeypatch.setattr(vectorstore, "_client", None)
     monkeypatch.setattr(vectorstore, "_web_collection", None)
     monkeypatch.setattr(web_index, "WEB_INDEX_FILE", tmp_path / "web_index.json")
     monkeypatch.setattr(web_allowlist, "WEB_ALLOWLIST_FILE", tmp_path / "web_allowlist.json")
@@ -391,6 +503,13 @@ def test_index_entry_sets_selection_mode_negativ_on_healthy_yield(tmp_path, monk
 
 def test_index_entry_switches_to_positive_selection_when_too_few_urls_discovered(tmp_path, monkeypatch):
     monkeypatch.setattr(vectorstore, "DB_PATH", tmp_path / "chroma")
+    # Fix (2026-08-25, siehe app/vectorstore.py:_get_client()): _client wird
+    # seit dem Client-Wiederverwendungs-Fix nicht mehr automatisch mit
+    # DB_PATH neu erzeugt - ohne diesen Reset würde _get_web_collection()
+    # einen ggf. schon von einem anderen Test geöffneten (und auf dessen
+    # tmp_path zeigenden) Client wiederverwenden, statt den hier gesetzten
+    # DB_PATH zu berücksichtigen.
+    monkeypatch.setattr(vectorstore, "_client", None)
     monkeypatch.setattr(vectorstore, "_web_collection", None)
     monkeypatch.setattr(web_index, "WEB_INDEX_FILE", tmp_path / "web_index.json")
     monkeypatch.setattr(web_allowlist, "WEB_ALLOWLIST_FILE", tmp_path / "web_allowlist.json")
@@ -425,6 +544,13 @@ def test_index_entry_switches_to_positive_selection_when_too_few_urls_discovered
 
 def test_positive_selection_ranks_candidates_by_distance_to_curated_corpus(tmp_path, monkeypatch):
     monkeypatch.setattr(vectorstore, "DB_PATH", tmp_path / "chroma")
+    # Fix (2026-08-25, siehe app/vectorstore.py:_get_client()): _client wird
+    # seit dem Client-Wiederverwendungs-Fix nicht mehr automatisch mit
+    # DB_PATH neu erzeugt - ohne diesen Reset würde _get_web_collection()
+    # einen ggf. schon von einem anderen Test geöffneten (und auf dessen
+    # tmp_path zeigenden) Client wiederverwenden, statt den hier gesetzten
+    # DB_PATH zu berücksichtigen.
+    monkeypatch.setattr(vectorstore, "_client", None)
     monkeypatch.setattr(vectorstore, "_web_collection", None)
     monkeypatch.setattr(web_index, "WEB_INDEX_FILE", tmp_path / "web_index.json")
     monkeypatch.setattr(web_allowlist, "WEB_ALLOWLIST_FILE", tmp_path / "web_allowlist.json")
@@ -465,6 +591,13 @@ def test_positive_selection_does_not_suggest_lorem_ipsum_candidates(tmp_path, mo
     # Pfleger:in müsste sie sonst einzeln manuell ablehnen, obwohl sie
     # eindeutig identifizierbarer Platzhaltertext sind.
     monkeypatch.setattr(vectorstore, "DB_PATH", tmp_path / "chroma")
+    # Fix (2026-08-25, siehe app/vectorstore.py:_get_client()): _client wird
+    # seit dem Client-Wiederverwendungs-Fix nicht mehr automatisch mit
+    # DB_PATH neu erzeugt - ohne diesen Reset würde _get_web_collection()
+    # einen ggf. schon von einem anderen Test geöffneten (und auf dessen
+    # tmp_path zeigenden) Client wiederverwenden, statt den hier gesetzten
+    # DB_PATH zu berücksichtigen.
+    monkeypatch.setattr(vectorstore, "_client", None)
     monkeypatch.setattr(vectorstore, "_web_collection", None)
     monkeypatch.setattr(web_index, "WEB_INDEX_FILE", tmp_path / "web_index.json")
     monkeypatch.setattr(web_allowlist, "WEB_ALLOWLIST_FILE", tmp_path / "web_allowlist.json")
@@ -496,6 +629,13 @@ def test_positive_selection_does_not_suggest_lorem_ipsum_candidates(tmp_path, mo
 
 def test_positive_selection_skips_already_known_urls_on_repeated_runs(tmp_path, monkeypatch):
     monkeypatch.setattr(vectorstore, "DB_PATH", tmp_path / "chroma")
+    # Fix (2026-08-25, siehe app/vectorstore.py:_get_client()): _client wird
+    # seit dem Client-Wiederverwendungs-Fix nicht mehr automatisch mit
+    # DB_PATH neu erzeugt - ohne diesen Reset würde _get_web_collection()
+    # einen ggf. schon von einem anderen Test geöffneten (und auf dessen
+    # tmp_path zeigenden) Client wiederverwenden, statt den hier gesetzten
+    # DB_PATH zu berücksichtigen.
+    monkeypatch.setattr(vectorstore, "_client", None)
     monkeypatch.setattr(vectorstore, "_web_collection", None)
     monkeypatch.setattr(web_index, "WEB_INDEX_FILE", tmp_path / "web_index.json")
     monkeypatch.setattr(web_allowlist, "WEB_ALLOWLIST_FILE", tmp_path / "web_allowlist.json")
@@ -527,6 +667,13 @@ def test_positive_selection_skips_already_known_urls_on_repeated_runs(tmp_path, 
 
 def test_positive_selection_does_not_resurrect_rejected_candidates(tmp_path, monkeypatch):
     monkeypatch.setattr(vectorstore, "DB_PATH", tmp_path / "chroma")
+    # Fix (2026-08-25, siehe app/vectorstore.py:_get_client()): _client wird
+    # seit dem Client-Wiederverwendungs-Fix nicht mehr automatisch mit
+    # DB_PATH neu erzeugt - ohne diesen Reset würde _get_web_collection()
+    # einen ggf. schon von einem anderen Test geöffneten (und auf dessen
+    # tmp_path zeigenden) Client wiederverwenden, statt den hier gesetzten
+    # DB_PATH zu berücksichtigen.
+    monkeypatch.setattr(vectorstore, "_client", None)
     monkeypatch.setattr(vectorstore, "_web_collection", None)
     monkeypatch.setattr(web_index, "WEB_INDEX_FILE", tmp_path / "web_index.json")
     monkeypatch.setattr(web_allowlist, "WEB_ALLOWLIST_FILE", tmp_path / "web_allowlist.json")
@@ -553,6 +700,13 @@ def test_positive_selection_does_not_resurrect_rejected_candidates(tmp_path, mon
 
 def test_index_approved_candidate_indexes_the_page(tmp_path, monkeypatch):
     monkeypatch.setattr(vectorstore, "DB_PATH", tmp_path / "chroma")
+    # Fix (2026-08-25, siehe app/vectorstore.py:_get_client()): _client wird
+    # seit dem Client-Wiederverwendungs-Fix nicht mehr automatisch mit
+    # DB_PATH neu erzeugt - ohne diesen Reset würde _get_web_collection()
+    # einen ggf. schon von einem anderen Test geöffneten (und auf dessen
+    # tmp_path zeigenden) Client wiederverwenden, statt den hier gesetzten
+    # DB_PATH zu berücksichtigen.
+    monkeypatch.setattr(vectorstore, "_client", None)
     monkeypatch.setattr(vectorstore, "_web_collection", None)
     monkeypatch.setattr(web_index, "WEB_INDEX_FILE", tmp_path / "web_index.json")
 
@@ -570,6 +724,13 @@ def test_index_approved_candidate_indexes_the_page(tmp_path, monkeypatch):
 
 def test_index_approved_candidate_returns_false_on_extraction_failure(tmp_path, monkeypatch):
     monkeypatch.setattr(vectorstore, "DB_PATH", tmp_path / "chroma")
+    # Fix (2026-08-25, siehe app/vectorstore.py:_get_client()): _client wird
+    # seit dem Client-Wiederverwendungs-Fix nicht mehr automatisch mit
+    # DB_PATH neu erzeugt - ohne diesen Reset würde _get_web_collection()
+    # einen ggf. schon von einem anderen Test geöffneten (und auf dessen
+    # tmp_path zeigenden) Client wiederverwenden, statt den hier gesetzten
+    # DB_PATH zu berücksichtigen.
+    monkeypatch.setattr(vectorstore, "_client", None)
     monkeypatch.setattr(vectorstore, "_web_collection", None)
     monkeypatch.setattr(web_index, "WEB_INDEX_FILE", tmp_path / "web_index.json")
 

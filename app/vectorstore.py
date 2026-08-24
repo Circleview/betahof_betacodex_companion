@@ -7,21 +7,41 @@ DB_PATH = Path(__file__).resolve().parent.parent / "data" / "chroma"
 COLLECTION_NAME = "betacodex_chunks"
 
 _client = None
+_client_lock = threading.Lock()
 _collection = None
 _collection_lock = threading.Lock()
 
 
+def _get_client():
+    global _client
+    # Eigener Lock/eigene Funktion (Fix 2026-08-25, siehe tests/test_api.py:
+    # client-Fixture): Client- und Collection-Erzeugung waren bisher in
+    # _get_collection() verschmolzen, wodurch die Test-Suite (die _collection
+    # zwecks Isolation pro Test zurücksetzt) bei JEDEM Test einen kompletten
+    # neuen chromadb.PersistentClient erzeugte - dessen native Rust-Bindings
+    # starten dabei einen eigenen, nie geschlossenen Thread-Pool. Bei ~350
+    # Tests sammelten sich so über 1500 nie freigegebene Betriebssystem-
+    # Threads an, bis die Suite praktisch stillstand. Der Client wird jetzt
+    # unabhängig von der Collection nur einmal erzeugt und danach
+    # wiederverwendet (Produktionsverhalten unverändert: dort werden beide
+    # ohnehin nur einmal pro Prozess-Laufzeit gesetzt).
+    if _client is None:
+        with _client_lock:
+            if _client is None:
+                DB_PATH.mkdir(parents=True, exist_ok=True)
+                _client = chromadb.PersistentClient(path=str(DB_PATH))
+    return _client
+
+
 def _get_collection():
-    global _client, _collection
+    global _collection
     # Lock aus demselben Grund wie embeddings._get_model: preload() läuft
     # in einem Hintergrund-Thread (siehe app/main.py), eine echte Anfrage
     # kann also währenddessen gleichzeitig hier ankommen.
     if _collection is None:
         with _collection_lock:
             if _collection is None:
-                DB_PATH.mkdir(parents=True, exist_ok=True)
-                _client = chromadb.PersistentClient(path=str(DB_PATH))
-                _collection = _client.get_or_create_collection(COLLECTION_NAME)
+                _collection = _get_client().get_or_create_collection(COLLECTION_NAME)
     return _collection
 
 
@@ -71,8 +91,11 @@ def _get_web_collection():
     if _web_collection is None:
         with _web_collection_lock:
             if _web_collection is None:
-                client = chromadb.PersistentClient(path=str(DB_PATH))
-                _web_collection = client.get_or_create_collection(WEB_FALLBACK_COLLECTION_NAME)
+                # Nutzt seit dem Client/Collection-Fix (siehe _get_client()
+                # oben) denselben Client wie die normale Collection, statt
+                # einen zweiten, unabhängigen PersistentClient für denselben
+                # DB_PATH zu erzeugen (unnötiger doppelter nativer Thread-Pool).
+                _web_collection = _get_client().get_or_create_collection(WEB_FALLBACK_COLLECTION_NAME)
     return _web_collection
 
 

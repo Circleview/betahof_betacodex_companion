@@ -9,6 +9,12 @@ def _normalize(name: str) -> str:
     return " ".join(name.strip().split()).lower()
 
 
+def normalize_name(name: str) -> str:
+    """Öffentlicher Zugriff auf _normalize() für Abgleiche außerhalb dieses
+    Moduls (z.B. app/main.py:_build_knowledge_graph gegen Schlagworte)."""
+    return _normalize(name)
+
+
 def _load() -> dict:
     if AUTHORS_FILE.exists():
         return json.loads(AUTHORS_FILE.read_text())

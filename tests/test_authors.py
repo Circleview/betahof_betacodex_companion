@@ -123,3 +123,7 @@ def test_find_mentioned_can_match_multiple_authors(tmp_path, monkeypatch):
 
     result = authors.find_mentioned("Was verbindet Peter Pröll und Niels Pfläging?")
     assert set(result) == {"Peter Pröll", "Niels Pfläging"}
+
+
+def test_normalize_name_ignores_casing_and_whitespace():
+    assert authors.normalize_name("  Jos   de Blok ") == authors.normalize_name("jos de blok")

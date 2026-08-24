@@ -2113,6 +2113,14 @@ function renderSourceList(sources, options = {}) {
       textSpan.appendChild(document.createTextNode(' '));
       textSpan.appendChild(badge);
     }
+    if (options.mentionOnlyIds?.has(s.id)) {
+      const badge = document.createElement('span');
+      badge.className = 'restricted-badge';
+      badge.textContent = t('import.mentionOnlyBadge');
+      badge.title = t('import.mentionOnlyBadgeTitle', { name: options.mentionOnlyName || '' });
+      textSpan.appendChild(document.createTextNode(' '));
+      textSpan.appendChild(badge);
+    }
     header.appendChild(textSpan);
 
     const actions = document.createElement('span');
@@ -2268,20 +2276,40 @@ function scrollToFilteredResults() {
 let activeFilter = null;
 
 async function applyAuthorFilter(name) {
-  const res = await fetch('/api/authors', { headers: { 'X-Lang': getLang() } });
-  const authorEntries = await res.json();
+  // Nutzerwunsch (2026-08-24): Der Klick auf einen im Explore-Netzwerk mit
+  // einem Schlagwort zusammengeführten Autor:innen-Knoten (siehe app/
+  // main.py:_build_knowledge_graph) soll BEIDE Quellenmengen liefern -
+  // eigene Texte UND fremde Texte, die die Person nur als Schlagwort
+  // erwähnen (z.B. "Jos de Blok" im Text von Elisabeth Sechser). Ohne
+  // diesen Abgleich gegen /api/terms würde applyAuthorFilter nur eigene
+  // Texte finden, obwohl der Graph-Knoten längst beides zusammenführt.
+  const [authorsRes, termsRes] = await Promise.all([
+    fetch('/api/authors', { headers: { 'X-Lang': getLang() } }),
+    fetch('/api/terms'),
+  ]);
+  const authorEntries = await authorsRes.json();
+  const termEntries = await termsRes.json();
   const match = authorEntries.find((a) => normalizeAuthor(a.name) === normalizeAuthor(name));
-  const ids = match ? match.source_ids : [];
+  const displayName = match ? match.name : name;
+  const ownIds = match ? match.source_ids : [];
+  const termMatch = termEntries.find((te) => normalizeAuthor(te.term) === normalizeAuthor(name));
+  const mentionIds = termMatch ? termMatch.source_ids : [];
+  const ids = Array.from(new Set([...ownIds, ...mentionIds]));
+  const mentionOnlyIds = new Set(mentionIds.filter((id) => !ownIds.includes(id)));
 
   document.getElementById('source-filter-label').textContent = t(
-    ids.length === 1 ? 'import.filteredByAuthor' : 'import.filteredByAuthorPlural'
+    mentionOnlyIds.size > 0
+      ? 'import.filteredByAuthorAndMentions'
+      : ids.length === 1
+        ? 'import.filteredByAuthor'
+        : 'import.filteredByAuthorPlural'
   );
-  document.getElementById('source-filter-name').textContent = match ? match.name : name;
+  document.getElementById('source-filter-name').textContent = displayName;
   // Muss VOR renderSourceList() gesetzt werden - sortSources() liest den
   // Filter-Status, um die Autoren-Expansion in der gefilterten Ansicht zu
   // unterdrücken (siehe isFilterActive()).
   document.getElementById('source-filter-status').classList.remove('hidden');
-  renderSourceList(allSources.filter((s) => ids.includes(s.id)));
+  renderSourceList(allSources.filter((s) => ids.includes(s.id)), { mentionOnlyIds, mentionOnlyName: displayName });
 
   filteredAuthorEntry = match || null;
   authorPanelEditMode = false;

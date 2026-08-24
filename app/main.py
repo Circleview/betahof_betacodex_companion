@@ -1997,6 +1997,23 @@ def _build_knowledge_graph(lang: str = "de") -> KnowledgeGraphOut:
     key_terms_field = f"key_terms_{lang}"
     sources = _load_sources()
     active_sources = {sid: entry for sid, entry in sources.items() if not entry.get("deleted_at")}
+    author_entries = authors.list_authors()
+
+    # Nutzerwunsch (2026-08-24): Ein Schlagwort, das namensgleich mit einer
+    # registrierten Autorin/einem Autor ist (z.B. "Jos de Blok" taucht als
+    # Schlagwort in einem FREMDEN Text auf, der über ihn schreibt), bekommt
+    # keinen eigenen Schlagwort-Knoten - alle seine Kanten zeigen stattdessen
+    # direkt auf den bestehenden Autor-Knoten. So verbindet ein Text, der
+    # jemanden nur thematisch erwähnt, sich im Netzwerk sichtbar mit dessen
+    # Autor:innen-Knoten statt mit einem zweiten, gleichnamigen Knoten ohne
+    # Bezug. Die Schlagwort-Suche selbst (app/terms.py, /api/terms) bleibt
+    # davon unberührt, die liest weiterhin direkt aus key_terms_*.
+    author_key_by_normalized_name = {
+        authors.normalize_name(author["name"]): f"author:{author['name']}" for author in author_entries
+    }
+
+    def _node_key(term: str) -> str:
+        return author_key_by_normalized_name.get(authors.normalize_name(term), f"term:{term}")
 
     # Nutzerfeedback (2026-08-23): Begriffe, die nur ein einziges Mal in der
     # gesamten Sammlung vorkommen (oft Extraktionsrauschen wie bloße
@@ -2007,12 +2024,19 @@ def _build_knowledge_graph(lang: str = "de") -> KnowledgeGraphOut:
         for term in set(entry.get(key_terms_field) or []):
             term_counts[term] = term_counts.get(term, 0) + 1
     kept_terms = {term for term, count in term_counts.items() if count >= _GRAPH_MIN_TERM_OCCURRENCES}
+    plain_terms = {term for term in kept_terms if _node_key(term) == f"term:{term}"}
 
     graph = nx.Graph()
-    for term in kept_terms:
+    for term in plain_terms:
         graph.add_node(f"term:{term}")
+    for author in author_entries:
+        graph.add_node(f"author:{author['name']}")
 
     def _bump_edge(key_a: str, key_b: str) -> None:
+        if key_a == key_b:
+            # Eigene Quelle einer Autorin/eines Autors enthält deren/dessen
+            # eigenen Namen als Schlagwort (Selbstbezug) - kein Self-Loop.
+            return
         if graph.has_edge(key_a, key_b):
             graph[key_a][key_b]["weight"] += 1
         else:
@@ -2021,26 +2045,23 @@ def _build_knowledge_graph(lang: str = "de") -> KnowledgeGraphOut:
     for entry in active_sources.values():
         terms = sorted(set(entry.get(key_terms_field) or []) & kept_terms)
         for term_a, term_b in itertools.combinations(terms, 2):
-            _bump_edge(f"term:{term_a}", f"term:{term_b}")
+            _bump_edge(_node_key(term_a), _node_key(term_b))
 
-    author_entries = authors.list_authors()
     for author in author_entries:
         author_key = f"author:{author['name']}"
-        graph.add_node(author_key)
         for source_id in author["source_ids"]:
             source = active_sources.get(source_id)
             if not source:
                 continue
             for term in set(source.get(key_terms_field) or []) & kept_terms:
-                _bump_edge(author_key, f"term:{term}")
+                _bump_edge(author_key, _node_key(term))
 
     communities = nx.community.louvain_communities(graph, weight="weight", seed=0)
     cluster_of = {node_id: idx for idx, community in enumerate(communities) for node_id in community}
 
     nodes = [
-        GraphNode(id=f"term:{term}", type="term", label=term, weight=count, cluster=cluster_of[f"term:{term}"])
-        for term, count in term_counts.items()
-        if term in kept_terms
+        GraphNode(id=f"term:{term}", type="term", label=term, weight=term_counts[term], cluster=cluster_of[f"term:{term}"])
+        for term in plain_terms
     ]
     for author in author_entries:
         key = f"author:{author['name']}"

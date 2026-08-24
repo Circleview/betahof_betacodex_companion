@@ -51,6 +51,29 @@ function normalizeSearch(value) {
   return (value || '').trim().toLowerCase();
 }
 
+// Nutzerwunsch (2026-08-24): Zoom-Transform, die das GESAMTE, bereits
+// eingeschwungene Netzwerk zentriert in den sichtbaren Bereich einpasst -
+// Ausgangspunkt für den anschließenden Zoom auf die Standard-Zoomstufe
+// (siehe renderGraph). PADDING berücksichtigt, dass Knoten-Radius und
+// darunter sitzende Beschriftung über die reine x/y-Position hinausragen.
+function computeFitTransform(nodes, width, height) {
+  const PADDING = 90;
+  const xs = nodes.map((d) => d.x);
+  const ys = nodes.map((d) => d.y);
+  const minX = Math.min(...xs) - PADDING;
+  const maxX = Math.max(...xs) + PADDING;
+  const minY = Math.min(...ys) - PADDING;
+  const maxY = Math.max(...ys) + PADDING;
+  const graphWidth = Math.max(maxX - minX, 1);
+  const graphHeight = Math.max(maxY - minY, 1);
+  // Gedeckelt bei 1: bei einem sehr kleinen Netzwerk soll die Übersicht
+  // nicht stärker heranzoomen als die ohnehin schon nahe Standardansicht.
+  const scale = Math.min(width / graphWidth, height / graphHeight, 1);
+  const cx = (minX + maxX) / 2;
+  const cy = (minY + maxY) / 2;
+  return d3.zoomIdentity.translate(width / 2, height / 2).scale(scale).translate(-cx, -cy);
+}
+
 // Nutzerwunsch (2026-08-23): Klick auf einen Knoten öffnet NICHT mehr
 // direkt die Quellenliste, sondern hebt ihn samt seiner direkt verbundenen
 // Knoten/Kanten hervor (Rest gedimmt) - erneuter Klick auf denselben
@@ -111,14 +134,14 @@ function renderGraph(data) {
   svg.call(zoomBehavior);
 
   // Nutzerwunsch (2026-08-23): bei voller Ansicht (Skalierung 1) wirkt das
-  // Netzwerk mit ~300 Knoten erschlagend dicht - startet stattdessen näher
-  // herangezoomt, mittig zentriert, ganz normal mit dem Mausrad weiter
-  // heraus-/hineinzoombar.
-  const INITIAL_ZOOM_SCALE = 1.8;
-  svg.call(
-    zoomBehavior.transform,
-    d3.zoomIdentity.translate(width / 2, height / 2).scale(INITIAL_ZOOM_SCALE).translate(-width / 2, -height / 2),
-  );
+  // Netzwerk mit ~300 Knoten erschlagend dicht - Standardansicht ist
+  // stattdessen näher herangezoomt, mittig zentriert, ganz normal mit dem
+  // Mausrad weiter heraus-/hineinzoombar. Angewendet wird das erst weiter
+  // unten, NACH dem synchronen Einschwingen der Simulation (siehe dort).
+  // Nutzerfeedback (2026-08-24): 1.8 zoomte nach der neuen "Gesamtübersicht
+  // -> Standardansicht"-Animation (siehe unten) zu tief hinein - auf 1.3
+  // reduziert, bleibt also "weiter oben".
+  const INITIAL_ZOOM_SCALE = 1.3;
 
   const simulation = d3
     .forceSimulation(nodes)
@@ -305,15 +328,47 @@ function renderGraph(data) {
     node.attr('transform', (d) => `translate(${d.x},${d.y})`);
   }
 
+  // Nutzerfeedback (2026-08-24): Die Simulation lief bisher ab alpha=1
+  // sichtbar im Browser mit - bei ~300 Knoten/~1700 Kanten wirkte das
+  // anfängliche Auseinanderfliegen/Einschwingen wie ein Grafikfehler
+  // ("zittert stark"), nicht wie eine bewusste Animation. Jetzt wird die
+  // Simulation VOR dem ersten Zeichnen synchron bis zur Ruhelage
+  // vorgerechnet (wie zuvor schon nur für prefers-reduced-motion) - der
+  // Browser bekommt gleich das fertige, stabile Layout zu sehen. Die
+  // Bewegung, die stattdessen sichtbar bleibt, ist ein bewusster, sanfter
+  // Zoom von der Gesamtübersicht (computeFitTransform) auf die
+  // Standard-Zoomstufe, statt physikalischem Zittern.
+  simulation.stop();
+  for (let i = 0; i < 250; i += 1) simulation.tick();
+  ticked();
+
+  const defaultTransform = d3.zoomIdentity
+    .translate(width / 2, height / 2)
+    .scale(INITIAL_ZOOM_SCALE)
+    .translate(-width / 2, -height / 2);
+
   if (prefersReducedMotion) {
-    // Nutzerwunsch (Barrierefreiheit): keine sichtbare Einschwingphase -
-    // Simulation stumm auf die Endposition vorspulen statt zu animieren.
-    simulation.stop();
-    for (let i = 0; i < 250; i += 1) simulation.tick();
-    ticked();
+    // Nutzerwunsch (Barrierefreiheit): keine sichtbare Zoom-Animation -
+    // direkt auf die Standard-Zoomstufe springen.
+    svg.call(zoomBehavior.transform, defaultTransform);
   } else {
-    simulation.on('tick', ticked);
+    svg.call(zoomBehavior.transform, computeFitTransform(nodes, width, height));
+    // Nutzerwunsch (2026-08-24): Die Gesamtübersicht soll kurz sichtbar
+    // stehen bleiben, bevor der Zoom einsetzt (delay), statt sofort
+    // loszuzoomen - erst dann wirkt es wie "einmal komplett zeigen, dann
+    // hineinzoomen" statt wie ein einziger durchgehender Übergang.
+    svg
+      .transition()
+      .delay(700)
+      .duration(900)
+      .ease(d3.easeCubicOut)
+      .call(zoomBehavior.transform, defaultTransform);
   }
+
+  // Simulation bleibt "warm" (siehe drag()), damit ein gezogener Knoten
+  // seine Nachbarn weiterhin sanft nachziehen lässt - nur die anfängliche
+  // Einschwingphase wird nicht mehr live mitgerendert.
+  simulation.on('tick', ticked);
 
   currentSearchHandler = () => {
     const query = normalizeSearch(searchInput.value);

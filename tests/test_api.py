@@ -2,6 +2,7 @@ import concurrent.futures
 import json
 import threading
 import time
+import uuid
 
 import anthropic
 import pytest
@@ -95,8 +96,41 @@ def ask_result(response):
     }
 
 
+@pytest.fixture(scope="session", autouse=True)
+def _shared_vectorstore_client(tmp_path_factory):
+    """Fix (2026-08-25, siehe ausführlicher Kommentar in app/vectorstore.py:
+    _get_client()): DB_PATH einmal für die gesamte Session auf ein festes
+    Verzeichnis setzen, damit vectorstore._client (ein nativer
+    chromadb.PersistentClient) über alle Tests hinweg EIN EINZIGES Mal
+    erzeugt und wiederverwendet wird, statt pro Test neu (das kostete
+    zuletzt tausende nie freigegebene Betriebssystem-Threads). Isolation
+    zwischen Tests kommt seitdem nicht mehr über einen eigenen DB_PATH pro
+    Test, sondern über einen eigenen Collection-Namen (siehe client-Fixture
+    unten)."""
+    vectorstore.DB_PATH = tmp_path_factory.mktemp("shared_chroma")
+
+
 @pytest.fixture
 def client(tmp_path, monkeypatch):
+    # Fix (2026-08-25, Suite brauchte zuletzt ~20min statt ~1min): jede
+    # TestClient(main_module.app)-Instanziierung durchläuft das echte
+    # ASGI-Lifespan (siehe app/main.py:lifespan) und startet darüber
+    # _start_background_workers() - 5 EWIGE "while True"-Threads (URL-
+    # Gesundheits-Check, Vorschlags-Vorrat, Zusammenfassungs-Nachzug,
+    # Foto-Cache, Web-Allowlist-Crawl), die nie von selbst enden. Das
+    # bestehende Thread-Tracking unten (started_threads/tracking_start)
+    # joint sie zwar mit Timeout, KANN sie aber nicht wirklich beenden - sie
+    # laufen als Daemon-Threads einfach weiter. Bei ~350 Tests in dieser
+    # Datei sammelten sich dadurch >1500 gleichzeitig laufende Threads an
+    # (mit "ps -M"/"top -stats th" bestätigt), die sich gegenseitig beim
+    # Zugriff auf die (pro Test frische) Chroma-Vectorstore-Instanz
+    # blockierten, bis die Suite praktisch stehen blieb. Jede einzelne
+    # Funktion, die _start_background_workers() aufruft, hat bereits eigene,
+    # direkte Tests (_run_source_suggestion_discovery_once, _recover_
+    # interrupted_*, users.ensure_bootstrap_admin in test_users.py) - der
+    # Aufruf von _start_background_workers() SELBST wird nirgends geprüft,
+    # kann also gefahrlos stillgelegt werden.
+    monkeypatch.setattr(main_module, "_start_background_workers", lambda: None)
     monkeypatch.setattr(main_module, "DATA_DIR", tmp_path)
     monkeypatch.setattr(main_module, "SOURCES_FILE", tmp_path / "sources.json")
     monkeypatch.setattr(main_module, "PDF_DIR", tmp_path / "pdfs")
@@ -104,12 +138,17 @@ def client(tmp_path, monkeypatch):
     monkeypatch.setattr(main_module, "AUDIO_DIR", tmp_path / "audio")
     monkeypatch.setattr(main_module, "AUDIO_UPLOAD_STAGING_DIR", tmp_path / "audio_uploads")
 
-    monkeypatch.setattr(vectorstore, "DB_PATH", tmp_path / "chroma")
-    monkeypatch.setattr(vectorstore, "_client", None)
+    # Fix (2026-08-25): Isolation zwischen Tests jetzt über einen pro Test
+    # eindeutigen Collection-Namen statt über einen eigenen DB_PATH/Client
+    # (siehe _shared_vectorstore_client oben + app/vectorstore.py:
+    # _get_client()) - vectorstore._client bleibt für die gesamte Session
+    # bestehen, nur _collection/_web_collection werden zurückgesetzt, damit
+    # get_or_create_collection() für DIESEN Test eine frische, leere
+    # Collection auf dem gemeinsamen Client öffnet.
+    unique_suffix = uuid.uuid4().hex
+    monkeypatch.setattr(vectorstore, "COLLECTION_NAME", f"test_{unique_suffix}")
+    monkeypatch.setattr(vectorstore, "WEB_FALLBACK_COLLECTION_NAME", f"test_web_{unique_suffix}")
     monkeypatch.setattr(vectorstore, "_collection", None)
-    # Backlog: LLM/Internet-Fallback bei dünner Quellenlage - eigene
-    # Collection, eigener Cache-Slot (siehe app/vectorstore.py), muss
-    # zwischen Tests genauso zurückgesetzt werden wie die Haupt-Collection.
     monkeypatch.setattr(vectorstore, "_web_collection", None)
     monkeypatch.setattr(web_allowlist, "WEB_ALLOWLIST_FILE", tmp_path / "web_allowlist.json")
     monkeypatch.setattr(web_index, "WEB_INDEX_FILE", tmp_path / "web_index.json")
@@ -5787,6 +5826,52 @@ def test_knowledge_graph_connects_author_to_their_terms(client):
         (e["target"], e["source"]) for e in data["edges"]
     }
     assert ("author:Autorin X", "term:Gamma") in edges
+
+
+def test_knowledge_graph_merges_term_equal_to_author_name_into_author_node(client):
+    """Nutzerwunsch (2026-08-24): Ein Schlagwort, das namensgleich mit einer
+    registrierten Autorin/einem Autor ist (hier "Jos de Blok" als Thema in
+    einem FREMDEN Text), bekommt keinen eigenen Schlagwort-Knoten - der
+    Text soll stattdessen direkt mit dem Autor-Knoten verbunden sein."""
+    client.post("/api/sources", json={"title": "Eigener Text", "text": "Text.", "authors": ["Jos de Blok"]})
+    # "Jos de Blok" muss als Schlagwort in mind. 2 Quellen vorkommen, um die
+    # Mindesthäufigkeit (_GRAPH_MIN_TERM_OCCURRENCES) zu erreichen - sonst
+    # würde er schon vor dem Merge-Schritt als Schlagwort herausgefiltert.
+    source_id = client.post(
+        "/api/sources", json={"title": "Fremder Text", "text": "Text.", "authors": ["Elisabeth Sechser"]}
+    ).json()["id"]
+    _set_key_terms(source_id, ["Jos de Blok", "Buurtzorg"])
+    source_id_2 = client.post("/api/sources", json={"title": "Q3", "text": "Text."}).json()["id"]
+    _set_key_terms(source_id_2, ["Jos de Blok", "Buurtzorg"])
+
+    data = client.get("/api/knowledge-graph").json()
+    node_ids = {n["id"] for n in data["nodes"]}
+    assert "term:Jos de Blok" not in node_ids
+    assert "author:Jos de Blok" in node_ids
+
+    edges = {(e["source"], e["target"]) for e in data["edges"]} | {
+        (e["target"], e["source"]) for e in data["edges"]
+    }
+    assert ("author:Jos de Blok", "term:Buurtzorg") in edges
+
+
+def test_knowledge_graph_skips_self_loop_when_author_mentions_own_name(client):
+    """"Jos de Blok" muss hier in 2 Quellen als Schlagwort auftauchen, damit
+    er die Mindesthäufigkeit erreicht und überhaupt gemerged wird - eine
+    davon ist seine EIGENE Quelle, in der sein Name als eigenes Schlagwort
+    vorkommt (z.B. durch die automatische Schlagwort-Extraktion). Ohne den
+    key_a == key_b-Schutz in _bump_edge würde das einen Self-Loop erzeugen."""
+    source_id = client.post(
+        "/api/sources", json={"title": "Selbstreferenz", "text": "Text.", "authors": ["Jos de Blok"]}
+    ).json()["id"]
+    _set_key_terms(source_id, ["Jos de Blok", "Buurtzorg"])
+    source_id_2 = client.post("/api/sources", json={"title": "Q2", "text": "Text."}).json()["id"]
+    _set_key_terms(source_id_2, ["Jos de Blok", "Buurtzorg"])
+
+    response = client.get("/api/knowledge-graph")
+    assert response.status_code == 200
+    edges = response.json()["edges"]
+    assert all(e["source"] != e["target"] for e in edges)
 
 
 def test_knowledge_graph_includes_author_photo_url(client):
