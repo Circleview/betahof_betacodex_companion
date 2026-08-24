@@ -44,6 +44,7 @@ from app import (
     source_suggestions,
     summarization,
     terms,
+    transcription_hints,
     tts,
     users,
     vectorstore,
@@ -898,7 +899,16 @@ def _process_audio_transcription(source_id: str, lang: str = i18n.DEFAULT_LANG) 
         entry["processing_status"] = "running"
         entry["processing_step"] = "transcribe"
         known_segments = {int(k): v for k, v in (entry.get("processing_segments") or {}).items()}
-        known_names = entry.get("authors") or []
+        # Reihenfolge bewusst erhalten (erste Nennung zählt), Dubletten
+        # entfernt - z.B. wenn eine Person sowohl als Autor:in dieser Quelle
+        # eingetragen als auch bereits in transcription_hints.json gelistet
+        # ist (siehe dort), soll ihr Name nicht doppelt im Prompt stehen.
+        known_names = list(
+            dict.fromkeys(
+                list(entry.get("authors") or [])
+                + transcription_hints.get_hints(lang if lang in ("de", "en") else i18n.DEFAULT_LANG)
+            )
+        )
         _save_sources(sources)
 
     def on_segment_success(index: int, total: int, segment_text: str) -> None:

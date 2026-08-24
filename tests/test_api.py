@@ -26,6 +26,7 @@ from app import (
     source_suggestions,
     summarization,
     terms,
+    transcription_hints,
     tts,
     users,
     vectorstore,
@@ -676,6 +677,7 @@ def test_process_audio_transcription_passes_known_authors_as_transcription_promp
     bereits eingetragenen Autor:innen sollen als Vokabular-Hinweis an die
     Transkription weitergereicht werden, damit deren Namen mit größerer
     Wahrscheinlichkeit richtig geschrieben erkannt werden."""
+    monkeypatch.setattr(transcription_hints, "get_hints", lambda lang: ["Beta-Kodex"])
     create_res = _create_deferred_audio_source(client, monkeypatch, authors=["Niels Pflaeging", "Silke Hermann"])
     source_id = create_res.json()["id"]
     calls = []
@@ -685,7 +687,56 @@ def test_process_audio_transcription_passes_known_authors_as_transcription_promp
 
     main_module._process_audio_transcription(source_id)
 
-    assert calls == [["Niels Pflaeging", "Silke Hermann"]]
+    assert calls == [["Niels Pflaeging", "Silke Hermann", "Beta-Kodex"]]
+
+
+def test_process_audio_transcription_adds_english_vocabulary_hint_for_english_lang(client, monkeypatch):
+    """Nutzerwunsch (2026-08-24): feste Begriffe des BetaCodex-Vokabulars
+    (Schreibweise je nach Sprache unterschiedlich, siehe app/
+    transcription_hints.json) sollen zusätzlich zu den Autor:innen-Namen als
+    Vokabular-Hinweis mitgegeben werden."""
+    monkeypatch.setattr(transcription_hints, "get_hints", lambda lang: {"en": ["BetaCodex"]}.get(lang, []))
+    create_res = _create_deferred_audio_source(client, monkeypatch, authors=["Niels Pflaeging"])
+    source_id = create_res.json()["id"]
+    calls = []
+    monkeypatch.setattr(
+        extraction, "transcribe_audio", lambda path, **kw: calls.append(kw.get("known_names")) or ("Text.", None)
+    )
+
+    main_module._process_audio_transcription(source_id, lang="en")
+
+    assert calls == [["Niels Pflaeging", "BetaCodex"]]
+
+
+def test_process_audio_transcription_adds_vocabulary_hint_without_authors(client, monkeypatch):
+    monkeypatch.setattr(transcription_hints, "get_hints", lambda lang: ["Beta-Kodex"])
+    create_res = _create_deferred_audio_source(client, monkeypatch)
+    source_id = create_res.json()["id"]
+    calls = []
+    monkeypatch.setattr(
+        extraction, "transcribe_audio", lambda path, **kw: calls.append(kw.get("known_names")) or ("Text.", None)
+    )
+
+    main_module._process_audio_transcription(source_id)
+
+    assert calls == [["Beta-Kodex"]]
+
+
+def test_process_audio_transcription_deduplicates_names_in_transcription_prompt(client, monkeypatch):
+    """Wenn eine Autorin/ein Autor sowohl für diese Quelle eingetragen als
+    auch bereits in transcription_hints.json gelistet ist, soll der Name
+    nicht doppelt im Prompt landen."""
+    monkeypatch.setattr(transcription_hints, "get_hints", lambda lang: ["Niels Pflaeging", "Beta-Kodex"])
+    create_res = _create_deferred_audio_source(client, monkeypatch, authors=["Niels Pflaeging"])
+    source_id = create_res.json()["id"]
+    calls = []
+    monkeypatch.setattr(
+        extraction, "transcribe_audio", lambda path, **kw: calls.append(kw.get("known_names")) or ("Text.", None)
+    )
+
+    main_module._process_audio_transcription(source_id)
+
+    assert calls == [["Niels Pflaeging", "Beta-Kodex"]]
 
 
 def test_process_audio_transcription_triggers_summary_generation(client, monkeypatch):
