@@ -1490,14 +1490,11 @@ body:not(.chat-started) #question-form {
 }
 
 /* Nutzerwunsch (2026-08-25): fett hervorgehobene Begriffe in einer Antwort
-   klickbar machen (siehe question.js: makeTermsClickable) - gepunktete statt
-   durchgezogene Unterstreichung, damit sie sich optisch von einem normalen
-   Link/Zitat-Verweis unterscheiden und weiterhin klar als "das ist der fett
-   gedruckte Begriff, nicht extra verlinkter Text" lesbar bleiben. */
+   klickbar machen (siehe question.js: makeTermsClickable). Bewusst OHNE
+   permanente Unterstreichung (Nutzerfeedback: eine gepunktete Linie wirkte
+   zu unruhig) - die Klickbarkeit zeigt sich stattdessen erst beim Hover. */
 .term-followup {
   cursor: pointer;
-  text-decoration: underline dotted var(--color-accent);
-  text-underline-offset: 0.15em;
 }
 
 .term-followup:hover {
