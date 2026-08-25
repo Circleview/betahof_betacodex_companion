@@ -495,6 +495,33 @@ function makeCitationsClickable(container, sources) {
   });
 }
 
+// Nutzerwunsch (2026-08-25): fett hervorgehobene Begriffe in einer Antwort
+// (siehe app/llm.py-Systemprompt "fett für zentrale Begriffe") sollen
+// klickbar sein - ein Klick vertieft den Begriff als neue Folgefrage,
+// eingebettet in den bestehenden, verlaufsbewussten Frage-Mechanismus
+// (dieselbe questionForm/questionInput, dieselbe Historie), statt eine
+// eigene, parallele Anfrage-Logik aufzubauen. `strong.md-heading` (Markdown-
+// Überschriften, siehe markdown.js) bleibt bewusst ausgenommen - das sind
+// keine "Begriffe", sondern Gliederungselemente.
+function makeTermsClickable(container) {
+  container.querySelectorAll('strong:not(.md-heading)').forEach((el) => {
+    const term = el.textContent.trim();
+    if (!term) return;
+    el.classList.add('term-followup');
+    el.title = t('index.termFollowUpTitle', { term });
+    el.addEventListener('click', (event) => {
+      // Ein Zitat-Verweis "[n]" kann zufällig innerhalb eines fett
+      // hervorgehobenen Satzteils liegen (makeCitationsClickable wrapt den
+      // dann VERSCHACHTELT in diesem <strong>) - dessen eigener Klick soll
+      // nur die Zitat-Karte öffnen, nicht zusätzlich eine Folgefrage
+      // auslösen.
+      if (event.target.closest('.citation-ref')) return;
+      questionInput.value = t('index.termFollowUpQuestion', { term });
+      questionForm.requestSubmit();
+    });
+  });
+}
+
 function buildChatMessage(role) {
   const message = document.createElement('div');
   message.className = `chat-message chat-message--${role}`;
@@ -797,6 +824,11 @@ const conversationHistory = loadConversationHistory();
 // renderAnswerBubble unten.
 function renderAnswerText(bubble, answer) {
   bubble.innerHTML = renderMarkdown(answer);
+  // Unabhängig von Quellen/Zitaten (die ggf. erst später/asynchron
+  // eintreffen, siehe attachAnswerSources) - fett hervorgehobene Begriffe
+  // stehen schon jetzt fest, einmalig statt bei jedem Zwischenstand während
+  // des Streamens neu zu binden.
+  makeTermsClickable(bubble);
   return attachSpeakButton(bubble, answer);
 }
 

@@ -40,6 +40,8 @@
   "index.stopSpeakingTitle": "Stop reading aloud",
   "index.searching": "Searching for an answer...",
   "index.askError": "Request failed",
+  "index.termFollowUpQuestion": "Tell me more about {term}.",
+  "index.termFollowUpTitle": "Learn more about \"{term}\"",
   "index.usedSourcesHeading": "Sources used",
 
   "auth.iconTitle": "Account",

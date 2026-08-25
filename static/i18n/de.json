@@ -40,6 +40,8 @@
   "index.stopSpeakingTitle": "Vorlesen stoppen",
   "index.searching": "Suche Antwort...",
   "index.askError": "Fehler bei der Anfrage",
+  "index.termFollowUpQuestion": "Erzähl mir mehr über {term}.",
+  "index.termFollowUpTitle": "Mehr zu „{term}“ erfahren",
   "index.usedSourcesHeading": "Verwendete Quellen",
 
   "auth.iconTitle": "Konto",
