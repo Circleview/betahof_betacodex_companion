@@ -13,7 +13,7 @@ createTurnstileWidget('turnstile-container').then((widget) => {
   turnstileWidget = widget;
 });
 
-function getTurnstileToken() {
+async function getTurnstileToken() {
   return turnstileWidget.getToken();
 }
 
@@ -972,13 +972,14 @@ questionForm.addEventListener('submit', async (e) => {
   chatMessages.appendChild(assistantMessage);
 
   try {
+    const turnstileToken = await getTurnstileToken();
     const res = await fetchWithRetry('/api/ask', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-Lang': getLang() },
       body: JSON.stringify({
         question,
         top_k: 5,
-        turnstile_token: getTurnstileToken(),
+        turnstile_token: turnstileToken,
         is_first_message: conversationHistory.length === 0,
         history: conversationHistory.slice(-ASK_HISTORY_MAX_TURNS).map(({ question, answer }) => ({
           question,

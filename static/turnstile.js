@@ -87,7 +87,25 @@ export async function createTurnstileWidget(containerId) {
   });
 
   return {
-    getToken: () => window.turnstile.getResponse(widgetId) || '',
+    // Fix (2026-08-25, gemeldeter "Sicherheitsprüfung fehlgeschlagen"-Fehler
+    // bei rasch aufeinanderfolgenden Fragen, z.B. durch die anklickbaren
+    // Begriffe): reset() stößt sofort eine neue Verifikation an, die läuft
+    // bei Cloudflare aber asynchron im Hintergrund weiter - eine Anfrage
+    // kurz danach traf getResponse() teils noch vor deren Abschluss an und
+    // bekam einen leeren String statt eines frischen Tokens, was der Server
+    // als fehlgeschlagene Sicherheitsprüfung wertete. Statt sofort mit einem
+    // u.U. leeren Token abzusenden, kurz (bis zu ~3s, alle 100ms) auf ein
+    // frisches Token warten, bevor aufgegeben wird - in den allermeisten
+    // Fällen ist ohnehin sofort schon eines da, das ändert am Normalfall
+    // also nichts.
+    getToken: async () => {
+      for (let attempt = 0; attempt < 30; attempt += 1) {
+        const token = window.turnstile.getResponse(widgetId);
+        if (token) return token;
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      }
+      return '';
+    },
     reset: () => {
       window.turnstile.reset(widgetId);
       // Nach dem Reset entscheidet Cloudflare neu, ob eine Interaktion nötig

@@ -112,13 +112,14 @@ function buildFeedbackForm() {
     submitBtn.textContent = t('footer.feedbackSending');
     status.textContent = '';
     try {
+      const turnstileToken = await feedbackTurnstileWidget.getToken();
       const res = await fetch('/api/feedback', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-Lang': getLang() },
         body: JSON.stringify({
           message: messageInput.value,
           email: emailInput.value,
-          turnstile_token: feedbackTurnstileWidget.getToken(),
+          turnstile_token: turnstileToken,
         }),
       });
       // Turnstile-Tokens sind Einweg-Token - nach jedem Versuch (egal ob
