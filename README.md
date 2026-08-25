@@ -55,6 +55,9 @@ Assistent das offen, statt zu spekulieren.
   Video/Audio-Quellen inklusive Zeitstempel.
 - Eine "Verwendete Quellen"-Sidebar baut sich über die gesamte
   Konversation auf, nicht nur pro Antwort.
+- Fett hervorgehobene Fachbegriffe in einer Antwort sind anklickbar – ein
+  Klick vertieft genau diesen Begriff als Folgefrage, im Kontext der
+  laufenden Konversation.
 - Antwortet in der Sprache, in der gefragt wurde – Oberfläche und
   Antworten gibt es auf Deutsch und Englisch, unabhängig voneinander.
 - Spam-/Bot-Schutz (Rate-Limiting + Cloudflare Turnstile), ohne dass
@@ -362,6 +365,7 @@ Commit-/Tag-Nachrichten in Git.
 
 | Version | Wesentliche Änderungen |
 |---|---|
+| v0.54.0 | Neu: fett hervorgehobene Fachbegriffe in einer Antwort sind jetzt anklickbar - ein Klick stellt automatisch eine Folgefrage ("Erzähl mir mehr über {Begriff}."), eingebettet in den bestehenden, verlaufsbewussten Frage-Mechanismus, sodass die Vertiefung im Kontext der laufenden Konversation bleibt. Dazu die Bold-Regel im Systemprompt verschärft: fett jetzt ausschließlich für kompakte Fachbegriffe (1-4 Wörter) statt ganzer Satzteile, damit eine Folgefrage dazu auch eine sinnvoll vertiefte Antwort liefert |
 | v0.53.2 | Fix: ein Audio-Upload mit mindestens einer/einem eingetragenen Autor:in scheiterte auf Produktion mit "Prompt is not supported for diarization models" - der seit v0.52.0 gesetzte Vokabular-Hinweis (OpenAIs "prompt"-Parameter) wurde unverändert auch an `gpt-4o-transcribe-diarize` durchgereicht, obwohl dieses Modell den Parameter grundsätzlich ablehnt (anders als `whisper-1`, wo er weiterhin genutzt wird) |
 | v0.53.1 | Fix: die Schreibweise "Niels Pfläging" in bestehenden KI-Zusammenfassungen/Schlagworten wich von der registrierten Autor:innen-Schreibweise "Niels Pflaeging" ab, wodurch der neue Keyword-Autor:innen-Merge im Explore-Netzwerk (v0.53.0) für ihn nicht griff. Läuft als einmalige, idempotente Korrektur bei jedem Server-Start statt als manuelles Einmal-Skript, kommt damit automatisch über den normalen Deploy auf allen Umgebungen an; ändert bewusst nur Zusammenfassungen/Schlagworte, roher Quellentext/Titel bleiben unangetastet |
 | v0.53.0 | Neu: Im Explore-Netzwerk bekommt ein Schlagwort, das namensgleich mit einer registrierten Autorin/einem Autor ist (z. B. wird jemand in einem fremden Text nur thematisch erwähnt), keinen eigenen Knoten mehr - die Verbindung geht direkt zum bestehenden Autor:innen-Knoten; ein Klick darauf zeigt jetzt sowohl eigene Texte als auch Texte, die die Person nur erwähnen (mit "erwähnt"-Badge unterschieden). Fix: die anfängliche Einschwingphase des Kraft-Graphen wirkte bei ~300 Knoten wie ein Grafikfehler ("Zittern") - die Simulation wird jetzt synchron vorgerechnet, dann zoomt die Ansicht bewusst von der Gesamtübersicht auf die Standardstufe. Fix (Testinfrastruktur): die Testsuite brauchte zuletzt bis zu 20+ Minuten statt ~1 Minute, teils ganz ohne Ende - Ursache war ein struktureller Leak in `app/vectorstore.py` (jeder Test erzeugte einen komplett neuen nativen ChromaDB-Client, dessen Rust-Bindings einen eigenen, nie geschlossenen Thread-Pool starten) zusammen mit 5 Hintergrund-Threads, die seit v0.49.7 bei jeder Testclient-Instanziierung statt nur einmal pro Session starten - bei ~350 Tests kamen so über 2000 nie freigegebene Betriebssystem-Threads zusammen. Client-Erzeugung von Collection-Erzeugung entkoppelt, Testsuite nutzt jetzt einen session-weit geteilten Client statt eines neuen pro Test (Produktionsverhalten unverändert); läuft wieder in ~37 Sekunden bei 790/790 grünen Tests |
