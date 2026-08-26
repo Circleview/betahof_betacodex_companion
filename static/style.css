@@ -3653,6 +3653,17 @@ details a {
   margin-top: 1rem;
 }
 
+/* Nutzerwunsch (2026-08-27): unscheinbare Legende rechts unter dem Netzwerk,
+   dieselbe Optik wie .author-photo-credit (Bildquellennachweis) - erklärt
+   kurz, was Knoten/Kanten bedeuten, Text wechselt mit den Toggle-Buttons
+   (siehe updateLegend() in explore.js). */
+.explore-legend {
+  margin: 0.4rem 0 0;
+  text-align: right;
+  font-size: 0.7rem;
+  color: var(--color-text-muted);
+}
+
 #explore-graph {
   display: block;
   width: 100%;

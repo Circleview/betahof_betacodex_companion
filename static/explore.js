@@ -20,6 +20,7 @@ const wrapEl = document.getElementById('explore-graph-wrap');
 const searchInput = document.getElementById('explore-search');
 const toggleAuthorsBtn = document.getElementById('explore-toggle-authors');
 const toggleTermsBtn = document.getElementById('explore-toggle-terms');
+const legendEl = document.getElementById('explore-legend');
 const svg = d3.select('#explore-graph');
 
 const CLUSTER_COLOR_COUNT = 10;
@@ -113,6 +114,22 @@ function filterGraphForToggles(data, showAuthors, showTerms) {
   return { nodes, edges };
 }
 
+// Nutzerwunsch (2026-08-27): unscheinbare Erklärung (wie der Bildquellen-
+// nachweis in der Autor:innen-Vita, siehe .author-photo-credit) rechts unter
+// dem Netzwerk, was Knoten/Kanten bedeuten - ändert sich mit den beiden
+// Toggle-Buttons, damit der jeweils sichtbare Netzwerk-Aufbau nachvollziehbar
+// bleibt (z.B. dass Autor-Autor-Kanten im Nur-Autor:innen-Modus über
+// ausgeblendete Schlagworte abgeleitet sind, siehe deriveAuthorOnlyEdges).
+function updateLegend() {
+  if (showAuthors && showTerms) {
+    legendEl.textContent = t('explore.legendBoth');
+  } else if (showAuthors) {
+    legendEl.textContent = t('explore.legendAuthorsOnly');
+  } else if (showTerms) {
+    legendEl.textContent = t('explore.legendTermsOnly');
+  }
+}
+
 function applyFiltersAndRender() {
   if (!fullGraphData) return;
   const filtered = filterGraphForToggles(fullGraphData, showAuthors, showTerms);
@@ -122,10 +139,13 @@ function applyFiltersAndRender() {
     statusEl.textContent = t('explore.emptyFiltered');
     statusEl.classList.remove('hidden');
     wrapEl.classList.add('hidden');
+    legendEl.classList.add('hidden');
     return;
   }
   statusEl.classList.add('hidden');
   wrapEl.classList.remove('hidden');
+  updateLegend();
+  legendEl.classList.remove('hidden');
   renderGraph(filtered);
   // Eine bereits eingetippte Suche soll nach dem Neu-Rendern weiterhin
   // greifen, statt erst beim nächsten Tastendruck wieder aufzuleben.
