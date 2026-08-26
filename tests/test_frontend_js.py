@@ -1714,6 +1714,57 @@ def test_photo_credit_domain_returns_null_when_missing_or_invalid():
     assert result == [None, None, None]
 
 
+def _run_import_js_functions(patterns: list[str], call_expr: str):
+    """Wie _run_photo_credit_domain, aber für Fälle, die mehrere, nicht
+    zusammenhängende Definitionen aus import.js kombinieren müssen (z.B.
+    resolveSocialPlatform() ruft sowohl detectSocialPlatform() als auch das
+    an anderer Stelle definierte extractHostname() auf)."""
+    js_source = (STATIC_DIR / "import.js").read_text()
+    parts = []
+    for pattern in patterns:
+        match = re.search(pattern, js_source, re.S)
+        assert match, f"Muster {pattern!r} wurde in import.js nicht gefunden."
+        parts.append(match.group(0))
+    script = "\n".join(parts) + f"\nconsole.log(JSON.stringify({call_expr}));\n"
+    result = subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True)
+    return json.loads(result.stdout)
+
+
+# Nutzerwunsch (2026-08-26): kein manuelles Plattform-Feld mehr im Social-
+# Links-Formular - resolveSocialPlatform() ermittelt die Plattform beim
+# Speichern automatisch aus der URL (siehe buildSocialLinksField).
+_RESOLVE_SOCIAL_PLATFORM_PATTERNS = [
+    r"const SOCIAL_PLATFORM_HOSTS.*?\n\];",
+    r"function detectSocialPlatform.*?\n\}",
+    r"function extractHostname.*?\n\}",
+    r"function resolveSocialPlatform.*?\n\}",
+]
+
+
+def test_resolve_social_platform_detects_known_platform_from_url():
+    result = _run_import_js_functions(
+        _RESOLVE_SOCIAL_PLATFORM_PATTERNS,
+        "resolveSocialPlatform('https://www.linkedin.com/in/someone')",
+    )
+    assert result == "LinkedIn"
+
+
+def test_resolve_social_platform_falls_back_to_hostname_for_unrecognized_platform():
+    """Ein Link zu einer nicht in SOCIAL_PLATFORM_HOSTS gelisteten Plattform
+    (z.B. eine persönliche Website) darf nicht verloren gehen, nur weil sie
+    keinen erkannten Namen hat - die Domain ist ein sinnvoller Ersatz."""
+    result = _run_import_js_functions(
+        _RESOLVE_SOCIAL_PLATFORM_PATTERNS,
+        "resolveSocialPlatform('https://www.example.org/profil')",
+    )
+    assert result == "example.org"
+
+
+def test_resolve_social_platform_falls_back_to_raw_input_for_invalid_url():
+    result = _run_import_js_functions(_RESOLVE_SOCIAL_PLATFORM_PATTERNS, "resolveSocialPlatform('not a url')")
+    assert result == "not a url"
+
+
 def _run_source_toolbar_overflow(steps: list[dict]) -> list[bool]:
     """Führt static/import.js#initSourceToolbarOverflow per Node aus. Jeder
     Schritt setzt actions.clientWidth neu und feuert den (gestubbten)

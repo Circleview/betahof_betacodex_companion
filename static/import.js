@@ -3329,6 +3329,18 @@ function detectSocialPlatform(url) {
   return match ? match.platform : '';
 }
 
+// Nutzerwunsch (2026-08-26): kein manuelles Plattform-Feld mehr im Social-
+// Links-Formular (siehe buildRow unten) - die Plattform wird beim
+// Speichern automatisch aus der URL ermittelt. Bekannte Plattformen (siehe
+// SOCIAL_PLATFORM_HOSTS) liefern ihren Namen, alles andere fällt auf die
+// reine Domain zurück (extractHostname, siehe photoCreditDomain weiter
+// unten) - damit geht kein eingetragener Link verloren, nur weil seine
+// Plattform nicht in der Liste bekannter Hosts steht. Nur bei einer
+// ungültigen URL bleibt als letzter Ausweg die rohe Eingabe selbst.
+function resolveSocialPlatform(url) {
+  return detectSocialPlatform(url) || extractHostname(url) || url;
+}
+
 function buildSocialLinksField(initialLinks) {
   const wrapper = document.createElement('div');
   wrapper.className = 'social-links-field';
@@ -3384,34 +3396,15 @@ function buildSocialLinksField(initialLinks) {
     const row = document.createElement('div');
     row.className = 'social-link-row';
 
-    const platformInput = document.createElement('input');
-    platformInput.type = 'text';
-    platformInput.className = 'social-platform-input';
-    // Fix: kein list="..."-Dropdown mehr - die Plattform wird seit
-    // detectSocialPlatform() automatisch anhand der URL erkannt (siehe
-    // urlInput-Handler unten), eine manuelle Auswahl aus Vorschlägen ist
-    // damit für die abgedeckten Plattformen redundant. Feld bleibt trotzdem
-    // ein normales Textfeld für die manuelle Korrektur/Eingabe bei nicht
-    // erkannten URLs.
-    platformInput.setAttribute('autocomplete', 'off');
-    platformInput.placeholder = t('import.socialPlatformPlaceholder');
-    platformInput.value = (link && link.platform) || '';
-
+    // Nutzerwunsch (2026-08-26): kein separates Plattform-Feld mehr - nur
+    // noch die URL eintragen, die Plattform wird beim Speichern automatisch
+    // ermittelt (siehe resolveSocialPlatform).
     const urlInput = document.createElement('input');
     urlInput.type = 'url';
     urlInput.className = 'social-url-input';
     urlInput.placeholder = t('import.socialUrlPlaceholder');
     urlInput.value = (link && link.url) || '';
-    urlInput.addEventListener('input', () => {
-      // Nie ein bereits gefülltes Plattform-Feld überschreiben (z.B. von
-      // Hand korrigierte Angabe) - gleiche Konvention wie bei KI-generierten
-      // Feldern im Rest des Formulars.
-      if (platformInput.value.trim()) return;
-      const detected = detectSocialPlatform(urlInput.value.trim());
-      if (detected) platformInput.value = detected;
-    });
 
-    row.appendChild(platformInput);
     row.appendChild(urlInput);
     row.appendChild(buildAddButton((newRow) => row.insertAdjacentElement('afterend', newRow)));
     row.appendChild(buildRemoveButton(row));
@@ -3425,11 +3418,11 @@ function buildSocialLinksField(initialLinks) {
 
   function getSocialLinkValues() {
     return [...rows.querySelectorAll('.social-link-row')]
-      .map((row) => ({
-        platform: row.querySelector('.social-platform-input').value.trim(),
-        url: row.querySelector('.social-url-input').value.trim(),
-      }))
-      .filter((link) => link.platform && link.url);
+      .map((row) => {
+        const url = row.querySelector('.social-url-input').value.trim();
+        return { platform: resolveSocialPlatform(url), url };
+      })
+      .filter((link) => link.url);
   }
 
   return { wrapper, getSocialLinkValues };
@@ -3516,14 +3509,22 @@ const PHOTO_HOST_LABELS = [
 // author_photos.py). "www." wird entfernt, da es für die Quellennennung
 // keinen Mehrwert hat; bekannte CDN-Domains werden auf ihren Plattformnamen
 // abgebildet (siehe PHOTO_HOST_LABELS oben).
-function photoCreditDomain(url) {
+// Nutzerwunsch (2026-08-26): Domain einer URL ohne "www."-Präfix und ohne
+// Pfad - gemeinsame Basis für photoCreditDomain unten sowie für die
+// automatische Social-Media-Plattform-Erkennung (siehe resolveSocialPlatform
+// weiter oben bei detectSocialPlatform).
+function extractHostname(url) {
   if (!url) return null;
-  let hostname;
   try {
-    hostname = new URL(url).hostname.replace(/^www\./, '');
+    return new URL(url).hostname.replace(/^www\./, '');
   } catch {
     return null;
   }
+}
+
+function photoCreditDomain(url) {
+  const hostname = extractHostname(url);
+  if (!hostname) return null;
   const match = PHOTO_HOST_LABELS.find(({ pattern }) => pattern.test(hostname));
   return match ? match.label : hostname;
 }

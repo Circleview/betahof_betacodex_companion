@@ -3194,12 +3194,6 @@ body:not(.chat-started) #question-form {
   gap: 0.4rem;
 }
 
-.social-platform-input {
-  flex: 0 0 40%;
-  min-width: 0;
-  margin-top: 0;
-}
-
 .social-url-input {
   flex: 1;
   min-width: 0;

@@ -178,7 +178,6 @@
   "import.fieldSocialLinks": "Social media links",
   "import.addSocialLink": "Add link",
   "import.removeSocialLink": "Remove link",
-  "import.socialPlatformPlaceholder": "Platform (e.g. LinkedIn)",
   "import.socialUrlPlaceholder": "https://...",
   "import.generateBioTitle": "Suggest bio with AI",
   "import.generatingBio": "Generating bio…",
