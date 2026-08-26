@@ -31,7 +31,6 @@
 
   <div id="creative-layout">
     <form id="creative-form">
-      <label for="creative-document" class="creative-field-label creative-field-label--first" data-i18n="creative.documentLabel"></label>
       <div id="creative-toolbar" class="creative-toolbar" role="toolbar">
         <button type="button" data-md-action="bold" data-i18n-title="creative.toolbarBold"><strong>B</strong></button>
         <button type="button" data-md-action="italic" data-i18n-title="creative.toolbarItalic"><em>I</em></button>
@@ -39,7 +38,15 @@
         <button type="button" data-md-action="list" data-i18n-title="creative.toolbarList">&bull;</button>
         <button type="button" id="creative-preview-toggle"></button>
       </div>
-      <textarea id="creative-document" rows="16" data-i18n-placeholder="creative.documentPlaceholder"></textarea>
+      <!-- Nutzerwunsch (2026-08-26): sichtbare "Dokument"-Überschrift entfernt -
+           data-i18n-title setzt trotzdem title+aria-label (siehe i18n.js),
+           damit das Feld weiterhin einen zugänglichen Namen hat. -->
+      <textarea
+        id="creative-document"
+        rows="16"
+        data-i18n-placeholder="creative.documentPlaceholder"
+        data-i18n-title="creative.documentLabel"
+      ></textarea>
       <div id="creative-document-preview" class="hidden creative-document-preview" aria-live="polite"></div>
       <p id="creative-disclaimer-mobile" class="creative-disclaimer creative-disclaimer--mobile"></p>
 

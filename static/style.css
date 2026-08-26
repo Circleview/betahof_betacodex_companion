@@ -3818,20 +3818,19 @@ details a {
   }
 }
 
-/* Nutzerwunsch (2026-08-26): "Dokument"/"Anweisung" sollen deutlich
-   sichtbarer wirken (fett, größer) statt als unauffälliges <label> - bleiben
-   aber technisch <label for="...">, damit ein Klick weiterhin ins jeweilige
-   Feld fokussiert. */
+/* Nutzerwunsch (2026-08-26): "Anweisung" soll deutlich sichtbarer wirken
+   (fett, größer) statt als unauffälliges <label> - bleibt aber technisch
+   <label for="creative-instruction">, damit ein Klick weiterhin ins Feld
+   fokussiert. Die "Dokument"-Überschrift wurde auf Nutzerwunsch ganz
+   entfernt (siehe creative.html - data-i18n-title auf der Textarea liefert
+   stattdessen den zugänglichen Namen). Enger Abstand nach oben zur
+   Dokument-Textbox darüber (Nutzerwunsch, Folge-Iteration).*/
 .creative-field-label {
   display: block;
-  margin: 2rem 0 0.5rem;
+  margin: 0.75rem 0 0.5rem;
   font-size: 1.05rem;
   font-weight: 700;
   color: var(--color-text);
-}
-
-.creative-field-label--first {
-  margin-top: 0;
 }
 
 #creative-layout {
