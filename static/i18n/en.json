@@ -173,6 +173,7 @@
   "import.newAuthorPhotoPreviewAlt": "Author photo preview",
   "import.fieldBio": "Bio",
   "import.fieldPhotoUrl": "Photo URL",
+  "import.photoCreditLabel": "Photo: {domain}",
   "import.fieldWebsite": "Website",
   "import.fieldSocialLinks": "Social media links",
   "import.addSocialLink": "Add link",

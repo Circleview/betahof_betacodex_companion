@@ -3492,6 +3492,21 @@ async function generateAuthorBioPreview(name, text, bioInput, statusEl, buttons)
   }
 }
 
+// Nutzerwunsch (2026-08-26): kleiner, unauffälliger Bildquellennachweis
+// unter dem Autor:innen-Foto (siehe buildAuthorInfoView) - nennt nur die
+// Domain der ORIGINALEN externen Foto-URL (a.photo_url), nicht den vollen
+// Pfad und nicht die eigene, ggf. lokal gecachte photo_large-URL (siehe
+// app/author_photos.py). "www." wird entfernt, da es für die Quellennennung
+// keinen Mehrwert hat.
+function photoCreditDomain(url) {
+  if (!url) return null;
+  try {
+    return new URL(url).hostname.replace(/^www\./, '');
+  } catch {
+    return null;
+  }
+}
+
 function buildAuthorInfoView(a) {
   const wrapper = document.createElement('div');
   wrapper.className = 'author-info-view';
@@ -3514,6 +3529,14 @@ function buildAuthorInfoView(a) {
     img.alt = a.name;
     img.className = 'author-photo';
     photoCol.appendChild(img);
+
+    const creditDomain = photoCreditDomain(a.photo_url);
+    if (creditDomain) {
+      const credit = document.createElement('p');
+      credit.className = 'author-photo-credit';
+      credit.textContent = t('import.photoCreditLabel', { domain: creditDomain });
+      photoCol.appendChild(credit);
+    }
   }
 
   headerRow.appendChild(photoCol);

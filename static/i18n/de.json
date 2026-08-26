@@ -173,6 +173,7 @@
   "import.newAuthorPhotoPreviewAlt": "Vorschau des Autorenfotos",
   "import.fieldBio": "Vita",
   "import.fieldPhotoUrl": "Foto-URL",
+  "import.photoCreditLabel": "Foto: {domain}",
   "import.fieldWebsite": "Website",
   "import.fieldSocialLinks": "Social-Media-Links",
   "import.addSocialLink": "Link hinzufügen",

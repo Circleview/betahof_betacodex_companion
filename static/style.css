@@ -3001,6 +3001,17 @@ body:not(.chat-started) #question-form {
   object-fit: cover;
 }
 
+/* Nutzerwunsch (2026-08-26): Bildquellennachweis unter dem Autor:innen-Foto
+   - klein, unauffällig, rechtsbündig. Kein eigenes text-align nötig: die
+   Elternspalte .author-info-photo-col ist bereits align-items: flex-end,
+   ein Absatz mit reinem Text schmiegt sich darin von selbst an die rechte
+   Kante. */
+.author-photo-credit {
+  margin: 0;
+  font-size: 0.7rem;
+  color: var(--color-text-muted);
+}
+
 /* Vorschau direkt neben dem Foto-URL-Feld im Bearbeiten-Formular, damit
    Quellen-Admins sofort sehen, welches Bild hinter der URL steckt. */
 .photo-field-row {

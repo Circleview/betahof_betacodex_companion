@@ -1667,6 +1667,37 @@ def test_extract_youtube_video_id_handles_watch_and_short_urls():
     assert output == {"watch": "abc123", "short": "abc123", "other": None}
 
 
+def _run_photo_credit_domain(call_expr: str):
+    js_source = (STATIC_DIR / "import.js").read_text()
+    match = re.search(r"function photoCreditDomain.*?\n\}", js_source, re.S)
+    assert match, "photoCreditDomain wurde in import.js nicht gefunden."
+    script = f"""
+{match.group(0)}
+console.log(JSON.stringify({call_expr}));
+"""
+    result = subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True)
+    return json.loads(result.stdout)
+
+
+def test_photo_credit_domain_extracts_hostname_without_path():
+    result = _run_photo_credit_domain(
+        "photoCreditDomain('https://media.licdn.com/dms/image/abc123/profile.jpg?query=1')"
+    )
+    assert result == "media.licdn.com"
+
+
+def test_photo_credit_domain_strips_www_prefix():
+    result = _run_photo_credit_domain("photoCreditDomain('https://www.example.org/photos/x.jpg')")
+    assert result == "example.org"
+
+
+def test_photo_credit_domain_returns_null_when_missing_or_invalid():
+    result = _run_photo_credit_domain(
+        "[photoCreditDomain(''), photoCreditDomain(null), photoCreditDomain('not a url')]"
+    )
+    assert result == [None, None, None]
+
+
 def _run_source_toolbar_overflow(steps: list[dict]) -> list[bool]:
     """Führt static/import.js#initSourceToolbarOverflow per Node aus. Jeder
     Schritt setzt actions.clientWidth neu und feuert den (gestubbten)
