@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow, noarchive">
+<meta name="description" content="Kreativ-Modus des BetaCodex Companion – Blogposts, Artikel und Workshop-Konzepte auf Grundlage des BetaCodex verfassen.">
+<meta property="og:title" content="Kreativ-Modus – BetaCodex Companion">
+<meta property="og:description" content="Kreativ-Modus des BetaCodex Companion – Blogposts, Artikel und Workshop-Konzepte auf Grundlage des BetaCodex verfassen.">
+<meta property="og:type" content="website">
+<meta property="og:image" content="/icons/apple-touch-icon.png">
+<meta name="twitter:card" content="summary">
+<meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#1c1c1c" media="(prefers-color-scheme: dark)">
+<link rel="icon" type="image/png" href="/icons/favicon.png">
+<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+<link rel="manifest" href="/manifest.json">
+<title>Kreativ-Modus &ndash; BetaCodex Companion</title>
+<link rel="stylesheet" href="/style.css">
+<script src="https://challenges.cloudflare.com/turnstile/v0/api.js?onload=onTurnstileLoad&render=explicit" async defer></script>
+</head>
+<body>
+<a href="#creative-bereich" class="skip-link" data-i18n="common.skipToContent"></a>
+<header id="site-header">
+  <span id="lang-switcher" class="lang-switcher"></span>
+  <span id="auth-widget" class="auth-widget"></span>
+</header>
+
+<section id="creative-bereich" tabindex="-1">
+  <h2 data-i18n="creative.heading"></h2>
+  <p id="creative-disclaimer" class="creative-disclaimer"></p>
+
+  <div id="creative-layout">
+    <form id="creative-form">
+      <label for="creative-document" data-i18n="creative.documentLabel"></label>
+      <div id="creative-toolbar" class="creative-toolbar" role="toolbar">
+        <button type="button" data-md-action="bold" data-i18n-title="creative.toolbarBold"><strong>B</strong></button>
+        <button type="button" data-md-action="italic" data-i18n-title="creative.toolbarItalic"><em>I</em></button>
+        <button type="button" data-md-action="heading" data-i18n-title="creative.toolbarHeading">H</button>
+        <button type="button" data-md-action="list" data-i18n-title="creative.toolbarList">&bull;</button>
+        <button type="button" id="creative-preview-toggle"></button>
+      </div>
+      <textarea id="creative-document" rows="16" data-i18n-placeholder="creative.documentPlaceholder"></textarea>
+      <div id="creative-document-preview" class="hidden creative-document-preview" aria-live="polite"></div>
+
+      <label for="creative-instruction" data-i18n="creative.instructionLabel"></label>
+      <textarea id="creative-instruction" rows="2" data-i18n-placeholder="creative.instructionPlaceholder" required></textarea>
+
+      <button type="submit" id="creative-submit" data-i18n="creative.submitButton"></button>
+      <div id="turnstile-container" class="turnstile-container"></div>
+      <p id="creative-status" class="hidden" data-i18n="creative.generating"></p>
+      <p id="creative-error" class="hidden"></p>
+    </form>
+
+    <aside id="creative-sources">
+      <h3 data-i18n="creative.sourcesBetacodexHeading"></h3>
+      <ul id="creative-sources-betacodex"></ul>
+      <h3 data-i18n="creative.sourcesWebHeading"></h3>
+      <ul id="creative-sources-web"></ul>
+    </aside>
+  </div>
+</section>
+
+<footer class="site-footer" id="site-footer"></footer>
+
+<script type="module" src="/init-header.js"></script>
+<script type="module" src="/creative.js"></script>
+<script type="module" src="/init-footer.js"></script>
+</body>
+</html>

@@ -302,3 +302,105 @@ def test_parse_answer_and_quotes_preserves_citation_order_for_same_number():
 
     assert answer == "Erste Aussage [1]. Zweite Aussage bezieht sich auch [1] darauf."
     assert quotes == {1: ["Beleg für Erste Aussage.", "Beleg für Zweite Aussage."]}
+
+
+# --- Kreativ-Modus (2026-08-26) ---
+
+
+def _fake_creative_client(document_text, search_result_urls=None):
+    client = MagicMock()
+    stream_manager = client.messages.stream.return_value
+    stream_manager.__enter__.return_value.text_stream = iter([document_text])
+    search_block = MagicMock(type="web_search_tool_result")
+    search_block.content = [MagicMock(url=u) for u in (search_result_urls or [])]
+    stream_manager.__enter__.return_value.get_final_message.return_value = MagicMock(
+        content=[search_block]
+    )
+    return client
+
+
+def test_stream_creative_response_uses_sonnet_for_empty_document():
+    client = _fake_creative_client("Erster Entwurf.")
+    with patch.object(llm, "_get_client", return_value=client):
+        stream = llm.stream_creative_response("Schreibe einen Blogpost.", "", [])
+        list(stream)
+
+    assert client.messages.stream.call_args.kwargs["model"] == llm.CREATIVE_FIRST_DRAFT_MODEL
+    assert stream.model == llm.CREATIVE_FIRST_DRAFT_MODEL
+
+
+def test_stream_creative_response_uses_haiku_for_non_empty_document():
+    client = _fake_creative_client("Überarbeiteter Text.")
+    with patch.object(llm, "_get_client", return_value=client):
+        stream = llm.stream_creative_response("Kürze das.", "Bestehender Text.", [])
+        list(stream)
+
+    assert client.messages.stream.call_args.kwargs["model"] == llm.MODEL_NAME
+    assert stream.model == llm.MODEL_NAME
+
+
+def test_stream_creative_response_passes_web_search_tool_with_auto_choice():
+    client = _fake_creative_client("Text.")
+    with patch.object(llm, "_get_client", return_value=client):
+        list(llm.stream_creative_response("Anweisung", "", []))
+
+    kwargs = client.messages.stream.call_args.kwargs
+    assert kwargs["tools"] == [
+        {"type": "web_search_20250305", "name": "web_search", "max_uses": llm.CREATIVE_MAX_SEARCH_USES}
+    ]
+    assert kwargs["tool_choice"] == {"type": "auto"}
+
+
+def test_stream_creative_response_exposes_real_web_urls_after_exhausting_stream():
+    client = _fake_creative_client("Text.", search_result_urls=["https://a.org/x"])
+    with patch.object(llm, "_get_client", return_value=client):
+        stream = llm.stream_creative_response("Anweisung", "", [])
+        # Vor dem vollständigen Durchlaufen des Generators steht real_web_urls
+        # noch nicht fest (siehe CreativeStream-Docstring) - erst danach.
+        list(stream)
+
+    assert stream.real_web_urls == {"https://a.org/x"}
+
+
+def test_stream_creative_response_yields_document_text():
+    client = _fake_creative_client("Der fertige Text.")
+    with patch.object(llm, "_get_client", return_value=client):
+        stream = llm.stream_creative_response("Anweisung", "", [])
+        assert "".join(stream) == "Der fertige Text."
+
+
+def test_parse_document_and_sources_splits_document_from_source_block():
+    raw = 'Der Text.\n\n---SOURCES---\n[Web]: Beispieltitel — https://example.org/a\n'
+    document, sources = llm.parse_document_and_sources(raw)
+
+    assert document == "Der Text."
+    assert sources == [{"title": "Beispieltitel", "url": "https://example.org/a"}]
+
+
+def test_parse_document_and_sources_parses_multiple_web_lines():
+    raw = (
+        "Text.\n\n---SOURCES---\n"
+        "[Web]: Erste Quelle — https://a.org/1\n"
+        "[Web]: Zweite Quelle — https://b.org/2\n"
+    )
+    _, sources = llm.parse_document_and_sources(raw)
+
+    assert sources == [
+        {"title": "Erste Quelle", "url": "https://a.org/1"},
+        {"title": "Zweite Quelle", "url": "https://b.org/2"},
+    ]
+
+
+def test_parse_document_and_sources_returns_empty_list_without_marker():
+    document, sources = llm.parse_document_and_sources("Nur Text, kein Quellenblock.")
+
+    assert document == "Nur Text, kein Quellenblock."
+    assert sources == []
+
+
+def test_parse_document_and_sources_ignores_malformed_lines():
+    raw = "Text.\n\n---SOURCES---\n[Web]: Ohne URL\nKeine Web-Zeile hier.\n"
+    document, sources = llm.parse_document_and_sources(raw)
+
+    assert document == "Text."
+    assert sources == []

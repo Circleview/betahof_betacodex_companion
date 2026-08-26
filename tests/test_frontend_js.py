@@ -2295,3 +2295,101 @@ def test_highlight_terms_no_op_when_all_terms_are_author_names():
         authors=[{"name": "Max Muster"}],
     )
     assert buttons == []
+
+
+# --- Kreativ-Modus (2026-08-26) ---
+
+
+def _run_creative_source_label(source):
+    js_source = (STATIC_DIR / "creative.js").read_text()
+    match = re.search(r"export function creativeSourceLabel.*?\n\}", js_source, re.S)
+    assert match, "creativeSourceLabel wurde in creative.js nicht gefunden."
+    script = f"{match.group(0)}\nconsole.log(JSON.stringify(creativeSourceLabel({json.dumps(source)})));"
+    result = subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True)
+    return json.loads(result.stdout)
+
+
+def test_creative_source_label_appends_hostname_when_url_present():
+    label = _run_creative_source_label({"title": "Beispieltitel", "url": "https://example.org/a/b"})
+    assert label == "Beispieltitel (example.org)"
+
+
+def test_creative_source_label_falls_back_to_title_without_url():
+    label = _run_creative_source_label({"title": "Beispieltitel", "url": None})
+    assert label == "Beispieltitel"
+
+
+def _run_apply_markdown_to_selection(value, selection_start, selection_end, action):
+    js_source = (STATIC_DIR / "creative.js").read_text()
+    match = re.search(r"export function applyMarkdownToSelection.*?\n\}", js_source, re.S)
+    assert match, "applyMarkdownToSelection wurde in creative.js nicht gefunden."
+    script = (
+        f"{match.group(0)}\n"
+        f"console.log(JSON.stringify(applyMarkdownToSelection("
+        f"{json.dumps(value)}, {selection_start}, {selection_end}, {json.dumps(action)})));"
+    )
+    result = subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True)
+    return json.loads(result.stdout)
+
+
+def test_apply_markdown_bold_wraps_selection():
+    result = _run_apply_markdown_to_selection("Hallo Welt", 6, 10, "bold")
+    assert result["value"] == "Hallo **Welt**"
+    assert (result["selectionStart"], result["selectionEnd"]) == (8, 12)
+
+
+def test_apply_markdown_italic_wraps_selection():
+    result = _run_apply_markdown_to_selection("Hallo Welt", 6, 10, "italic")
+    assert result["value"] == "Hallo *Welt*"
+    assert (result["selectionStart"], result["selectionEnd"]) == (7, 11)
+
+
+def test_apply_markdown_bold_without_selection_places_cursor_between_markers():
+    result = _run_apply_markdown_to_selection("Hallo Welt", 5, 5, "bold")
+    assert result["value"] == "Hallo**** Welt"
+    assert (result["selectionStart"], result["selectionEnd"]) == (7, 7)
+
+
+def test_apply_markdown_heading_prefixes_single_line():
+    result = _run_apply_markdown_to_selection("Titel", 0, 5, "heading")
+    assert result["value"] == "## Titel"
+    assert (result["selectionStart"], result["selectionEnd"]) == (3, 8)
+
+
+def test_apply_markdown_list_prefixes_multiple_selected_lines():
+    value = "Erste Zeile\nZweite Zeile\nDritte Zeile"
+    # Selektion umfasst nur "Erste Zeile\nZweite" - beide betroffenen Zeilen
+    # bekommen trotzdem vollständig das Präfix.
+    result = _run_apply_markdown_to_selection(value, 0, 18, "list")
+    assert result["value"] == "- Erste Zeile\n- Zweite Zeile\nDritte Zeile"
+
+
+def test_apply_markdown_heading_does_not_duplicate_existing_prefix():
+    result = _run_apply_markdown_to_selection("## Titel", 0, 8, "heading")
+    assert result["value"] == "## Titel"
+    assert (result["selectionStart"], result["selectionEnd"]) == (0, 8)
+
+
+def test_creative_js_has_no_orphaned_dom_elements():
+    js_source = (STATIC_DIR / "creative.js").read_text()
+    all_orphaned = []
+    for match in FUNCTION_START_RE.finditer(js_source):
+        fn_name_match = re.search(r"function\s+(\w+)", js_source[max(0, match.start() - 30) : match.end()])
+        fn_name = fn_name_match.group(1) if fn_name_match else "?"
+        start = match.end() - 1
+        depth = 0
+        for i in range(start, len(js_source)):
+            if js_source[i] == "{":
+                depth += 1
+            elif js_source[i] == "}":
+                depth -= 1
+                if depth == 0:
+                    body = js_source[start : i + 1]
+                    orphaned = _find_orphaned_elements(body)
+                    if orphaned:
+                        all_orphaned.append((fn_name, orphaned))
+                    break
+    assert all_orphaned == [], (
+        "Diese per document.createElement erzeugten Elemente werden in ihrer Funktion "
+        f"weder angehängt noch zurückgegeben: {all_orphaned}"
+    )

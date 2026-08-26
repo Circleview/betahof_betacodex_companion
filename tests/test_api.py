@@ -96,6 +96,37 @@ def ask_result(response):
     }
 
 
+def creative_result(response):
+    """Wie ask_result, für /api/creative (siehe dort): sammelt "delta"-
+    Fragmente, liest das frühe "document"-Event und die nach
+    Vertrauensstufe getrennte Quellenliste aus dem "done"-Event."""
+    lines = [line for line in response.text.split("\n") if line.strip()]
+    events = [json.loads(line) for line in lines]
+    document_event = next(e for e in events if e["type"] == "document")
+    done = next(e for e in events if e["type"] == "done")
+    streamed_text = "".join(e["text"] for e in events if e["type"] == "delta")
+    return {
+        "document": document_event["document"],
+        "sources": done["sources"],
+        "streamed_text": streamed_text,
+        "events": events,
+    }
+
+
+class _FakeCreativeStream:
+    """Testhilfe: mimt app/llm.py:CreativeStream (iterierbarer Text-Delta-
+    Generator + .real_web_urls + .model), ohne einen echten Anthropic-Call
+    auszuführen - Standard-Mock in der client-Fixture unten."""
+
+    def __init__(self, chunks, real_web_urls=frozenset(), model="claude-haiku-4-5-20251001"):
+        self._chunks = chunks
+        self.real_web_urls = real_web_urls
+        self.model = model
+
+    def __iter__(self):
+        return iter(self._chunks)
+
+
 @pytest.fixture(scope="session", autouse=True)
 def _shared_vectorstore_client(tmp_path_factory):
     """Fix (2026-08-25, siehe ausführlicher Kommentar in app/vectorstore.py:
@@ -270,6 +301,14 @@ def client(tmp_path, monkeypatch):
         llm,
         "stream_answer_question",
         lambda question, chunks, lang="de", author_bios=None, history=None: iter(["Testantwort [1]."]),
+    )
+    # /api/creative (Kreativ-Modus, 2026-08-26) - Standard-Mock analog zu
+    # stream_answer_question oben, liefert ein CreativeStream-förmiges
+    # Objekt (siehe _FakeCreativeStream) statt eines echten Anthropic-Calls.
+    monkeypatch.setattr(
+        llm,
+        "stream_creative_response",
+        lambda instruction, document, chunks, lang="de": _FakeCreativeStream(["Testdokument."]),
     )
     monkeypatch.setattr(
         summarization,
@@ -1253,6 +1292,154 @@ def test_ask_rejects_after_rate_limit_exceeded(client):
     response = client.post("/api/ask", json={"question": "Frage?"})
 
     assert response.status_code == 429
+
+
+# --- Kreativ-Modus (2026-08-26) ---
+
+
+def test_creative_rejects_when_captcha_verification_fails(client, monkeypatch):
+    monkeypatch.setattr(captcha, "verify_turnstile_token", lambda token, remote_ip=None: False)
+
+    response = client.post("/api/creative", json={"document": "", "instruction": "Schreibe etwas."})
+
+    assert response.status_code == 400
+
+
+def test_creative_rejects_after_rate_limit_exceeded(client):
+    for _ in range(main_module.CREATIVE_RATE_LIMIT_MAX_REQUESTS):
+        response = client.post("/api/creative", json={"document": "", "instruction": "Schreibe etwas."})
+        assert response.status_code == 200
+
+    response = client.post("/api/creative", json={"document": "", "instruction": "Schreibe etwas."})
+
+    assert response.status_code == 429
+
+
+def test_creative_rejects_empty_instruction(client):
+    response = client.post("/api/creative", json={"document": "", "instruction": "   "})
+    assert response.status_code == 400
+
+
+def test_creative_rejects_instruction_over_length_limit(client):
+    too_long = "x" * (main_module.CREATIVE_MAX_INSTRUCTION_CHARS + 1)
+    response = client.post("/api/creative", json={"document": "", "instruction": too_long})
+    assert response.status_code == 400
+
+
+def test_creative_rejects_document_over_length_limit(client):
+    too_long = "x" * (main_module.CREATIVE_MAX_DOCUMENT_CHARS + 1)
+    response = client.post("/api/creative", json={"document": too_long, "instruction": "Kürze das."})
+    assert response.status_code == 400
+
+
+def test_creative_works_without_any_curated_sources(client):
+    """Bewusste Abweichung von /api/ask: der Kreativ-Modus soll auch ohne
+    kuratierte Quellen funktionieren (z.B. reine Workshop-Methodik, gestützt
+    auf Websuche/allgemeines Wissen statt der kuratierten Sammlung)."""
+    response = client.post(
+        "/api/creative", json={"document": "", "instruction": "Schlage drei Icebreaker vor."}
+    )
+    assert response.status_code == 200
+
+
+def test_creative_streams_delta_and_document_events_without_leaking_sources_marker(client, monkeypatch):
+    raw = "Erster Teil. ---SOURCES---\n[Web]: Titel — https://example.org/a\n"
+    monkeypatch.setattr(
+        llm, "stream_creative_response", lambda *a, **k: _FakeCreativeStream(list(raw))
+    )
+
+    response = client.post("/api/creative", json={"document": "", "instruction": "Schreibe etwas."})
+
+    result = creative_result(response)
+    assert result["document"] == "Erster Teil."
+    assert "---SOURCES---" not in result["streamed_text"]
+    assert all("---SOURCES---" not in json.dumps(e) for e in result["events"])
+
+
+def test_creative_uses_document_argument_correctly_for_first_draft_and_revision(client, monkeypatch):
+    calls = []
+
+    def fake_stream(instruction, document, chunks, lang="de"):
+        calls.append(document)
+        return _FakeCreativeStream(["Text."])
+
+    monkeypatch.setattr(llm, "stream_creative_response", fake_stream)
+
+    client.post("/api/creative", json={"document": "", "instruction": "Erster Entwurf."})
+    client.post("/api/creative", json={"document": "Bestehender Text.", "instruction": "Kürze das."})
+
+    assert calls == ["", "Bestehender Text."]
+
+
+def test_creative_betacodex_sources_come_from_retrieved_curated_chunks(client, monkeypatch):
+    client.post(
+        "/api/sources",
+        json={"title": "Zellstrukturdesign", "text": "Ein Text über Zentrumszellen.", "authors": ["Autor X"]},
+    )
+    monkeypatch.setattr(
+        llm,
+        "stream_creative_response",
+        lambda instruction, document, chunks, lang="de": _FakeCreativeStream(
+            ["Ein völlig anderer Text, der die Quelle gar nicht erwähnt."]
+        ),
+    )
+
+    response = client.post(
+        "/api/creative", json={"document": "", "instruction": "Schreibe über Zellstrukturdesign."}
+    )
+
+    result = creative_result(response)
+    assert any(s["title"] == "Zellstrukturdesign" for s in result["sources"]["betacodex"])
+
+
+def test_creative_betacodex_sources_deduplicate_multiple_chunks_of_same_source(client, monkeypatch):
+    # Lang genug (CHUNK_SIZE = 900 Tokens, siehe app/chunking.py), damit der
+    # Import in mehrere Chunks zerlegt wird - bei CREATIVE_TOP_K=6 landen bei
+    # nur dieser einen Quelle im Store mehrere ihrer eigenen Chunks unter den
+    # Top-Treffern, was die Quellenliste ohne Deduplizierung mehrfach
+    # anzeigen würde (genau das vom Nutzer gemeldete Verhalten).
+    long_text = "Zentrumszellen tragen Wertschöpfung im Zellstrukturdesign. " * 250
+    client.post(
+        "/api/sources",
+        json={"title": "Zellstrukturdesign", "text": long_text, "authors": ["Autor X"]},
+    )
+    monkeypatch.setattr(
+        llm,
+        "stream_creative_response",
+        lambda instruction, document, chunks, lang="de": _FakeCreativeStream(
+            ["Text ohne Erwähnung der Quelle."]
+        ),
+    )
+
+    response = client.post(
+        "/api/creative",
+        json={"document": "", "instruction": "Schreibe über Zentrumszellen und Zellstrukturdesign."},
+    )
+
+    result = creative_result(response)
+    betacodex = result["sources"]["betacodex"]
+    assert len(betacodex) >= 1
+    assert sum(1 for s in betacodex if s["title"] == "Zellstrukturdesign") == 1
+
+
+def test_creative_web_sources_are_filtered_to_real_search_results(client, monkeypatch):
+    raw = (
+        "Der Text.\n\n---SOURCES---\n"
+        "[Web]: Erfunden — https://fake.example/nie-gefunden\n"
+        "[Web]: Echt — https://real.example/gefunden\n"
+    )
+    monkeypatch.setattr(
+        llm,
+        "stream_creative_response",
+        lambda instruction, document, chunks, lang="de": _FakeCreativeStream(
+            [raw], real_web_urls={"https://real.example/gefunden"}
+        ),
+    )
+
+    response = client.post("/api/creative", json={"document": "", "instruction": "Schreibe etwas."})
+
+    result = creative_result(response)
+    assert result["sources"]["web"] == [{"title": "Echt", "url": "https://real.example/gefunden"}]
 
 
 # Backlog #97: anonymisiertes Log der ersten Frage einer Konversation. Wird

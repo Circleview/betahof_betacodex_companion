@@ -3,6 +3,7 @@ import { renderMarkdown } from '/markdown.js';
 import { initAuth, hasRole, onAuthChange } from '/auth.js';
 import { createTurnstileWidget } from '/turnstile.js';
 import { createSpeechController, stripMarkdownForSpeech } from '/speech.js';
+import { readNdjsonStream } from '/ndjson-stream.js';
 
 // Spam-/Bot-Schutz für die Frage-Eingabe (Cloudflare Turnstile) - die
 // eigentliche Anbindung ist gemeinsames Modul (siehe turnstile.js), das auch
@@ -899,36 +900,15 @@ async function fetchWithRetry(url, options, retries = 1, delayMs = 600) {
 // dem "done"-Event auf (bzw. wirft bei einem "error"-Event oder wenn der
 // Stream ohne "done" endet - z.B. abgebrochene Verbindung).
 async function readAskStream(response, onDelta, onAnswer, onSources) {
-  const reader = response.body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = '';
-  let doneEvent = null;
-
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true });
-    const lines = buffer.split('\n');
-    buffer = lines.pop();
-    for (const line of lines) {
-      if (!line.trim()) continue;
-      const event = JSON.parse(line);
-      if (event.type === 'delta') {
-        onDelta(event.text);
-      } else if (event.type === 'answer') {
-        onAnswer(event.answer);
-      } else if (event.type === 'sources') {
-        onSources?.(event.sources);
-      } else if (event.type === 'error') {
-        throw new Error(event.message);
-      } else if (event.type === 'done') {
-        doneEvent = event;
-      }
-    }
-  }
-
-  if (!doneEvent) throw new Error(t('index.askError'));
-  return doneEvent;
+  return readNdjsonStream(
+    response,
+    {
+      delta: (event) => onDelta(event.text),
+      answer: (event) => onAnswer(event.answer),
+      sources: (event) => onSources?.(event.sources),
+    },
+    t('index.askError')
+  );
 }
 
 questionForm.addEventListener('submit', async (e) => {

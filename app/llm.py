@@ -2,6 +2,8 @@ import re
 
 import anthropic
 
+from app import web_search_tool
+
 MODEL_NAME = "claude-haiku-4-5-20251001"
 
 # Nutzerwunsch (2026-08-25): fett hervorgehobene Begriffe in der Antwort
@@ -313,3 +315,164 @@ def answer_question(
     return "".join(
         stream_answer_question(question, chunks, lang=lang, author_bios=author_bios, history=history)
     )
+
+
+# Nutzerwunsch (2026-08-26): Kreativ-Modus (Blogposts, Artikel, Workshop-
+# Konzepte, White Papers) neben dem strikten Frage-Antwort-Modus - bewusst
+# freier/explorierender, deshalb ein größeres Modell für den ersten Entwurf
+# (claude-sonnet-5) und nur für Überarbeitungen (nicht-leeres Dokument) das
+# günstige Haiku-Modell wie im Rest der App - Kosten-Heuristik, die der
+# Nutzer explizit so priorisiert hat: teures Modell nur, wo tatsächlich
+# substanzieller neuer Inhalt entsteht.
+CREATIVE_FIRST_DRAFT_MODEL = "claude-sonnet-5"
+CREATIVE_MAX_TOKENS = 8192
+CREATIVE_MAX_SEARCH_USES = 3
+
+CREATIVE_SYSTEM_PROMPTS = {
+    "de": """Du bist ein erfahrener Schreib- und Workshop-Design-Partner. Du hilfst Menschen dabei, auf Grundlage des BetaCodex kreative, freie Texte zu verfassen - Blogposts, Zeitungsartikel, Webseitentexte, Workshop-Konzepte, White Papers.
+
+Regeln:
+- Anders als im strikten Frage-Antwort-Modus darfst du hier freier, explorierender und kreativer schreiben - auch über Themen, die die kuratierten BetaCodex-Quellen nicht abdecken (z. B. Workshop-Methodik), gestützt auf das Web-Search-Werkzeug und dein Trainingswissen.
+- Wird unten ein Abschnitt "BetaCodex-Kontext" mitgeliefert: Aussagen, die sich konkret auf den BetaCodex bzw. die dort skizzierten Quellen beziehen, müssen durch diesen Kontext gedeckt sein - erfinde nichts, was ihm widerspricht.
+- Für alles, was der BetaCodex-Kontext nicht abdeckt, darfst du recherchieren (Web-Search-Werkzeug) oder dein allgemeines Wissen nutzen - erfinde aber auch dort keine Fakten, Quellen oder Zitate, die du nicht durch eine echte Websuche oder gesichertes Wissen belegen kannst.
+- Deine gesamte Antwort IST das Dokument: Gib direkt den vollständigen, fertigen Text aus - keine Chat-Einleitung, kein "Hier ist der überarbeitete Text:", kein Meta-Kommentar davor oder danach.
+- Wird unten ein "Aktuelles Dokument" mitgeliefert, ist das eine VOLLSTÄNDIGE ERSETZUNG: Schreibe den GESAMTEN Text gemäß der Anweisung neu, nicht nur den geänderten Teil. Ist das Dokument leer, verfasse den ersten vollständigen Entwurf.
+- Keine eingeklammerten Quellenverweise wie [1], [2] im Fließtext - anders als im strikten Modus stehen Quellen ausschließlich im Block am Ende (siehe unten).
+- Markdown ist erlaubt, wo es zum Zielformat passt (Überschriften, Fett, Listen) - natürlich eingesetzt, nicht mechanisch.
+- Schreibe so, dass man dem Text nicht sofort anmerkt, dass ihn eine KI verfasst hat: variiere Satzlänge und Satzanfänge, statt jeden Absatz nach demselben Muster (Thesensatz, drei Stützpunkte, Fazitsatz) aufzubauen. Vermeide abgenutzte Übergangsfloskeln ("Darüber hinaus", "Nicht zuletzt", "Zusammenfassend lässt sich sagen", "Es ist wichtig zu betonen, dass ..."). Beziehe konkret Stellung, statt jede Aussage sofort wieder auszubalancieren oder zu relativieren. Orientiere dich, wo der BetaCodex-Kontext es hergibt, am Ton der zitierten Quellen statt an einem generischen Assistenz-Ton.
+- Antworte in der Sprache der Anweisung.
+- Füge nach dem Dokument (durch eine Leerzeile getrennt) einen Block mit allen tatsächlich per Websuche gefundenen und im Text verwendeten Web-Quellen hinzu, exaktes Format:
+---SOURCES---
+[Web]: <Titel> — <URL>
+  Nur echte URLs, die du tatsächlich per Websuche gefunden hast - erfinde niemals eine URL. BetaCodex-Quellen gehören NICHT in diesen Block, die werden separat erfasst. Hast du keine Web-Quelle verwendet, lass den Block komplett weg.
+""",
+    "en": """You are an experienced writing and workshop-design partner. You help people write creative, free-form texts grounded in the BetaCodex - blog posts, newspaper articles, website copy, workshop concepts, white papers.
+
+Rules:
+- Unlike the strict Q&A mode, here you may write more freely, exploratively, and creatively - including about topics the curated BetaCodex sources don't cover (e.g. workshop facilitation methods), drawing on the web-search tool and your training knowledge.
+- If a "BetaCodex context" section is provided below: statements specific to the BetaCodex or the sources outlined there must be supported by that context - don't invent anything that contradicts it.
+- For anything the BetaCodex context doesn't cover, you may research (web-search tool) or use your general knowledge - but never invent facts, sources, or quotes you can't back up with a real search result or well-established knowledge.
+- Your entire reply IS the document: output the complete, ready-to-use text directly - no chat framing, no "Here is the revised text:", no meta-commentary before or after.
+- If a "Current document" is provided below, this is a FULL REPLACEMENT: rewrite the ENTIRE text according to the instruction, not just the changed part. If it is empty, write the first full draft.
+- No bracketed citations like [1], [2] in the body text - unlike the strict mode, sources appear only in the trailing block below.
+- Markdown is fine where it fits the target format (headings, bold, lists) - used naturally, not mechanically.
+- Write so the text doesn't immediately read as AI-written: vary sentence length and sentence openers instead of building every paragraph on the same pattern (topic sentence, three supporting points, concluding sentence). Avoid worn-out transition fillers ("Furthermore", "Moreover", "In conclusion", "It's important to note that ..."). Take a clear stance instead of immediately hedging or balancing every claim. Where the BetaCodex context supports it, match the tone of the cited sources rather than a generic assistant voice.
+- Answer in the language of the instruction.
+- After the document (separated by a blank line), add a block listing every web source you actually found via search and used in the text, exact format:
+---SOURCES---
+[Web]: <title> — <url>
+  Only real URLs you actually found via web search - never invent one. Do NOT list BetaCodex sources here, they are tracked separately. If you used no web source, omit the block entirely.
+""",
+}
+
+_CREATIVE_LANGUAGE_REMINDERS = {
+    "de": "(Wichtig: Antworte in der Sprache dieser Anweisung, auch wenn der BetaCodex-Kontext oben in einer anderen Sprache verfasst ist.)",
+    "en": "(Important: answer in the language of this instruction, even if the BetaCodex context above is written in a different language.)",
+}
+
+_CREATIVE_NO_CONTEXT_NOTE = {
+    "de": "(Keine passenden kuratierten Quellen zu diesem Thema gefunden.)",
+    "en": "(No matching curated sources found for this topic.)",
+}
+
+_CREATIVE_EMPTY_DOCUMENT_NOTE = {
+    "de": "(noch leer - das hier ist der erste Entwurf)",
+    "en": "(still empty - this is the first draft)",
+}
+
+_CREATIVE_SOURCES_MARKER = "---SOURCES---"
+_WEB_SOURCE_LINE_RE = re.compile(
+    r'^\[Web\]:\s*(?P<title>.+?)\s*[-–—]\s*(?P<url>https?://\S+)\s*$', re.MULTILINE
+)
+
+
+def _build_creative_context(chunks: list[dict]) -> str:
+    return "\n\n".join(
+        f"(Quelle: {c['title']}, {c['author']}, {c['date']})\n{c['text']}" for c in chunks
+    )
+
+
+def _build_creative_user_content(instruction: str, document: str, context: str, lang: str) -> str:
+    context_text = context or _CREATIVE_NO_CONTEXT_NOTE[lang]
+    document_text = document.strip() or _CREATIVE_EMPTY_DOCUMENT_NOTE[lang]
+    return (
+        f"BetaCodex-Kontext:\n\n{context_text}\n\n"
+        f'Aktuelles Dokument:\n"""\n{document_text}\n"""\n\n'
+        f"Anweisung: {instruction}\n\n"
+        f"{_CREATIVE_LANGUAGE_REMINDERS[lang]}"
+    )
+
+
+def parse_document_and_sources(raw: str) -> tuple[str, list[dict]]:
+    """Trennt das für Nutzer:innen sichtbare Dokument vom angehängten
+    ---SOURCES---Block (Analogon zu parse_answer_and_quotes im strikten
+    Modus) - liefert die vom Modell SELBST behaupteten Web-Quellen zurück.
+    Diese gelten erst als vertrauenswürdig, nachdem app/main.py sie gegen
+    die echten web_search_tool_result-URLs dieses Calls geprüft hat (siehe
+    CreativeStream.real_web_urls unten) - dieselbe Halluzinations-Bremse
+    wie in app/source_discovery.py."""
+    marker_index = raw.find(_CREATIVE_SOURCES_MARKER)
+    if marker_index == -1:
+        return raw.strip(), []
+    document = raw[:marker_index].strip()
+    block = raw[marker_index + len(_CREATIVE_SOURCES_MARKER) :]
+    web_sources = [
+        {"title": m.group("title").strip(), "url": m.group("url").strip()}
+        for m in _WEB_SOURCE_LINE_RE.finditer(block)
+    ]
+    return document, web_sources
+
+
+class CreativeStream:
+    """Wrappt den rohen Text-Delta-Generator von stream_creative_response,
+    damit der Aufrufer (app/main.py) nach dem vollständigen Durchlaufen des
+    Streams zusätzlich die ECHTEN Web-Search-Ergebnis-URLs lesen kann -
+    Tool-Result-Content-Blöcke tragen keine Text-Deltas, stehen also erst
+    in der finalen Nachricht zur Verfügung, nicht während des Streamens.
+    model dient der Beobachtbarkeit/Tests (welches Modell diese Anfrage
+    tatsächlich bedient hat)."""
+
+    def __init__(self, chunks, urls_box: dict, model: str):
+        self._chunks = chunks
+        self._urls_box = urls_box
+        self.model = model
+
+    def __iter__(self):
+        return iter(self._chunks)
+
+    @property
+    def real_web_urls(self) -> set[str]:
+        return self._urls_box["urls"]
+
+
+def stream_creative_response(
+    instruction: str,
+    document: str,
+    curated_chunks: list[dict],
+    lang: str = DEFAULT_LANG,
+) -> CreativeStream:
+    """Streamt die Kreativ-Modus-Antwort (siehe CREATIVE_SYSTEM_PROMPTS) -
+    Modellwahl richtet sich danach, ob document bereits Inhalt hat (siehe
+    CREATIVE_FIRST_DRAFT_MODEL oben)."""
+    lang = lang if lang in CREATIVE_SYSTEM_PROMPTS else DEFAULT_LANG
+    model = CREATIVE_FIRST_DRAFT_MODEL if not document.strip() else MODEL_NAME
+    context = _build_creative_context(curated_chunks)
+    user_content = _build_creative_user_content(instruction, document, context, lang)
+
+    urls_box: dict = {"urls": set()}
+
+    def _generate():
+        client = _get_client()
+        with client.messages.stream(
+            model=model,
+            max_tokens=CREATIVE_MAX_TOKENS,
+            system=CREATIVE_SYSTEM_PROMPTS[lang],
+            tools=[web_search_tool.build_tool(CREATIVE_MAX_SEARCH_USES)],
+            tool_choice={"type": "auto"},
+            messages=[{"role": "user", "content": user_content}],
+        ) as stream:
+            yield from stream.text_stream
+            final_message = stream.get_final_message()
+        urls_box["urls"] = web_search_tool.real_search_result_urls(final_message)
+
+    return CreativeStream(_generate(), urls_box, model)

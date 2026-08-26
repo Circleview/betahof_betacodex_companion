@@ -81,6 +81,16 @@ class QuestionIn(BaseModel):
     history: list[HistoryTurnIn] = []
 
 
+class CreativeRequestIn(BaseModel):
+    """Anfrage an den Kreativ-Modus (/api/creative) - anders als QuestionIn
+    kein Konversationsverlauf: der Zustand IST das Dokument selbst, jede
+    Anweisung ersetzt es komplett (siehe app/main.py: creative())."""
+
+    document: str = ""
+    instruction: str
+    turnstile_token: str = ""
+
+
 class QuestionLogEntryOut(BaseModel):
     text: str
     timestamp: str

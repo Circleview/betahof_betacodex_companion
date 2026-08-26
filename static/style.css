@@ -281,6 +281,7 @@ header h1 {
 #conversation-link,
 #import-link,
 #explore-link,
+#creative-link,
 #question-log-link,
 #changelog-link {
   position: relative;
@@ -331,11 +332,25 @@ header h1 {
 #conversation-link:hover,
 #import-link:hover,
 #explore-link:hover,
+#creative-link:hover,
 #question-log-link:hover,
 #changelog-link:hover {
   border-color: var(--color-accent);
   color: var(--color-accent);
   background: var(--color-accent-tint);
+}
+
+@media (max-width: 480px) {
+  /* Nutzerwunsch (2026-08-26): auf Mobile geht Header-Platz für die beiden
+     Log-Icons (Fragen-Log, Änderungs-Log) verloren - beide sind ohnehin nur
+     für Quellen-Pfleger:innen sichtbar (siehe gated: true in header.js), auf
+     Mobile bleiben sie zusätzlich immer ausgeblendet. !important nötig, da
+     updateNavVisibility() für Pfleger:innen die .hidden-Klasse entfernt und
+     sonst wieder auf dem Home-Bildschirm anzeigen würde. */
+  #question-log-link,
+  #changelog-link {
+    display: none !important;
+  }
 }
 
 .header-actions {
@@ -3762,5 +3777,137 @@ details a {
 
 .explore-search-row {
   margin-top: 0.5rem;
+}
+
+/* Nutzerwunsch (2026-08-26): Kreativ-Modus - eigene, klar abgetrennte Seite
+   (siehe creative.html/creative.js). Warnfarbe statt der neutralen Akzent-
+   farbe für den Hinweisbanner, da bewusst ein anderer Vertrauensmodus als
+   die strikte Konversationsansicht signalisiert werden soll (dieser Modus
+   nutzt auch allgemeines Internet-/Modellwissen). */
+.creative-disclaimer {
+  margin: 0 0 1.5rem;
+  padding: 0.75rem 1rem;
+  border-left: 3px solid var(--color-warning);
+  background: var(--color-warning-tint);
+  border-radius: var(--radius);
+  font-size: 0.9rem;
+  color: var(--color-text);
+}
+
+.creative-disclaimer a {
+  color: var(--color-accent);
+}
+
+#creative-layout {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2rem;
+  align-items: flex-start;
+}
+
+#creative-form {
+  flex: 1 1 480px;
+  min-width: 0;
+}
+
+.creative-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin: 0.4rem 0;
+}
+
+.creative-toolbar button {
+  min-width: 2rem;
+  padding: 0.3rem 0.6rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: none;
+  color: var(--color-text-muted);
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.creative-toolbar button:hover:not(:disabled) {
+  color: var(--color-accent);
+  border-color: var(--color-accent);
+}
+
+.creative-toolbar button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+#creative-preview-toggle {
+  margin-left: auto;
+}
+
+#creative-document {
+  font-family: var(--font-sans);
+  line-height: 1.5;
+}
+
+.creative-document-preview {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 16rem;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-sans);
+  line-height: 1.5;
+  overflow-y: auto;
+}
+
+#creative-submit {
+  margin-top: 0.75rem;
+}
+
+#creative-status {
+  margin-top: 0.5rem;
+  color: var(--color-text-muted);
+}
+
+#creative-error {
+  margin-top: 0.5rem;
+  color: var(--color-accent);
+}
+
+#creative-sources {
+  flex: 0 1 280px;
+  min-width: 220px;
+  color: var(--color-text-muted);
+  font-size: 0.9rem;
+}
+
+#creative-sources h3 {
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  color: var(--color-text-muted);
+  margin: 1.25rem 0 0.5rem;
+}
+
+#creative-sources h3:first-child {
+  margin-top: 0;
+}
+
+#creative-sources ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+#creative-sources a {
+  color: var(--color-accent);
+}
+
+.creative-sources-empty {
+  font-style: italic;
 }
 

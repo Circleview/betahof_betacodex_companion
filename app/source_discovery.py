@@ -14,6 +14,8 @@ Liste zurück - ein Discovery-Lauf darf nie den wöchentlichen Hintergrund-
 Worker (app/main.py) zum Absturz bringen."""
 import anthropic
 
+from app import web_search_tool
+
 MODEL_NAME = "claude-haiku-4-5-20251001"
 MAX_SEARCH_USES = 5
 
@@ -76,26 +78,6 @@ gefunden wurde). Nur deutsch- oder englischsprachige Inhalte, keine Bezahlschran
 Video-/Audio-Inhalte."""
 
 
-def _real_search_result_urls(message) -> set[str]:
-    """Sammelt die URLs, die die Websuche in DIESEM Call tatsächlich
-    gefunden hat (message.content enthält dafür eigene
-    "web_search_tool_result"-Blöcke, unabhängig vom separaten
-    submit_candidates-Tool-Call). Grundlage für die Halluzinations-Bremse
-    in _run_discovery weiter unten."""
-    urls: set[str] = set()
-    for block in message.content:
-        if getattr(block, "type", None) != "web_search_tool_result":
-            continue
-        content = getattr(block, "content", None)
-        if not isinstance(content, list):
-            continue  # WebSearchToolResultError statt echter Trefferliste
-        for item in content:
-            url = getattr(item, "url", None)
-            if url:
-                urls.add(url)
-    return urls
-
-
 def _run_discovery(system_prompt: str, user_content: str) -> list[dict]:
     try:
         client = _get_client()
@@ -104,7 +86,7 @@ def _run_discovery(system_prompt: str, user_content: str) -> list[dict]:
             max_tokens=2048,
             system=system_prompt,
             tools=[
-                {"type": "web_search_20250305", "name": "web_search", "max_uses": MAX_SEARCH_USES},
+                web_search_tool.build_tool(MAX_SEARCH_USES),
                 _SUBMIT_CANDIDATES_TOOL,
             ],
             messages=[{"role": "user", "content": user_content}],
@@ -116,8 +98,10 @@ def _run_discovery(system_prompt: str, user_content: str) -> list[dict]:
         # Kandidat wird deshalb hart gegen die tatsächlichen Suchergebnis-
         # URLs DIESES Calls geprüft - nicht verifizierbare Kandidaten fallen
         # lautlos raus (gleiche Fail-leise-Konvention wie der Rest dieser
-        # Funktion), statt eine tote Quelle vorzuschlagen.
-        real_urls = _real_search_result_urls(message)
+        # Funktion), statt eine tote Quelle vorzuschlagen. Die Prüf-Logik
+        # selbst liegt seit dem Kreativ-Modus (2026-08-26) in
+        # app/web_search_tool.py, gemeinsam genutzt statt dupliziert.
+        real_urls = web_search_tool.real_search_result_urls(message)
         for block in message.content:
             if getattr(block, "type", None) == "tool_use" and block.name == "submit_candidates":
                 return [

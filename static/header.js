@@ -59,6 +59,23 @@ const CHANGELOG_ICON =
   '<polyline points="17.5 13.8 17.5 16.5 19.8 17.8"></polyline>' +
   '</svg>';
 
+// Nutzerwunsch (2026-08-26): erster Entwurf kombinierte Glühbirne + Stift-
+// Abzeichen (gleiche Bauweise wie CHANGELOG_ICON), war bei 20px aber zu
+// überladen - Hauptform und Abzeichen waren beide kaum noch erkennbar.
+// Nutzerfeedback (2026-08-26): "Icon sieht noch nicht gut aus" - neuer
+// Vorschlag mit nur einer Hauptform statt zwei ineinander verschachtelten
+// Motiven: ein schreibender Stift mit kleinem Funken/Idee-Symbol (verzichtet
+// bewusst auf die Glühbirne als eigene Form, da beide Motive bei 20px nicht
+// gleichzeitig lesbar blieben).
+const CREATIVE_ICON =
+  '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" ' +
+  'stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' +
+  '<path d="M12 20h9"></path>' +
+  '<path d="M16.376 3.622a1 1 0 0 1 3.002 3.002L7.368 18.635a2 2 0 0 1-.855.506l-2.872.838a.5.5 0 0 1-.62-.62l.838-2.872a2 2 0 0 1 .506-.855z"></path>' +
+  '<line x1="4.5" y1="2.3" x2="4.5" y2="6.7"></line>' +
+  '<line x1="2.3" y1="4.5" x2="6.7" y2="4.5"></line>' +
+  '</svg>';
+
 // Nutzerwunsch (2026-08-23): "Explore"-Modus - minimalistisches Netzwerk-
 // Glyph (drei verbundene Knoten), gleicher Stroke-Stil wie CONVERSATION_
 // ICON/IMPORT_ICON oben (stroke-width 2, kein Uhr-Abzeichen nötig).
@@ -87,8 +104,9 @@ const EXPLORE_ICON =
 // Quellenübersicht.
 const NAV_LINKS = [
   { id: 'conversation-link', href: '/', icon: CONVERSATION_ICON, titleKey: 'index.viewConversation', gated: false },
-  { id: 'import-link', href: '/import.html', icon: IMPORT_ICON, titleKey: 'index.viewSources', gated: false, badge: true },
+  { id: 'creative-link', href: '/creative.html', icon: CREATIVE_ICON, titleKey: 'index.viewCreative', gated: false },
   { id: 'explore-link', href: '/explore.html', icon: EXPLORE_ICON, titleKey: 'index.viewExplore', gated: false },
+  { id: 'import-link', href: '/import.html', icon: IMPORT_ICON, titleKey: 'index.viewSources', gated: false, badge: true },
   { id: 'question-log-link', href: '/question-log.html', icon: QUESTION_LOG_ICON, titleKey: 'index.viewQuestionLog', gated: true },
   { id: 'changelog-link', href: '/changelog.html', icon: CHANGELOG_ICON, titleKey: 'index.viewChangelog', gated: true },
 ];

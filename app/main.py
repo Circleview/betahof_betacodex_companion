@@ -63,6 +63,7 @@ from app.models import (
     BrokenLinksCountOut,
     RenameAuthorIn,
     ChunkRef,
+    CreativeRequestIn,
     EarlyAccessIn,
     ExtractedSource,
     ExtractedUpload,
@@ -3281,6 +3282,25 @@ RELEVANCE_MAX_ADJUSTMENT = 0.15
 # ohne UI.
 ASK_HISTORY_MAX_TURNS = 3
 
+# Nutzerwunsch (2026-08-26): Kreativ-Modus (siehe app/llm.py:
+# stream_creative_response) - eigene, deutlich engere Rate-Grenze als
+# /api/ask (Standard 10/60s). Ein Erstentwurf läuft auf claude-sonnet-5
+# (rund 5x Haikus Preis pro Token) mit einem 8x höheren max_tokens-Limit
+# als /api/ask PLUS bis zu 3 Websuchen (jede erhöht die Eingabe-Tokenzahl
+# real spürbar); selbst eine günstige Haiku-Überarbeitung schickt bei
+# jedem einzelnen Aufruf das KOMPLETTE Dokument erneut mit (Ganzdokument-
+# Ersatz statt Diff, siehe creative() unten), nicht nur ein kurzes Delta
+# wie bei einer Ask-Folgefrage. Pro Anfrage entsteht dadurch grob ein bis
+# zwei Größenordnungen mehr Kosten als bei /api/ask - 6 Anfragen/10min
+# (= 36/Stunde/IP) lässt eine echte Schreibsitzung (Entwurf + mehrere
+# Überarbeitungsrunden) komfortabel zu, deckelt das Kosten-Worst-Case pro
+# IP aber auf eine mit /api/ask vergleichbare Größenordnung.
+CREATIVE_TOP_K = 6
+CREATIVE_MAX_INSTRUCTION_CHARS = 2000
+CREATIVE_MAX_DOCUMENT_CHARS = 20000
+CREATIVE_RATE_LIMIT_MAX_REQUESTS = 6
+CREATIVE_RATE_LIMIT_WINDOW_SECONDS = 600
+
 # Backlog: LLM/Internet-Fallback bei dünner Quellenlage - ergänzt die
 # kuratierten Treffer automatisch (kein Opt-in, Nutzer:innen merken nichts
 # davon) um vorab indizierte Web-Fallback-Chunks (siehe app/web_crawler.py).
@@ -3573,6 +3593,152 @@ def ask(question: QuestionIn, request: Request, x_lang: str = Header(default=i18
             query_embedding,
             history,
         ),
+        media_type="application/x-ndjson",
+    )
+
+
+# Selbe Zeichenkette wie llm._CREATIVE_SOURCES_MARKER - lokal dupliziert
+# statt über den Modul-privaten Namen des anderen Moduls zu greifen, gleiche
+# Konvention wie _ASK_QUOTES_MARKER oben für den strikten Modus.
+_CREATIVE_SOURCES_MARKER = "---SOURCES---"
+
+
+def _creative_retrieval_query(instruction: str, document: str) -> str:
+    # Kein zusätzlicher LLM-Umformulierungs-Call wie llm.rewrite_followup_query
+    # bei /api/ask - hält Überarbeitungen auf dem günstigen Pfad. Bei
+    # nicht-leerem Dokument wird ein Ausschnitt des aktuellen Stands an die
+    # Anweisung angehängt, damit z.B. "kürze das" thematisch verankert
+    # bleibt, auch wenn die Anweisung allein keinen Themenbezug trägt.
+    if not document.strip():
+        return instruction
+    return f"{instruction}\n\n{document[:2000]}"
+
+
+def _creative_event_stream(lang, betacodex_sources, creative_stream):
+    """NDJSON-Events für /api/creative: 'delta' pro Text-Fragment des neuen
+    Dokuments, ein frühes 'document'-Event sobald der sichtbare
+    Dokumenttext feststeht (Analogon zum frühen 'answer'-Event bei
+    /api/ask), 'done' mit der nach Vertrauensstufe getrennten Quellenliste,
+    oder 'error'. Der ---SOURCES---Block selbst wird NIE gestreamt (reine
+    interne Beleg-Daten für die Quellenliste), exakt wie ---QUOTES--- bei
+    /api/ask."""
+    buffer = ""
+    sent_len = 0
+    document_sent = False
+
+    try:
+        for delta in creative_stream:
+            buffer += delta
+            marker_index = buffer.find(_CREATIVE_SOURCES_MARKER)
+            visible_raw = (
+                buffer[:marker_index]
+                if marker_index != -1
+                else buffer[: max(0, len(buffer) - len(_CREATIVE_SOURCES_MARKER))]
+            )
+            new_text = visible_raw[sent_len:]
+            if new_text:
+                yield json.dumps({"type": "delta", "text": new_text}) + "\n"
+                sent_len = len(visible_raw)
+            if marker_index != -1 and not document_sent:
+                early_document, _ = llm.parse_document_and_sources(buffer)
+                yield json.dumps({"type": "document", "document": early_document}) + "\n"
+                document_sent = True
+    except Exception:
+        yield json.dumps({"type": "error", "message": i18n.get_message("creative_llm_failed", lang)}) + "\n"
+        return
+
+    document_text, web_source_candidates = llm.parse_document_and_sources(buffer)
+    remaining = document_text[sent_len:]
+    if remaining:
+        yield json.dumps({"type": "delta", "text": remaining}) + "\n"
+    if not document_sent:
+        yield json.dumps({"type": "document", "document": document_text}) + "\n"
+
+    # Web-Quellen: nur, was das Modell selbst gemeldet hat UND was tatsächlich
+    # ein echter Websuche-Treffer DIESES Calls war - Halluzinations-Bremse
+    # analog app/source_discovery.py. BetaCodex-Quellen dagegen: deterministisch
+    # alles, was tatsächlich als Kontext an das Modell gegeben wurde (siehe
+    # creative() unten) - kein Halluzinationsrisiko, da 1:1 aus der eigenen
+    # kuratierten Sammlung.
+    validated_web_sources = [
+        s for s in web_source_candidates if s["url"] in creative_stream.real_web_urls
+    ]
+
+    yield json.dumps(
+        {"type": "done", "sources": {"betacodex": betacodex_sources, "web": validated_web_sources}}
+    ) + "\n"
+
+
+@app.post("/api/creative")
+def creative(payload: CreativeRequestIn, request: Request, x_lang: str = Header(default=i18n.DEFAULT_LANG)):
+    client_ip = request.client.host if request.client else "unknown"
+    if ratelimit.is_rate_limited(
+        f"creative-ip:{client_ip}",
+        max_requests=CREATIVE_RATE_LIMIT_MAX_REQUESTS,
+        window_seconds=CREATIVE_RATE_LIMIT_WINDOW_SECONDS,
+    ):
+        raise HTTPException(429, i18n.get_message("rate_limited", x_lang))
+    if not captcha.verify_turnstile_token(payload.turnstile_token, client_ip):
+        raise HTTPException(400, i18n.get_message("captcha_failed", x_lang))
+
+    instruction = payload.instruction.strip()
+    if not instruction:
+        raise HTTPException(400, i18n.get_message("creative_instruction_empty", x_lang))
+    if len(instruction) > CREATIVE_MAX_INSTRUCTION_CHARS:
+        raise HTTPException(400, i18n.get_message("creative_instruction_too_long", x_lang))
+    document = payload.document
+    if len(document) > CREATIVE_MAX_DOCUMENT_CHARS:
+        raise HTTPException(400, i18n.get_message("creative_document_too_long", x_lang))
+
+    # Bewusst KEIN "if not sources: raise no_sources" wie bei /api/ask - der
+    # Witz dieses Modus ist gerade, dass er auch Themen bedienen soll, die
+    # die kuratierte Sammlung gar nicht abdeckt (z.B. Workshop-Methodik),
+    # getragen von der Live-Websuche statt der kuratierten Quellen.
+    sources = _load_sources()
+    unknown_label = "unbekannt" if x_lang == "de" else "unknown"
+
+    llm_chunks = []
+    betacodex_sources = []
+    seen_betacodex_sources = set()
+    if sources:
+        query_text = _creative_retrieval_query(instruction, document)
+        query_embedding = embeddings.embed_query(query_text)
+        curated_hits = vectorstore.query(query_embedding, top_k=CREATIVE_TOP_K)
+        for doc, meta in zip(curated_hits["documents"][0], curated_hits["metadatas"][0]):
+            authors_list = meta.get("authors") or ([meta["author"]] if meta.get("author") else [])
+            llm_chunks.append(
+                {
+                    "title": meta["title"],
+                    "author": ", ".join(authors_list) or unknown_label,
+                    "date": meta["date"] or unknown_label,
+                    "text": doc,
+                }
+            )
+            # Deterministisch aus dem tatsächlich als Kontext gegebenen Chunk
+            # gebaut (Analogon zum frühen "sources"-Event bei /api/ask) -
+            # unabhängig davon, ob/wie das Modell den Inhalt im Dokument
+            # verwendet hat. Mehrere Chunks derselben Quelle (z.B. mehrere
+            # Treffer desselben Dokuments unter den Top-K) landen weiterhin
+            # alle in llm_chunks (jeder Chunk ist eigener Kontext-Text), aber
+            # nur einmal in der angezeigten Quellenliste - dedupliziert über
+            # die URL (Fallback: Titel, falls eine Quelle keine URL hat).
+            dedup_key = meta["url"] or meta["title"]
+            if dedup_key in seen_betacodex_sources:
+                continue
+            seen_betacodex_sources.add(dedup_key)
+            betacodex_sources.append(
+                {
+                    "title": meta["title"],
+                    "authors": authors_list,
+                    "date": meta["date"] or None,
+                    "url": meta["url"] or None,
+                }
+            )
+
+    creative_stream = llm.stream_creative_response(instruction, document, llm_chunks, lang=x_lang)
+
+    return StreamingResponse(
+        _creative_event_stream(x_lang, betacodex_sources, creative_stream),
         media_type="application/x-ndjson",
     )
 
