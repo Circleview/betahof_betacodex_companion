@@ -1,11 +1,20 @@
 fastapi==0.140.0
 uvicorn[standard]==0.51.0
-# Dependabot meldet CVE-2026-45829 (kritisch, "ChromaToast") für chromadb -
-# betrifft ausschließlich den per HTTP exponierten Server-Modus
-# (chromadb.HttpClient / `chroma run`); wir nutzen ausschließlich
-# chromadb.PersistentClient (eingebettet, kein Netzwerk-Server, siehe
-# app/vectorstore.py), daher nicht ausnutzbar. Kein Fix verfügbar, auch die
-# hier gepinnte Version ist die aktuell neueste - bei Update beobachten.
+# Dependabot meldet mehrere kritische/hohe CVEs für chromadb - u.a.
+# CVE-2026-45829 ("ChromaToast", kritisch) sowie die GitHub-Alerts #1
+# (kritisch, Code-Injection über /api/v2/.../collections), #6 (kritisch,
+# Code-Injection über /api/v2/.../collections/{id}, braucht
+# UPDATE_COLLECTION-Recht), #5 (hoch, fehlende Tenant-Isolation) und #4
+# (hoch, SimpleRBACAuthorizationProvider prüft Tenant/DB/Collection nicht).
+# ALLE betreffen ausschließlich den per HTTP exponierten Server-Modus
+# (chromadb.HttpClient / `chroma run`) mit Tenants/Nutzer:innen/RBAC; wir
+# nutzen ausschließlich chromadb.PersistentClient (eingebettet, kein
+# Netzwerk-Server, keine Tenants, kein Auth-Layer, siehe app/vectorstore.py),
+# daher für keine der gemeldeten CVEs ausnutzbar. Für keine ist ohnehin ein
+# Fix verfügbar, auch die hier gepinnte Version ist die aktuell neueste - bei
+# jedem chromadb-Update sowie bei jeder NEUEN Dependabot-Meldung zu chromadb
+# zunächst prüfen, ob sie ebenfalls nur den HTTP-Server-Modus betrifft, bevor
+# reflexhaft eine Migration/ein Downgrade angestoßen wird.
 chromadb==1.5.9
 sentence-transformers==5.6.1
 anthropic==0.120.0
