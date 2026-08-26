@@ -95,6 +95,11 @@ Assistent das offen, statt zu spekulieren.
 - Beim Laden zeigt sich zuerst kurz das komplette, bereits eingeschwungene
   Netzwerk, dann zoomt die Ansicht sanft auf die Standardstufe – kein
   sichtbares "Zittern" der Simulation mehr.
+- Autor:innen- und Schlagwort-Knoten lassen sich über zwei Icons neben der
+  Suchzeile unabhängig voneinander aus-/einblenden. Blendet man alle
+  Schlagworte aus, werden Autor:innen mit mindestens einem gemeinsamen
+  (jetzt ausgeblendeten) Begriff direkt miteinander verbunden, statt ohne
+  Kanten dazustehen.
 
 ### Quellen pflegen (Quellen-Pfleger:innen)
 
@@ -365,6 +370,7 @@ Commit-/Tag-Nachrichten in Git.
 
 | Version | Wesentliche Änderungen |
 |---|---|
+| v0.55.0 | Neu: Autor:innen/Schlagworte im Explore-Netzwerk lassen sich über zwei Toggle-Icons neben der Suchzeile unabhängig voneinander aus-/einblenden (Standard: beide an), rein clientseitig aus den schon geladenen Graph-Daten neu gerendert. Da es bisher keine direkten Autor-Autor-Kanten gab, verbindet `deriveAuthorOnlyEdges()` beim Ausblenden aller Schlagworte Autor:innen stattdessen über gemeinsame (jetzt ausgeblendete) Begriffe (Gewicht = Anzahl geteilter Begriffe) - bereits vorhandene direkte Autor-Autor-Kanten bleiben dabei erhalten. Sind beide Schalter aus, bleibt das Netzwerk bewusst leer |
 | v0.54.1 | Fix: "Sicherheitsprüfung fehlgeschlagen" bei rasch aufeinanderfolgenden Fragen - Cloudflare-Turnstile-Tokens werden nach jedem Versuch asynchron im Hintergrund neu ausgestellt, eine Folgefrage kurz danach fragte das neue Token teils vor Abschluss dieser Verifikation ab und bekam einen leeren String. Trat durch die neuen anklickbaren Begriffe (v0.54.0) deutlich häufiger auf, da diese Folgefragen schneller auslösen als manuelles Tippen. `getToken()` wartet jetzt kurz (bis zu ~3s) auf ein frisches Token, bevor aufgegeben wird |
 | v0.54.0 | Neu: fett hervorgehobene Fachbegriffe in einer Antwort sind jetzt anklickbar - ein Klick stellt automatisch eine Folgefrage ("Erzähl mir mehr über {Begriff}."), eingebettet in den bestehenden, verlaufsbewussten Frage-Mechanismus, sodass die Vertiefung im Kontext der laufenden Konversation bleibt. Dazu die Bold-Regel im Systemprompt verschärft: fett jetzt ausschließlich für kompakte Fachbegriffe (1-4 Wörter) statt ganzer Satzteile, damit eine Folgefrage dazu auch eine sinnvoll vertiefte Antwort liefert |
 | v0.53.2 | Fix: ein Audio-Upload mit mindestens einer/einem eingetragenen Autor:in scheiterte auf Produktion mit "Prompt is not supported for diarization models" - der seit v0.52.0 gesetzte Vokabular-Hinweis (OpenAIs "prompt"-Parameter) wurde unverändert auch an `gpt-4o-transcribe-diarize` durchgereicht, obwohl dieses Modell den Parameter grundsätzlich ablehnt (anders als `whisper-1`, wo er weiterhin genutzt wird) |
