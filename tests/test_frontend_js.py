@@ -1938,6 +1938,121 @@ def test_neighbor_ids_includes_the_node_itself_and_direct_neighbors():
     assert result == ["a", "b"]
 
 
+# Nutzerwunsch (2026-08-26): Autor:innen/Schlagworte im Explore-Netzwerk
+# unabhängig voneinander ein-/ausblendbar - deriveAuthorOnlyEdges() bildet
+# dabei fehlende Autor-Autor-Kanten über geteilte (jetzt ausgeblendete)
+# Schlagworte nach. filterGraphForToggles() ruft diese Funktion intern auf,
+# daher hier ein Muster, das BEIDE Funktionsdefinitionen extrahiert.
+_DERIVE_AND_FILTER_PATTERN = r"function deriveAuthorOnlyEdges.*?function filterGraphForToggles.*?\n\}"
+
+
+def test_derive_author_only_edges_connects_authors_sharing_one_term():
+    result = _run_explore_js_function(
+        r"function deriveAuthorOnlyEdges.*?\n\}",
+        """deriveAuthorOnlyEdges(
+          [{ id: 'author:A', type: 'author' }, { id: 'author:B', type: 'author' }, { id: 'term:X', type: 'term' }],
+          [{ source: 'author:A', target: 'term:X', weight: 1 }, { source: 'author:B', target: 'term:X', weight: 1 }]
+        )""",
+    )
+    assert result == [{"source": "author:A", "target": "author:B", "weight": 1}]
+
+
+def test_derive_author_only_edges_sums_weight_across_shared_terms():
+    result = _run_explore_js_function(
+        r"function deriveAuthorOnlyEdges.*?\n\}",
+        """deriveAuthorOnlyEdges(
+          [{ id: 'author:A', type: 'author' }, { id: 'author:B', type: 'author' },
+            { id: 'term:X', type: 'term' }, { id: 'term:Y', type: 'term' }],
+          [
+            { source: 'author:A', target: 'term:X', weight: 1 },
+            { source: 'author:B', target: 'term:X', weight: 1 },
+            { source: 'author:A', target: 'term:Y', weight: 1 },
+            { source: 'author:B', target: 'term:Y', weight: 1 },
+          ]
+        )[0].weight""",
+    )
+    assert result == 2
+
+
+def test_derive_author_only_edges_keeps_existing_direct_author_edge():
+    """Eine bereits vorhandene direkte Autor-Autor-Kante (z.B. durch den
+    Keyword-Autor:innen-Merge, siehe app/main.py:_build_knowledge_graph)
+    bleibt unverändert erhalten, statt beim Ausblenden der Schlagworte zu
+    verschwinden."""
+    result = _run_explore_js_function(
+        r"function deriveAuthorOnlyEdges.*?\n\}",
+        """deriveAuthorOnlyEdges(
+          [{ id: 'author:A', type: 'author' }, { id: 'author:B', type: 'author' }],
+          [{ source: 'author:A', target: 'author:B', weight: 3 }]
+        )""",
+    )
+    assert result == [{"source": "author:A", "target": "author:B", "weight": 3}]
+
+
+def test_filter_graph_for_toggles_returns_full_data_when_both_shown():
+    data = {
+        "nodes": [{"id": "author:A", "type": "author"}, {"id": "term:X", "type": "term"}],
+        "edges": [{"source": "author:A", "target": "term:X", "weight": 1}],
+    }
+    result = _run_explore_js_function(
+        _DERIVE_AND_FILTER_PATTERN,
+        f"filterGraphForToggles({json.dumps(data)}, true, true)",
+    )
+    assert result == data
+
+
+def test_filter_graph_for_toggles_returns_empty_when_both_hidden():
+    data = {
+        "nodes": [{"id": "author:A", "type": "author"}],
+        "edges": [],
+    }
+    result = _run_explore_js_function(
+        _DERIVE_AND_FILTER_PATTERN,
+        f"filterGraphForToggles({json.dumps(data)}, false, false)",
+    )
+    assert result == {"nodes": [], "edges": []}
+
+
+def test_filter_graph_for_toggles_hiding_terms_keeps_only_authors_and_derived_edges():
+    data = {
+        "nodes": [
+            {"id": "author:A", "type": "author"},
+            {"id": "author:B", "type": "author"},
+            {"id": "term:X", "type": "term"},
+        ],
+        "edges": [
+            {"source": "author:A", "target": "term:X", "weight": 1},
+            {"source": "author:B", "target": "term:X", "weight": 1},
+        ],
+    }
+    result = _run_explore_js_function(
+        _DERIVE_AND_FILTER_PATTERN,
+        f"filterGraphForToggles({json.dumps(data)}, true, false)",
+    )
+    assert result["nodes"] == [{"id": "author:A", "type": "author"}, {"id": "author:B", "type": "author"}]
+    assert result["edges"] == [{"source": "author:A", "target": "author:B", "weight": 1}]
+
+
+def test_filter_graph_for_toggles_hiding_authors_keeps_only_terms_and_their_edges():
+    data = {
+        "nodes": [
+            {"id": "author:A", "type": "author"},
+            {"id": "term:X", "type": "term"},
+            {"id": "term:Y", "type": "term"},
+        ],
+        "edges": [
+            {"source": "author:A", "target": "term:X", "weight": 1},
+            {"source": "term:X", "target": "term:Y", "weight": 2},
+        ],
+    }
+    result = _run_explore_js_function(
+        _DERIVE_AND_FILTER_PATTERN,
+        f"filterGraphForToggles({json.dumps(data)}, false, true)",
+    )
+    assert result["nodes"] == [{"id": "term:X", "type": "term"}, {"id": "term:Y", "type": "term"}]
+    assert result["edges"] == [{"source": "term:X", "target": "term:Y", "weight": 2}]
+
+
 def test_neighbor_ids_matches_regardless_of_source_or_target_position():
     """Eine Kante kann den gesuchten Knoten sowohl als source als auch als
     target führen - beide Richtungen müssen den jeweils anderen Knoten als

@@ -35,6 +35,20 @@
     <label><span data-i18n="explore.searchLabel"></span>
       <input type="search" id="explore-search" data-i18n-placeholder="explore.searchPlaceholder" autocomplete="off">
     </label>
+    <div class="search-toolbar">
+      <button type="button" id="explore-toggle-authors" class="sort-button active" aria-pressed="true" data-i18n-title="explore.toggleAuthorsTitle">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+          <circle cx="12" cy="7" r="4"></circle>
+        </svg>
+      </button>
+      <button type="button" id="explore-toggle-terms" class="sort-button active" aria-pressed="true" data-i18n-title="explore.toggleTermsTitle">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M20.59 13.41 13.42 20.58a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"></path>
+          <circle cx="7" cy="7" r="1"></circle>
+        </svg>
+      </button>
+    </div>
   </div>
   <p id="explore-status" data-i18n="explore.loading"></p>
   <div id="explore-graph-wrap" class="explore-graph-wrap hidden">

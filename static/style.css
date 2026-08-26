@@ -1827,10 +1827,23 @@ body:not(.chat-started) #question-form {
    positioniertes Element mit fester Breite involviert ist. */
 .search-bar {
   margin-bottom: 1rem;
+  display: flex;
+  align-items: flex-end;
+  gap: 0.5rem;
 }
 
 .search-bar label {
   margin-bottom: 0;
+  flex: 1 1 auto;
+}
+
+/* Nutzerwunsch (2026-08-26): Autor:innen/Schlagworte im Explore-Netzwerk
+   ein-/ausblendbar machen (siehe explore.js) - dieselben Toggle-Buttons
+   (.sort-button.active) wie beim bestehenden Sortier-Umschalter, nur hier
+   unabhängig voneinander statt sich gegenseitig auszuschließen. */
+.search-bar .search-toolbar {
+  flex-shrink: 0;
+  padding-bottom: 0.1rem;
 }
 
 /* Job-Warteschlange auf Mobile: gleiches Prinzip wie .search-bar oben -

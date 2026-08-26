@@ -18,6 +18,8 @@ await initAuth();
 const statusEl = document.getElementById('explore-status');
 const wrapEl = document.getElementById('explore-graph-wrap');
 const searchInput = document.getElementById('explore-search');
+const toggleAuthorsBtn = document.getElementById('explore-toggle-authors');
+const toggleTermsBtn = document.getElementById('explore-toggle-terms');
 const svg = d3.select('#explore-graph');
 
 const CLUSTER_COLOR_COUNT = 10;
@@ -31,6 +33,118 @@ const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)
 // zweites, unabhängig weiterlaufendes Netzwerk übereinanderlegen.
 let currentSimulation = null;
 let currentSearchHandler = null;
+
+// Nutzerwunsch (2026-08-26): Autor:innen/Schlagworte im Netzwerk unabhängig
+// voneinander ein-/ausblendbar machen (siehe toggleAuthorsBtn/toggleTermsBtn
+// weiter unten). fullGraphData hält die komplette, unveränderte Antwort
+// von /api/knowledge-graph (siehe loadGraph) - jeder Toggle rendert daraus
+// neu, statt den Server erneut zu fragen.
+let fullGraphData = null;
+let showAuthors = true;
+let showTerms = true;
+
+// Nutzerwunsch: blendet man alle Schlagworte aus, blieben Autor:innen ohne
+// Kanten übrig (im Graphen gibt es bisher nur Autor-Schlagwort- und
+// Schlagwort-Schlagwort-Kanten, keine direkten Autor-Autor-Kanten) - das
+// wirkte wie unverbundene Punkte statt eines Netzwerks. Zwei Autor:innen
+// werden deshalb hier zusätzlich verbunden, wenn sie mindestens ein
+// gemeinsames (jetzt ausgeblendetes) Schlagwort teilen, mit der Anzahl
+// geteilter Begriffe als Gewicht - dieselbe Co-Occurrence-Logik wie bei den
+// bestehenden Schlagwort-Schlagwort-Kanten, nur eine Ebene höher. Bereits
+// vorhandene direkte Autor-Autor-Kanten (z.B. durch den Keyword-Autor:innen-
+// Merge, wenn eine Person in einem fremden Text als Schlagwort erwähnt
+// wird - siehe app/main.py:_build_knowledge_graph) bleiben unverändert
+// erhalten und werden nicht doppelt gezählt.
+function deriveAuthorOnlyEdges(nodes, edges) {
+  const authorIds = new Set(nodes.filter((n) => n.type === 'author').map((n) => n.id));
+  const edgeWeights = new Map();
+  const bump = (a, b, weight) => {
+    const key = [a, b].sort().join('::');
+    edgeWeights.set(key, (edgeWeights.get(key) || 0) + weight);
+  };
+  const authorsByHiddenTerm = new Map();
+  edges.forEach((e) => {
+    const a = typeof e.source === 'object' ? e.source.id : e.source;
+    const b = typeof e.target === 'object' ? e.target.id : e.target;
+    const aIsAuthor = authorIds.has(a);
+    const bIsAuthor = authorIds.has(b);
+    if (aIsAuthor && bIsAuthor) {
+      bump(a, b, e.weight);
+    } else if (aIsAuthor && !bIsAuthor) {
+      if (!authorsByHiddenTerm.has(b)) authorsByHiddenTerm.set(b, new Set());
+      authorsByHiddenTerm.get(b).add(a);
+    } else if (bIsAuthor && !aIsAuthor) {
+      if (!authorsByHiddenTerm.has(a)) authorsByHiddenTerm.set(a, new Set());
+      authorsByHiddenTerm.get(a).add(b);
+    }
+  });
+  authorsByHiddenTerm.forEach((authors) => {
+    const list = Array.from(authors);
+    for (let i = 0; i < list.length; i += 1) {
+      for (let j = i + 1; j < list.length; j += 1) {
+        bump(list[i], list[j], 1);
+      }
+    }
+  });
+  return Array.from(edgeWeights.entries()).map(([key, weight]) => {
+    const [source, target] = key.split('::');
+    return { source, target, weight };
+  });
+}
+
+function filterGraphForToggles(data, showAuthors, showTerms) {
+  if (showAuthors && showTerms) return data;
+  if (!showAuthors && !showTerms) return { nodes: [], edges: [] };
+  if (showAuthors) {
+    // Autor:innen an, Schlagworte aus.
+    const nodes = data.nodes.filter((n) => n.type === 'author');
+    return { nodes, edges: deriveAuthorOnlyEdges(data.nodes, data.edges) };
+  }
+  // Schlagworte an, Autor:innen aus - bestehende Schlagwort-Schlagwort-
+  // Kanten bleiben unverändert, nur Kanten zu jetzt ausgeblendeten
+  // Autor:innen fallen weg.
+  const authorIds = new Set(data.nodes.filter((n) => n.type === 'author').map((n) => n.id));
+  const nodes = data.nodes.filter((n) => n.type === 'term');
+  const edges = data.edges.filter((e) => {
+    const a = typeof e.source === 'object' ? e.source.id : e.source;
+    const b = typeof e.target === 'object' ? e.target.id : e.target;
+    return !authorIds.has(a) && !authorIds.has(b);
+  });
+  return { nodes, edges };
+}
+
+function applyFiltersAndRender() {
+  if (!fullGraphData) return;
+  const filtered = filterGraphForToggles(fullGraphData, showAuthors, showTerms);
+  if (!filtered.nodes.length) {
+    currentSimulation?.stop();
+    svg.selectAll('*').remove();
+    statusEl.textContent = t('explore.emptyFiltered');
+    statusEl.classList.remove('hidden');
+    wrapEl.classList.add('hidden');
+    return;
+  }
+  statusEl.classList.add('hidden');
+  wrapEl.classList.remove('hidden');
+  renderGraph(filtered);
+  // Eine bereits eingetippte Suche soll nach dem Neu-Rendern weiterhin
+  // greifen, statt erst beim nächsten Tastendruck wieder aufzuleben.
+  if (searchInput.value.trim()) currentSearchHandler?.();
+}
+
+toggleAuthorsBtn.addEventListener('click', () => {
+  showAuthors = !showAuthors;
+  toggleAuthorsBtn.classList.toggle('active', showAuthors);
+  toggleAuthorsBtn.setAttribute('aria-pressed', String(showAuthors));
+  applyFiltersAndRender();
+});
+
+toggleTermsBtn.addEventListener('click', () => {
+  showTerms = !showTerms;
+  toggleTermsBtn.classList.toggle('active', showTerms);
+  toggleTermsBtn.setAttribute('aria-pressed', String(showTerms));
+  applyFiltersAndRender();
+});
 
 function nodeUrl(node) {
   return node.type === 'author'
@@ -397,9 +511,8 @@ async function loadGraph() {
       statusEl.textContent = t('explore.empty');
       return;
     }
-    statusEl.classList.add('hidden');
-    wrapEl.classList.remove('hidden');
-    renderGraph(data);
+    fullGraphData = data;
+    applyFiltersAndRender();
   } catch (err) {
     statusEl.textContent = t('explore.loadFailed');
     statusEl.classList.remove('hidden');
