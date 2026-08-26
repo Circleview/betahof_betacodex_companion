@@ -101,6 +101,31 @@ Assistent das offen, statt zu spekulieren.
   (jetzt ausgeblendeten) Begriff direkt miteinander verbunden, statt ohne
   Kanten dazustehen.
 
+### Kreativ-Modus
+
+- Eigener Modus (Stift-Icon im Header) für kreatives Schreiben auf
+  Grundlage des BetaCodex – Blogposts, Artikel, Webseitentexte,
+  Workshop-Konzepte, White Papers – bewusst freier als die strikte
+  Konversationsansicht: neben den kuratierten Quellen darf hier auch
+  allgemeines Internet- und Modellwissen einfließen (z. B. für
+  Workshop-Methodik, die kuratiert nicht abgedeckt ist).
+- Persistentes Dokument statt Chat-Verlauf: eine Anweisung ersetzt jeweils
+  das gesamte Dokument (kein Diff, kein Abschnitts-Editing – das ist
+  bewusst ein späterer Ausbauschritt), sichtbar als Live-Stream Wort für
+  Wort.
+- Kosten-bewusste Modellwahl: der erste Entwurf (leeres Dokument) nutzt
+  ein größeres Modell (Claude Sonnet), jede Überarbeitung eines
+  bestehenden Dokuments das günstigere Haiku-Modell wie im Rest der App.
+- Formatierungs-Toolbar (Fett, Kursiv, Überschrift, Liste) direkt über dem
+  Dokumentfeld, dazu ein Bearbeiten/Vorschau-Umschalter, der die fertig
+  formatierte Ansicht ohne sichtbare Markdown-Syntax zeigt.
+- Quellen erscheinen getrennt nach Herkunft: kuratierte BetaCodex-Quellen
+  (mit Autor:in statt URL beschriftet) und tatsächlich per Websuche
+  gefundene Web-Quellen – jede Web-URL wird hart gegen die echten
+  Suchergebnisse geprüft, erfundene Quellen werden verworfen.
+- Eigenes, strengeres Rate-Limit als die Konversationsansicht (Sonnet +
+  Websuche kosten pro Anfrage deutlich mehr als eine Haiku-Antwort).
+
 ### Quellen pflegen (Quellen-Pfleger:innen)
 
 - Import per Copy/Paste, URL/Blogpost, PDF-Upload, YouTube-Link oder
@@ -374,6 +399,7 @@ Commit-/Tag-Nachrichten in Git.
 
 | Version | Wesentliche Änderungen |
 |---|---|
+| v0.57.0 | Neu: "Kreativ-Modus" (Stift-Icon im Header) - freieres Schreiben auf Grundlage des BetaCodex (Blogposts, Artikel, Workshop-Konzepte, White Papers) statt strikter Quellenbindung: erster Entwurf mit Claude Sonnet, Überarbeitungen mit dem günstigeren Haiku-Modell wie im Rest der App; kombiniert kuratierte BetaCodex-Quellen mit Claudes Web-Search-Werkzeug für Themen, die kuratiert nicht abgedeckt sind (jede Web-Quelle hart gegen echte Suchergebnisse geprüft, BetaCodex-Quellen deterministisch aus dem tatsächlich verwendeten Kontext, nie vom Modell selbst gemeldet). Persistentes Dokument statt Chat-Verlauf (Ganzdokument-Ersatz pro Anweisung), Formatierungs-Toolbar + Bearbeiten/Vorschau-Umschalter, eigenes strengeres Rate-Limit. Systemprompt hält das Modell außerdem explizit zu einem weniger "KI-typischen" Schreibstil an (variierte Satzlänge, keine Floskel-Übergänge, klare Positionen statt ständigem Relativieren) und zur korrekten deutschen Schreibweise "Beta-Kodex" (mit Bindestrich) |
 | v0.56.1 | Neu: kein separates Plattform-Feld mehr beim Eintragen eines Social-Media-Links in der Autor:innen-Vita - nur noch die URL eingeben, die Plattform wird beim Speichern automatisch ermittelt (bekannte Plattformen liefern ihren Namen, alles andere fällt auf die Domain zurück statt den Link zu verwerfen) |
 | v0.56.0 | Neu: kleiner, unauffälliger Bildquellennachweis rechtsbündig unter dem Autor:innen-Foto in der Vita-Ansicht ("Foto: example.com"), automatisch aus der Domain der externen Foto-URL abgeleitet - ohne Navigationspfad und ohne "www."-Präfix. Bekannte CDN-Domains großer Plattformen (media.licdn.com, rgstatic.net, googleusercontent.com, media-amazon.com, gravatar.com, wp.com) werden dabei auf den erkennbaren Plattformnamen abgebildet (z. B. "Foto: LinkedIn") |
 | v0.55.0 | Neu: Autor:innen/Schlagworte im Explore-Netzwerk lassen sich über zwei Toggle-Icons neben der Suchzeile unabhängig voneinander aus-/einblenden (Standard: beide an), rein clientseitig aus den schon geladenen Graph-Daten neu gerendert. Da es bisher keine direkten Autor-Autor-Kanten gab, verbindet `deriveAuthorOnlyEdges()` beim Ausblenden aller Schlagworte Autor:innen stattdessen über gemeinsame (jetzt ausgeblendete) Begriffe (Gewicht = Anzahl geteilter Begriffe) - bereits vorhandene direkte Autor-Autor-Kanten bleiben dabei erhalten. Sind beide Schalter aus, bleibt das Netzwerk bewusst leer |
