@@ -701,6 +701,13 @@ document.getElementById('typ-source-suggestions').addEventListener('click', () =
   sourceSuggestionsBereich.classList.toggle('hidden');
 });
 
+// Nutzerwunsch (2026-08-27): eigenes "x" zum Schließen direkt im Panel,
+// analog zu #jobs-bar-close - der Glühbirnen-Button (oben) bleibt zusätzlich
+// als Öffnen/Schließen-Toggle funktionsfähig.
+document.getElementById('source-suggestions-close').addEventListener('click', () => {
+  sourceSuggestionsBereich.classList.add('hidden');
+});
+
 // Rumpf des #popover-load-Klick-Handlers (Extraktion + Formular-Befüllung),
 // als eigene Funktion herausgezogen (Nutzerwunsch: Quellen-Vorschläge
 // "Annehmen" soll denselben Weg wie ein manueller URL-Import nehmen) - reiner
