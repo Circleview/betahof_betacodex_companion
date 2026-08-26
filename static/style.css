@@ -3810,6 +3810,16 @@ details a {
   min-width: 0;
 }
 
+/* Nutzerwunsch (2026-08-26): Anweisungsfeld wächst per JS (siehe
+   autoGrowTextarea in creative.js) mit dem Inhalt mit, statt intern zu
+   scrollen - manuelles Ziehen am Resize-Griff deaktiviert, da es sonst beim
+   nächsten Tastendruck sofort wieder auf die inhaltsbedingte Höhe
+   zurückspringen würde. */
+#creative-instruction {
+  resize: none;
+  overflow-y: hidden;
+}
+
 .creative-toolbar {
   display: flex;
   flex-wrap: wrap;

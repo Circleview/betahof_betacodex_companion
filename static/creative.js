@@ -57,6 +57,23 @@ const toolbarButtons = Array.from(document.querySelectorAll('#creative-toolbar b
 const previewToggleBtn = document.getElementById('creative-preview-toggle');
 const previewEl = document.getElementById('creative-document-preview');
 
+// Nutzerwunsch (2026-08-26): Anweisungsfeld soll mit dem eingegebenen Text
+// mitwachsen, statt intern zu scrollen - Höhe bei jeder Eingabe auf den
+// tatsächlich benötigten Inhalt zurücksetzen (Standard-Auto-Grow-Muster,
+// funktioniert plattformübergreifend ohne die neuere CSS-Eigenschaft
+// field-sizing, die noch nicht überall unterstützt wird).
+function autoGrowTextarea(el) {
+  el.style.height = 'auto';
+  // box-sizing: border-box (siehe input, textarea in style.css) heißt: die
+  // gesetzte Höhe muss den Rahmen mit einschließen, scrollHeight tut das
+  // nicht - ohne den Zuschlag bliebe die letzte Zeile um genau die
+  // Rahmenbreite abgeschnitten.
+  const borderHeight =
+    parseFloat(getComputedStyle(el).borderTopWidth) + parseFloat(getComputedStyle(el).borderBottomWidth);
+  el.style.height = `${el.scrollHeight + borderHeight}px`;
+}
+instructionField.addEventListener('input', () => autoGrowTextarea(instructionField));
+
 // Reine, per Node testbare Funktion (siehe tests/test_frontend_js.py) - wendet
 // eine Toolbar-Aktion auf den aktuellen Textarea-Wert/Selektionsbereich an
 // und gibt den neuen Wert plus die neue Selektion zurück, statt selbst das
@@ -252,6 +269,7 @@ form.addEventListener('submit', async (event) => {
     renderSourceList(betacodexListEl, doneEvent.sources.betacodex, 'creative.noBetacodexSources');
     renderSourceList(webListEl, doneEvent.sources.web, 'creative.noWebSources');
     instructionField.value = '';
+    autoGrowTextarea(instructionField);
   } catch (err) {
     // Ein fehlgeschlagener Versuch darf das bisherige Dokument nie
     // zerstören - Original wiederherstellen statt leer zu lassen.
