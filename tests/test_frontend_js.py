@@ -1669,8 +1669,8 @@ def test_extract_youtube_video_id_handles_watch_and_short_urls():
 
 def _run_photo_credit_domain(call_expr: str):
     js_source = (STATIC_DIR / "import.js").read_text()
-    match = re.search(r"function photoCreditDomain.*?\n\}", js_source, re.S)
-    assert match, "photoCreditDomain wurde in import.js nicht gefunden."
+    match = re.search(r"const PHOTO_HOST_LABELS.*?function photoCreditDomain.*?\n\}", js_source, re.S)
+    assert match, "PHOTO_HOST_LABELS/photoCreditDomain wurden in import.js nicht gefunden."
     script = f"""
 {match.group(0)}
 console.log(JSON.stringify({call_expr}));
@@ -1679,16 +1679,32 @@ console.log(JSON.stringify({call_expr}));
     return json.loads(result.stdout)
 
 
-def test_photo_credit_domain_extracts_hostname_without_path():
+def test_photo_credit_domain_maps_known_cdn_hosts_to_platform_name():
+    """Nutzerfeedback (2026-08-26): media.licdn.com & Co. sind als
+    Bildquellennachweis technisch korrekt, aber für Leser:innen kaum
+    erkennbar - auf den bekannten Plattformnamen abbilden."""
     result = _run_photo_credit_domain(
-        "photoCreditDomain('https://media.licdn.com/dms/image/abc123/profile.jpg?query=1')"
+        "[photoCreditDomain('https://media.licdn.com/dms/image/abc123/profile.jpg?query=1'),"
+        " photoCreditDomain('https://i1.rgstatic.net/some/path.jpg'),"
+        " photoCreditDomain('https://yt3.googleusercontent.com/abc'),"
+        " photoCreditDomain('https://m.media-amazon.com/images/x.jpg'),"
+        " photoCreditDomain('https://2.gravatar.com/avatar/x'),"
+        " photoCreditDomain('https://i0.wp.com/example.org/photo.jpg')]"
     )
-    assert result == "media.licdn.com"
+    assert result == ["LinkedIn", "ResearchGate", "Google", "Amazon", "Gravatar", "WordPress"]
 
 
-def test_photo_credit_domain_strips_www_prefix():
-    result = _run_photo_credit_domain("photoCreditDomain('https://www.example.org/photos/x.jpg')")
-    assert result == "example.org"
+def test_photo_credit_domain_leaves_unmapped_domains_as_is():
+    """Eigene Websites (z.B. betacodex.org) sind bereits als Rohdomain
+    aussagekräftig - keine Abbildung nötig. Google-Bilder-Thumbnails
+    (gstatic.com) bleiben bewusst unverändert (siehe Kommentar bei
+    PHOTO_HOST_LABELS) - die eigentliche Quelle wird stattdessen direkt in
+    den Profilen korrigiert."""
+    result = _run_photo_credit_domain(
+        "[photoCreditDomain('https://www.example.org/photos/x.jpg'),"
+        " photoCreditDomain('https://encrypted-tbn0.gstatic.com/images?q=x')]"
+    )
+    assert result == ["example.org", "encrypted-tbn0.gstatic.com"]
 
 
 def test_photo_credit_domain_returns_null_when_missing_or_invalid():

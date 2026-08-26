@@ -3492,19 +3492,40 @@ async function generateAuthorBioPreview(name, text, bioInput, statusEl, buttons)
   }
 }
 
+// Nutzerfeedback (2026-08-26): manche Foto-URLs liegen auf technisch
+// korrekten, aber für Leser:innen kaum erkennbaren CDN-Subdomains großer
+// Plattformen (z.B. media.licdn.com) - auf den bekannten Plattformnamen
+// abbilden, analog zu SOCIAL_PLATFORM_HOSTS/detectSocialPlatform oben.
+// Bewusst NICHT enthalten: gstatic.com (Google-Bilder-Thumbnail-Cache) -
+// die eigentliche Quelle ist aus so einer URL nicht mehr rekonstruierbar,
+// das wird stattdessen Zug um Zug direkt in den Autor:innen-Profilen durch
+// echte Quellen-URLs ersetzt statt hier beschönigt.
+const PHOTO_HOST_LABELS = [
+  { pattern: /(^|\.)licdn\.com$/, label: 'LinkedIn' },
+  { pattern: /(^|\.)rgstatic\.net$/, label: 'ResearchGate' },
+  { pattern: /(^|\.)googleusercontent\.com$/, label: 'Google' },
+  { pattern: /(^|\.)media-amazon\.com$/, label: 'Amazon' },
+  { pattern: /(^|\.)gravatar\.com$/, label: 'Gravatar' },
+  { pattern: /(^|\.)wp\.com$/, label: 'WordPress' },
+];
+
 // Nutzerwunsch (2026-08-26): kleiner, unauffälliger Bildquellennachweis
-// unter dem Autor:innen-Foto (siehe buildAuthorInfoView) - nennt nur die
-// Domain der ORIGINALEN externen Foto-URL (a.photo_url), nicht den vollen
-// Pfad und nicht die eigene, ggf. lokal gecachte photo_large-URL (siehe
-// app/author_photos.py). "www." wird entfernt, da es für die Quellennennung
-// keinen Mehrwert hat.
+// unter dem Autor:innen-Foto (siehe buildAuthorInfoView) - nennt die Domain
+// der ORIGINALEN externen Foto-URL (a.photo_url), nicht den vollen Pfad und
+// nicht die eigene, ggf. lokal gecachte photo_large-URL (siehe app/
+// author_photos.py). "www." wird entfernt, da es für die Quellennennung
+// keinen Mehrwert hat; bekannte CDN-Domains werden auf ihren Plattformnamen
+// abgebildet (siehe PHOTO_HOST_LABELS oben).
 function photoCreditDomain(url) {
   if (!url) return null;
+  let hostname;
   try {
-    return new URL(url).hostname.replace(/^www\./, '');
+    hostname = new URL(url).hostname.replace(/^www\./, '');
   } catch {
     return null;
   }
+  const match = PHOTO_HOST_LABELS.find(({ pattern }) => pattern.test(hostname));
+  return match ? match.label : hostname;
 }
 
 function buildAuthorInfoView(a) {
