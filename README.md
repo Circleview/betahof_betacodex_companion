@@ -118,7 +118,9 @@ Assistent das offen, statt zu spekulieren.
   extern gehostete Bilder (z. B. LinkedIn-Links mit eingebautem
   Ablaufdatum) nicht nach einigen Wochen wieder "kaputtgehen". Ein kleiner,
   unauffälliger Bildquellennachweis unter dem Foto nennt automatisch die
-  Domain der externen Foto-URL.
+  Domain der externen Foto-URL. Beim Eintragen eines Social-Media-Links
+  genügt die URL - die Plattform (LinkedIn, X, Instagram, ...) wird
+  automatisch erkannt, unbekannte Plattformen fallen auf die Domain zurück.
 - KI-gestützte Zusammenfassung + Begriffs-Querverweise beim Import,
   jederzeit nachträglich auslösbar. Eine von Hand überarbeitete
   Zusammenfassung wird automatisch in die jeweils andere Sprache
@@ -372,6 +374,7 @@ Commit-/Tag-Nachrichten in Git.
 
 | Version | Wesentliche Änderungen |
 |---|---|
+| v0.56.1 | Neu: kein separates Plattform-Feld mehr beim Eintragen eines Social-Media-Links in der Autor:innen-Vita - nur noch die URL eingeben, die Plattform wird beim Speichern automatisch ermittelt (bekannte Plattformen liefern ihren Namen, alles andere fällt auf die Domain zurück statt den Link zu verwerfen) |
 | v0.56.0 | Neu: kleiner, unauffälliger Bildquellennachweis rechtsbündig unter dem Autor:innen-Foto in der Vita-Ansicht ("Foto: example.com"), automatisch aus der Domain der externen Foto-URL abgeleitet - ohne Navigationspfad und ohne "www."-Präfix. Bekannte CDN-Domains großer Plattformen (media.licdn.com, rgstatic.net, googleusercontent.com, media-amazon.com, gravatar.com, wp.com) werden dabei auf den erkennbaren Plattformnamen abgebildet (z. B. "Foto: LinkedIn") |
 | v0.55.0 | Neu: Autor:innen/Schlagworte im Explore-Netzwerk lassen sich über zwei Toggle-Icons neben der Suchzeile unabhängig voneinander aus-/einblenden (Standard: beide an), rein clientseitig aus den schon geladenen Graph-Daten neu gerendert. Da es bisher keine direkten Autor-Autor-Kanten gab, verbindet `deriveAuthorOnlyEdges()` beim Ausblenden aller Schlagworte Autor:innen stattdessen über gemeinsame (jetzt ausgeblendete) Begriffe (Gewicht = Anzahl geteilter Begriffe) - bereits vorhandene direkte Autor-Autor-Kanten bleiben dabei erhalten. Sind beide Schalter aus, bleibt das Netzwerk bewusst leer |
 | v0.54.1 | Fix: "Sicherheitsprüfung fehlgeschlagen" bei rasch aufeinanderfolgenden Fragen - Cloudflare-Turnstile-Tokens werden nach jedem Versuch asynchron im Hintergrund neu ausgestellt, eine Folgefrage kurz danach fragte das neue Token teils vor Abschluss dieser Verifikation ab und bekam einen leeren String. Trat durch die neuen anklickbaren Begriffe (v0.54.0) deutlich häufiger auf, da diese Folgefragen schneller auslösen als manuelles Tippen. `getToken()` wartet jetzt kurz (bis zu ~3s) auf ein frisches Token, bevor aufgegeben wird |
