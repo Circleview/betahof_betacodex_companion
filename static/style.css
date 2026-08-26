@@ -3811,6 +3811,11 @@ details a {
 @media (max-width: 800px) {
   .creative-disclaimer--mobile {
     display: block;
+    /* Nutzerwunsch (2026-08-26, Folge-Iteration): rutscht mit sinnvollem
+       Abstand unter den "Erzeugen"-Button statt direkt unter die
+       Dokument-Textbox - eigener Top-Abstand nötig, da .creative-disclaimer
+       selbst keinen margin-top setzt. */
+    margin-top: 1.5rem;
   }
 
   .creative-disclaimer--desktop {
