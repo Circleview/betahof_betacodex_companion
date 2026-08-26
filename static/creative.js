@@ -34,12 +34,24 @@ await initAuth();
 // Übersetzung selbst um den Link-Text herum liefert - bleibt so pro Sprache
 // vollständig in i18n/*.json und muss bei Sprachwechsel (i18n:changed) neu
 // gerendert werden, da data-i18n das für dieses Element nicht mehr übernimmt.
+//
+// Nutzerwunsch (2026-08-26): der Hinweis soll je nach Bildschirmbreite an
+// zwei unterschiedlichen Stellen im DOM erscheinen (Desktop: eigener Rahmen
+// über der Quellenliste rechts; Mobil: unter der Dokument-Textbox) - da beide
+// Positionen in unterschiedlichen Elternelementen liegen (Formular vs.
+// Aside), reicht reines CSS-Umsortieren (order/grid-area) nicht, ohne die
+// Elemente aus ihrem jeweiligen fachlichen Kontext zu reißen. Einfacher und
+// robuster: zwei <p>-Elemente mit identischem Inhalt, sichtbar geschaltet
+// per CSS-Breakpoint (siehe .creative-disclaimer--mobile/--desktop in
+// style.css) statt komplexer JS-DOM-Umhängung.
 function renderCreativeDisclaimer() {
-  const el = document.getElementById('creative-disclaimer');
-  if (!el) return;
-  el.innerHTML = t('creative.disclaimer', {
+  const html = t('creative.disclaimer', {
     linkStart: '<a href="/">',
     linkEnd: '</a>',
+  });
+  ['creative-disclaimer-mobile', 'creative-disclaimer-desktop'].forEach((id) => {
+    const el = document.getElementById(id);
+    if (el) el.innerHTML = html;
   });
 }
 renderCreativeDisclaimer();
@@ -168,6 +180,14 @@ toolbarButtons.forEach((btn) => {
 // baut das Anzeige-Label für eine Quelle in der Seitenliste: Titel plus
 // Hostname in Klammern, falls eine URL vorhanden ist.
 export function creativeSourceLabel(source) {
+  // Nutzerwunsch (2026-08-26): bei BetaCodex-Quellen (haben immer authors,
+  // siehe _load_sources()/main.py) Autor:in statt Hostname zeigen - die URL
+  // bleibt als Link-Ziel erhalten, nur das sichtbare Label ändert sich.
+  // Web-Quellen (kein authors-Feld, siehe validated_web_sources in main.py)
+  // behalten den bisherigen Hostname-Fallback, da dort kein Autor bekannt ist.
+  if (source.authors && source.authors.length) {
+    return `${source.title} — ${source.authors.join(', ')}`;
+  }
   if (!source.url) return source.title;
   let host = '';
   try {

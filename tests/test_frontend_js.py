@@ -2319,6 +2319,27 @@ def test_creative_source_label_falls_back_to_title_without_url():
     assert label == "Beispieltitel"
 
 
+def test_creative_source_label_shows_authors_instead_of_hostname_when_present():
+    label = _run_creative_source_label(
+        {"title": "Beispieltitel", "url": "https://example.org/a/b", "authors": ["Niels Pflaeging"]}
+    )
+    assert label == "Beispieltitel — Niels Pflaeging"
+
+
+def test_creative_source_label_joins_multiple_authors():
+    label = _run_creative_source_label(
+        {"title": "Beispieltitel", "url": "https://example.org/a/b", "authors": ["Autor A", "Autor B"]}
+    )
+    assert label == "Beispieltitel — Autor A, Autor B"
+
+
+def test_creative_source_label_falls_back_to_hostname_when_authors_empty():
+    label = _run_creative_source_label(
+        {"title": "Beispieltitel", "url": "https://example.org/a/b", "authors": []}
+    )
+    assert label == "Beispieltitel (example.org)"
+
+
 def _run_apply_markdown_to_selection(value, selection_start, selection_end, action):
     js_source = (STATIC_DIR / "creative.js").read_text()
     match = re.search(r"export function applyMarkdownToSelection.*?\n\}", js_source, re.S)

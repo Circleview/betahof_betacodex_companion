@@ -28,11 +28,10 @@
 
 <section id="creative-bereich" tabindex="-1">
   <h2 data-i18n="creative.heading"></h2>
-  <p id="creative-disclaimer" class="creative-disclaimer"></p>
 
   <div id="creative-layout">
     <form id="creative-form">
-      <label for="creative-document" data-i18n="creative.documentLabel"></label>
+      <label for="creative-document" class="creative-field-label creative-field-label--first" data-i18n="creative.documentLabel"></label>
       <div id="creative-toolbar" class="creative-toolbar" role="toolbar">
         <button type="button" data-md-action="bold" data-i18n-title="creative.toolbarBold"><strong>B</strong></button>
         <button type="button" data-md-action="italic" data-i18n-title="creative.toolbarItalic"><em>I</em></button>
@@ -42,8 +41,9 @@
       </div>
       <textarea id="creative-document" rows="16" data-i18n-placeholder="creative.documentPlaceholder"></textarea>
       <div id="creative-document-preview" class="hidden creative-document-preview" aria-live="polite"></div>
+      <p id="creative-disclaimer-mobile" class="creative-disclaimer creative-disclaimer--mobile"></p>
 
-      <label for="creative-instruction" data-i18n="creative.instructionLabel"></label>
+      <label for="creative-instruction" class="creative-field-label" data-i18n="creative.instructionLabel"></label>
       <textarea id="creative-instruction" rows="2" data-i18n-placeholder="creative.instructionPlaceholder" required></textarea>
 
       <button type="submit" id="creative-submit" data-i18n="creative.submitButton"></button>
@@ -53,6 +53,7 @@
     </form>
 
     <aside id="creative-sources">
+      <p id="creative-disclaimer-desktop" class="creative-disclaimer creative-disclaimer--desktop"></p>
       <h3 data-i18n="creative.sourcesBetacodexHeading"></h3>
       <ul id="creative-sources-betacodex"></ul>
       <h3 data-i18n="creative.sourcesWebHeading"></h3>

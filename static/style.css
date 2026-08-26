@@ -3783,19 +3783,55 @@ details a {
    (siehe creative.html/creative.js). Warnfarbe statt der neutralen Akzent-
    farbe für den Hinweisbanner, da bewusst ein anderer Vertrauensmodus als
    die strikte Konversationsansicht signalisiert werden soll (dieser Modus
-   nutzt auch allgemeines Internet-/Modellwissen). */
+   nutzt auch allgemeines Internet-/Modellwissen). Nutzerwunsch (Folge-
+   Iteration, 2026-08-26): zwei Kopien im DOM statt einer (siehe
+   renderCreativeDisclaimer in creative.js) - Desktop zeigt die Version über
+   der Quellenliste rechts, Mobil die Version unter der Dokument-Textbox;
+   die jeweils andere bleibt per Breakpoint ausgeblendet. Etwas kompakter als
+   der ursprüngliche volle Banner, da die Desktop-Version in die schmale
+   280px-Seitenspalte passen muss. */
 .creative-disclaimer {
-  margin: 0 0 1.5rem;
-  padding: 0.75rem 1rem;
+  margin: 0 0 1.25rem;
+  padding: 0.6rem 0.85rem;
   border-left: 3px solid var(--color-warning);
   background: var(--color-warning-tint);
   border-radius: var(--radius);
-  font-size: 0.9rem;
+  font-size: 0.8rem;
   color: var(--color-text);
 }
 
 .creative-disclaimer a {
   color: var(--color-accent);
+}
+
+.creative-disclaimer--mobile {
+  display: none;
+}
+
+@media (max-width: 800px) {
+  .creative-disclaimer--mobile {
+    display: block;
+  }
+
+  .creative-disclaimer--desktop {
+    display: none;
+  }
+}
+
+/* Nutzerwunsch (2026-08-26): "Dokument"/"Anweisung" sollen deutlich
+   sichtbarer wirken (fett, größer) statt als unauffälliges <label> - bleiben
+   aber technisch <label for="...">, damit ein Klick weiterhin ins jeweilige
+   Feld fokussiert. */
+.creative-field-label {
+  display: block;
+  margin: 2rem 0 0.5rem;
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--color-text);
+}
+
+.creative-field-label--first {
+  margin-top: 0;
 }
 
 #creative-layout {
