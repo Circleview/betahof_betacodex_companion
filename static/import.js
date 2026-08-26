@@ -3359,7 +3359,14 @@ function buildSocialLinksField(initialLinks) {
   const addLabel = t('import.addSocialLink');
   standaloneAddBtn.title = addLabel;
   standaloneAddBtn.setAttribute('aria-label', addLabel);
-  standaloneAddBtn.addEventListener('click', () => rows.appendChild(buildRow(null)));
+  standaloneAddBtn.addEventListener('click', () => {
+    const row = buildRow(null);
+    rows.appendChild(row);
+    // Nutzerwunsch (2026-08-27): Cursor-Fokus direkt in die neue URL-Zeile,
+    // damit sofort losgetippt werden kann statt erst manuell hinklicken zu
+    // müssen.
+    row.querySelector('.social-url-input').focus();
+  });
   wrapper.appendChild(standaloneAddBtn);
 
   function refreshStandaloneButton() {
@@ -3373,7 +3380,13 @@ function buildSocialLinksField(initialLinks) {
     btn.innerHTML = PLUS_ICON;
     btn.title = addLabel;
     btn.setAttribute('aria-label', addLabel);
-    btn.addEventListener('click', () => insertNewRow(buildRow(null)));
+    btn.addEventListener('click', () => {
+      const row = buildRow(null);
+      insertNewRow(row);
+      // Nutzerwunsch (2026-08-27): siehe standaloneAddBtn oben - Fokus direkt
+      // in die neu eingefügte URL-Zeile.
+      row.querySelector('.social-url-input').focus();
+    });
     return btn;
   }
 
