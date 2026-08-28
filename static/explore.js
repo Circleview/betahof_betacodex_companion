@@ -513,6 +513,12 @@ function renderGraph(data) {
   // bleibt sofort/undebounced für direktes Tipp-Feedback. Leere Suche zoomt
   // symmetrisch zurück auf die Standardansicht.
   const SEARCH_ZOOM_DEBOUNCE_MS = 400;
+  // Nutzerwunsch (2026-08-28, Folge-Iteration): bei 1-2 Zeichen sind
+  // Treffer meist noch zu unspezifisch/zahlreich, um ein sinnvolles Ziel
+  // fürs Heranzoomen zu sein - die Ab-/Aufdunkelung bleibt davon unberührt
+  // (wirkt weiterhin schon ab dem ersten Zeichen), nur der Kameraschwenk
+  // wartet auf mindestens drei Zeichen.
+  const MIN_SEARCH_ZOOM_LENGTH = 3;
   let searchZoomTimer = null;
 
   function zoomTo(transform) {
@@ -532,7 +538,7 @@ function renderGraph(data) {
     const matchedIds = new Set(matchedNodes.map((d) => d.id));
     node.classed('explore-node--dimmed', (d) => !matchedIds.has(d.id));
     link.classed('explore-edge--dimmed', (d) => !matchedIds.has(d.source.id) && !matchedIds.has(d.target.id));
-    if (matchedNodes.length) {
+    if (matchedNodes.length && query.length >= MIN_SEARCH_ZOOM_LENGTH) {
       searchZoomTimer = setTimeout(() => zoomTo(computeFitTransform(matchedNodes, width, height)), SEARCH_ZOOM_DEBOUNCE_MS);
     }
   };
