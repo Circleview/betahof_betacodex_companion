@@ -3,6 +3,7 @@ import { initAuth } from '/auth.js';
 import { createTurnstileWidget } from '/turnstile.js';
 import { readNdjsonStream } from '/ndjson-stream.js';
 import { renderMarkdown } from '/markdown.js';
+import { createSpeechController } from '/speech.js';
 
 // Nutzerwunsch (2026-08-26): Kreativ-Modus - anders als die strikte
 // Konversationsansicht kein wachsender Chat-Verlauf, sondern ein
@@ -85,6 +86,40 @@ function autoGrowTextarea(el) {
   el.style.height = `${el.scrollHeight + borderHeight}px`;
 }
 instructionField.addEventListener('input', () => autoGrowTextarea(instructionField));
+
+// Nutzerwunsch (2026-08-28): dieselbe Spracheingabe wie im Konversations-
+// modus (siehe question.js), aber bewusst OHNE automatisches Absenden nach
+// Diktat-Ende - eine Kreativ-Generierung ist teurer (Sonnet) als eine
+// normale Antwort, ein Verhörer soll vor "Erzeugen" noch korrigierbar
+// bleiben. Nur der Diktat-Teil von createSpeechController wird genutzt,
+// speak()/onSpeakingChange (Vorlesen) sind hier nicht sinnvoll - ein
+// generiertes Dokument ist kein kurzer, vorlesbarer Chat-Antwortsatz.
+const creativeMicButton = document.getElementById('creative-mic-button');
+const creativeSpeechController = createSpeechController({
+  onTranscript: (transcript) => {
+    instructionField.value = transcript;
+    autoGrowTextarea(instructionField);
+  },
+  onInterimTranscript: (liveText) => {
+    instructionField.value = liveText;
+    autoGrowTextarea(instructionField);
+  },
+  onListeningChange: (listening) => {
+    creativeMicButton.classList.toggle('recording', listening);
+    instructionField.readOnly = listening;
+    instructionField.classList.toggle('dictating', listening);
+  },
+});
+creativeMicButton.classList.toggle('hidden', !creativeSpeechController.supported);
+let creativeIsListening = false;
+creativeMicButton.addEventListener('click', () => {
+  if (creativeIsListening) {
+    creativeSpeechController.stopListening();
+  } else {
+    creativeSpeechController.startListening();
+  }
+  creativeIsListening = !creativeIsListening;
+});
 
 // Reine, per Node testbare Funktion (siehe tests/test_frontend_js.py) - wendet
 // eine Toolbar-Aktion auf den aktuellen Textarea-Wert/Selektionsbereich an
@@ -232,6 +267,7 @@ function setBusy(busy) {
   }
   submitBtn.disabled = busy;
   instructionField.disabled = busy;
+  creativeMicButton.disabled = busy;
   documentField.readOnly = busy;
   statusEl.classList.toggle('hidden', !busy);
   previewToggleBtn.disabled = busy;

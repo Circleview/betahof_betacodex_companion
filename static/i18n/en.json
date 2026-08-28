@@ -257,6 +257,7 @@
   "creative.previewToggleHide": "Edit",
   "creative.instructionLabel": "Instruction",
   "creative.instructionPlaceholder": "e.g. \"Write a blog post about decentralized decision-making\"",
+  "creative.micButtonTitle": "Give the instruction by voice",
   "creative.submitButton": "Generate",
   "creative.generating": "Generating …",
   "creative.sourcesBetacodexHeading": "From BetaCodex sources",
