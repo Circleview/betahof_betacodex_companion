@@ -6268,7 +6268,10 @@ def test_get_author_photo_serves_cached_file(client, monkeypatch):
 
     monkeypatch.setattr(author_photos, "cache_photo", fake_cache_photo)
     client.put("/api/authors/Foto Autor", json={"photo_url": "https://example.org/foto.jpg"})
-    time.sleep(0.1)
+    # cache_photo läuft in einem Hintergrund-Thread (siehe app/main.py) - ein
+    # festes time.sleep(0.1) war auf einem ausgelasteten Runner nicht
+    # zuverlässig genug (derselbe Bug wie bei wait_until dokumentiert).
+    wait_until(lambda: author_photos.has_cached_photo("Foto Autor", "small"))
 
     response = client.get("/api/authors/Foto Autor/photo/small")
     assert response.status_code == 200
