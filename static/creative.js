@@ -88,17 +88,18 @@ function autoGrowTextarea(el) {
 instructionField.addEventListener('input', () => autoGrowTextarea(instructionField));
 
 // Nutzerwunsch (2026-08-28): dieselbe Spracheingabe wie im Konversations-
-// modus (siehe question.js), aber bewusst OHNE automatisches Absenden nach
-// Diktat-Ende - eine Kreativ-Generierung ist teurer (Sonnet) als eine
-// normale Antwort, ein Verhörer soll vor "Erzeugen" noch korrigierbar
-// bleiben. Nur der Diktat-Teil von createSpeechController wird genutzt,
-// speak()/onSpeakingChange (Vorlesen) sind hier nicht sinnvoll - ein
-// generiertes Dokument ist kein kurzer, vorlesbarer Chat-Antwortsatz.
+// modus (siehe question.js) - inklusive automatischem Absenden nach
+// Diktat-Ende, exakt wie dort (Nutzerentscheidung, revidiert nach
+// anfänglich bewusst OHNE Auto-Absenden). Nur der Diktat-Teil von
+// createSpeechController wird genutzt, speak()/onSpeakingChange (Vorlesen)
+// sind hier nicht sinnvoll - ein generiertes Dokument ist kein kurzer,
+// vorlesbarer Chat-Antwortsatz.
 const creativeMicButton = document.getElementById('creative-mic-button');
 const creativeSpeechController = createSpeechController({
   onTranscript: (transcript) => {
     instructionField.value = transcript;
     autoGrowTextarea(instructionField);
+    form.requestSubmit();
   },
   onInterimTranscript: (liveText) => {
     instructionField.value = liveText;
