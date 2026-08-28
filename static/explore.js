@@ -504,16 +504,37 @@ function renderGraph(data) {
   // Einschwingphase wird nicht mehr live mitgerendert.
   simulation.on('tick', ticked);
 
+  // Nutzerwunsch (2026-08-28): Suchtreffer sollen nicht nur hervorgehoben,
+  // sondern auch tatsächlich ins sichtbare Fenster gezoomt werden - bisher
+  // blieb die Kamera unverändert, ein Treffer außerhalb des aktuellen
+  // Ausschnitts war dadurch unsichtbar. Debounced (SEARCH_ZOOM_DEBOUNCE_MS),
+  // damit nicht bei jedem einzelnen Tastendruck während des Tippens ein
+  // ruckartiger Kameraschwenk ausgelöst wird - die Ab-/Aufdunkelung selbst
+  // bleibt sofort/undebounced für direktes Tipp-Feedback. Leere Suche zoomt
+  // symmetrisch zurück auf die Standardansicht.
+  const SEARCH_ZOOM_DEBOUNCE_MS = 400;
+  let searchZoomTimer = null;
+
+  function zoomTo(transform) {
+    svg.transition().duration(600).ease(d3.easeCubicOut).call(zoomBehavior.transform, transform);
+  }
+
   currentSearchHandler = () => {
     const query = normalizeSearch(searchInput.value);
+    clearTimeout(searchZoomTimer);
     if (!query) {
       node.classed('explore-node--dimmed', false);
       link.classed('explore-edge--dimmed', false);
+      searchZoomTimer = setTimeout(() => zoomTo(defaultTransform), SEARCH_ZOOM_DEBOUNCE_MS);
       return;
     }
-    const matchedIds = new Set(nodes.filter((d) => normalizeSearch(d.label).includes(query)).map((d) => d.id));
+    const matchedNodes = nodes.filter((d) => normalizeSearch(d.label).includes(query));
+    const matchedIds = new Set(matchedNodes.map((d) => d.id));
     node.classed('explore-node--dimmed', (d) => !matchedIds.has(d.id));
     link.classed('explore-edge--dimmed', (d) => !matchedIds.has(d.source.id) && !matchedIds.has(d.target.id));
+    if (matchedNodes.length) {
+      searchZoomTimer = setTimeout(() => zoomTo(computeFitTransform(matchedNodes, width, height)), SEARCH_ZOOM_DEBOUNCE_MS);
+    }
   };
   searchInput.addEventListener('input', currentSearchHandler);
 }
