@@ -62,6 +62,9 @@ Assistent das offen, statt zu spekulieren.
   Antworten gibt es auf Deutsch und Englisch, unabhängig voneinander.
 - Spam-/Bot-Schutz (Rate-Limiting + Cloudflare Turnstile), ohne dass
   anonymes Fragenstellen dafür ein Login bräuchte.
+- Erkennt eine Bitte, selbst einen Text/ein Konzept zu verfassen statt
+  eine Faktenfrage – verweist dann freundlich mit vorausgefüllter
+  Anweisung auf den Kreativ-Modus, statt einen Zitat-Versuch zu erzwingen.
 
 ### Sprachein- und -ausgabe
 
@@ -399,6 +402,7 @@ Commit-/Tag-Nachrichten in Git.
 
 | Version | Wesentliche Änderungen |
 |---|---|
+| v0.57.5 | Die Konversationsansicht erkennt jetzt, wenn eine Anfrage eigentlich eine Bitte ist, selbst einen Text/ein Konzept zu verfassen (z. B. "Schreib mir einen Blogartikel über...") statt eine Faktenfrage - statt eines Zitat-Versuchs antwortet sie dann kurz und freundlich mit einem Link auf den Kreativ-Modus, der die ursprüngliche Frage direkt als Anweisung vorausfüllt. Die Ziel-URL wird dabei serverseitig deterministisch und korrekt URL-kodiert erzeugt, nicht vom Modell selbst. Dazu unterstützt die Chat-Antwort-Darstellung jetzt erstmals `[Text](URL)`-Markdown-Links |
 | v0.57.4 | Explore-Suche zoomt/schwenkt jetzt automatisch so, dass die gefundenen Knoten im sichtbaren Fenster erscheinen (bisher wurden Nicht-Treffer nur abgedunkelt, ein Treffer außerhalb des aktuellen Ausschnitts blieb unsichtbar) - debounced (400ms) gegen ruckartige Kameraschwenke beim Tippen, greift erst ab drei eingegebenen Zeichen (bei 1-2 Zeichen sind Treffer meist noch zu unspezifisch), leere Suche zoomt symmetrisch zurück auf die Standardansicht |
 | v0.57.3 | Neu: Spracheingabe (Mikrofon-Button, Live-Transkript) auch für das Anweisungsfeld im Kreativ-Modus, wie im Konversationsmodus inklusive automatischem Absenden nach Sprechende - Button bleibt oben an der Textbox ausgerichtet, auch wenn diese durch Diktat-Text mitwächst. Fix: flakigen Test `test_get_author_photo_serves_cached_file` behoben - pollte nicht auf den Hintergrund-Thread des Foto-Cachings, sondern verließ sich auf ein festes `time.sleep(0.1)`, das auf einem ausgelasteten Runner gelegentlich nicht reichte |
 | v0.57.2 | Fix: Platzhaltertext im leeren Frage-Eingabefeld der Konversationsansicht einladender formuliert - "Konversation starten"/"Start a conversation" wird zu "Reden wir über den Beta-Kodex"/"Let's talk about the BetaCodex" (der Platzhalter für Folgefragen bleibt unverändert) |
