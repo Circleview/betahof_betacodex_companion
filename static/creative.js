@@ -87,6 +87,19 @@ function autoGrowTextarea(el) {
 }
 instructionField.addEventListener('input', () => autoGrowTextarea(instructionField));
 
+// Nutzerwunsch (2026-08-28): ein Verweis aus dem Konversationsmodus (siehe
+// llm.CREATIVE_LINK_PLACEHOLDER/app/main.py) kann die ursprüngliche Frage
+// als Anweisung vorausfüllen, damit sie hier nicht erneut eingetippt werden
+// muss - liest den optionalen ?instruction=-Query-Parameter beim Laden und
+// entfernt ihn danach aus der URL-Zeile (history.replaceState), damit ein
+// Neuladen/Teilen der Seite nicht dieselbe Anweisung erneut einsetzt.
+const prefilledInstruction = new URLSearchParams(window.location.search).get('instruction');
+if (prefilledInstruction) {
+  instructionField.value = prefilledInstruction;
+  autoGrowTextarea(instructionField);
+  history.replaceState(null, '', window.location.pathname);
+}
+
 // Nutzerwunsch (2026-08-28): dieselbe Spracheingabe wie im Konversations-
 // modus (siehe question.js) - inklusive automatischem Absenden nach
 // Diktat-Ende, exakt wie dort (Nutzerentscheidung, revidiert nach

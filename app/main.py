@@ -3259,6 +3259,12 @@ def _compute_occurrence_highlights(
 # spürbar (typischerweise weniger als ein Streaming-Chunk).
 _ASK_LABEL_CHECK_MIN_LEN = 20
 _ASK_QUOTES_MARKER = "---QUOTES---"
+# Größter der beiden Marker, die im gestreamten Text erkannt werden müssen,
+# bevor Zeichen an die Nutzer:in gehen (siehe _ask_event_stream) - verhindert,
+# dass ein noch unvollständiger {{CREATIVE_LINK}}-Platzhalter (siehe
+# llm.CREATIVE_LINK_PLACEHOLDER) am Puffer-Ende teilweise sichtbar wird,
+# bevor er komplett angekommen und ersetzt werden kann.
+_ASK_STREAM_HOLDBACK = max(len(_ASK_QUOTES_MARKER), len(llm.CREATIVE_LINK_PLACEHOLDER))
 
 # Backlog #51: der Relevanzscore (1-10, Slider in der Quellen-Bearbeitung)
 # wirkte bislang nur als gespeichertes Metadatum, ohne Einfluss auf die
@@ -3371,17 +3377,35 @@ def _ask_event_stream(
     sent_len = 0
     label_resolved = False
     answer_sent = False
+    # Nutzerwunsch (2026-08-28): erkennt das Modell eine eigentliche
+    # Generierungsanfrage statt einer Faktenfrage (siehe Regel in
+    # llm.SYSTEM_PROMPTS), verweist es per {{CREATIVE_LINK}}-Platzhalter auf
+    # den Kreativ-Modus - hier deterministisch durch die echte, korrekt
+    # URL-kodierte Ziel-URL ersetzt (inkl. vorausgefüllter Anweisung), statt
+    # dem Modell die fehleranfällige URL-Kodierung selbst zu überlassen.
+    creative_link_url = f"/creative.html?instruction={quote(question_text)}"
 
     try:
         for delta in llm.stream_answer_question(
             question_text, llm_chunks, lang=lang, author_bios=author_bios, history=history
         ):
             buffer += delta
+            # Ersetzt eine bereits VOLLSTÄNDIG angekommene Platzhalter-
+            # Instanz sofort direkt im Puffer selbst (nicht nur in einer
+            # abgeleiteten Kopie) - sonst könnte die Holdback-Kürzung unten
+            # (die nur vor einem noch UNVOLLSTÄNDIGEN Platzhalter-Fragment am
+            # Pufferende schützt) mitten durch einen bereits vollständigen,
+            # aber weiter hinten im Puffer liegenden Treffer schneiden und
+            # nur eine Hälfte davon sichtbar machen (reale Regression, siehe
+            # test_ask_replaces_creative_link_placeholder_even_when_split_
+            # across_chunks). Nach dieser Ersetzung kann im restlichen Puffer
+            # nur noch höchstens ein noch UNVOLLSTÄNDIGES Fragment auftreten.
+            buffer = buffer.replace(llm.CREATIVE_LINK_PLACEHOLDER, creative_link_url)
             marker_index = buffer.find(_ASK_QUOTES_MARKER)
             if marker_index != -1:
                 visible_raw = buffer[:marker_index]
             else:
-                visible_raw = buffer[: max(0, len(buffer) - len(_ASK_QUOTES_MARKER))]
+                visible_raw = buffer[: max(0, len(buffer) - _ASK_STREAM_HOLDBACK)]
 
             if not label_resolved:
                 if marker_index == -1 and len(visible_raw) < _ASK_LABEL_CHECK_MIN_LEN:
@@ -3404,6 +3428,7 @@ def _ask_event_stream(
             # "delta"-Events (visible_final wächst ab hier nicht mehr).
             if marker_index != -1 and not answer_sent:
                 early_answer_text, _ = llm.parse_answer_and_quotes(buffer)
+                early_answer_text = early_answer_text.replace(llm.CREATIVE_LINK_PLACEHOLDER, creative_link_url)
                 yield json.dumps({"type": "answer", "answer": early_answer_text}) + "\n"
                 answer_sent = True
     except Exception:
@@ -3411,6 +3436,7 @@ def _ask_event_stream(
         return
 
     answer_text, quotes_by_citation = llm.parse_answer_and_quotes(buffer)
+    answer_text = answer_text.replace(llm.CREATIVE_LINK_PLACEHOLDER, creative_link_url)
     remaining = answer_text[sent_len:]
     if remaining:
         yield json.dumps({"type": "delta", "text": remaining}) + "\n"

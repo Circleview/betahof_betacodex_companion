@@ -1779,6 +1779,49 @@ def test_ask_stream_never_leaks_quotes_marker_even_when_split_across_chunks(clie
     assert result["answer"] == "Aussage mit Beleg [1]."
 
 
+def test_ask_replaces_creative_link_placeholder_with_encoded_instruction_url(client, monkeypatch):
+    # Nutzerwunsch (2026-08-28): erkennt das Modell eine Generierungsanfrage
+    # statt einer Faktenfrage (siehe Regel in llm.SYSTEM_PROMPTS), verweist
+    # es per {{CREATIVE_LINK}}-Platzhalter auf den Kreativ-Modus - die echte,
+    # korrekt URL-kodierte Ziel-URL (inkl. der Original-Frage als
+    # vorausgefüllte Anweisung) wird deterministisch server-seitig
+    # eingesetzt, nicht vom Modell selbst kodiert.
+    from urllib.parse import quote
+
+    raw = f"Das lässt sich im Kreativ-Modus umsetzen: [Kreativ-Modus]({llm.CREATIVE_LINK_PLACEHOLDER})"
+    monkeypatch.setattr(llm, "stream_answer_question", lambda *a, **k: iter([raw]))
+    client.post("/api/sources", json={"title": "Q", "text": "Text."})
+
+    question = "Schreibe einen Blogartikel über Teamautonomie"
+    response = client.post("/api/ask", json={"question": question})
+    result = ask_result(response)
+
+    expected_url = f"/creative.html?instruction={quote(question)}"
+    assert llm.CREATIVE_LINK_PLACEHOLDER not in result["streamed_text"]
+    assert f"[Kreativ-Modus]({expected_url})" in result["answer"]
+
+
+def test_ask_replaces_creative_link_placeholder_even_when_split_across_chunks(client, monkeypatch):
+    # Wie test_ask_stream_never_leaks_quotes_marker_even_when_split_across_
+    # chunks oben, nur für den neuen Platzhalter - zeichenweises Yielden
+    # erzwingt, dass er über viele einzelne Streaming-Chunks verteilt
+    # ankommt, ohne dass ein unvollständiges Fragment sichtbar wird.
+    from urllib.parse import quote
+
+    raw = f"Nutze den [Kreativ-Modus]({llm.CREATIVE_LINK_PLACEHOLDER}) dafür."
+    monkeypatch.setattr(llm, "stream_answer_question", lambda *a, **k: iter(list(raw)))
+    client.post("/api/sources", json={"title": "Q", "text": "Text."})
+
+    question = "Entwirf ein Workshop-Konzept zu Selbstorganisation"
+    response = client.post("/api/ask", json={"question": question})
+    result = ask_result(response)
+
+    expected_url = f"/creative.html?instruction={quote(question)}"
+    assert "{{" not in result["streamed_text"]
+    assert "CREATIVE_LINK" not in result["streamed_text"]
+    assert expected_url in result["streamed_text"]
+
+
 def test_ask_stream_strips_answer_label_atomically_without_leaking_partial_prefix(client, monkeypatch):
     # Das "Antwort:"-Label darf nicht zeichenweise an die Nutzer:in
     # durchgereicht werden, bevor feststeht, ob es entfernt werden muss -

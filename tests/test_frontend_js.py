@@ -2391,6 +2391,59 @@ def test_apply_markdown_heading_does_not_duplicate_existing_prefix():
     assert (result["selectionStart"], result["selectionEnd"]) == (0, 8)
 
 
+# --- markdown.js: renderMarkdown (2026-08-28) ---
+
+
+def _run_render_markdown(text):
+    js_source = (STATIC_DIR / "markdown.js").read_text()
+    match = re.search(
+        r"function escapeHtml.*?\nexport function renderMarkdown\(text\) \{.*?\n\}",
+        js_source,
+        re.S,
+    )
+    assert match, "renderMarkdown (+ escapeHtml) wurde in markdown.js nicht gefunden."
+    script = f"{match.group(0)}\nconsole.log(JSON.stringify(renderMarkdown({json.dumps(text)})));"
+    result = subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True)
+    return json.loads(result.stdout)
+
+
+def test_render_markdown_escapes_html():
+    html = _run_render_markdown("<script>alert('x')</script> & Co")
+    assert "<script>" not in html
+    assert "&lt;script&gt;" in html
+    assert "&amp; Co" in html
+
+
+def test_render_markdown_bold_and_italic():
+    html = _run_render_markdown("**fett** und *kursiv*")
+    assert html == "<p><strong>fett</strong> und <em>kursiv</em></p>"
+
+
+def test_render_markdown_renders_internal_link():
+    html = _run_render_markdown("Schau mal im [Kreativ-Modus](/creative.html?instruction=Test) vorbei.")
+    assert '<a href="/creative.html?instruction=Test">Kreativ-Modus</a>' in html
+
+
+def test_render_markdown_renders_https_link():
+    html = _run_render_markdown("Siehe [BetaCodex](https://betacodex.org).")
+    assert '<a href="https://betacodex.org">BetaCodex</a>' in html
+
+
+def test_render_markdown_does_not_render_non_http_link_targets():
+    html = _run_render_markdown("[Klick mich](javascript:alert(1))")
+    assert "<a href" not in html
+    assert "javascript:alert(1)" in html
+
+
+def test_render_markdown_link_text_may_not_contain_brackets():
+    # Bewusste Einschränkung der Regex (kein verschachteltes [...]) - ein
+    # Zitatverweis wie "[1]" direkt vor einer Klammer darf nicht versehentlich
+    # als Linkstart fehlinterpretiert werden.
+    html = _run_render_markdown("Siehe [1] (Zusatzinfo).")
+    assert "<a href" not in html
+    assert "[1] (Zusatzinfo)" in html
+
+
 def test_creative_js_has_no_orphaned_dom_elements():
     js_source = (STATIC_DIR / "creative.js").read_text()
     all_orphaned = []

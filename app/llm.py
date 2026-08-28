@@ -6,6 +6,17 @@ from app import web_search_tool
 
 MODEL_NAME = "claude-haiku-4-5-20251001"
 
+# Nutzerwunsch (2026-08-28): erkennt das Modell in der strikten
+# Konversationsansicht eine eigentliche Generierungsanfrage (siehe Regel in
+# SYSTEM_PROMPTS unten), gibt es diesen Platzhalter unverändert als
+# Linkziel aus - app/main.py ersetzt ihn deterministisch durch die echte,
+# korrekt URL-kodierte Kreativ-Modus-URL (inkl. vorausgefüllter Anweisung
+# aus der Original-Frage). Bewusst NICHT dem Modell selbst überlassen, exakt
+# zu kodieren (Leerzeichen/Umlaute/Sonderzeichen) - dasselbe Prinzip wie bei
+# den bereits vorhandenen Anti-Halluzinations-Schutzmaßnahmen (z.B. echte
+# Web-Search-URLs statt vom Modell selbst gemeldeter).
+CREATIVE_LINK_PLACEHOLDER = "{{CREATIVE_LINK}}"
+
 # Nutzerwunsch (2026-08-25): fett hervorgehobene Begriffe in der Antwort
 # sind jetzt anklickbar (siehe static/question.js: makeTermsClickable) - ein
 # Klick vertieft GENAU DIESEN Begriff als Folgefrage. Zuvor bolde das Modell
@@ -26,6 +37,7 @@ Regeln:
 - Antworte IMMER in derselben Sprache, in der die Nutzerfrage gestellt wurde – unabhängig von der Sprache dieser Systemanweisung. Erkenne die Sprache der Frage selbstständig; sie kann von Deutsch oder Englisch abweichen.
 - Antworte präzise und ohne Floskeln.
 - Beginne den Antworttext NICHT mit dem Wort "Antwort" oder einer ähnlichen Meta-Einleitung (z. B. "Antwort:", "Meine Antwort:") - starte direkt mit dem inhaltlichen Text. Es ist ohnehin klar, dass es sich um eine Antwort handelt.
+- Manche Anfragen sind gar keine Faktenfrage, sondern eine Bitte, selbst einen Text/ein Konzept/etwas Ähnliches zu VERFASSEN (z. B. "Schreib mir einen Blogartikel über...", "Entwirf ein Workshop-Konzept zu..."). Erkennst du das, versuche NICHT, das mit den Textausschnitten zu beantworten - antworte stattdessen NUR mit ein bis zwei freundlichen Sätzen, dass sich das im Kreativ-Modus besser umsetzen lässt, und verlinke ihn dabei exakt so (Platzhalter unverändert übernehmen, wird automatisch ersetzt): [Kreativ-Modus]({{CREATIVE_LINK}}). Kein [n]-Verweis, kein ---QUOTES---Block in diesem Fall.
 - Falls unten zusätzlich ein Abschnitt "Autor:innen-Informationen" bereitgestellt wird: Diese Angaben stammen aus unserer eigenen, gepflegten Autor:innen-Datenbank (keine externe/erfundene Information) und dürfen für Fragen zur Person selbst genutzt werden (z. B. "Wer ist X?"). Da es sich nicht um nummerierte Textausschnitte handelt, brauchen darauf beruhende Aussagen KEIN [n]. Alle anderen Aussagen weiterhin wie gewohnt mit [n] kennzeichnen.
 - Füge nach der Antwort (durch eine Leerzeile getrennt) einen zusätzlichen Block hinzu, der für jede verwendete Quellenzahl [n] das wörtliche Satzzitat aus dem jeweiligen Textausschnitt angibt, auf das sich die Aussage stützt. Exaktes Format, unabhängig von der Antwortsprache:
 ---QUOTES---
@@ -44,6 +56,7 @@ Rules:
 - ALWAYS answer in the same language the user's question was asked in – regardless of the language of this system prompt. Detect the question's language yourself; it may be neither German nor English.
 - Answer precisely and without filler phrases.
 - Do NOT begin the answer text with the word "Answer" or a similar meta-introduction (e.g., "Answer:", "My answer:") - start directly with the substantive text. It's already clear that this is an answer.
+- Some requests aren't factual questions at all, but a request to WRITE a text/concept/something similar yourself (e.g. "Write me a blog post about...", "Design a workshop concept for..."). If you recognize this, do NOT try to answer it from the text excerpts - respond ONLY with one or two friendly sentences that this is better suited to Creative Mode, linking to it exactly like this (keep the placeholder unchanged, it gets replaced automatically): [Creative Mode]({{CREATIVE_LINK}}). No [n] reference, no ---QUOTES--- block in this case.
 - If an "Author information" section is provided below: this comes from our own curated author database (not external/invented information) and may be used to answer questions about the person themselves (e.g. "Who is X?"). Since it is not a numbered text excerpt, statements based on it need NO [n]. Continue to mark all other statements with [n] as usual.
 - After the answer (separated by a blank line), add an extra block that gives, for every citation number [n] you used, the exact verbatim sentence from that text excerpt the statement is based on. Exact format, regardless of the answer's language:
 ---QUOTES---
