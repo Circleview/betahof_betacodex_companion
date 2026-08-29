@@ -3961,11 +3961,16 @@ def test_get_version_returns_a_string(client):
 
 # Backlog #75: Embed-Snippet für die Konversationsansicht. Ohne gesetztes
 # EMBED_ENABLED (Standardfall) bleibt /embed.html unerreichbar und der Footer-
-# Link unsichtbar - analog zum Early-Access-Muster. Das deckt sich implizit
-# mit allen anderen Tests in dieser Datei, die den Wert nie setzen.
+# Link unsichtbar - analog zum Early-Access-Muster. Die "...by_default"-Tests
+# unten setzen den Wert bewusst per monkeypatch.delenv explizit auf "nicht
+# gesetzt", statt sich (wie ursprünglich) auf eine zufällig leere Ambient-
+# Umgebungsvariable zu verlassen - Bug (2026-08-29): schlug plötzlich fehl,
+# nachdem EMBED_ENABLED=true lokal in .env aktiviert wurde, da os.environ.get
+# das reale Prozess-Environment liest, nicht nur die Testkonfiguration.
 
 
-def test_version_reports_embed_disabled_by_default(client):
+def test_version_reports_embed_disabled_by_default(client, monkeypatch):
+    monkeypatch.delenv("EMBED_ENABLED", raising=False)
     response = client.get("/api/version")
     assert response.json()["embed_enabled"] is False
 
@@ -3976,7 +3981,8 @@ def test_version_reports_embed_enabled_when_flag_set(client, monkeypatch):
     assert response.json()["embed_enabled"] is True
 
 
-def test_embed_page_returns_404_by_default(anon_client):
+def test_embed_page_returns_404_by_default(anon_client, monkeypatch):
+    monkeypatch.delenv("EMBED_ENABLED", raising=False)
     response = anon_client.get("/embed.html")
     assert response.status_code == 404
 
@@ -3995,10 +4001,11 @@ def test_embed_page_allows_framing_only_when_flag_set(anon_client, monkeypatch):
     assert "frame-ancestors *" in response.headers["Content-Security-Policy"]
 
 
-def test_embed_page_stays_denied_when_flag_unset_even_if_file_requested(anon_client):
+def test_embed_page_stays_denied_when_flag_unset_even_if_file_requested(anon_client, monkeypatch):
     # /embed.html liefert zwar 404, aber die Sicherheits-Header-Middleware
     # greift trotzdem VOR der Route - stellt sicher, dass ein versehentlich
     # falsch konfigurierter Zustand nie "halb offen" ist.
+    monkeypatch.delenv("EMBED_ENABLED", raising=False)
     response = anon_client.get("/embed.html")
     assert response.headers["X-Frame-Options"] == "DENY"
     assert "frame-ancestors 'none'" in response.headers["Content-Security-Policy"]
