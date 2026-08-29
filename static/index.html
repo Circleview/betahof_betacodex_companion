@@ -65,7 +65,13 @@
          Bug). Als eigener Block UNTERHALB des Formulars beeinflusst er die
          Eingabezeile gar nicht mehr, sondern schiebt höchstens den
          Fußzeilenbereich etwas nach unten - und das auch nur in dem seltenen
-         Fall, dass Cloudflare tatsächlich eine sichtbare Challenge zeigt. -->
+         Fall, dass Cloudflare tatsächlich eine sichtbare Challenge zeigt.
+         WICHTIG: static/embed.html baut dieselbe Eingabezeile (#question-
+         form + Mikrofon-/Absenden-Button/Turnstile) eigenständig nach (kein
+         gemeinsames Template, dieses Projekt hat keinen Build-Schritt) - ein
+         Fix an diesem Formular-Ausschnitt sollte dort ebenfalls nachgezogen
+         werden (war bei diesem Fix ursprünglich vergessen worden, siehe
+         Fix 2026-08-30 in embed.html). -->
     <div id="turnstile-container" class="turnstile-container"></div>
   </div>
 </section>

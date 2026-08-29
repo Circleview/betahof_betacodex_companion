@@ -3,6 +3,8 @@ import re
 import subprocess
 from pathlib import Path
 
+import pytest
+
 STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
 
 
@@ -2466,4 +2468,24 @@ def test_creative_js_has_no_orphaned_dom_elements():
     assert all_orphaned == [], (
         "Diese per document.createElement erzeugten Elemente werden in ihrer Funktion "
         f"weder angehängt noch zurückgegeben: {all_orphaned}"
+    )
+
+
+# --- index.html/embed.html: geteilte Eingabezeilen-Struktur (2026-08-30) ---
+
+
+@pytest.mark.parametrize("filename", ["index.html", "embed.html"])
+def test_question_form_does_not_contain_turnstile_container(filename):
+    # Regression (2026-08-30): der "Mikrofon-Icon springt"-Fix (Backlog
+    # 2026-08-09) zog #turnstile-container aus #question-form heraus - wurde
+    # damals nur in index.html gemacht, embed.html (eigenständige, nicht per
+    # Template geteilte Kopie derselben Eingabezeile, siehe Kommentare in
+    # beiden Dateien) blieb unbemerkt auf dem alten, fehlerhaften Stand.
+    # Dieser Test hält beide Dateien strukturell im Takt.
+    html = (STATIC_DIR / filename).read_text()
+    form_match = re.search(r'<form id="question-form".*?</form>', html, re.S)
+    assert form_match, f"#question-form wurde in {filename} nicht gefunden."
+    assert 'id="turnstile-container"' not in form_match.group(0), (
+        f"#turnstile-container liegt in {filename} wieder innerhalb von #question-form - "
+        "das verursacht das 'Mikrofon-Icon springt'-Problem erneut (siehe Backlog 2026-08-09)."
     )
