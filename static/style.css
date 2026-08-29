@@ -1534,6 +1534,24 @@ body:not(.chat-started) #question-form {
   text-decoration: underline;
 }
 
+/* Fix (2026-08-30): renderMarkdown() (markdown.js) kann seit dem 2026-08-28
+   eingeführten Kreativ-Modus-Link `[Text](Ziel)` in normale <a>-Elemente ohne
+   Klasse umwandeln - ohne diese Regel blieben sie ungestylte Browser-Links
+   (blau, unterstrichen, ignoriert Dark-Mode). Bewusst als allgemeine Regel
+   auf #chat-messages a statt einer Klasse an einem einzelnen Link, damit
+   JEDER künftig in einer Antwort neu erzeugte Link (nicht nur der
+   Kreativ-Modus-Link) automatisch passend gestylt ist, ohne dass man beim
+   Hinzufügen eines neuen Links daran denken muss. */
+#chat-messages a {
+  color: var(--color-accent);
+  text-decoration: underline;
+}
+
+#chat-messages a:hover,
+#chat-messages a:focus-visible {
+  color: var(--color-accent-hover);
+}
+
 .external-link {
   display: inline-flex;
   vertical-align: middle;
