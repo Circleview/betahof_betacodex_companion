@@ -3383,16 +3383,22 @@ details a {
 
   /* Backlog #75: Embed-Snippet ist für die Website-Pflege am Desktop gedacht
      (Copy-Paste in fremden HTML-Code) - auf Mobile ohnehin kaum sinnvoll
-     nutzbar, deshalb dort ausgeblendet. */
+     nutzbar, deshalb dort ausgeblendet. !important nötig (Fix 2026-08-29,
+     wie bei #jobs-popover/#reindex-bereich oben): die spätere, unbedingte
+     .footer-embed-Regel (display: inline-flex, siehe weiter unten in dieser
+     Datei) hatte bei gleicher Spezifität als später stehende Regel sonst
+     gewonnen und den Mobile-Ausblendungsversuch wirkungslos gemacht - fiel
+     erst auf, als das Embed-Feature-Flag aktiviert wurde. */
   .footer-embed {
-    display: none;
+    display: none !important;
   }
 
   /* Fix: Footer auf schmalen Bildschirmen knapper halten - "Beta Hof" ist
      als externer Beratungs-Link auf Mobile verzichtbar, betacodex.org/
-     Versionsnummer/Impressum/Datenschutz bleiben erhalten. */
+     Versionsnummer/Impressum/Datenschutz bleiben erhalten. !important aus
+     demselben Grund wie bei .footer-embed oben. */
   .footer-betahof-link {
-    display: none;
+    display: none !important;
   }
 
   /* Fix: Grafik-Glitch - der native Date-Picker (input[type=date]) hat auf
