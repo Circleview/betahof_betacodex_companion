@@ -295,9 +295,9 @@ function renderFooter() {
 
   // GitHub-Link und Versionsnummer sind zu einem Link zusammengefasst -
   // sichtbarer Text ist die Version, das Ziel ist dasselbe Repo wie beim
-  // vorherigen separaten "GitHub"-Link. Bleibt (anders als .footer-embed/
-  // .footer-betahof-link) auch auf schmalen Bildschirmen sichtbar - explizit
-  // vom Nutzer bestätigt, die Versionsnummer soll immer sichtbar bleiben.
+  // vorherigen separaten "GitHub"-Link. Bleibt (anders als .footer-embed)
+  // auch auf schmalen Bildschirmen sichtbar - explizit vom Nutzer bestätigt,
+  // die Versionsnummer soll immer sichtbar bleiben.
   const versionLink = buildLink(
     'https://github.com/Circleview/betahof_betacodex_companion',
     currentVersion,
@@ -316,15 +316,14 @@ function renderFooter() {
     t('footer.privacyPolicy')
   );
 
-  const children = [taglineSpan, buildFeedbackTrigger()];
+  // Nutzerwunsch (2026-08-30): Reihenfolge Feedback -> betacodex.org ->
+  // Einbetten (nur falls aktiv) -> Version, Rest unverändert. Der separate
+  // "Beta Hof"-Beratungslink wurde auf Nutzerwunsch ganz entfernt (Impressum
+  // verlinkt zwar weiterhin auf betahof.de, ist aber ein eigener, klar
+  // beschrifteter Rechtstext-Link, kein "Beta Hof"-Verweis).
+  const children = [taglineSpan, buildFeedbackTrigger(), buildLink('https://betacodex.org', 'betacodex.org')];
   if (embedEnabled) children.push(buildEmbedWidget());
-  children.push(
-    buildLink('https://betacodex.org', 'betacodex.org'),
-    versionLink,
-    buildLink('https://www.betahof.de/beratung/', 'Beta Hof', 'footer-betahof-link'),
-    buildLink('https://www.betahof.de/impressum/', t('footer.impressum')),
-    privacyPolicyLink,
-  );
+  children.push(versionLink, buildLink('https://www.betahof.de/impressum/', t('footer.impressum')), privacyPolicyLink);
   footer.replaceChildren(...children);
 }
 

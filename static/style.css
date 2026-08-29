@@ -3393,14 +3393,6 @@ details a {
     display: none !important;
   }
 
-  /* Fix: Footer auf schmalen Bildschirmen knapper halten - "Beta Hof" ist
-     als externer Beratungs-Link auf Mobile verzichtbar, betacodex.org/
-     Versionsnummer/Impressum/Datenschutz bleiben erhalten. !important aus
-     demselben Grund wie bei .footer-embed oben. */
-  .footer-betahof-link {
-    display: none !important;
-  }
-
   /* Fix: Grafik-Glitch - der native Date-Picker (input[type=date]) hat auf
      iOS eine eigene Mindestbreite für seine Tag/Monat/Jahr-Segmente, die
      .field-row (Autor + Erscheinungsdatum nebeneinander) auf schmalen
