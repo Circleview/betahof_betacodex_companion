@@ -1211,7 +1211,7 @@ button.send-button {
 
 /* Nutzerwunsch (2026-08-30): "Vollständig öffnen"-Icon im Embed - fixed
    statt im normalen Fluss, damit es unabhängig vom Scroll-Zustand immer
-   oben links sichtbar bleibt (das Embed füllt typischerweise den gesamten
+   oben rechts sichtbar bleibt (das Embed füllt typischerweise den gesamten
    Iframe-Viewport aus, ein normal positioniertes Icon würde beim Scrollen
    im Chat-Verlauf mitwandern). Klein und rot wie gefordert - gleiche
    Akzentfarbe wie .external-link, dezenter halbtransparenter Hintergrund
@@ -1219,7 +1219,7 @@ button.send-button {
 #embed-expand-button {
   position: fixed;
   top: 0.5rem;
-  left: 0.5rem;
+  right: 0.5rem;
   z-index: 10;
   width: 26px;
   height: 26px;
