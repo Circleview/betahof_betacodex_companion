@@ -3999,11 +3999,20 @@ details a {
    revise-panel), nicht als eigenes Overlay. */
 .creative-section {
   position: relative;
-  padding-right: 2.25rem;
 }
 
 .creative-section + .creative-section {
   margin-top: 0.5rem;
+}
+
+/* Nutzerwunsch (2026-08-30): Platz fürs Stift-Icon nur beim eigentlichen
+   Abschnittstext einrücken - der darunter aufklappende Überarbeiten-Bereich
+   (.creative-section-revise-panel, eigenes Geschwister-Element, sitzt
+   NICHT im Fließtext neben dem Icon) soll sich nicht daran orientieren und
+   stattdessen links/rechts symmetrisch so breit wie der Abschnitt selbst
+   sein. */
+.creative-section-content {
+  padding-right: 2.25rem;
 }
 
 .creative-section-revise-btn {
