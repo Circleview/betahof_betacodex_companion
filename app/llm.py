@@ -380,6 +380,54 @@ Rules:
 """,
 }
 
+# Nutzerwunsch (2026-08-30): abschnittsweises Überarbeiten auf
+# Überschriftenebene - eigener, deutlich engerer System-Prompt statt einer
+# Variante von CREATIVE_SYSTEM_PROMPTS oben, weil dieser explizit das
+# Gegenteil von dessen Kernregel verlangt ("vollständige Ersetzung, schreibe
+# den GESAMTEN Text neu"). Das Gesamtdokument bleibt trotzdem Teil des
+# User-Contents (siehe _build_creative_section_user_content) - nur als
+# Kontext für Ton/Terminologie an den Übergängen, nicht zum Neuschreiben.
+CREATIVE_SECTION_SYSTEM_PROMPTS = {
+    "de": """Du bist ein erfahrener Schreib- und Workshop-Design-Partner. Du überarbeitest hier NUR EINEN EINZELNEN ABSCHNITT eines größeren Dokuments, das auf Grundlage des BetaCodex verfasst wurde (Blogpost, Artikel, Workshop-Konzept o.Ä.).
+
+Regeln:
+- Unten bekommst du das GESAMTE Dokument, aber NUR als Kontext (Ton, Terminologie, roter Faden) - schreibe es NICHT neu.
+- Überarbeite AUSSCHLIESSLICH den unten separat markierten Abschnitt gemäß der Anweisung.
+- Deine gesamte Antwort ist die überarbeitete Fassung DIESES EINEN Abschnitts - keine Chat-Einleitung, kein "Hier ist der überarbeitete Abschnitt:", kein Meta-Kommentar, kein Rest des Dokuments.
+- Behalte die ursprüngliche Überschrift des Abschnitts bei (gleicher Text, gleiches Markdown-Level), außer die Anweisung verlangt ausdrücklich eine andere Überschrift.
+- Wird unten ein Abschnitt "BetaCodex-Kontext" mitgeliefert: Aussagen, die sich konkret auf den BetaCodex bzw. die dort skizzierten Quellen beziehen, müssen durch diesen Kontext gedeckt sein - erfinde nichts, was ihm widerspricht.
+- Für alles, was der BetaCodex-Kontext nicht abdeckt, darfst du recherchieren (Web-Search-Werkzeug) oder dein allgemeines Wissen nutzen - erfinde aber auch dort keine Fakten, Quellen oder Zitate, die du nicht durch eine echte Websuche oder gesichertes Wissen belegen kannst.
+- Keine eingeklammerten Quellenverweise wie [1], [2] im Fließtext - Quellen stehen ausschließlich im Block am Ende (siehe unten).
+- Markdown ist erlaubt, wo es zum Zielformat passt (Fett, Listen) - natürlich eingesetzt, nicht mechanisch.
+- Schreibe im Stil des restlichen Dokuments weiter, damit kein Stilbruch am Übergang entsteht: variiere Satzlänge und Satzanfänge, vermeide abgenutzte Übergangsfloskeln, beziehe konkret Stellung statt jede Aussage sofort zu relativieren.
+- Antworte in der Sprache der Anweisung.
+- Schreibst du auf Deutsch, heißt das Rahmenwerk selbst "Beta-Kodex" (mit Bindestrich) - nicht "BetaCodex". Auf Englisch bleibt es "BetaCodex" (ein Wort, ohne Bindestrich).
+- Füge nach dem überarbeiteten Abschnitt (durch eine Leerzeile getrennt) einen Block mit allen tatsächlich per Websuche gefundenen und im Abschnitt verwendeten Web-Quellen hinzu, exaktes Format:
+---SOURCES---
+[Web]: <Titel> — <URL>
+  Nur echte URLs, die du tatsächlich per Websuche gefunden hast - erfinde niemals eine URL. BetaCodex-Quellen gehören NICHT in diesen Block. Hast du keine Web-Quelle verwendet, lass den Block komplett weg.
+""",
+    "en": """You are an experienced writing and workshop-design partner. Here you are revising ONLY A SINGLE SECTION of a larger document written based on the BetaCodex (blog post, article, workshop concept, etc.).
+
+Rules:
+- Below you get the ENTIRE document, but ONLY as context (tone, terminology, narrative thread) - do NOT rewrite it.
+- Revise EXCLUSIVELY the section marked separately below, according to the instruction.
+- Your entire reply is the revised version of THIS ONE section - no chat framing, no "Here is the revised section:", no meta-commentary, no rest of the document.
+- Keep the section's original heading (same text, same Markdown level), unless the instruction explicitly asks for a different heading.
+- If a "BetaCodex context" section is provided below: statements specific to the BetaCodex or the sources outlined there must be supported by that context - don't invent anything that contradicts it.
+- For anything the BetaCodex context doesn't cover, you may research (web-search tool) or use your general knowledge - but never invent facts, sources, or quotes you can't back up with a real search result or well-established knowledge.
+- No bracketed citations like [1], [2] in the body text - sources appear only in the trailing block below.
+- Markdown is fine where it fits the target format (bold, lists) - used naturally, not mechanically.
+- Keep writing in the style of the rest of the document so there's no stylistic break at the boundary: vary sentence length and sentence openers, avoid worn-out transition fillers, take a clear stance instead of immediately hedging every claim.
+- Answer in the language of the instruction.
+- If you write in German, the framework itself is called "Beta-Kodex" (with a hyphen) - not "BetaCodex". In English it stays "BetaCodex" (one word, no hyphen).
+- After the revised section (separated by a blank line), add a block listing every web source you actually found via search and used in the section, exact format:
+---SOURCES---
+[Web]: <title> — <url>
+  Only real URLs you actually found via web search - never invent one. Do NOT list BetaCodex sources here. If you used no web source, omit the block entirely.
+""",
+}
+
 _CREATIVE_LANGUAGE_REMINDERS = {
     "de": "(Wichtig: Antworte in der Sprache dieser Anweisung, auch wenn der BetaCodex-Kontext oben in einer anderen Sprache verfasst ist.)",
     "en": "(Important: answer in the language of this instruction, even if the BetaCodex context above is written in a different language.)",
@@ -413,6 +461,21 @@ def _build_creative_user_content(instruction: str, document: str, context: str, 
     return (
         f"BetaCodex-Kontext:\n\n{context_text}\n\n"
         f'Aktuelles Dokument:\n"""\n{document_text}\n"""\n\n'
+        f"Anweisung: {instruction}\n\n"
+        f"{_CREATIVE_LANGUAGE_REMINDERS[lang]}"
+    )
+
+
+def _build_creative_section_user_content(
+    instruction: str, document: str, section: str, context: str, lang: str
+) -> str:
+    context_text = context or _CREATIVE_NO_CONTEXT_NOTE[lang]
+    label = "Gesamtdokument (nur Kontext, NICHT neu schreiben)" if lang == "de" else "Full document (context only, do NOT rewrite)"
+    section_label = "Zu überarbeitender Abschnitt" if lang == "de" else "Section to revise"
+    return (
+        f"BetaCodex-Kontext:\n\n{context_text}\n\n"
+        f'{label}:\n"""\n{document}\n"""\n\n'
+        f'{section_label}:\n"""\n{section}\n"""\n\n'
         f"Anweisung: {instruction}\n\n"
         f"{_CREATIVE_LANGUAGE_REMINDERS[lang]}"
     )
@@ -465,14 +528,25 @@ def stream_creative_response(
     document: str,
     curated_chunks: list[dict],
     lang: str = DEFAULT_LANG,
+    section: str | None = None,
 ) -> CreativeStream:
     """Streamt die Kreativ-Modus-Antwort (siehe CREATIVE_SYSTEM_PROMPTS) -
     Modellwahl richtet sich danach, ob document bereits Inhalt hat (siehe
-    CREATIVE_FIRST_DRAFT_MODEL oben)."""
+    CREATIVE_FIRST_DRAFT_MODEL oben). Ist section gesetzt (Nutzerwunsch
+    2026-08-30, abschnittsweises Überarbeiten), wird stattdessen der engere
+    CREATIVE_SECTION_SYSTEM_PROMPTS-Pfad genutzt - document bleibt dabei
+    immer nicht-leer (der Abschnitt stammt ja aus einem bestehenden
+    Dokument), die bestehende Kosten-Heuristik liefert also automatisch
+    weiterhin MODEL_NAME (Haiku), nie CREATIVE_FIRST_DRAFT_MODEL."""
     lang = lang if lang in CREATIVE_SYSTEM_PROMPTS else DEFAULT_LANG
     model = CREATIVE_FIRST_DRAFT_MODEL if not document.strip() else MODEL_NAME
     context = _build_creative_context(curated_chunks)
-    user_content = _build_creative_user_content(instruction, document, context, lang)
+    if section is not None:
+        system_prompt = CREATIVE_SECTION_SYSTEM_PROMPTS[lang]
+        user_content = _build_creative_section_user_content(instruction, document, section, context, lang)
+    else:
+        system_prompt = CREATIVE_SYSTEM_PROMPTS[lang]
+        user_content = _build_creative_user_content(instruction, document, context, lang)
 
     urls_box: dict = {"urls": set()}
 
@@ -481,7 +555,7 @@ def stream_creative_response(
         with client.messages.stream(
             model=model,
             max_tokens=CREATIVE_MAX_TOKENS,
-            system=CREATIVE_SYSTEM_PROMPTS[lang],
+            system=system_prompt,
             tools=[web_search_tool.build_tool(CREATIVE_MAX_SEARCH_USES)],
             tool_choice={"type": "auto"},
             messages=[{"role": "user", "content": user_content}],

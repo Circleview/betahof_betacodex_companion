@@ -3761,7 +3761,9 @@ def creative(payload: CreativeRequestIn, request: Request, x_lang: str = Header(
                 }
             )
 
-    creative_stream = llm.stream_creative_response(instruction, document, llm_chunks, lang=x_lang)
+    creative_stream = llm.stream_creative_response(
+        instruction, document, llm_chunks, lang=x_lang, section=payload.section
+    )
 
     return StreamingResponse(
         _creative_event_stream(x_lang, betacodex_sources, creative_stream),

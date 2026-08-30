@@ -308,7 +308,7 @@ def client(tmp_path, monkeypatch):
     monkeypatch.setattr(
         llm,
         "stream_creative_response",
-        lambda instruction, document, chunks, lang="de": _FakeCreativeStream(["Testdokument."]),
+        lambda instruction, document, chunks, lang="de", section=None: _FakeCreativeStream(["Testdokument."]),
     )
     monkeypatch.setattr(
         summarization,
@@ -1359,7 +1359,7 @@ def test_creative_streams_delta_and_document_events_without_leaking_sources_mark
 def test_creative_uses_document_argument_correctly_for_first_draft_and_revision(client, monkeypatch):
     calls = []
 
-    def fake_stream(instruction, document, chunks, lang="de"):
+    def fake_stream(instruction, document, chunks, lang="de", section=None):
         calls.append(document)
         return _FakeCreativeStream(["Text."])
 
@@ -1371,6 +1371,33 @@ def test_creative_uses_document_argument_correctly_for_first_draft_and_revision(
     assert calls == ["", "Bestehender Text."]
 
 
+def test_creative_passes_section_through_to_stream_creative_response(client, monkeypatch):
+    # Nutzerwunsch (2026-08-30): abschnittsweises Überarbeiten - ist im
+    # Request-Body ein section-Feld gesetzt, muss es unverändert bei
+    # llm.stream_creative_response ankommen (dort entscheidet es über den
+    # CREATIVE_SECTION_SYSTEM_PROMPTS-Pfad, siehe app/llm.py). Ohne section
+    # bleibt es None (Rückwärtskompatibilität zum Ganzdokument-Pfad).
+    calls = []
+
+    def fake_stream(instruction, document, chunks, lang="de", section=None):
+        calls.append(section)
+        return _FakeCreativeStream(["Text."])
+
+    monkeypatch.setattr(llm, "stream_creative_response", fake_stream)
+
+    client.post(
+        "/api/creative",
+        json={
+            "document": "# Erster Abschnitt\n\nAlter Text.\n\n# Zweiter Abschnitt\n\nWeiterer Text.",
+            "instruction": "Kürze das.",
+            "section": "# Erster Abschnitt\n\nAlter Text.\n\n",
+        },
+    )
+    client.post("/api/creative", json={"document": "", "instruction": "Erster Entwurf."})
+
+    assert calls == ["# Erster Abschnitt\n\nAlter Text.\n\n", None]
+
+
 def test_creative_betacodex_sources_come_from_retrieved_curated_chunks(client, monkeypatch):
     client.post(
         "/api/sources",
@@ -1379,7 +1406,7 @@ def test_creative_betacodex_sources_come_from_retrieved_curated_chunks(client, m
     monkeypatch.setattr(
         llm,
         "stream_creative_response",
-        lambda instruction, document, chunks, lang="de": _FakeCreativeStream(
+        lambda instruction, document, chunks, lang="de", section=None: _FakeCreativeStream(
             ["Ein völlig anderer Text, der die Quelle gar nicht erwähnt."]
         ),
     )
@@ -1406,7 +1433,7 @@ def test_creative_betacodex_sources_deduplicate_multiple_chunks_of_same_source(c
     monkeypatch.setattr(
         llm,
         "stream_creative_response",
-        lambda instruction, document, chunks, lang="de": _FakeCreativeStream(
+        lambda instruction, document, chunks, lang="de", section=None: _FakeCreativeStream(
             ["Text ohne Erwähnung der Quelle."]
         ),
     )
@@ -1431,7 +1458,7 @@ def test_creative_web_sources_are_filtered_to_real_search_results(client, monkey
     monkeypatch.setattr(
         llm,
         "stream_creative_response",
-        lambda instruction, document, chunks, lang="de": _FakeCreativeStream(
+        lambda instruction, document, chunks, lang="de", section=None: _FakeCreativeStream(
             [raw], real_web_urls={"https://real.example/gefunden"}
         ),
     )

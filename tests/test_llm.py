@@ -369,6 +369,54 @@ def test_stream_creative_response_yields_document_text():
         assert "".join(stream) == "Der fertige Text."
 
 
+def test_stream_creative_response_uses_section_system_prompt_when_section_given():
+    # Nutzerwunsch (2026-08-30): abschnittsweises Überarbeiten - ist section
+    # gesetzt, muss der engere CREATIVE_SECTION_SYSTEM_PROMPTS-Pfad greifen
+    # (nicht der Ganzdokument-Pfad CREATIVE_SYSTEM_PROMPTS), und sowohl das
+    # Gesamtdokument als auch der Abschnitt selbst müssen im User-Content
+    # landen.
+    client = _fake_creative_client("Überarbeiteter Abschnitt.")
+    with patch.object(llm, "_get_client", return_value=client):
+        list(
+            llm.stream_creative_response(
+                "Kürze das.",
+                "# Eins\n\nAlter Text.\n\n# Zwei\n\nWeiterer Text.",
+                [],
+                section="# Eins\n\nAlter Text.\n\n",
+            )
+        )
+
+    kwargs = client.messages.stream.call_args.kwargs
+    assert kwargs["system"] == llm.CREATIVE_SECTION_SYSTEM_PROMPTS["de"]
+    user_content = kwargs["messages"][0]["content"]
+    assert "# Eins\n\nAlter Text.\n\n# Zwei\n\nWeiterer Text." in user_content
+    assert "# Eins\n\nAlter Text.\n\n" in user_content
+
+
+def test_stream_creative_response_uses_whole_document_system_prompt_without_section():
+    client = _fake_creative_client("Neuer Text.")
+    with patch.object(llm, "_get_client", return_value=client):
+        list(llm.stream_creative_response("Kürze das.", "Bestehender Text.", []))
+
+    kwargs = client.messages.stream.call_args.kwargs
+    assert kwargs["system"] == llm.CREATIVE_SYSTEM_PROMPTS["de"]
+
+
+def test_stream_creative_response_uses_haiku_for_section_revision():
+    # Ein Abschnitt stammt immer aus einem bereits nicht-leeren Dokument -
+    # die bestehende Kosten-Heuristik (leeres Dokument -> Sonnet) darf hier
+    # nicht versehentlich greifen.
+    client = _fake_creative_client("Text.")
+    with patch.object(llm, "_get_client", return_value=client):
+        stream = llm.stream_creative_response(
+            "Kürze das.", "# Eins\n\nText.", [], section="# Eins\n\nText."
+        )
+        list(stream)
+
+    assert client.messages.stream.call_args.kwargs["model"] == llm.MODEL_NAME
+    assert stream.model == llm.MODEL_NAME
+
+
 def test_parse_document_and_sources_splits_document_from_source_block():
     raw = 'Der Text.\n\n---SOURCES---\n[Web]: Beispieltitel — https://example.org/a\n'
     document, sources = llm.parse_document_and_sources(raw)

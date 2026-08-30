@@ -763,7 +763,13 @@ button {
   font-family: inherit;
 }
 
-button[type="submit"], #popover-load, #popover-upload {
+/* .send-button zusätzlich zu button[type="submit"] (Fix 2026-08-30): der
+   neue Abschnitts-Überarbeiten-Submit-Button in creative.js ist bewusst
+   type="button" (kein verschachteltes <form>, siehe dortiger Kommentar),
+   bekäme ohne diese Ergänzung keine Akzentfarbe. Für bestehende
+   .send-button-Elemente (immer schon type="submit", siehe index.html/
+   embed.html) ändert das nichts. */
+button[type="submit"], .send-button, #popover-load, #popover-upload {
   background: var(--color-accent);
   color: #fff;
   border: none;
@@ -775,7 +781,7 @@ button[type="submit"], #popover-load, #popover-upload {
   transition: background 0.15s ease;
 }
 
-button[type="submit"]:hover, #popover-load:hover, #popover-upload:hover {
+button[type="submit"]:hover, .send-button:hover, #popover-load:hover, #popover-upload:hover {
   background: var(--color-accent-hover);
 }
 
@@ -783,7 +789,7 @@ button[type="submit"]:hover, #popover-load:hover, #popover-upload:hover {
    type="submit" - die :disabled-Regel griff deshalb nie, obwohl der Button
    während "Lade und extrahiere..."/"Lade hoch und extrahiere..." per JS
    korrekt deaktiviert wird (sah weiterhin voll aktiv/farbig aus). */
-button[type="submit"]:disabled, #popover-load:disabled, #popover-upload:disabled {
+button[type="submit"]:disabled, .send-button:disabled, #popover-load:disabled, #popover-upload:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }
@@ -1166,8 +1172,11 @@ body:not(.chat-started) #question-form {
 /* Desktop: normaler Text-Button ("Absenden"/"Send"), Papierflieger-Icon
    bleibt versteckt - die Icon-Variante ist ausdrücklich nur eine
    Mobile-Lösung (siehe Media Query weiter unten), am Desktop ändert sich
-   nichts. */
-#question-form button.send-button {
+   nichts. Generalisiert von #question-form auf jedes button.send-button
+   (Fix 2026-08-30): der neue Abschnitts-Überarbeiten-Submit-Button in
+   creative.js liegt außerhalb von #question-form, soll aber dieselbe
+   Mobil-Optik (runder Papierflieger-Button) bekommen. */
+button.send-button {
   border-radius: var(--radius);
   flex-shrink: 0;
 }
@@ -1484,7 +1493,7 @@ body:not(.chat-started) #question-form {
     display: inline-flex;
   }
 
-  #question-form button.send-button {
+  button.send-button {
     width: 44px;
     height: 44px;
     padding: 0;
@@ -3996,6 +4005,61 @@ details a {
 #creative-error {
   margin-top: 0.5rem;
   color: var(--color-accent);
+}
+
+/* Nutzerwunsch (2026-08-30): abschnittsweises Überarbeiten auf
+   Überschriftenebene - kein Popover, Icon immer sichtbar statt nur bei
+   Hover (Hover existiert auf Touch-Geräten nicht, gleiche Usability auf
+   Desktop/Mobil ausdrücklich gefordert). Der Überarbeiten-Bereich klappt
+   direkt unter dem jeweiligen Abschnitt auf (siehe .creative-section-
+   revise-panel), nicht als eigenes Overlay. */
+.creative-section {
+  position: relative;
+  padding-right: 2.25rem;
+}
+
+.creative-section + .creative-section {
+  margin-top: 0.5rem;
+}
+
+.creative-section-revise-btn {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 1px solid var(--color-border);
+  background: var(--color-bg);
+  color: var(--color-text-muted);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  cursor: pointer;
+  transition: border-color 0.15s ease, color 0.15s ease;
+}
+
+.creative-section-revise-btn:hover {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+}
+
+.creative-section-revise-panel {
+  margin: 0.5rem 0 1rem;
+  padding: 0.75rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-accent-tint);
+}
+
+.creative-section-revise-heading {
+  margin: 0 0 0.5rem;
+  font-weight: 600;
+}
+
+.creative-section-submit-btn {
+  margin-top: 0.5rem;
 }
 
 #creative-sources {

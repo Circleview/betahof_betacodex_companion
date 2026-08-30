@@ -112,10 +112,19 @@ Assistent das offen, statt zu spekulieren.
   Konversationsansicht: neben den kuratierten Quellen darf hier auch
   allgemeines Internet- und Modellwissen einfließen (z. B. für
   Workshop-Methodik, die kuratiert nicht abgedeckt ist).
-- Persistentes Dokument statt Chat-Verlauf: eine Anweisung ersetzt jeweils
-  das gesamte Dokument (kein Diff, kein Abschnitts-Editing – das ist
-  bewusst ein späterer Ausbauschritt), sichtbar als Live-Stream Wort für
+- Persistentes Dokument statt Chat-Verlauf: eine Anweisung im Hauptfeld
+  ersetzt jeweils das gesamte Dokument, sichtbar als Live-Stream Wort für
   Wort.
+- Abschnittsweises Überarbeiten (Vorschau-Modus, Überschriftenebene): ein
+  Stift-Icon direkt neben jedem Abschnitt klappt einen Bereich darunter auf
+  (kein Popover, gleiche Bedienung auf Desktop und Mobil) mit Anweisungsfeld
+  (inkl. Spracheingabe) und Absenden-Button – überarbeitet wird dann NUR
+  dieser eine Abschnitt, der Rest des Dokuments bleibt unangetastet. Das
+  Gesamtdokument geht dabei weiterhin als Kontext mit (Ton/Terminologie an
+  den Übergängen), nur die Antwort selbst bleibt auf den Abschnitt
+  beschränkt. Ein aufgeklappter Bereich schließt einen zuvor geöffneten
+  automatisch, eine noch nicht abgeschickte Anweisung bleibt beim Zuklappen
+  für die Dauer der Sitzung erhalten.
 - Kosten-bewusste Modellwahl: der erste Entwurf (leeres Dokument) nutzt
   ein größeres Modell (Claude Sonnet), jede Überarbeitung eines
   bestehenden Dokuments das günstigere Haiku-Modell wie im Rest der App.
@@ -402,6 +411,7 @@ Commit-/Tag-Nachrichten in Git.
 
 | Version | Wesentliche Änderungen |
 |---|---|
+| v0.59.0 | Neu: abschnittsweises Überarbeiten im Kreativ-Modus (Überschriftenebene) - statt jede Anweisung das gesamte Dokument neu schreiben zu lassen, klappt ein Stift-Icon neben jedem Abschnitt in der Vorschau einen Bereich direkt darunter auf (kein Popover, identische Bedienung auf Desktop/Mobil inkl. rundem Absenden-Button und Spracheingabe wie in der Konversationsansicht) - überarbeitet wird dann nur dieser eine Abschnitt, das Gesamtdokument bleibt als Kontext erhalten (Ton/Terminologie an den Übergängen), der Rest des Dokuments unangetastet. Nur ein Bereich gleichzeitig geöffnet, eine noch nicht abgeschickte Anweisung übersteht das Zuklappen für die Dauer der Sitzung |
 | v0.58.0 | Vier Fixes rund um die Einbetten-Funktion (`/embed.html`), die beim Reaktivieren der zuvor bewusst ausgetoggelten Funktion auffielen: (1) drei Tests zum `EMBED_ENABLED`-Feature-Flag hingen von einer unkontrollierten Ambient-Umgebungsvariable statt expliziter Testisolation ab. (2) Der "auf Mobile ausgeblendet"-Effekt für den Einbetten-Link im Footer griff faktisch nicht - eine spätere, unbedingte CSS-Regel gleicher Spezifität überschrieb die Media-Query-Regel. (3) Das seit v0.57.5 gefixte "Mikrofon-Icon springt beim Laden"-Problem war nur in `index.html` behoben, `embed.html` (eigenständige, nicht per Template geteilte Kopie derselben Eingabezeile) blieb auf dem alten, fehlerhaften Stand - jetzt nachgezogen, plus Regressionstest über beide Dateien. (4) Ein per Markdown-Link erzeugter Link in einer Konversationsantwort (z. B. der Verweis auf den Kreativ-Modus) blieb ungestylter Standard-Browser-Link - neue generelle Styling-Regel deckt auch künftige Links ab. Dazu: Konversations-Platzhalter vereinfacht ("Stelle eine Frage"/"Ask a question"), Footer-Reihenfolge geändert und der Beta-Hof-Beratungslink daraus vollständig entfernt |
 | v0.57.5 | Die Konversationsansicht erkennt jetzt, wenn eine Anfrage eigentlich eine Bitte ist, selbst einen Text/ein Konzept zu verfassen (z. B. "Schreib mir einen Blogartikel über...") statt eine Faktenfrage - statt eines Zitat-Versuchs antwortet sie dann kurz und freundlich mit einem Link auf den Kreativ-Modus, der die ursprüngliche Frage direkt als Anweisung vorausfüllt. Die Ziel-URL wird dabei serverseitig deterministisch und korrekt URL-kodiert erzeugt, nicht vom Modell selbst. Dazu unterstützt die Chat-Antwort-Darstellung jetzt erstmals `[Text](URL)`-Markdown-Links |
 | v0.57.4 | Explore-Suche zoomt/schwenkt jetzt automatisch so, dass die gefundenen Knoten im sichtbaren Fenster erscheinen (bisher wurden Nicht-Treffer nur abgedunkelt, ein Treffer außerhalb des aktuellen Ausschnitts blieb unsichtbar) - debounced (400ms) gegen ruckartige Kameraschwenke beim Tippen, greift erst ab drei eingegebenen Zeichen (bei 1-2 Zeichen sind Treffer meist noch zu unspezifisch), leere Suche zoomt symmetrisch zurück auf die Standardansicht |

@@ -89,6 +89,14 @@ class CreativeRequestIn(BaseModel):
     document: str = ""
     instruction: str
     turnstile_token: str = ""
+    # Nutzerwunsch (2026-08-30): abschnittsweises Überarbeiten auf
+    # Überschriftenebene (siehe app/llm.py:CREATIVE_SECTION_SYSTEM_PROMPTS) -
+    # der Client extrahiert den exakten Rohtext des gewählten Abschnitts
+    # (static/creative.js:parseCreativeSections) und schickt ihn zusätzlich
+    # zum vollständigen Dokument mit. Ist section gesetzt, überarbeitet das
+    # Modell NUR diesen Ausschnitt statt das gesamte Dokument neu zu
+    # schreiben - document bleibt dabei als Kontext erhalten.
+    section: str | None = None
 
 
 class QuestionLogEntryOut(BaseModel):

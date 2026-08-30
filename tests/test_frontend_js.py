@@ -2393,6 +2393,81 @@ def test_apply_markdown_heading_does_not_duplicate_existing_prefix():
     assert (result["selectionStart"], result["selectionEnd"]) == (0, 8)
 
 
+# --- creative.js: parseCreativeSections/spliceCreativeSection (2026-08-30) ---
+
+
+def _run_parse_creative_sections(markdown):
+    js_source = (STATIC_DIR / "creative.js").read_text()
+    match = re.search(r"export function parseCreativeSections.*?\n\}", js_source, re.S)
+    assert match, "parseCreativeSections wurde in creative.js nicht gefunden."
+    script = f"{match.group(0)}\nconsole.log(JSON.stringify(parseCreativeSections({json.dumps(markdown)})));"
+    result = subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True)
+    return json.loads(result.stdout)
+
+
+def test_parse_creative_sections_returns_empty_list_for_empty_document():
+    assert _run_parse_creative_sections("") == []
+
+
+def test_parse_creative_sections_single_section_without_heading():
+    sections = _run_parse_creative_sections("Nur Fließtext, keine Überschrift.")
+    assert len(sections) == 1
+    assert sections[0]["heading"] is None
+    assert sections[0]["text"] == "Nur Fließtext, keine Überschrift."
+
+
+def test_parse_creative_sections_splits_on_each_heading_regardless_of_level():
+    markdown = "# Eins\n\nText eins.\n\n## Zwei\n\nText zwei.\n\n### Drei\n\nText drei."
+    sections = _run_parse_creative_sections(markdown)
+    assert [s["heading"] for s in sections] == ["Eins", "Zwei", "Drei"]
+
+
+def test_parse_creative_sections_keeps_leading_text_before_first_heading():
+    markdown = "Einleitung ohne Überschrift.\n\n# Erster Abschnitt\n\nText."
+    sections = _run_parse_creative_sections(markdown)
+    assert sections[0]["heading"] is None
+    assert sections[0]["text"] == "Einleitung ohne Überschrift.\n\n"
+    assert sections[1]["heading"] == "Erster Abschnitt"
+
+
+def test_parse_creative_sections_offsets_round_trip_to_original_text():
+    markdown = "# Eins\n\nText eins.\n\n## Zwei\n\nText zwei."
+    sections = _run_parse_creative_sections(markdown)
+    for section in sections:
+        assert markdown[section["start"] : section["end"]] == section["text"]
+
+
+def _run_splice_creative_section(document, start, end, replacement):
+    js_source = (STATIC_DIR / "creative.js").read_text()
+    match = re.search(r"export function spliceCreativeSection.*?\n\}", js_source, re.S)
+    assert match, "spliceCreativeSection wurde in creative.js nicht gefunden."
+    script = (
+        f"{match.group(0)}\n"
+        f"console.log(JSON.stringify(spliceCreativeSection("
+        f"{json.dumps(document)}, {start}, {end}, {json.dumps(replacement)})));"
+    )
+    result = subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True)
+    return json.loads(result.stdout)
+
+
+def test_splice_creative_section_replaces_middle_section():
+    document = "# Eins\n\nAlt.\n\n# Zwei\n\nText zwei."
+    result = _run_splice_creative_section(document, 0, 14, "# Eins\n\nNeu.")
+    assert result == "# Eins\n\nNeu.\n\n# Zwei\n\nText zwei."
+
+
+def test_splice_creative_section_replacing_last_section_adds_no_trailing_whitespace():
+    document = "# Eins\n\nAlt.\n\n# Zwei\n\nText zwei."
+    result = _run_splice_creative_section(document, 14, len(document), "# Zwei\n\nNeuer Text.")
+    assert result == "# Eins\n\nAlt.\n\n# Zwei\n\nNeuer Text."
+
+
+def test_splice_creative_section_replaces_only_section_in_single_section_document():
+    document = "Nur ein Abschnitt ohne Überschrift."
+    result = _run_splice_creative_section(document, 0, len(document), "Neuer Text.")
+    assert result == "Neuer Text."
+
+
 # --- markdown.js: renderMarkdown (2026-08-28) ---
 
 
