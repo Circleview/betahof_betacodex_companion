@@ -357,9 +357,6 @@ function buildSectionElement(section, index) {
   question.textContent = t('creative.sectionQuestionHeading');
   panel.appendChild(question);
 
-  const row = document.createElement('div');
-  row.className = 'creative-instruction-row';
-
   const textarea = document.createElement('textarea');
   textarea.className = 'creative-section-instruction';
   textarea.rows = 2;
@@ -369,7 +366,13 @@ function buildSectionElement(section, index) {
     sectionDrafts.set(index, textarea.value);
     autoGrowTextarea(textarea);
   });
-  row.appendChild(textarea);
+  panel.appendChild(textarea);
+
+  // Nutzerwunsch (2026-08-30): Mikrofon-Button links neben dem
+  // Absenden-Button statt neben der Textarea (siehe .creative-submit-row in
+  // style.css, gleiches Muster wie im Hauptformular oberhalb).
+  const submitRow = document.createElement('div');
+  submitRow.className = 'creative-submit-row';
 
   const micBtn = document.createElement('button');
   micBtn.type = 'button';
@@ -379,8 +382,7 @@ function buildSectionElement(section, index) {
   micBtn.title = t('creative.micButtonTitle');
   micBtn.setAttribute('aria-label', t('creative.micButtonTitle'));
   micBtn.addEventListener('click', () => onSectionMicClick(index, textarea, micBtn));
-  row.appendChild(micBtn);
-  panel.appendChild(row);
+  submitRow.appendChild(micBtn);
 
   const submitBtn = document.createElement('button');
   submitBtn.type = 'button';
@@ -391,7 +393,9 @@ function buildSectionElement(section, index) {
   submitBtn.title = submitLabel;
   submitBtn.setAttribute('aria-label', submitLabel);
   submitBtn.addEventListener('click', () => submitSectionRevision(index));
-  panel.appendChild(submitBtn);
+  submitRow.appendChild(submitBtn);
+
+  panel.appendChild(submitRow);
 
   wrapper.appendChild(panel);
   reviseBtn.addEventListener('click', () => toggleSectionPanel(index));

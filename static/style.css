@@ -3908,31 +3908,18 @@ details a {
   overflow-y: hidden;
 }
 
-/* Nutzerwunsch (2026-08-28): Mikrofon-Button neben dem Anweisungsfeld,
-   analog zu #question-form auf der Konversationsseite. flex-start statt
-   flex-end (Nutzerwunsch, Folge-Iteration): der Button soll oben an der
-   Textbox ausgerichtet bleiben, auch wenn diese durch Diktat-Text mitwächst
-   (siehe autoGrowTextarea in creative.js) - bei flex-end würde er mit
-   nach unten wandern. */
-.creative-instruction-row {
+/* Nutzerwunsch (2026-08-30): Mikrofon-Button steht nicht mehr neben dem
+   Anweisungsfeld, sondern unten links neben dem Absenden/Erzeugen-Button
+   (beide rechtsbündig als Paar) - gilt für das Hauptformular UND den
+   Abschnitts-Überarbeiten-Bereich (siehe .creative-section-revise-panel in
+   creative.js). Ersetzt die frühere .creative-instruction-row (Mikrofon
+   neben der wachsenden Textarea) vollständig. */
+.creative-submit-row {
   display: flex;
-  align-items: flex-start;
+  justify-content: flex-end;
+  align-items: center;
   gap: 0.5rem;
-  /* Ersetzt den Außenabstand, den die Textarea sonst selbst zum Label
-     darüber hätte (siehe margin-top:0 auf der Textarea unten) - der Button
-     braucht denselben Abstand, beide sitzen jetzt gemeinsam in diesem
-     Flex-Container statt die Textarea allein direkt unters Label zu setzen. */
-  margin-top: 0.35rem;
-}
-
-.creative-instruction-row textarea {
-  flex: 1 1 auto;
-  min-width: 0;
-  /* Überschreibt die generische input/textarea-Regel bewusst - sonst säße
-     die Textbox durch ihren eigenen Außenabstand ein paar Pixel tiefer als
-     der Mikrofon-Button, obwohl beide flex-start-ausgerichtet sind (Ränder
-     zählen bei der Ausrichtung mit). */
-  margin-top: 0;
+  margin-top: 0.75rem;
 }
 
 /* Gleiches Muster wie #question-form textarea.dictating (Konversations-
@@ -3993,9 +3980,6 @@ details a {
   overflow-y: auto;
 }
 
-#creative-submit {
-  margin-top: 0.75rem;
-}
 
 #creative-status {
   margin-top: 0.5rem;
@@ -4058,9 +4042,6 @@ details a {
   font-weight: 600;
 }
 
-.creative-section-submit-btn {
-  margin-top: 0.5rem;
-}
 
 #creative-sources {
   flex: 0 1 280px;

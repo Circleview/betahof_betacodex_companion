@@ -50,12 +50,14 @@
       <div id="creative-document-preview" class="hidden creative-document-preview" aria-live="polite"></div>
 
       <label for="creative-instruction" class="creative-field-label" data-i18n="creative.instructionLabel"></label>
-      <div id="creative-instruction-row" class="creative-instruction-row">
-        <textarea id="creative-instruction" rows="2" data-i18n-placeholder="creative.instructionPlaceholder" required></textarea>
-        <!-- Nutzerwunsch (2026-08-28): dieselbe Spracheingabe wie im
-             Konversationsmodus (siehe index.html #mic-button/question.js),
-             inklusive automatischem Absenden nach Diktat-Ende (siehe
-             creative.js). -->
+      <textarea id="creative-instruction" rows="2" data-i18n-placeholder="creative.instructionPlaceholder" required></textarea>
+
+      <!-- Nutzerwunsch (2026-08-30): Mikrofon-Button steht links neben dem
+           Absenden-Button, nicht mehr neben der Textarea (siehe
+           .creative-submit-row in style.css). Spracheingabe selbst
+           unverändert (2026-08-28), inklusive automatischem Absenden nach
+           Diktat-Ende (siehe creative.js). -->
+      <div class="creative-submit-row">
         <button type="button" id="creative-mic-button" class="mic-button hidden" data-i18n-title="creative.micButtonTitle">
           <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path>
@@ -64,9 +66,8 @@
             <line x1="8" y1="23" x2="16" y2="23"></line>
           </svg>
         </button>
+        <button type="submit" id="creative-submit" data-i18n="creative.submitButton"></button>
       </div>
-
-      <button type="submit" id="creative-submit" data-i18n="creative.submitButton"></button>
       <div id="turnstile-container" class="turnstile-container"></div>
       <p id="creative-status" class="hidden" data-i18n="creative.generating"></p>
       <p id="creative-error" class="hidden"></p>
