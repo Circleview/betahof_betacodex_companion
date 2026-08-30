@@ -62,7 +62,6 @@ const form = document.getElementById('creative-form');
 const documentField = document.getElementById('creative-document');
 const instructionField = document.getElementById('creative-instruction');
 const submitBtn = document.getElementById('creative-submit');
-const statusEl = document.getElementById('creative-status');
 const errorEl = document.getElementById('creative-error');
 const betacodexListEl = document.getElementById('creative-sources-betacodex');
 const webListEl = document.getElementById('creative-sources-web');
@@ -412,18 +411,10 @@ function buildSectionElement(section, index) {
 
   panel.appendChild(submitRow);
 
-  // Nutzerwunsch (2026-08-30): "Wird überarbeitet …" unter dem Anweisungs-
-  // feld, exakt analog zu #creative-status im Hauptformular (dort ebenfalls
-  // nach der Absenden-Zeile positioniert).
-  const statusP = document.createElement('p');
-  statusP.className = 'creative-section-status hidden';
-  statusP.textContent = t('creative.sectionGenerating');
-  panel.appendChild(statusP);
-
   wrapper.appendChild(panel);
   reviseBtn.addEventListener('click', () => toggleSectionPanel(index));
 
-  return { wrapper, panel, textarea, micBtn, submitBtn, reviseBtn, statusEl: statusP };
+  return { wrapper, panel, textarea, micBtn, submitBtn, reviseBtn };
 }
 
 // Baut die Vorschau komplett aus parseCreativeSections() neu auf (siehe
@@ -469,6 +460,18 @@ function toggleSectionPanel(index) {
   }
 }
 
+// Nutzerwunsch (2026-08-30): "Wird überarbeitet …" erscheint direkt im
+// ausgegrauten Absenden-Button selbst (gleiches Muster wie relabelSubmit-
+// Button fürs Hauptformular), statt in einer separaten Statuszeile - NUR am
+// tatsächlich gerade absendenden Button, nicht an allen durch setBusy
+// mitdeaktivierten Buttons (die sind blockiert, aber nicht selbst am
+// Erzeugen beteiligt).
+function relabelSectionSubmitButton(els, busy) {
+  els.submitBtn.querySelector('.send-label').textContent = t(
+    busy ? 'creative.sectionGenerating' : 'creative.sectionSubmitButton'
+  );
+}
+
 // Absenden einer Abschnitts-Überarbeitung (Nutzerwunsch 2026-08-30): anders
 // als beim Hauptformular KEIN sichtbares Live-Streaming im Panel - der
 // Bereich klappt erst nach vollständiger Antwort zu, die Vorschau wird dann
@@ -483,7 +486,7 @@ async function submitSectionRevision(index) {
 
   errorEl.classList.add('hidden');
   setBusy(true, { forceEditMode: false });
-  els.statusEl.classList.remove('hidden');
+  relabelSectionSubmitButton(els, true);
 
   try {
     const turnstileToken = await getTurnstileToken();
@@ -529,7 +532,7 @@ async function submitSectionRevision(index) {
     errorEl.classList.remove('hidden');
   } finally {
     setBusy(false, { forceEditMode: false });
-    els.statusEl.classList.add('hidden');
+    relabelSectionSubmitButton(els, false);
   }
 }
 
@@ -545,6 +548,20 @@ function relabelPreviewToggle() {
 }
 relabelPreviewToggle();
 document.addEventListener('i18n:changed', relabelPreviewToggle);
+
+// Nutzerwunsch (2026-08-30): "Wird erzeugt …" erscheint direkt im
+// ausgegrauten Absenden-Button statt in einer separaten Statuszeile
+// darunter - bewusst KEIN data-i18n auf #creative-submit (siehe
+// creative.html), sein Text hängt vom Busy-Zustand ab, den die generische
+// applyStaticTranslations()-Anwendung nicht kennt (gleiches Muster wie
+// relabelPreviewToggle oben). creativeBusy wird von form.submit unten
+// gepflegt.
+let creativeBusy = false;
+function relabelSubmitButton() {
+  submitBtn.textContent = t(creativeBusy ? 'creative.generating' : 'creative.submitButton');
+}
+relabelSubmitButton();
+document.addEventListener('i18n:changed', relabelSubmitButton);
 // Übersetzungstexte im Überarbeiten-Bereich (Frage-Überschrift, Platzhalter,
 // Button-Labels) werden per t() direkt beim Rendern gesetzt (siehe
 // buildSectionElement), nicht per data-i18n - die generische
@@ -634,7 +651,6 @@ function setBusy(busy, { forceEditMode = true } = {}) {
   instructionField.disabled = busy;
   creativeMicButton.disabled = busy;
   documentField.readOnly = busy;
-  statusEl.classList.toggle('hidden', !busy);
   previewToggleBtn.disabled = busy;
   toolbarButtons.forEach((btn) => {
     btn.disabled = busy;
@@ -656,6 +672,8 @@ form.addEventListener('submit', async (event) => {
 
   errorEl.classList.add('hidden');
   setBusy(true);
+  creativeBusy = true;
+  relabelSubmitButton();
   const previousDocument = documentField.value;
   let liveText = '';
   documentField.value = '';
@@ -713,5 +731,7 @@ form.addEventListener('submit', async (event) => {
     errorEl.classList.remove('hidden');
   } finally {
     setBusy(false);
+    creativeBusy = false;
+    relabelSubmitButton();
   }
 });

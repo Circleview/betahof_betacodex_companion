@@ -66,10 +66,14 @@
             <line x1="8" y1="23" x2="16" y2="23"></line>
           </svg>
         </button>
-        <button type="submit" id="creative-submit" data-i18n="creative.submitButton"></button>
+        <!-- Nutzerwunsch (2026-08-30): "Wird erzeugt …" erscheint direkt im
+             ausgegrauten Button selbst statt in einer separaten Statuszeile
+             darunter - bewusst KEIN data-i18n, der Text hängt vom
+             Busy-Zustand ab (siehe relabelSubmitButton in creative.js,
+             gleiches Muster wie beim previewToggleBtn). -->
+        <button type="submit" id="creative-submit"></button>
       </div>
       <div id="turnstile-container" class="turnstile-container"></div>
-      <p id="creative-status" class="hidden" data-i18n="creative.generating"></p>
       <p id="creative-error" class="hidden"></p>
       <p id="creative-disclaimer-mobile" class="creative-disclaimer creative-disclaimer--mobile"></p>
     </form>
