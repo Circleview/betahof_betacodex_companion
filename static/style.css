@@ -1209,6 +1209,48 @@ button.send-button {
   color: var(--color-accent);
 }
 
+/* Nutzerwunsch (2026-08-30): "Vollständig öffnen"-Icon im Embed - fixed
+   statt im normalen Fluss, damit es unabhängig vom Scroll-Zustand immer
+   oben links sichtbar bleibt (das Embed füllt typischerweise den gesamten
+   Iframe-Viewport aus, ein normal positioniertes Icon würde beim Scrollen
+   im Chat-Verlauf mitwandern). Klein und rot wie gefordert - gleiche
+   Akzentfarbe wie .external-link, dezenter halbtransparenter Hintergrund
+   für Kontrast über beliebigem Seiteninhalt darunter. */
+#embed-expand-button {
+  position: fixed;
+  top: 0.5rem;
+  left: 0.5rem;
+  z-index: 10;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(255, 255, 255, 0.85);
+  color: var(--color-accent);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+#embed-expand-button:hover {
+  background: var(--color-bg);
+  color: var(--color-accent-hover);
+}
+
+#embed-expand-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+@media (prefers-color-scheme: dark) {
+  #embed-expand-button {
+    background: rgba(0, 0, 0, 0.6);
+  }
+}
+
 .mic-button.recording {
   border-color: var(--color-warning);
   background: var(--color-warning);

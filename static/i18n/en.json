@@ -222,6 +222,8 @@
   "footer.embedCopyButton": "Copy snippet",
   "footer.embedCopied": "Copied!",
 
+  "embed.expandButtonTitle": "Open full view",
+
   "earlyAccess.heading": "Closed testing access",
   "earlyAccess.body": "This instance of BetaCodex Companion is currently only open to selected testers. Please enter the password you were given.",
   "earlyAccess.passwordPlaceholder": "Password",

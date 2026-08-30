@@ -32,6 +32,7 @@ from app import (
     authors,
     captcha,
     chunking,
+    conversation_handoff,
     embeddings,
     extraction,
     i18n,
@@ -63,6 +64,7 @@ from app.models import (
     BrokenLinksCountOut,
     RenameAuthorIn,
     ChunkRef,
+    ConversationHandoffIn,
     CreativeRequestIn,
     EarlyAccessIn,
     ExtractedSource,
@@ -3769,6 +3771,57 @@ def creative(payload: CreativeRequestIn, request: Request, x_lang: str = Header(
         _creative_event_stream(x_lang, betacodex_sources, creative_stream),
         media_type="application/x-ndjson",
     )
+
+
+# Nutzerwunsch (2026-08-30): "Vollständig öffnen"-Icon im Embed-Widget
+# (static/embed.html) sowie der bestehende "Quelle ansehen/bearbeiten"-Link
+# (question.js: appendViewSourceLink/appendEditSourceLink) sollen eine
+# laufende Konversation in einen neu geöffneten Tab mitnehmen können -
+# sessionStorage ist pro Tab und zusätzlich pro Top-Level-Browsing-Context
+# partitioniert (siehe app/conversation_handoff.py), ein neuer Tab bekäme
+# also so oder so leeren Storage. Kurzlebiges, einmal abrufbares
+# Server-Handoff statt dessen - kein dauerhafter Konversations-Speicher.
+CONVERSATION_HANDOFF_MAX_TURNS = 100
+CONVERSATION_HANDOFF_MAX_BYTES = 200_000
+CONVERSATION_HANDOFF_RATE_LIMIT_MAX_REQUESTS = 20
+CONVERSATION_HANDOFF_RATE_LIMIT_WINDOW_SECONDS = 600
+
+
+@app.post("/api/conversation-handoff")
+def create_conversation_handoff(
+    payload: ConversationHandoffIn, request: Request, x_lang: str = Header(default=i18n.DEFAULT_LANG)
+):
+    client_ip = request.client.host if request.client else "unknown"
+    if ratelimit.is_rate_limited(
+        f"conversation-handoff-ip:{client_ip}",
+        max_requests=CONVERSATION_HANDOFF_RATE_LIMIT_MAX_REQUESTS,
+        window_seconds=CONVERSATION_HANDOFF_RATE_LIMIT_WINDOW_SECONDS,
+    ):
+        raise HTTPException(429, i18n.get_message("rate_limited", x_lang))
+    if not payload.history:
+        raise HTTPException(400, i18n.get_message("conversation_handoff_empty", x_lang))
+    if len(payload.history) > CONVERSATION_HANDOFF_MAX_TURNS or len(
+        payload.model_dump_json()
+    ) > CONVERSATION_HANDOFF_MAX_BYTES:
+        raise HTTPException(400, i18n.get_message("conversation_handoff_too_large", x_lang))
+
+    token = conversation_handoff.create([turn.model_dump() for turn in payload.history])
+    return {"token": token}
+
+
+@app.get("/api/conversation-handoff/{token}")
+def get_conversation_handoff(token: str, request: Request, x_lang: str = Header(default=i18n.DEFAULT_LANG)):
+    client_ip = request.client.host if request.client else "unknown"
+    if ratelimit.is_rate_limited(
+        f"conversation-handoff-ip:{client_ip}",
+        max_requests=CONVERSATION_HANDOFF_RATE_LIMIT_MAX_REQUESTS,
+        window_seconds=CONVERSATION_HANDOFF_RATE_LIMIT_WINDOW_SECONDS,
+    ):
+        raise HTTPException(429, i18n.get_message("rate_limited", x_lang))
+    history = conversation_handoff.pop(token)
+    if history is None:
+        raise HTTPException(404, i18n.get_message("conversation_handoff_not_found", x_lang))
+    return {"history": history}
 
 
 @app.post("/api/speech")

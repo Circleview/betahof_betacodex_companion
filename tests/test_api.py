@@ -16,6 +16,7 @@ from app import (
     authors,
     captcha,
     chunking,
+    conversation_handoff,
     embeddings,
     extraction,
     llm,
@@ -336,6 +337,7 @@ def client(tmp_path, monkeypatch):
     # Schutzverhalten selbst überschreiben diese Mocks gezielt.
     monkeypatch.setattr(captcha, "verify_turnstile_token", lambda token, remote_ip=None: True)
     monkeypatch.setattr(ratelimit, "_request_log", {})
+    monkeypatch.setattr(conversation_handoff, "_store", {})
     monkeypatch.setattr(auth, "_consumed_jti", {})
     # TestClient spricht "http://testserver" - ein "Secure"-Cookie würde vom
     # Cookie-Jar sonst nie zurückgeschickt, der Login-Test-Client bliebe
@@ -1467,6 +1469,80 @@ def test_creative_web_sources_are_filtered_to_real_search_results(client, monkey
 
     result = creative_result(response)
     assert result["sources"]["web"] == [{"title": "Echt", "url": "https://real.example/gefunden"}]
+
+
+# --- Konversations-Handoff (2026-08-30) ---
+# Nutzerwunsch: "Vollständig öffnen"-Icon im Embed-Widget sowie der
+# bestehende "Quelle ansehen/bearbeiten"-Link sollen eine laufende
+# Konversation in einen neu geöffneten Tab mitnehmen können (sessionStorage
+# ist pro Tab und zusätzlich pro Top-Level-Browsing-Context partitioniert,
+# siehe app/conversation_handoff.py) - kurzlebiges, einmal abrufbares
+# Server-Handoff statt dessen.
+
+_HANDOFF_TURN = {
+    "question": "Was ist der Beta-Kodex?",
+    "answer": "Ein Betriebssystem für Organisationen.",
+    "sources": [],
+}
+
+
+def test_conversation_handoff_get_returns_posted_history(client):
+    post_response = client.post("/api/conversation-handoff", json={"history": [_HANDOFF_TURN]})
+    assert post_response.status_code == 200
+    token = post_response.json()["token"]
+
+    get_response = client.get(f"/api/conversation-handoff/{token}")
+
+    assert get_response.status_code == 200
+    assert get_response.json()["history"][0]["question"] == _HANDOFF_TURN["question"]
+    assert get_response.json()["history"][0]["answer"] == _HANDOFF_TURN["answer"]
+
+
+def test_conversation_handoff_token_is_single_use(client):
+    token = client.post("/api/conversation-handoff", json={"history": [_HANDOFF_TURN]}).json()["token"]
+
+    client.get(f"/api/conversation-handoff/{token}")
+    second_response = client.get(f"/api/conversation-handoff/{token}")
+
+    assert second_response.status_code == 404
+
+
+def test_conversation_handoff_rejects_unknown_token(client):
+    response = client.get("/api/conversation-handoff/does-not-exist")
+    assert response.status_code == 404
+
+
+def test_conversation_handoff_rejects_empty_history(client):
+    response = client.post("/api/conversation-handoff", json={"history": []})
+    assert response.status_code == 400
+
+
+def test_conversation_handoff_rejects_too_many_turns(client):
+    too_many = [_HANDOFF_TURN] * (main_module.CONVERSATION_HANDOFF_MAX_TURNS + 1)
+    response = client.post("/api/conversation-handoff", json={"history": too_many})
+    assert response.status_code == 400
+
+
+def test_conversation_handoff_rejects_after_rate_limit_exceeded(client):
+    for _ in range(main_module.CONVERSATION_HANDOFF_RATE_LIMIT_MAX_REQUESTS):
+        response = client.post("/api/conversation-handoff", json={"history": [_HANDOFF_TURN]})
+        assert response.status_code == 200
+
+    response = client.post("/api/conversation-handoff", json={"history": [_HANDOFF_TURN]})
+
+    assert response.status_code == 429
+
+
+def test_conversation_handoff_expires_after_ttl(client, monkeypatch):
+    fake_now = [0.0]
+    monkeypatch.setattr(conversation_handoff, "_now", lambda: fake_now[0])
+
+    token = client.post("/api/conversation-handoff", json={"history": [_HANDOFF_TURN]}).json()["token"]
+    fake_now[0] = conversation_handoff.TTL_SECONDS + 1
+
+    response = client.get(f"/api/conversation-handoff/{token}")
+
+    assert response.status_code == 404
 
 
 # Backlog #97: anonymisiertes Log der ersten Frage einer Konversation. Wird

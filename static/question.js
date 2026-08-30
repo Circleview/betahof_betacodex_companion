@@ -4,6 +4,11 @@ import { initAuth, hasRole, onAuthChange } from '/auth.js';
 import { createTurnstileWidget } from '/turnstile.js';
 import { createSpeechController, stripMarkdownForSpeech } from '/speech.js';
 import { readNdjsonStream } from '/ndjson-stream.js';
+import {
+  CONVERSATION_STORAGE_KEY,
+  createConversationHandoffToken,
+  consumeConversationHandoffToken,
+} from '/conversation-handoff.js';
 
 // Spam-/Bot-Schutz für die Frage-Eingabe (Cloudflare Turnstile) - die
 // eigentliche Anbindung ist gemeinsames Modul (siehe turnstile.js), das auch
@@ -71,6 +76,26 @@ function hasPflegerRole() {
   return hasRole('quellen_pfleger');
 }
 
+// Nutzerwunsch (2026-08-30): "Quelle ansehen/bearbeiten" öffnet /import.html
+// in einem neuen Tab (siehe Kommentar bei appendViewSourceLink unten) - dort
+// ist die laufende Konversation bisher verloren. Statt window.open()/Klick-
+// Interzeption (würde Mittelklick/Strg-Klick/"In neuem Fenster öffnen"
+// brechen) wird a.href im Hintergrund um ein Handoff-Token ergänzt, sobald
+// es bereit ist ("Href-Aufwertung") - klickt jemand vorher, öffnet sich der
+// Link einfach ohne Übernahme (heutiges Verhalten, kein Regressionsrisiko).
+// import.js liest das Token und schreibt die Historie in sessionStorage
+// (kein eigenes Rendering dort nötig) - ein späterer Klick auf den
+// "Konversation"-Link im gemeinsamen Header lädt sie dann im selben Tab.
+function attachConversationHandoff(anchor) {
+  if (conversationHistory.length === 0) return;
+  createConversationHandoffToken(conversationHistory).then((token) => {
+    if (!token) return;
+    const url = new URL(anchor.href, window.location.origin);
+    url.searchParams.set('handoff', token);
+    anchor.href = url.toString();
+  });
+}
+
 function appendEditSourceLink(container, sourceId) {
   if (!hasPflegerRole()) return;
   const a = document.createElement('a');
@@ -83,6 +108,7 @@ function appendEditSourceLink(container, sourceId) {
   a.setAttribute('aria-label', label);
   a.innerHTML = EDIT_ICON;
   container.appendChild(a);
+  attachConversationHandoff(a);
 }
 
 // Backlog #75: Gegenstück zu appendEditSourceLink für alle anderen
@@ -101,6 +127,7 @@ function appendViewSourceLink(container, sourceId) {
   a.setAttribute('aria-label', label);
   a.innerHTML = VIEW_ICON;
   container.appendChild(a);
+  attachConversationHandoff(a);
 }
 
 function appendSourceLink(container, sourceId) {
@@ -584,6 +611,11 @@ const questionForm = document.getElementById('question-form');
 const questionInput = document.getElementById('question');
 const micButton = document.getElementById('mic-button');
 const sidebarSourcesList = document.getElementById('sidebar-sources-list');
+// Nur in embed.html vorhanden, NICHT in index.html (dort ergibt "im
+// vollständigen Companion öffnen" keinen Sinn) - Wächter statt einer
+// "läuft das gerade im Embed?"-Erkennung, siehe embedExpandButton-Listener
+// weiter unten.
+const embedExpandButton = document.getElementById('embed-expand-button');
 
 // Backlog #184: Ausgangshöhe EINMALIG beim Laden messen (das Feld ist zu
 // diesem Zeitpunkt garantiert leer) - dient als Schwelle, ab der ein
@@ -785,7 +817,9 @@ onAuthChange(() => {
 // hierher zurückgekehrt wird. sessionStorage statt localStorage, weil die
 // Konversation nur für die Dauer dieses Tabs gelten soll - ein neuer Tab
 // oder ein Neustart des Browsers beginnt bewusst wieder leer.
-const CONVERSATION_STORAGE_KEY = 'conversationHistory';
+// CONVERSATION_STORAGE_KEY kommt aus conversation-handoff.js (siehe Import
+// oben) - import.js braucht denselben Schlüssel für das Konversations-
+// Handoff (2026-08-30), daher an einer einzigen Stelle definiert.
 
 // Backlog (2026-08-03): ohne Verlauf beantwortete der Chatbot jede
 // Folgefrage isoliert, ohne den bisherigen Gesprächsverlauf zu kennen - das
@@ -869,7 +903,44 @@ function restoreConversationHistory() {
   chatMessages.lastElementChild?.scrollIntoView({ block: 'end' });
 }
 
+// Nutzerwunsch (2026-08-30): Konversations-Handoff (siehe conversation-
+// handoff.js) - ein per Embed-"Vollständig öffnen"-Icon oder Quellen-Link
+// mitgegebenes ?handoff=-Token ersetzt die (i.d.R. leere) sessionStorage-
+// Historie DIESES neuen Tabs, bevor sie gerendert wird. Kein Token
+// vorhanden oder abgelaufen/bereits verwendet: conversationHistory bleibt
+// unverändert (bisheriger sessionStorage-Stand dieses Tabs).
+const handoffHistory = await consumeConversationHandoffToken();
+if (handoffHistory && handoffHistory.length) {
+  conversationHistory.length = 0;
+  conversationHistory.push(...handoffHistory);
+  saveConversationHistory();
+}
+
 restoreConversationHistory();
+
+// Nutzerwunsch (2026-08-30): "Vollständig öffnen"-Icon im Embed-Widget -
+// öffnet den vollständigen Companion in einem neuen Tab, mit der laufenden
+// Konversation (falls vorhanden). Popup-Blocker-sicheres Muster: window.open
+// MUSS synchron im Klick-Handler aufgerufen werden - ein await davor lässt
+// Browser den Aufruf sonst als nicht-nutzergesten-getriggert verwerfen und
+// blocken. Deshalb wird der Tab SOFORT leer geöffnet und erst danach, nach
+// dem asynchronen Token-Abruf, per .location.href umgeleitet. Bewusst OHNE
+// "noopener" - das Ziel ist die eigene, vertrauenswürdige Domain, noopener
+// würde window.open() null zurückgeben lassen und die spätere
+// .location-Zuweisung verhindern.
+if (embedExpandButton) {
+  embedExpandButton.addEventListener('click', async () => {
+    if (conversationHistory.length === 0) {
+      window.open('/', '_blank');
+      return;
+    }
+    const newTab = window.open('', '_blank');
+    embedExpandButton.disabled = true;
+    const token = await createConversationHandoffToken(conversationHistory);
+    if (newTab) newTab.location.href = token ? `/?handoff=${encodeURIComponent(token)}` : '/';
+    embedExpandButton.disabled = false;
+  });
+}
 
 // Robuster gegen transiente Netzwerkfehler (z.B. Safaris "TypeError: Load
 // failed" bei kurzem Verbindungsabbruch/Tab-Wechsel im Hintergrund) - fetch()

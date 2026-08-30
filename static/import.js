@@ -1,6 +1,7 @@
 import { initI18n, t, getLang } from '/i18n.js';
 import { renderMarkdown } from '/markdown.js';
 import { initAuth, hasRole, onAuthChange } from '/auth.js';
+import { CONVERSATION_STORAGE_KEY, consumeConversationHandoffToken } from '/conversation-handoff.js';
 
 const importBereich = document.getElementById('import-bereich');
 const urlPopover = document.getElementById('url-popover');
@@ -3882,6 +3883,25 @@ document.addEventListener('i18n:changed', () => {
 // dieser Fehler wurde hier gemeldet und behoben).
 await initI18n();
 await initAuth();
+
+// Nutzerwunsch (2026-08-30): Konversations-Handoff (siehe conversation-
+// handoff.js sowie question.js: appendViewSourceLink/appendEditSourceLink)
+// - ein "Quelle ansehen/bearbeiten"-Link aus der Konversationsansicht kann
+// ein ?handoff=-Token mitgeben, wenn dort bereits eine Konversation lief.
+// import.html zeigt selbst keinen Chat, schreibt die Historie deshalb nur
+// in denselben sessionStorage-Schlüssel wie question.js - ein späterer
+// Klick auf den "Konversation"-Link im gemeinsamen Header lädt sie dann im
+// selben Tab automatisch (unveränderte loadConversationHistory()).
+const handoffHistory = await consumeConversationHandoffToken();
+if (handoffHistory && handoffHistory.length) {
+  try {
+    sessionStorage.setItem(CONVERSATION_STORAGE_KEY, JSON.stringify(handoffHistory));
+  } catch (err) {
+    // z.B. sessionStorage voll oder deaktiviert - dann bleibt die
+    // Konversation eben nur in diesem Tab unerreichbar, kein Absturz.
+  }
+}
+
 updateSourceManagementVisibility();
 initSourceToolbarOverflow();
 onAuthChange(() => {

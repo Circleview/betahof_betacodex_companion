@@ -222,6 +222,8 @@
   "footer.embedCopyButton": "Snippet kopieren",
   "footer.embedCopied": "Kopiert!",
 
+  "embed.expandButtonTitle": "Vollständig öffnen",
+
   "earlyAccess.heading": "Geschlossener Testzugang",
   "earlyAccess.body": "Diese Instanz von BetaCodex Companion ist aktuell nur für ausgewählte Tester:innen freigeschaltet. Bitte gib das dir mitgeteilte Passwort ein.",
   "earlyAccess.passwordPlaceholder": "Passwort",

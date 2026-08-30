@@ -136,6 +136,22 @@ class ChunkRef(BaseModel):
     allowlist_entry_id: Optional[str] = None
 
 
+class ConversationTurnIn(BaseModel):
+    """Ein vollständiger Turn für das Konversations-Handoff (/api/conversation-
+    handoff, siehe app/conversation_handoff.py) - anders als HistoryTurnIn
+    (nur question/answer, wird an /api/ask geschickt) inkl. sources, damit
+    die Zielseite dieselbe Zitat-Darstellung wiederherstellen kann wie beim
+    Original-Turn (siehe question.js: restoreConversationHistory)."""
+
+    question: str
+    answer: str
+    sources: list[ChunkRef] = []
+
+
+class ConversationHandoffIn(BaseModel):
+    history: list[ConversationTurnIn]
+
+
 class RequestLinkIn(BaseModel):
     email: str
 
