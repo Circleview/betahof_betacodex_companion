@@ -287,16 +287,30 @@ const SECTION_SEND_ICON =
 // Referenzen werden beim nächsten Mikrofon-Klick ohnehin neu gesetzt, ein
 // verzögertes Zurücksetzen hier würde sonst onTranscript (feuert NACH
 // onListeningChange(false), siehe speech.js) ins Leere laufen lassen.
-let sectionListeningIndex = null;
+// Bug (2026-08-30): sectionListeningIndex wurde bislang im Klick-Handler
+// SOFORT/synchron auf null gesetzt, sobald auf ein aktives Mikrofon erneut
+// geklickt wurde ("Aufnahme beenden") - onTranscript feuert aber erst
+// asynchron NACH recognition.stop() (siehe speech.js: onend ruft zuerst
+// onListeningChange(false), danach onTranscript auf). Der dortige Schutz
+// `sectionListeningIndex === null` griff dadurch fälschlich IMMER, das
+// automatische Absenden nach Diktat-Ende blieb aus - Text stand zwar im
+// Feld, "Überarbeiten" musste manuell nachgeklickt werden. Fix: eigene,
+// rein klick-getriggerte sectionIsListening-Variable (exakt das Muster von
+// creativeIsListening oben für das Hauptfeld) statt den Ziel-Zeiger
+// activeSectionIndex für diesen Zweck zu missbrauchen - activeSectionIndex/
+// activeSectionTextarea werden dadurch nie vorzeitig zurückgesetzt und
+// stehen onTranscript zuverlässig noch zur Verfügung.
+let sectionIsListening = false;
+let activeSectionIndex = null;
 let activeSectionTextarea = null;
 let activeSectionMicBtn = null;
 const sectionSpeechController = createSpeechController({
   onTranscript: (transcript) => {
-    if (!activeSectionTextarea || sectionListeningIndex === null) return;
+    if (!activeSectionTextarea) return;
     activeSectionTextarea.value = transcript;
-    sectionDrafts.set(sectionListeningIndex, transcript);
+    sectionDrafts.set(activeSectionIndex, transcript);
     autoGrowTextarea(activeSectionTextarea);
-    submitSectionRevision(sectionListeningIndex);
+    submitSectionRevision(activeSectionIndex);
   },
   onInterimTranscript: (liveText) => {
     if (!activeSectionTextarea) return;
@@ -313,15 +327,16 @@ const sectionSpeechController = createSpeechController({
 });
 
 function onSectionMicClick(index, textarea, micBtn) {
-  if (sectionListeningIndex === index) {
+  if (sectionIsListening && activeSectionIndex === index) {
     sectionSpeechController.stopListening();
-    sectionListeningIndex = null;
+    sectionIsListening = false;
     return;
   }
-  if (sectionListeningIndex !== null) sectionSpeechController.stopListening();
+  if (sectionIsListening) sectionSpeechController.stopListening();
+  activeSectionIndex = index;
   activeSectionTextarea = textarea;
   activeSectionMicBtn = micBtn;
-  sectionListeningIndex = index;
+  sectionIsListening = true;
   sectionSpeechController.startListening();
 }
 
@@ -397,10 +412,18 @@ function buildSectionElement(section, index) {
 
   panel.appendChild(submitRow);
 
+  // Nutzerwunsch (2026-08-30): "Wird überarbeitet …" unter dem Anweisungs-
+  // feld, exakt analog zu #creative-status im Hauptformular (dort ebenfalls
+  // nach der Absenden-Zeile positioniert).
+  const statusP = document.createElement('p');
+  statusP.className = 'creative-section-status hidden';
+  statusP.textContent = t('creative.sectionGenerating');
+  panel.appendChild(statusP);
+
   wrapper.appendChild(panel);
   reviseBtn.addEventListener('click', () => toggleSectionPanel(index));
 
-  return { wrapper, panel, textarea, micBtn, submitBtn, reviseBtn };
+  return { wrapper, panel, textarea, micBtn, submitBtn, reviseBtn, statusEl: statusP };
 }
 
 // Baut die Vorschau komplett aus parseCreativeSections() neu auf (siehe
@@ -411,9 +434,9 @@ function buildSectionElement(section, index) {
 // i18n:changed unten) neu aufgerufen - openSectionIndex/sectionDrafts
 // überleben das, weil sie NICHT im DOM, sondern in Modul-Variablen liegen.
 function renderPreviewSections() {
-  if (sectionListeningIndex !== null) {
+  if (sectionIsListening) {
     sectionSpeechController.stopListening();
-    sectionListeningIndex = null;
+    sectionIsListening = false;
   }
   currentSections = parseCreativeSections(documentField.value);
   previewEl.replaceChildren();
@@ -433,9 +456,9 @@ function renderPreviewSections() {
 // schließt einen zuvor offenen anderen. Reines Klassen-Umschalten statt
 // Neu-Rendern - günstiger und erhält den Fokus/die Scrollposition.
 function toggleSectionPanel(index) {
-  if (sectionListeningIndex !== null) {
+  if (sectionIsListening) {
     sectionSpeechController.stopListening();
-    sectionListeningIndex = null;
+    sectionIsListening = false;
   }
   openSectionIndex = openSectionIndex === index ? null : index;
   currentSectionEls.forEach((els, i) => {
@@ -460,6 +483,7 @@ async function submitSectionRevision(index) {
 
   errorEl.classList.add('hidden');
   setBusy(true, { forceEditMode: false });
+  els.statusEl.classList.remove('hidden');
 
   try {
     const turnstileToken = await getTurnstileToken();
@@ -505,6 +529,7 @@ async function submitSectionRevision(index) {
     errorEl.classList.remove('hidden');
   } finally {
     setBusy(false, { forceEditMode: false });
+    els.statusEl.classList.add('hidden');
   }
 }
 

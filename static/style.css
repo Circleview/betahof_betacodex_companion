@@ -4051,6 +4051,13 @@ details a {
   font-weight: 600;
 }
 
+/* Analog zu #creative-status im Hauptformular. */
+.creative-section-status {
+  margin-top: 0.5rem;
+  text-align: right;
+  color: var(--color-text-muted);
+}
+
 
 #creative-sources {
   flex: 0 1 280px;

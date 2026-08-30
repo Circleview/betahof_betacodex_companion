@@ -265,6 +265,7 @@
   "creative.sectionInstructionPlaceholder": "e.g. \"Shorten this section\"",
   "creative.sectionSubmitButton": "Submit",
   "creative.sectionIntroLabel": "Introduction",
+  "creative.sectionGenerating": "Revising …",
   "creative.sourcesBetacodexHeading": "From BetaCodex sources",
   "creative.sourcesWebHeading": "From the open web",
   "creative.noBetacodexSources": "No matching curated sources found.",
