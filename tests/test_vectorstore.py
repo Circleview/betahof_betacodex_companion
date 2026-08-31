@@ -39,6 +39,24 @@ def test_query_returns_fewer_results_than_top_k_if_not_enough_data(tmp_path, mon
     assert len(result["ids"][0]) == 1
 
 
+def test_query_with_where_filters_by_source_id(tmp_path, monkeypatch):
+    # Nutzerwunsch (2026-08-31): app/main.py (ask()) nutzt where=..., um
+    # zusätzlich gezielt innerhalb der Quellen einer erkannten Autor:in zu
+    # suchen (siehe dortiger Kommentar bei AUTHOR_MENTION_DISTANCE_FACTOR).
+    _reset_vectorstore(tmp_path, monkeypatch)
+
+    vectorstore.add_chunks(
+        ["a::0", "b::0"],
+        ["Chunk von Quelle A", "Chunk von Quelle B"],
+        [[1.0, 0.0, 0.0], [1.0, 0.0, 0.0]],
+        [{"source_id": "a", "position": 0}, {"source_id": "b", "position": 0}],
+    )
+
+    result = vectorstore.query([1.0, 0.0, 0.0], top_k=5, where={"source_id": {"$in": ["b"]}})
+
+    assert result["ids"][0] == ["b::0"]
+
+
 def test_delete_source_chunks_removes_only_matching_source(tmp_path, monkeypatch):
     _reset_vectorstore(tmp_path, monkeypatch)
 

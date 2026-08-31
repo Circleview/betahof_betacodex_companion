@@ -1789,6 +1789,69 @@ def test_ask_reranks_by_relevance_score_among_similar_matches(client, monkeypatc
     assert data["sources"][0]["title"] == "Hoch bewertet, aber weiter entfernt"
 
 
+def test_ask_finds_mentioned_authors_source_even_when_embedding_is_farther(client, monkeypatch):
+    # Nutzerwunsch (2026-08-31, realer Fall): "Erzähle mir etwas über die
+    # Arbeiten von X" ist thematisch zu unspezifisch, um gegen den Rest des
+    # Korpus per reiner Vektor-Ähnlichkeit zuverlässig zu gewinnen - wird die
+    # Autorin/der Autor wörtlich in der Frage genannt, muss ihre/seine
+    # eigene Quelle trotzdem einen Platz bekommen, auch wenn eine andere,
+    # unbeteiligte Quelle embedding-mäßig näher am Anfrageembedding liegt.
+    embedding_by_text = {
+        "Näher am Anfrageembedding, aber von unbeteiligter Autor:in.": [1.0, 0.0],
+        "Weiter entfernt, aber tatsächlich von der gefragten Autorin.": [0.0, 1.0954],
+    }
+    monkeypatch.setattr(embeddings, "embed_passages", lambda texts: [embedding_by_text[t] for t in texts])
+    monkeypatch.setattr(embeddings, "embed_query", lambda text: [0.0, 0.0])
+
+    client.post(
+        "/api/sources",
+        json={
+            "title": "Unbeteiligte Quelle",
+            "authors": ["Autor Unbeteiligt"],
+            "text": "Näher am Anfrageembedding, aber von unbeteiligter Autor:in.",
+        },
+    )
+    client.post(
+        "/api/sources",
+        json={
+            "title": "Quelle der gefragten Autorin",
+            "authors": ["Merrelyn Testperson"],
+            "text": "Weiter entfernt, aber tatsächlich von der gefragten Autorin.",
+        },
+    )
+
+    response = client.post(
+        "/api/ask",
+        json={"question": "Erzähle mir etwas über die Arbeiten von Merrelyn Testperson.", "top_k": 1},
+    )
+
+    data = ask_result(response)
+    assert len(data["sources"]) == 1
+    assert data["sources"][0]["title"] == "Quelle der gefragten Autorin"
+
+
+def test_ask_does_not_duplicate_authors_source_already_in_generic_results(client, monkeypatch):
+    monkeypatch.setattr(embeddings, "embed_passages", lambda texts: [[1.0, 0.0] for _ in texts])
+    monkeypatch.setattr(embeddings, "embed_query", lambda text: [1.0, 0.0])
+
+    client.post(
+        "/api/sources",
+        json={
+            "title": "Einzige Quelle der Autorin",
+            "authors": ["Merrelyn Testperson"],
+            "text": "Diese Quelle ist sowohl generisch als auch autor:innen-gefiltert der Top-Treffer.",
+        },
+    )
+
+    response = client.post(
+        "/api/ask",
+        json={"question": "Erzähle mir etwas über die Arbeiten von Merrelyn Testperson.", "top_k": 3},
+    )
+
+    data = ask_result(response)
+    assert len(data["sources"]) == 1
+
+
 def test_ask_keeps_pure_distance_order_when_relevance_scores_are_equal(client, monkeypatch):
     """Gegenprobe zu obigem Test: bei gleichem (Default-)Relevanzscore
     ändert sich am reinen Distanz-Ranking nichts - die näher liegende

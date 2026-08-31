@@ -63,9 +63,18 @@ def add_chunks(
     collection.add(ids=chunk_ids, embeddings=embeddings, documents=texts, metadatas=metadatas)
 
 
-def query(embedding: list[float], top_k: int = 5) -> dict:
+def query(embedding: list[float], top_k: int = 5, where: dict | None = None) -> dict:
+    # Nutzerwunsch (2026-08-31): optionaler where-Filter, damit app/main.py
+    # (ask()) neben der normalen Vektorsuche zusätzlich gezielt INNERHALB der
+    # Quellen einer erkannten Autor:in suchen kann (where={"source_id":
+    # {"$in": [...]}}) - eine rein themenbezogene Vektorsuche über den
+    # GESAMTEN Korpus findet bei einer generischen "Erzähl mir über die
+    # Arbeiten von X"-Frage sonst oft keinen ihrer Chunks unter den
+    # Top-Treffern, selbst wenn passende Quellen existieren. Default None
+    # (= bisheriges Verhalten, unveraendert) haelt alle bestehenden Aufrufer
+    # rueckwärtskompatibel.
     collection = _get_collection()
-    return collection.query(query_embeddings=[embedding], n_results=top_k)
+    return collection.query(query_embeddings=[embedding], n_results=top_k, where=where)
 
 
 def delete_source_chunks(source_id: str) -> None:

@@ -3288,6 +3288,23 @@ RELEVANCE_OVERFETCH_MULTIPLIER = 3
 # ändert sich dann exakt nicht, bestehende Ergebnisse bleiben unangetastet.
 RELEVANCE_MAX_ADJUSTMENT = 0.15
 
+# Nutzerwunsch (2026-08-31): eine generische "Erzähl mir über die Arbeiten
+# von X"-Frage ist thematisch zu unspezifisch, um gegen den Rest des Korpus
+# per reiner Vektor-Ähnlichkeit zuverlässig zu gewinnen - die tatsächlich
+# passenden Quellen dieser Person fielen dadurch oft aus den Top-K heraus,
+# selbst wenn sie existieren (siehe authors.find_mentioned weiter unten, das
+# denselben Namensabgleich bereits für die Vita-Ergänzung nutzt). Wird eine
+# registrierte Autor:in erkannt, läuft deshalb ZUSÄTZLICH eine zweite, auf
+# ihre source_ids gefilterte Vektorsuche (vectorstore.query where=...) -
+# bleibt innerhalb ihrer Werke weiterhin themensensitiv, statt wahllos die
+# ersten N zu nehmen. AUTHOR_MENTION_DISTANCE_FACTOR verschafft diesen
+# Treffern vor dem bestehenden Reranking (_rerank_by_relevance, unverändert)
+# einen Vorteil, damit sie einen Platz unter den weiterhin unveränderten
+# question.top_k Endergebnissen bekommen - KEINE Vergrößerung des
+# Kontext-Budgets, sie konkurrieren nur mit einem Vorteil um dieselben
+# Plätze wie alle anderen Kandidaten.
+AUTHOR_MENTION_DISTANCE_FACTOR = 0.5
+
 # Backlog (2026-08-03): ohne Konversationsverlauf beantwortete das Modell
 # jede Folgefrage isoliert, ohne den bisherigen Gesprächsverlauf zu kennen -
 # das wirkte wie ständige Wiederholung, sobald die neue Frage inhaltlich an
@@ -3528,6 +3545,9 @@ def ask(question: QuestionIn, request: Request, x_lang: str = Header(default=i18
         )
 
     query_embedding = embeddings.embed_query(query_text)
+    # Wiederverwendet weiter unten auch für author_bios - ein Namensabgleich
+    # reicht für beides (siehe Kommentar bei AUTHOR_MENTION_DISTANCE_FACTOR).
+    mentioned_author_names = authors.find_mentioned(question.question)
     curated_hits = vectorstore.query(
         query_embedding, top_k=question.top_k * RELEVANCE_OVERFETCH_MULTIPLIER
     )
@@ -3552,6 +3572,43 @@ def ask(question: QuestionIn, request: Request, x_lang: str = Header(default=i18
         # Score 5 zurück - Web-Treffer werden also rein nach (Chroma-)
         # Distanz einsortiert, ohne den kuratierten Relevanz-Score-Bonus.
         metadatas.append({**meta, "source_id": meta["page_id"], "is_web_fallback": True})
+
+    if mentioned_author_names:
+        # Index statt reinem Set, damit ein Chunk, der bereits über die
+        # normale Vektorsuche oben gefunden wurde, hier nicht übersprungen,
+        # sondern dessen Distanz ANGEPASST wird - sonst würde ein Chunk, der
+        # zufällig ohnehin schon im generischen Kandidatenpool auftaucht, nie
+        # den Rabatt bekommen (genau der Fall, der in der Praxis am
+        # häufigsten vorkommt: die eigene Quelle ist unter den
+        # überholten Kandidaten meist schon dabei, nur zu weit hinten).
+        id_to_index = {chunk_id: i for i, chunk_id in enumerate(ids)}
+        author_entries = {entry["name"]: entry for entry in authors.list_authors()}
+        author_source_ids = [
+            source_id
+            for name in mentioned_author_names
+            for source_id in author_entries.get(name, {}).get("source_ids", [])
+        ]
+        if author_source_ids:
+            author_hits = vectorstore.query(
+                query_embedding,
+                top_k=question.top_k,
+                where={"source_id": {"$in": author_source_ids}},
+            )
+            for chunk_id, doc, dist, meta in zip(
+                author_hits["ids"][0],
+                author_hits["documents"][0],
+                author_hits["distances"][0],
+                author_hits["metadatas"][0],
+            ):
+                discounted_distance = dist * AUTHOR_MENTION_DISTANCE_FACTOR
+                if chunk_id in id_to_index:
+                    distances[id_to_index[chunk_id]] = discounted_distance
+                else:
+                    id_to_index[chunk_id] = len(ids)
+                    ids.append(chunk_id)
+                    documents.append(doc)
+                    distances.append(discounted_distance)
+                    metadatas.append(meta)
 
     if not ids:
         raise HTTPException(400, i18n.get_message("no_matching_chunks", x_lang))
@@ -3611,7 +3668,7 @@ def ask(question: QuestionIn, request: Request, x_lang: str = Header(default=i18
     # Modell weiter (siehe llm.answer_question/author_bios).
     bio_field = f"bio_{x_lang}" if x_lang in ("de", "en") else f"bio_{i18n.DEFAULT_LANG}"
     author_bios = []
-    for name in authors.find_mentioned(question.question):
+    for name in mentioned_author_names:
         bio = author_profiles.get_profile(name).get(bio_field, "")
         if bio:
             author_bios.append({"name": name, "bio": bio})
