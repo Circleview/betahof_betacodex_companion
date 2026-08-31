@@ -231,8 +231,21 @@ function initStickyHeaderCollapse() {
   const header = document.getElementById('site-header');
   if (!header) return;
   const STUCK_TOLERANCE_PX = 4;
+  // Nutzerwunsch (2026-08-31): auf dem Handy meldet der Browser beim
+  // Scrollen mit aufliegendem Finger oft einzelne Pixel-Ticks in beide
+  // Richtungen (Rubber-Banding/Feinzittern) - jeder einzelne Aufwärts-Tick
+  // blendete den Header bisher SOFORT wieder ein, ein direkt folgender
+  // Abwärts-Tick sofort wieder aus, sichtbar als Flackern in kurzer Folge.
+  // Das Wiedereinblenden bekommt deshalb eine kurze Verzögerung (Debounce):
+  // jeder Aufwärts-Tick setzt den Timer neu, jeder Abwärts-Tick verwirft
+  // ihn sofort wieder - erst wenn für die gesamte Verzögerung ununterbrochen
+  // nach oben gescrollt wurde, blendet der Header tatsächlich ein. Das
+  // Ausblenden bleibt bewusst SOFORT (kein entsprechendes Flacker-Problem
+  // dort, soll reaktionsschnell bleiben).
+  const EXPAND_DELAY_MS = 150;
   let lastScrollY = window.scrollY;
   let ticking = false;
+  let expandTimer = null;
 
   function update() {
     const currentScrollY = window.scrollY;
@@ -240,9 +253,15 @@ function initStickyHeaderCollapse() {
     const stickyTop = parseFloat(getComputedStyle(header).top) || 0;
     const isStuck = header.getBoundingClientRect().top <= stickyTop + STUCK_TOLERANCE_PX;
     if (scrollingDown && isStuck) {
+      clearTimeout(expandTimer);
+      expandTimer = null;
       header.classList.add('site-header--compact');
     } else if (!scrollingDown) {
-      header.classList.remove('site-header--compact');
+      clearTimeout(expandTimer);
+      expandTimer = setTimeout(() => {
+        header.classList.remove('site-header--compact');
+        expandTimer = null;
+      }, EXPAND_DELAY_MS);
     }
     lastScrollY = currentScrollY;
     ticking = false;

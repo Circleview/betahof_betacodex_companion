@@ -1261,14 +1261,94 @@ def test_sticky_header_collapses_once_stuck_while_scrolling_down():
     assert results == [False, True]
 
 
-def test_sticky_header_expands_immediately_on_any_upward_scroll_regardless_of_depth():
-    """Regressionstest (Nutzerwunsch 2026-08-23): das Wiedereinblenden reagiert
-    auf die Scroll-RICHTUNG, nicht auf eine Positions-Schwelle - selbst tief
-    in der Seite (weit von scrollY=0 entfernt) blendet ein einziger Klick
-    nach oben den Titel sofort wieder ein, wie bei der iOS-Safari-
-    Werkzeugleiste, statt erst am Seitenanfang."""
-    results = _run_sticky_header_collapse([(300, 8), (280, 8)])
-    assert results == [True, False]
+def _run_sticky_header_collapse_with_fake_timer(actions: list[tuple]) -> list[bool]:
+    """Wie _run_sticky_header_collapse, aber mit einem steuerbaren Fake-Timer
+    statt echtem setTimeout/clearTimeout - damit Tests die Wiedereinblenden-
+    Verzögerung (Nutzerwunsch 2026-08-31) gezielt "vorspulen" können, ohne
+    echte Zeit verstreichen zu lassen. `actions` ist eine Liste aus entweder
+    ("scroll", scrollY, headerRectTop) oder ("fire_timer",) - liefert nach
+    JEDER Aktion, ob 'site-header--compact' gerade gesetzt ist. Es wird
+    bewusst nur EIN Timer-Slot verwaltet (kein Array), da
+    initStickyHeaderCollapse nie mehr als einen ausstehenden Timer gleichzeitig
+    hält (jeder neue Aufruf löscht den vorherigen zuerst, siehe dort)."""
+    js_source = (STATIC_DIR / "header.js").read_text()
+    match = re.search(r"function initStickyHeaderCollapse.*?\n\}", js_source, re.S)
+    assert match, "initStickyHeaderCollapse wurde in header.js nicht gefunden."
+    func_source = match.group(0)
+    actions_js = json.dumps(actions)
+    script = f"""
+let headerRectTop = 0;
+let classes = new Set();
+const header = {{
+  classList: {{
+    add: (c) => classes.add(c),
+    remove: (c) => classes.delete(c),
+  }},
+  getBoundingClientRect: () => ({{ top: headerRectTop }}),
+}};
+global.document = {{ getElementById: (id) => (id === 'site-header' ? header : null) }};
+global.getComputedStyle = () => ({{ top: '8px' }});
+global.requestAnimationFrame = (fn) => fn();
+let pendingTimer = null;
+global.setTimeout = (fn) => {{ pendingTimer = fn; return 1; }};
+global.clearTimeout = () => {{ pendingTimer = null; }};
+let scrollHandler = null;
+global.window = {{
+  scrollY: 0,
+  addEventListener: (evt, fn) => {{ if (evt === 'scroll') scrollHandler = fn; }},
+}};
+
+{func_source}
+
+initStickyHeaderCollapse();
+
+const results = [];
+for (const action of {actions_js}) {{
+  if (action[0] === 'scroll') {{
+    headerRectTop = action[2];
+    window.scrollY = action[1];
+    scrollHandler();
+  }} else if (action[0] === 'fire_timer') {{
+    const fn = pendingTimer;
+    pendingTimer = null;
+    if (fn) fn();
+  }}
+  results.push(classes.has('site-header--compact'));
+}}
+console.log(JSON.stringify(results));
+"""
+    result = subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True)
+    return json.loads(result.stdout)
+
+
+def test_sticky_header_expand_is_delayed_and_cancelable_to_avoid_flicker():
+    """Nutzerwunsch (2026-08-31): auf dem Handy meldet der Browser beim
+    Scrollen mit aufliegendem Finger oft einzelne Pixel-Ticks in beide
+    Richtungen - ein einzelner Aufwärts-Tick darf den Header deshalb NICHT
+    mehr sofort wieder einblenden (das verursachte sichtbares Flackern in
+    kurzer Folge), sondern erst, wenn für eine kurze Verzögerung
+    ununterbrochen nach oben gescrollt wurde. Ein dazwischenkommender
+    Abwärts-Tick verwirft die anstehende Einblendung wieder."""
+    results = _run_sticky_header_collapse_with_fake_timer(
+        [
+            ("scroll", 300, 8),  # nach unten, geklebt -> sofort ausgeblendet
+            ("scroll", 280, 8),  # ein Tick nach oben -> noch NICHT sofort eingeblendet
+            ("fire_timer",),  # Verzögerung "vorgespult", kein Tick dazwischen -> jetzt eingeblendet
+        ]
+    )
+    assert results == [True, True, False]
+
+
+def test_sticky_header_expand_delay_is_reset_by_an_intervening_downward_tick():
+    results = _run_sticky_header_collapse_with_fake_timer(
+        [
+            ("scroll", 300, 8),  # nach unten, geklebt -> ausgeblendet
+            ("scroll", 280, 8),  # Tick nach oben -> Wiedereinblenden vorgemerkt
+            ("scroll", 320, 8),  # Tick nach unten dazwischen -> verwirft die Vormerkung, bleibt ausgeblendet
+            ("fire_timer",),  # die (bereits verworfene) alte Vormerkung feuert absichtlich ins Leere
+        ]
+    )
+    assert results == [True, True, True, True]
 
 
 def test_sticky_header_never_collapses_at_page_top():
