@@ -1145,6 +1145,17 @@ questionForm.addEventListener('submit', async (e) => {
     }
     conversationHistory.push({ question, answer: finalAnswer, sources: earlySources || doneEvent.sources });
     saveConversationHistory();
+    // Fix (2026-08-31): attachConversationHandoff (siehe appendEditSourceLink/
+    // appendViewSourceLink) prüft beim Bauen der Sidebar-Links
+    // conversationHistory.length, um zu entscheiden, ob ein Handoff-Token
+    // angehängt wird - die obigen renderSidebarSources()-Aufrufe liefen aber
+    // VOR dem push() oben, sahen die gerade abgeschlossene Antwort also noch
+    // nicht. Betraf v.a. die allererste Frage einer Konversation
+    // (conversationHistory dort noch leer): der "Quelle bearbeiten"-Link
+    // bekam kein Token und damit auch keine mitgenommene Konversation im
+    // Ziel-Tab. Erneutes Rendern mit jetzt korrekt gefüllter
+    // conversationHistory behebt das.
+    renderSidebarSources();
   } catch (err) {
     assistantBubble.textContent = t('common.errorPrefix') + err.message;
   }
