@@ -611,6 +611,40 @@ const questionForm = document.getElementById('question-form');
 const questionInput = document.getElementById('question');
 const micButton = document.getElementById('mic-button');
 const sidebarSourcesList = document.getElementById('sidebar-sources-list');
+
+// Nutzerwunsch (2026-08-31): #sources-sidebar existiert als eigene
+// Grid-Spalte nur ab 900px Breite (siehe style.css) - darunter blieben
+// zitierte Quellen bisher nur über die anklickbaren [1][2]-Verweise im
+// Antworttext erreichbar. #sources-sidebar wird deshalb unterhalb dieser
+// Breite per JS in #mobile-sources-slot (direkt unter #question-form,
+// siehe index.html) umgehängt, statt die Liste zu duplizieren - eine
+// Kommentar-Markierung an der ursprünglichen Stelle erlaubt das
+// rückstandsfreie Zurückhängen, sobald wieder genug Platz ist. Nur in
+// index.html vorhanden (embed.html hat weder Sidebar noch Slot). Nicht in
+// embed.html nötig - dort gibt es #sources-sidebar gar nicht.
+const sourcesSidebar = document.getElementById('sources-sidebar');
+const mobileSourcesSlot = document.getElementById('mobile-sources-slot');
+if (sourcesSidebar && mobileSourcesSlot) {
+  const desktopSourcesSlotMarker = document.createComment('sources-sidebar-desktop-slot');
+  sourcesSidebar.before(desktopSourcesSlotMarker);
+
+  const isDesktopSidebarLayout = () => window.matchMedia('(min-width: 900px)').matches;
+
+  const placeSourcesSidebarForViewport = () => {
+    if (isDesktopSidebarLayout()) {
+      desktopSourcesSlotMarker.after(sourcesSidebar);
+      sourcesSidebar.classList.remove('sources-sidebar--mobile-inline');
+    } else {
+      mobileSourcesSlot.appendChild(sourcesSidebar);
+      sourcesSidebar.classList.add('sources-sidebar--mobile-inline');
+    }
+  };
+  placeSourcesSidebarForViewport();
+  // Deckt z.B. das Drehen eines Tablets ab, wodurch der 900px-Umbruch
+  // über-/unterschritten werden kann, ohne dass die Seite neu lädt.
+  window.addEventListener('resize', placeSourcesSidebarForViewport);
+}
+
 // Nur in embed.html vorhanden, NICHT in index.html (dort ergibt "im
 // vollständigen Companion öffnen" keinen Sinn) - Wächter statt einer
 // "läuft das gerade im Embed?"-Erkennung, siehe embedExpandButton-Listener

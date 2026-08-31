@@ -1323,10 +1323,41 @@ button.send-button {
   display: none;
 }
 
-/* Auf Mobile gibt es die Sidebar nicht - Quellen bleiben dort nur über die
-   anklickbaren [1][2]-Verweise im Antworttext erreichbar. Ab hier genug
-   Platz für eine zweispaltige Ansicht, deshalb wird die Seite insgesamt
-   etwas breiter. */
+/* Nutzerwunsch (2026-08-31): unterhalb der 900px-Zweispalten-Grenze hängt
+   question.js #sources-sidebar per JS in #mobile-sources-slot um (direkt
+   unter #question-form, siehe index.html) - vorher waren zitierte Quellen
+   auf Mobile nur über die [1][2]-Verweise im Antworttext erreichbar. Reine
+   Struktur-Hülle ohne eigene Box, damit sie im Layout nicht auffällt. */
+#mobile-sources-slot {
+  display: contents;
+}
+
+/* Höhere Spezifität (ID+Klasse) als die #sources-sidebar-Regel oben,
+   gewinnt daher unabhängig von der Reihenfolge im Stylesheet. Horizontale
+   Linie im selben Stil wie z.B. unter #site-header (border-bottom dort,
+   hier border-top, da die Quellen darunter statt darüber stehen). */
+#sources-sidebar.sources-sidebar--mobile-inline {
+  display: block;
+  margin-top: 1.5rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--color-border);
+}
+
+#sources-sidebar.sources-sidebar--mobile-inline h3 {
+  font-size: 0.95rem;
+}
+
+/* Vor der ersten beantworteten Frage ist die Liste leer - dann auch Linie
+   und Überschrift ausblenden, statt einen leeren Abschnitt zu zeigen
+   (Analogon zur entsprechenden Desktop-Regel weiter unten). */
+#sources-sidebar.sources-sidebar--mobile-inline:has(#sidebar-sources-list:empty) {
+  display: none;
+}
+
+/* Auf Mobile gibt es die zweispaltige Sidebar-Ansicht nicht - Quellen
+   erscheinen stattdessen wie oben unterhalb des Eingabeformulars. Ab hier
+   genug Platz für eine zweispaltige Ansicht, deshalb wird die Seite
+   insgesamt etwas breiter. */
 @media (min-width: 900px) {
   body {
     max-width: min(1280px, 94vw);

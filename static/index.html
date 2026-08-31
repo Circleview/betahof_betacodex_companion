@@ -55,6 +55,13 @@
         <span class="send-label" data-i18n="index.askButton"></span>
       </button>
     </form>
+    <!-- Nutzerwunsch (2026-08-31): auf Mobile gibt es #sources-sidebar
+         (siehe unten) nicht als eigene Spalte - question.js hängt sie hier
+         per JS um (verschiebtSourcesSidebarForViewport), sobald der
+         Viewport unter die Zweispalten-Breakpoint-Grenze (900px, siehe
+         style.css) fällt, damit die zitierten Quellen auch mobil erreichbar
+         sind, statt nur über die [1][2]-Verweise im Antworttext. -->
+    <div id="mobile-sources-slot"></div>
     <!-- Backlog (2026-08-09): NICHT mehr Flex-Item innerhalb von
          #question-form (siehe git-Historie) - solange createTurnstileWidget()
          noch lädt (zwei nacheinander laufende async Schritte, siehe
