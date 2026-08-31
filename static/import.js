@@ -2234,7 +2234,14 @@ function renderSourceList(sources, options = {}) {
       editBtn.title = editLabel;
       editBtn.setAttribute('aria-label', editLabel);
       editBtn.innerHTML = EDIT_ICON;
-      editBtn.addEventListener('click', () => {
+      editBtn.addEventListener('click', async () => {
+        // Fix (2026-08-31): das Bearbeiten-Formular zeigt den Volltext (s.text)
+        // - der wird seit der zweiphasigen Ladereihenfolge (siehe loadSources/
+        // loadFullSourceText) erst NACH der sichtbaren Liste im Hintergrund
+        // nachgeladen. Ohne dieses Warten hätte ein sehr schnelles Klicken
+        // kurz nach dem Seitenaufruf ein leeres Textfeld gezeigt - und ein
+        // Speichern hätte den echten Volltext der Quelle gelöscht.
+        if (fullTextReady) await fullTextReady;
         activeEditId = activeEditId === s.id ? null : s.id;
         renderSourceList(currentSourceList, options);
       });
@@ -3269,8 +3276,16 @@ function initSourceToolbarOverflow() {
   update();
 }
 
+// Nutzerwunsch (2026-08-31): erst die sichtbare Liste laden, den Volltext
+// (nur für die client-seitige Volltextsuche, Backlog #94 - sonst nirgends
+// gebraucht außer im Bearbeiten-Formular, siehe editBtn unten) danach im
+// Hintergrund nachladen - GET /api/sources?include_text=false ist um
+// Größenordnungen kleiner als die Vollversion und lässt die Liste sofort
+// erscheinen, statt auf mehrere MB Volltext aller Quellen zu warten.
+let fullTextReady = null;
+
 async function loadSources() {
-  const res = await fetch('/api/sources', {
+  const res = await fetch('/api/sources?include_text=false', {
     headers: { 'X-Lang': getLang() },
   });
   allSources = await res.json();
@@ -3293,6 +3308,23 @@ async function loadSources() {
     renderAuthorInfoPanel();
   }
   updateBrokenLinksButton();
+
+  fullTextReady = loadFullSourceText();
+}
+
+async function loadFullSourceText() {
+  const res = await fetch('/api/sources', { headers: { 'X-Lang': getLang() } });
+  const full = await res.json();
+  const textById = new Map(full.map((s) => [s.id, s.text]));
+  allSources.forEach((s) => {
+    if (textById.has(s.id)) s.text = textById.get(s.id);
+  });
+  // Eine bereits laufende Volltextsuche sah bis hierhin nur die Titel/
+  // Zusammenfassungen/Autor:innen/Schlagworte der schlanken Liste - jetzt mit
+  // vollständigen Daten erneut filtern, damit Volltext-Treffer nicht fehlen.
+  if (activeFilter?.type === 'search') {
+    applySearchFilter(activeFilter.value);
+  }
 }
 
 async function loadAuthors() {
@@ -3980,6 +4012,10 @@ loadAuthors();
 // sichtbaren Bereich.
 const deepLinkEditId = new URLSearchParams(window.location.search).get('edit');
 if (deepLinkEditId && hasPflegerRole() && allSources.some((s) => s.id === deepLinkEditId)) {
+  // Fix (2026-08-31): siehe Kommentar am editBtn in renderSourceList - auch
+  // dieser direkte Einstieg ins Bearbeiten-Formular braucht den erst im
+  // Hintergrund nachgeladenen Volltext, sonst wäre das Textfeld leer.
+  if (fullTextReady) await fullTextReady;
   activeEditId = deepLinkEditId;
   ensureSourceVisible(deepLinkEditId);
   renderSourceList(currentSourceList);

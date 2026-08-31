@@ -3200,6 +3200,35 @@ def test_restricted_source_shows_full_text_to_pfleger(client):
     assert sources[0]["text"] == "Urheberrechtlich geschützter Inhalt."
 
 
+def test_list_sources_with_include_text_false_omits_text(client):
+    client.post("/api/sources", json={"title": "Quelle", "text": "Ein längerer Volltext."})
+
+    sources = client.get("/api/sources?include_text=false").json()
+
+    assert sources[0]["title"] == "Quelle"
+    assert sources[0]["text"] == ""
+
+
+def test_list_sources_include_text_false_still_hides_restricted_relevance_fields(client, anon_client):
+    client.post(
+        "/api/sources",
+        json={"title": "Geschützt", "text": "Geheim.", "restricted": True, "relevance_score": 8},
+    )
+
+    sources = anon_client.get("/api/sources?include_text=false").json()
+
+    assert sources[0]["text"] == ""
+    assert sources[0]["relevance_score"] is None
+
+
+def test_list_sources_defaults_to_include_text_true(client):
+    client.post("/api/sources", json={"title": "Quelle", "text": "Ein längerer Volltext."})
+
+    sources = client.get("/api/sources").json()
+
+    assert sources[0]["text"] == "Ein längerer Volltext."
+
+
 def test_restricted_source_still_used_for_answers(client):
     client.post(
         "/api/sources",

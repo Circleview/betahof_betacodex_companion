@@ -691,6 +691,86 @@ def test_regression_view_and_edit_source_links_are_mutually_exclusive():
     assert "appendViewSourceLink(container, sourceId)" in body
 
 
+def _run_load_full_source_text(*, initial_sources, fetched_sources, active_filter):
+    """Führt static/import.js#loadFullSourceText per Node aus (Nutzerwunsch
+    2026-08-31: Ladereihenfolge - Volltext wird erst NACH der sichtbaren
+    Liste nachgeladen und hier per Mock-fetch/allSources/activeFilter/
+    applySearchFilter isoliert getestet, kein DOM nötig)."""
+    js_source = (STATIC_DIR / "import.js").read_text()
+    match = re.search(r"async function loadFullSourceText.*?\n\}", js_source, re.S)
+    assert match, "loadFullSourceText wurde in import.js nicht gefunden."
+    func_source = match.group(0)
+    script = f"""
+let allSources = {json.dumps(initial_sources)};
+let activeFilter = {json.dumps(active_filter)};
+let appliedSearchQuery = null;
+function getLang() {{ return 'de'; }}
+function applySearchFilter(query) {{ appliedSearchQuery = query; }}
+global.fetch = async () => ({{ json: async () => ({json.dumps(fetched_sources)}) }});
+
+{func_source}
+
+(async () => {{
+  await loadFullSourceText();
+  console.log(JSON.stringify({{ allSources, appliedSearchQuery }}));
+}})();
+"""
+    result = subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True)
+    return json.loads(result.stdout)
+
+
+def test_load_full_source_text_merges_text_into_existing_sources_by_id():
+    output = _run_load_full_source_text(
+        initial_sources=[{"id": "a", "title": "Eins", "text": ""}, {"id": "b", "title": "Zwei", "text": ""}],
+        fetched_sources=[{"id": "a", "text": "Volltext Eins"}, {"id": "b", "text": "Volltext Zwei"}],
+        active_filter=None,
+    )
+    assert output["allSources"] == [
+        {"id": "a", "title": "Eins", "text": "Volltext Eins"},
+        {"id": "b", "title": "Zwei", "text": "Volltext Zwei"},
+    ]
+
+
+def test_load_full_source_text_reapplies_active_search_filter():
+    output = _run_load_full_source_text(
+        initial_sources=[{"id": "a", "text": ""}],
+        fetched_sources=[{"id": "a", "text": "Volltext"}],
+        active_filter={"type": "search", "value": "merrelyn"},
+    )
+    assert output["appliedSearchQuery"] == "merrelyn"
+
+
+def test_load_full_source_text_does_not_reapply_non_search_filter():
+    output = _run_load_full_source_text(
+        initial_sources=[{"id": "a", "text": ""}],
+        fetched_sources=[{"id": "a", "text": "Volltext"}],
+        active_filter={"type": "author", "value": "Someone"},
+    )
+    assert output["appliedSearchQuery"] is None
+
+
+def test_regression_edit_entry_points_wait_for_full_source_text_before_opening():
+    """Gezielter Regressionstest (2026-08-31): seit der zweiphasigen
+    Ladereihenfolge (loadSources lädt zuerst ohne Volltext, loadFullSourceText
+    nach) muss JEDER Weg ins Bearbeiten-Formular (editBtn-Klick UND der
+    ?edit=<id>-Deep-Link) zuerst `fullTextReady` abwarten - sonst könnte das
+    Formular mit leerem Volltext geöffnet und dieser leere Stand beim
+    Speichern über den echten Volltext der Quelle geschrieben werden."""
+    js_source = (STATIC_DIR / "import.js").read_text()
+
+    edit_btn_match = re.search(
+        r"editBtn\.addEventListener\('click', async \(\) => \{.*?\n\s*\}\);", js_source, re.S
+    )
+    assert edit_btn_match, "editBtn-Click-Handler wurde in import.js nicht gefunden."
+    assert "await fullTextReady" in edit_btn_match.group(0)
+
+    deep_link_match = re.search(
+        r"const deepLinkEditId = new URLSearchParams.*?\n\}", js_source, re.S
+    )
+    assert deep_link_match, "?edit=-Deep-Link-Block wurde in import.js nicht gefunden."
+    assert "await fullTextReady" in deep_link_match.group(0)
+
+
 def test_strip_markdown_for_speech_removes_list_markers():
     """Regression: Listenmarker ('- ', '1. ') wurden vor der Sprachausgabe
     bislang nicht entfernt, wodurch Aufzählungen unnatürlich mit Ziffern/

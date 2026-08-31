@@ -1163,7 +1163,7 @@ questionForm.addEventListener('submit', async (e) => {
 
 async function refreshCitedSourceSummaries() {
   if (conversationCitedSources.size === 0) return;
-  const res = await fetch('/api/sources', { headers: { 'X-Lang': getLang() } });
+  const res = await fetch('/api/sources?include_text=false', { headers: { 'X-Lang': getLang() } });
   if (!res.ok) return;
   const currentSources = await res.json();
   const summaryBySourceId = new Map(currentSources.map((s) => [s.id, s.summary]));

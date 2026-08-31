@@ -541,10 +541,12 @@ def _store_chunks(
 
 
 def _to_source_out(
-    entry: dict, can_view_full_text: bool = False, lang: str = i18n.DEFAULT_LANG
+    entry: dict, can_view_full_text: bool = False, lang: str = i18n.DEFAULT_LANG, include_text: bool = True
 ) -> SourceOut:
     data = dict(entry)
     if data.get("restricted") and not can_view_full_text:
+        data["text"] = ""
+    if not include_text:
         data["text"] = ""
     # Backlog #51: der Relevanz-Score ist eine reine Pflegeinformation für
     # Quellen-Pfleger:innen/System-Admins (später Grundlage für die
@@ -1963,12 +1965,20 @@ def delete_source(
 def list_sources(
     request: Request,
     x_lang: str = Header(default=i18n.DEFAULT_LANG),
+    include_text: bool = True,
 ):
+    # Nutzerwunsch (2026-08-31): der Volltext aller Quellen macht die Antwort
+    # groß (dient nur der client-seitigen Volltextsuche, Backlog #94) - das
+    # Frontend lädt die sichtbare Liste deshalb zuerst per include_text=false
+    # und den Volltext erst danach im Hintergrund nach (siehe
+    # static/import.js: loadSources/loadFullSourceText). Default bleibt True,
+    # damit kein anderer/künftiger Aufrufer sich implizit auf schlankere
+    # Antworten verlassen muss.
     email = _get_current_user_email(request)
     can_view_full_text = users.has_role(email, users.QUELLEN_PFLEGER)
     sources = _load_sources()
     return [
-        _to_source_out(entry, can_view_full_text, x_lang)
+        _to_source_out(entry, can_view_full_text, x_lang, include_text=include_text)
         for entry in sources.values()
         if not entry.get("deleted_at")
     ]
