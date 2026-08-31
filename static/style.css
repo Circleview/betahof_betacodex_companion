@@ -1209,18 +1209,37 @@ button.send-button {
   color: var(--color-accent);
 }
 
-/* Nutzerwunsch (2026-08-30): "Vollständig öffnen"-Icon im Embed - fixed
-   statt im normalen Fluss, damit es unabhängig vom Scroll-Zustand immer
-   oben rechts sichtbar bleibt (das Embed füllt typischerweise den gesamten
-   Iframe-Viewport aus, ein normal positioniertes Icon würde beim Scrollen
-   im Chat-Verlauf mitwandern). Klein und rot wie gefordert - gleiche
-   Akzentfarbe wie .external-link, dezenter halbtransparenter Hintergrund
-   für Kontrast über beliebigem Seiteninhalt darunter. */
-#embed-expand-button {
+/* Nutzerwunsch (2026-08-30/31): "Vollständig öffnen"-Icon UND Sprach-
+   umschalter (DE/EN) im Embed - embed.html kennt den Kontext der
+   einbettenden Seite nicht, die Konversation startet aber standardmäßig in
+   der per Browsersprache erkannten Sprache (siehe i18n.js:detectLang) -
+   ohne sichtbaren Umschalter gäbe es keine Möglichkeit, das im Embed selbst
+   zu korrigieren. Gemeinsamer Wrapper statt zweier einzeln positionierter
+   Elemente, damit beide fest nebeneinander bleiben. Fixed statt im
+   normalen Fluss, damit es unabhängig vom Scroll-Zustand immer oben rechts
+   sichtbar bleibt (das Embed füllt typischerweise den gesamten
+   Iframe-Viewport aus, normal positionierte Elemente würden beim Scrollen
+   im Chat-Verlauf mitwandern). */
+#embed-toolbar {
   position: fixed;
   top: 0.5rem;
   right: 0.5rem;
   z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+/* Dezenter halbtransparenter Hintergrund für Kontrast über beliebigem
+   Seiteninhalt darunter (gleiches Muster wie #embed-expand-button). */
+#embed-toolbar .lang-switcher {
+  padding: 0.2rem 0.5rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.85);
+}
+
+/* Klein und rot wie gefordert - gleiche Akzentfarbe wie .external-link. */
+#embed-expand-button {
   width: 26px;
   height: 26px;
   border-radius: 50%;
@@ -1246,6 +1265,7 @@ button.send-button {
 }
 
 @media (prefers-color-scheme: dark) {
+  #embed-toolbar .lang-switcher,
   #embed-expand-button {
     background: rgba(0, 0, 0, 0.6);
   }
