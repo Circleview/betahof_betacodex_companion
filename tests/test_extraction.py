@@ -952,3 +952,40 @@ def test_transcribe_audio_calls_on_segment_success_for_each_new_segment(tmp_path
         transcribe_audio(tmp_path / "original.mp3", on_segment_success=lambda i, t, txt: calls.append((i, t, txt)))
 
     assert calls == [(0, 2, "Text A"), (1, 2, "Text B")]
+
+
+# --- strip_tracking_params (2026-08-31) ---
+# Nutzerwunsch: dieselbe per Social Media/Newsletter geteilte Seite wirkte
+# je nach mitgeschickten Tracking-Anhängen (utm_*, fbclid, ...) wie eine
+# ANDERE URL - Duplikat-Prüfung beim Import schlug dadurch nicht an.
+
+
+def test_strip_tracking_params_removes_utm_parameters():
+    url = "https://example.org/artikel?utm_source=twitter&utm_medium=social"
+    assert extraction.strip_tracking_params(url) == "https://example.org/artikel"
+
+
+def test_strip_tracking_params_removes_known_click_ids():
+    url = "https://example.org/artikel?fbclid=abc123&gclid=xyz789"
+    assert extraction.strip_tracking_params(url) == "https://example.org/artikel"
+
+
+def test_strip_tracking_params_keeps_functional_query_parameters():
+    # Ein funktional relevanter Parameter (z.B. eine Artikel-ID) darf nicht
+    # verloren gehen, sonst würde die URL kaputtgehen.
+    url = "https://example.org/artikel?p=123&utm_source=twitter"
+    assert extraction.strip_tracking_params(url) == "https://example.org/artikel?p=123"
+
+
+def test_strip_tracking_params_preserves_fragment():
+    url = "https://example.org/artikel?utm_source=twitter#abschnitt-2"
+    assert extraction.strip_tracking_params(url) == "https://example.org/artikel#abschnitt-2"
+
+
+def test_strip_tracking_params_returns_url_unchanged_without_query_string():
+    url = "https://example.org/artikel"
+    assert extraction.strip_tracking_params(url) == url
+
+
+def test_strip_tracking_params_returns_input_unchanged_for_empty_string():
+    assert extraction.strip_tracking_params("") == ""

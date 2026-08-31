@@ -548,6 +548,37 @@ def test_add_source_rejects_duplicate_youtube_url_in_different_formats(client):
     assert duplicate.status_code == 400
 
 
+def test_add_source_rejects_duplicate_url_ignoring_tracking_params(client):
+    first = client.post(
+        "/api/sources",
+        json={"title": "Original", "url": "https://example.org/artikel-3", "text": "Erster Text."},
+    )
+    assert first.status_code == 200
+
+    duplicate = client.post(
+        "/api/sources",
+        json={
+            "title": "Duplikat",
+            "url": "https://example.org/artikel-3?utm_source=twitter&utm_medium=social&fbclid=abc123",
+            "text": "Zweiter Text.",
+        },
+    )
+    assert duplicate.status_code == 400
+
+
+def test_add_source_strips_tracking_params_from_stored_url(client):
+    response = client.post(
+        "/api/sources",
+        json={
+            "title": "Quelle mit Tracking-Anhang",
+            "url": "https://example.org/artikel-4?utm_source=newsletter&gclid=xyz789",
+            "text": "Text.",
+        },
+    )
+    assert response.status_code == 200
+    assert response.json()["url"] == "https://example.org/artikel-4"
+
+
 def test_add_source_allows_same_url_after_original_was_deleted(client):
     first = client.post(
         "/api/sources",

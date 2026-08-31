@@ -720,6 +720,10 @@ async function extractAndFillFromUrl(url) {
     status.textContent = t('import.pleaseEnterUrl');
     return;
   }
+  // Nutzerwunsch (2026-08-31): Tracking-Parameter direkt hier entfernen,
+  // BEVOR extrahiert/verglichen/ins Formular übernommen wird - betrifft so
+  // automatisch auch #url im Formular und den späteren Absende-Payload.
+  url = stripTrackingParams(url);
   const existing = findExistingSourceByUrl(url);
   if (existing) {
     status.textContent = t('import.urlAlreadyExists', { title: existing.title });
@@ -889,10 +893,54 @@ function extractYoutubeVideoId(url) {
   return null;
 }
 
+// Spiegelt app/extraction.py#strip_tracking_params - Nutzerwunsch
+// (2026-08-31): dieselbe per Social Media/Newsletter geteilte Seite wirkte
+// je nach mitgeschickten Tracking-Anhängen (utm_*, fbclid, ...) wie eine
+// ANDERE URL und die Duplikat-Prüfung schlug nicht an. Bewusst nur eine
+// kuratierte Liste bekannter, rein Tracking-dienender Parameternamen statt
+// pauschal aller Query-Parameter - ein funktional relevanter Parameter
+// (z.B. eine Artikel-ID) darf nicht verloren gehen, sonst würde die URL
+// kaputtgehen.
+const TRACKING_PARAM_NAMES = new Set([
+  'fbclid',
+  'gclid',
+  'gclsrc',
+  'dclid',
+  'wbraid',
+  'gbraid',
+  'msclkid',
+  'mc_cid',
+  'mc_eid',
+  'igshid',
+  '_hsenc',
+  '_hsmi',
+  'mkt_tok',
+  'yclid',
+  'ttclid',
+  'twclid',
+]);
+
+function stripTrackingParams(url) {
+  let parsed;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return url;
+  }
+  const toDelete = [];
+  parsed.searchParams.forEach((_, key) => {
+    if (TRACKING_PARAM_NAMES.has(key.toLowerCase()) || key.toLowerCase().startsWith('utm_')) {
+      toDelete.push(key);
+    }
+  });
+  toDelete.forEach((key) => parsed.searchParams.delete(key));
+  return parsed.toString();
+}
+
 function normalizeUrlForComparison(url) {
   const videoId = extractYoutubeVideoId(url);
   if (videoId) return `youtube:${videoId.toLowerCase()}`;
-  return url.trim().replace(/\/+$/, '').toLowerCase();
+  return stripTrackingParams(url).trim().replace(/\/+$/, '').toLowerCase();
 }
 
 function findExistingSourceByUrl(url) {
@@ -2921,7 +2969,7 @@ function openUrlPopoverWithUrl(url) {
   setPopoverAccordionMode(urlPopover, urlPopoverHome, urlPopoverCloseBtn, isMobileLayout());
   urlPopover.classList.remove('hidden');
   document.getElementById('popover-status').textContent = '';
-  document.getElementById('popover-url').value = url;
+  document.getElementById('popover-url').value = stripTrackingParams(url);
   extractAndFillFromUrl(url);
 }
 

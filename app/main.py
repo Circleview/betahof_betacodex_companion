@@ -670,12 +670,13 @@ def _is_deferred_pdf_import(source: SourceIn) -> bool:
 def _normalize_url_for_comparison(url: str) -> str:
     """Spiegelt static/import.js#normalizeUrlForComparison serverseitig -
     verschiedene YouTube-URL-Formen (youtu.be/watch/shorts) fuer dasselbe
-    Video sollen als Duplikat erkannt werden, alle anderen URLs werden nur
-    um Groß-/Kleinschreibung und einen abschließenden Slash bereinigt."""
+    Video sollen als Duplikat erkannt werden, alle anderen URLs werden um
+    bekannte Tracking-Parameter (siehe extraction.strip_tracking_params),
+    Groß-/Kleinschreibung und einen abschließenden Slash bereinigt."""
     video_id = extraction.extract_youtube_video_id(url)
     if video_id:
         return f"youtube:{video_id.lower()}"
-    return url.strip().rstrip("/").lower()
+    return extraction.strip_tracking_params(url).strip().rstrip("/").lower()
 
 
 def _find_existing_source_by_url(sources: dict, url: str) -> dict | None:
@@ -1660,6 +1661,12 @@ def add_source(
     x_lang: str = Header(default=i18n.DEFAULT_LANG),
 ):
     if source.url:
+        # Nutzerwunsch (2026-08-31): Tracking-Parameter (utm_*, fbclid, ...)
+        # sollen weder in die gespeicherte Quelle übernommen werden noch die
+        # Duplikat-Prüfung durcheinanderbringen - hier einmalig bereinigt,
+        # bevor source.url irgendwo verwendet wird (Duplikat-Prüfung,
+        # PDF/Audio-Sync, gespeicherter Datensatz weiter unten).
+        source.url = extraction.strip_tracking_params(source.url)
         # Serverseitiges Gegenstück zum Frontend-Check (findExistingSourceByUrl
         # in import.js) - das Frontend prüft nur gegen den zuletzt geladenen
         # allSources-Stand und schützt daher nicht vor gleichzeitigen Imports

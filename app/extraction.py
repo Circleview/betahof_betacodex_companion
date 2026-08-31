@@ -9,7 +9,7 @@ import time
 import urllib.request
 from pathlib import Path
 from typing import Callable
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, parse_qsl, urlencode, urlparse, urlunparse
 
 import openai
 import trafilatura
@@ -42,6 +42,54 @@ def _split_authors(raw: str) -> list[str]:
 def _is_youtube_url(url: str) -> bool:
     host = urlparse(url).netloc.lower()
     return "youtube.com" in host or "youtu.be" in host
+
+
+# Nutzerwunsch (2026-08-31): Tracking-Parameter führten dazu, dass dieselbe
+# per Social Media/Newsletter geteilte Seite je nach mitgeschickten
+# Anhängen (utm_*, fbclid, ...) wie eine ANDERE URL wirkte und die
+# Duplikat-Prüfung (siehe _normalize_url_for_comparison/add_source in
+# app/main.py) nicht anschlug. Bewusst nur eine kuratierte Liste bekannter,
+# rein Tracking-dienender Parameternamen statt pauschal aller Query-
+# Parameter - ein funktional relevanter Parameter (z.B. eine Artikel-ID)
+# darf nicht verloren gehen, sonst würde die URL kaputtgehen.
+_TRACKING_PARAM_NAMES = {
+    "fbclid",
+    "gclid",
+    "gclsrc",
+    "dclid",
+    "wbraid",
+    "gbraid",
+    "msclkid",
+    "mc_cid",
+    "mc_eid",
+    "igshid",
+    "_hsenc",
+    "_hsmi",
+    "mkt_tok",
+    "yclid",
+    "ttclid",
+    "twclid",
+}
+
+
+def strip_tracking_params(url: str) -> str:
+    """Entfernt bekannte Tracking-Parameter (utm_* sowie die Namen in
+    _TRACKING_PARAM_NAMES) aus einer URL - Rest der URL (Pfad, andere
+    Query-Parameter, Fragment) bleibt unverändert. Bei fehlendem/leerem
+    Query-String oder einer nicht parsbaren URL wird die Eingabe
+    unverändert zurückgegeben, statt sie zu beschädigen."""
+    try:
+        parsed = urlparse(url)
+    except ValueError:
+        return url
+    if not parsed.query:
+        return url
+    kept = [
+        (key, value)
+        for key, value in parse_qsl(parsed.query, keep_blank_values=True)
+        if key.lower() not in _TRACKING_PARAM_NAMES and not key.lower().startswith("utm_")
+    ]
+    return urlunparse(parsed._replace(query=urlencode(kept)))
 
 
 def extract_youtube_video_id(url: str) -> str | None:
