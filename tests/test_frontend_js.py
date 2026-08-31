@@ -1903,6 +1903,43 @@ _RESOLVE_SOCIAL_PLATFORM_PATTERNS = [
 ]
 
 
+def _run_sort_sources(sources: list[dict]) -> list[dict]:
+    """Führt static/import.js#sortSources() im Autor:innen-Modus per Node aus
+    (Nutzerwunsch 2026-08-31: jede:r Autor:in bekommt jetzt eine eigene
+    Zwischenüberschrift, auch bei nur einer Quelle - eine Quelle mit
+    mehreren Autor:innen muss deshalb unter JEDER ihrer Autor:innen als
+    eigener Eintrag erscheinen, nicht nur bei Autor:innen mit >1 Quelle)."""
+    js_source = (STATIC_DIR / "import.js").read_text()
+    match = re.search(r"function sortSources.*?\n\}", js_source, re.S)
+    assert match, "sortSources wurde in import.js nicht gefunden."
+    func_source = match.group(0)
+    script = f"""
+function normalizeAuthor(name) {{ return name.trim().split(/\\s+/).join(' ').toLowerCase(); }}
+function getSurname(name) {{ const parts = name.trim().split(/\\s+/); return parts[parts.length - 1]; }}
+const currentSortMode = 'author';
+function isFilterActive() {{ return false; }}
+
+{func_source}
+
+console.log(JSON.stringify(sortSources({json.dumps(sources)}).map((s) => ({{ id: s.id, __sortAuthor: s.__sortAuthor }}))));
+"""
+    result = subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True)
+    return json.loads(result.stdout)
+
+
+def test_sort_sources_expands_single_source_author_for_own_heading():
+    result = _run_sort_sources([{"id": "1", "title": "T", "date": "2020", "authors": ["Einzel Autor"]}])
+    assert result == [{"id": "1", "__sortAuthor": "Einzel Autor"}]
+
+
+def test_sort_sources_expands_every_author_of_a_multi_author_source_even_without_other_sources():
+    result = _run_sort_sources(
+        [{"id": "1", "title": "T", "date": "2020", "authors": ["Anna Adler", "Bruno Berg"]}]
+    )
+    assert {r["__sortAuthor"] for r in result} == {"Anna Adler", "Bruno Berg"}
+    assert len(result) == 2
+
+
 def test_resolve_social_platform_detects_known_platform_from_url():
     result = _run_import_js_functions(
         _RESOLVE_SOCIAL_PLATFORM_PATTERNS,

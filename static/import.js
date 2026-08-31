@@ -1872,26 +1872,11 @@ function sortSources(sources) {
     return copy;
   }
 
-  // Autor:innen-Häufigkeit VOR dem Expandieren ermitteln: eine eigene
-  // Zwischenüberschrift (siehe renderSourceList) bekommt nur, wer mehr als
-  // eine Quelle hat - nur für DIESE Autor:innen lohnt sich ein eigener
-  // Eintrag pro Person. Hätten wir für JEDE Autor:in expandiert, würde eine
-  // Quelle mit mehreren Autor:innen, die alle nur genau diese eine Quelle
-  // haben, mehrfach optisch identisch untereinander erscheinen - ohne dass
-  // irgendwo eine Überschrift den Grund dafür erklärt.
-  const authorSourceCounts = new Map();
-  sources.forEach((s) => {
-    (s.authors || []).forEach((name) => {
-      const key = normalizeAuthor(name);
-      authorSourceCounts.set(key, (authorSourceCounts.get(key) || 0) + 1);
-    });
-  });
-
-  // Autor-Modus: eine Quelle bekommt einen Eintrag PRO Autor:in MIT eigener
-  // Überschrift, damit sie unter jeder solchen Sektion auffindbar ist. Hat
-  // KEINE ihrer Autor:innen mehr als diese eine Quelle, bleibt es bei einem
-  // einzigen Eintrag (einsortiert nach dem alphabetisch ersten Nachnamen).
-  // Quellen ganz ohne Autor bleiben ebenfalls ein Eintrag.
+  // Autor-Modus: jede:r Autor:in bekommt eine eigene Zwischenüberschrift
+  // (Nutzerwunsch 2026-08-31, auch bei nur einer Quelle) - eine Quelle mit
+  // mehreren Autor:innen bekommt deshalb einen Eintrag PRO Autor:in, damit
+  // sie unter jeder Sektion auffindbar ist. Quellen ganz ohne Autor bleiben
+  // ein Eintrag.
   const expanded = [];
   sources.forEach((s) => {
     const sourceAuthors = s.authors || [];
@@ -1899,19 +1884,9 @@ function sortSources(sources) {
       expanded.push({ ...s, __sortAuthor: null });
       return;
     }
-    const headedAuthors = sourceAuthors.filter(
-      (name) => (authorSourceCounts.get(normalizeAuthor(name)) || 0) > 1
-    );
-    if (headedAuthors.length) {
-      headedAuthors.forEach((authorName) => {
-        expanded.push({ ...s, __sortAuthor: authorName });
-      });
-    } else {
-      const bySurname = [...sourceAuthors].sort((a, b) =>
-        getSurname(a).toLowerCase().localeCompare(getSurname(b).toLowerCase())
-      );
-      expanded.push({ ...s, __sortAuthor: bySurname[0] });
-    }
+    sourceAuthors.forEach((authorName) => {
+      expanded.push({ ...s, __sortAuthor: authorName });
+    });
   });
 
   expanded.sort((a, b) => {
@@ -2035,14 +2010,6 @@ function renderSourceList(sources, options = {}) {
   list.innerHTML = '';
   let lastMonthYear = null;
   let lastAuthorKey = null;
-  const authorCounts = new Map();
-  if (currentSortMode === 'author') {
-    sorted.forEach((s) => {
-      if (!s.__sortAuthor) return;
-      const key = normalizeAuthor(s.__sortAuthor);
-      authorCounts.set(key, (authorCounts.get(key) || 0) + 1);
-    });
-  }
   let gridRow = 0;
   // In der Timeline-Ansicht braucht jede <li> eine EXPLIZITE Grid-Zeile:
   // ohne das packt CSS-Grid-Auto-Placement eine Quellen-Zeile fälschlich
@@ -2067,22 +2034,11 @@ function renderSourceList(sources, options = {}) {
       }
     }
 
-    let extraGapAfterAuthorGroup = false;
     if (currentSortMode === 'author' && !pendingDeletions.has(s.id)) {
       const key = s.__sortAuthor ? normalizeAuthor(s.__sortAuthor) : null;
       const isNewAuthor = key && key !== lastAuthorKey;
-      if (isNewAuthor && (authorCounts.get(key) || 0) > 1) {
+      if (isNewAuthor) {
         list.appendChild(buildAuthorMarker(s.__sortAuthor));
-      } else if (
-        isNewAuthor &&
-        lastAuthorKey &&
-        (authorCounts.get(lastAuthorKey) || 0) > 1
-      ) {
-        // Dieser Autor hat nur eine Quelle (keine eigene Zwischenüberschrift),
-        // steht aber direkt nach einem Autor MIT Zwischenüberschrift - ohne
-        // zusätzlichen Abstand sähe es so aus, als gehöre die Quelle noch
-        // zum vorherigen Autor.
-        extraGapAfterAuthorGroup = true;
       }
       lastAuthorKey = key;
     }
@@ -2100,9 +2056,6 @@ function renderSourceList(sources, options = {}) {
     li.className = 'source-row';
     if (s.url_reachable === false) {
       li.classList.add('source-row--unreachable');
-    }
-    if (extraGapAfterAuthorGroup) {
-      li.classList.add('source-row--after-author-group');
     }
     li.dataset.sourceId = s.id;
     // Backlog #65: eindeutiges Sprungziel für die Alphabet-Leiste - anders
