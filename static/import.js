@@ -3830,6 +3830,12 @@ document.getElementById('source-form').addEventListener('submit', async (e) => {
     setTextFieldPending(false, null);
     setListenUrlFieldVisible(false);
     importBereich.classList.add('hidden');
+    // Nutzerwunsch (2026-08-31): nach erfolgreichem Import zurück zu den
+    // Quelltyp-Icons scrollen - das Formular kann je nach Inhalt (z.B.
+    // langer Text) deutlich unterhalb des sichtbaren Bereichs geendet haben,
+    // nach dem Schließen blieben die Icons zum Importieren weiterer Quellen
+    // dadurch außerhalb des Bildschirms.
+    quelltypBereich.scrollIntoView({ behavior: 'smooth', block: 'start' });
     // Die URL-Eingabe im "Von URL importieren"-Popover gehört NICHT zu
     // #source-form (separates Formular für /api/extract-url) und wurde
     // daher vom obigen reset() nicht mit geleert - beim nächsten Import

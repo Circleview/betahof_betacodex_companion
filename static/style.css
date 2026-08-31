@@ -3327,6 +3327,13 @@ details a {
   display: flex;
   align-items: center;
   gap: 0.5rem;
+  /* Nutzerwunsch (2026-08-31): nach erfolgreichem Import scrollt import.js
+     hierher zurück (scrollIntoView, siehe dort) - #site-header ist sticky
+     (siehe dort) und würde diese Zeile sonst genau an ihrer Zielposition
+     überdecken. Großzügig genug für den ausgeklappten Header (~123px
+     gemessen), auch wenn der kompakte Header (siehe .site-header--compact)
+     etwas niedriger ist - lieber etwas zu viel Abstand als verdeckte Icons. */
+  scroll-margin-top: 8rem;
 }
 
 .quelltyp-item--anchor {
