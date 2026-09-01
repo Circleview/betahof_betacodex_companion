@@ -15,7 +15,17 @@ import {
 // vom Feedback-Popover (footer.js) genutzt wird. Bis das Widget bereit ist,
 // liefert getToken()/reset() no-ops statt Fehler zu werfen.
 let turnstileWidget = { getToken: () => '', reset: () => {}, destroy: () => {} };
-createTurnstileWidget('turnstile-container').then((widget) => {
+// Nutzerwunsch (2026-09-01): das automatische Absenden über ?q= (siehe
+// consumeAskParam weiter unten) muss auf DIESES Promise warten, bevor es
+// requestSubmit() aufruft - sonst feuert es, anders als eine echte
+// Nutzer:in (die zum Tippen naturgemäß ein paar Sekunden braucht), quasi
+// sofort beim Laden, oft BEVOR das extern/asynchron nachladende
+// Turnstile-Skript das Widget fertig initialisiert hat. getToken() lieferte
+// in diesem Fall den no-op-Platzhalter (leerer String), der Server lehnt
+// den leeren Captcha-Token ab - die Frage erschien zwar (Nutzer:innen-
+// Bubble wird noch vor dem Request angehängt), aber es kam nur eine
+// Fehlermeldung statt einer echten Antwort.
+const turnstileReadyPromise = createTurnstileWidget('turnstile-container').then((widget) => {
   turnstileWidget = widget;
 });
 
@@ -1060,6 +1070,13 @@ function consumeAskParam() {
 const askParam = consumeAskParam();
 if (askParam) {
   questionInput.value = askParam;
+  // Siehe Kommentar bei turnstileReadyPromise oben - ohne dieses Warten
+  // feuert requestSubmit() oft mit noch leerem Captcha-Token. Zeitlich
+  // gedeckelt (Muster wie turnstile.js:getToken) - lädt Cloudflares
+  // externes Skript aus irgendeinem Grund nie (z.B. Netzwerkproblem,
+  // Ad-Blocker), würde sonst nie abgesendet, statt wenigstens mit einer
+  // erkennbaren Fehlermeldung zu scheitern.
+  await Promise.race([turnstileReadyPromise, new Promise((resolve) => setTimeout(resolve, 5000))]);
   questionForm.requestSubmit();
 }
 

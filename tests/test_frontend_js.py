@@ -2943,6 +2943,30 @@ def test_ask_param_prefill_and_submit_wired_after_restore_conversation_history()
     assert "questionInput.value = askParam" in block
 
 
+def test_ask_param_auto_submit_waits_for_turnstile_before_submitting():
+    # Regression (2026-09-01, real gemeldet): ohne dieses Warten feuerte
+    # requestSubmit() oft, bevor das extern/asynchron nachladende
+    # Turnstile-Widget bereit war - der Server lehnte den dadurch leeren
+    # Captcha-Token ab, die Nutzer:innen-Frage erschien zwar, aber es kam
+    # nur eine Fehlermeldung statt einer echten Antwort.
+    js_source = (STATIC_DIR / "question.js").read_text()
+    match = re.search(
+        r"const askParam = consumeAskParam\(\);.*?questionForm\.requestSubmit\(\);\n\}",
+        js_source,
+        re.S,
+    )
+    assert match, "Der ?q=-Auto-Submit-Block wurde in question.js nicht gefunden."
+    block = match.group(0)
+    assert "turnstileReadyPromise" in block
+    # Muss VOR requestSubmit() stehen, nicht danach.
+    assert block.index("turnstileReadyPromise") < block.index("questionForm.requestSubmit()")
+
+
+def test_turnstile_ready_promise_is_capped_with_a_timeout():
+    js_source = (STATIC_DIR / "question.js").read_text()
+    assert "Promise.race([turnstileReadyPromise" in js_source
+
+
 # --- question.js: Daumen-hoch/-runter je Antwort (2026-09-01) ---
 
 
