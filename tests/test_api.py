@@ -1852,6 +1852,70 @@ def test_ask_does_not_duplicate_authors_source_already_in_generic_results(client
     assert len(data["sources"]) == 1
 
 
+def test_ask_source_keyword_match_beats_closer_but_off_topic_same_author_source(client, monkeypatch):
+    """Realer Fall (2026-09-01): "Erzähle mir etwas über Andreas Schlegel
+    und Zeitorientierung" fand trotz erkannter Autor:in keine Antwort - die
+    tatsächlich einschlägige Quelle lag rein embedding-mäßig WEITER vom
+    Anfrageembedding entfernt als eine andere, thematisch unpassende Quelle
+    derselben Person (ein reiner Distanz-Rabatt ändert daran nichts, er
+    verschiebt beide Quellen nur gleichmäßig, ohne ihre Reihenfolge
+    untereinander zu drehen). Ein kuratiertes Schlagwort (key_terms_de/en),
+    das wörtlich in der Frage vorkommt, muss diesen Fall trotzdem lösen."""
+    embedding_by_text = {
+        "Näher am Anfrageembedding, aber falsches Thema.": [1.0, 0.0],
+        "Weiter entfernt, aber zum gefragten Thema passend.": [0.0, 1.3],
+    }
+    monkeypatch.setattr(embeddings, "embed_passages", lambda texts: [embedding_by_text[t] for t in texts])
+    monkeypatch.setattr(embeddings, "embed_query", lambda text: [0.0, 0.0])
+
+    client.post(
+        "/api/sources",
+        json={
+            "title": "Falsches Thema",
+            "authors": ["Vielschreiber Testautor"],
+            "text": "Näher am Anfrageembedding, aber falsches Thema.",
+        },
+    )
+    passende_id = client.post(
+        "/api/sources",
+        json={
+            "title": "Passendes Thema",
+            "authors": ["Vielschreiber Testautor"],
+            "text": "Weiter entfernt, aber zum gefragten Thema passend.",
+        },
+    ).json()["id"]
+
+    sources = main_module._load_sources()
+    sources[passende_id]["key_terms_de"] = ["Zeitorientierung"]
+    main_module._save_sources(sources)
+
+    response = client.post(
+        "/api/ask",
+        json={
+            "question": "Erzähle mir etwas über Vielschreiber Testautor und Zeitorientierung.",
+            "top_k": 1,
+        },
+    )
+
+    data = ask_result(response)
+    assert len(data["sources"]) == 1
+    assert data["sources"][0]["title"] == "Passendes Thema"
+
+
+def test_source_matches_question_keywords_checks_both_languages_case_insensitively():
+    source = {"key_terms_de": ["Zeitorientierung"], "key_terms_en": ["Time Orientation"]}
+
+    assert main_module._source_matches_question_keywords(
+        source, "Was denkst du über zeitorientierung?"
+    )
+    assert main_module._source_matches_question_keywords(
+        source, "What do you think about TIME ORIENTATION?"
+    )
+    assert not main_module._source_matches_question_keywords(
+        source, "Was denkst du über Selbstorganisation?"
+    )
+
+
 def test_ask_keeps_pure_distance_order_when_relevance_scores_are_equal(client, monkeypatch):
     """Gegenprobe zu obigem Test: bei gleichem (Default-)Relevanzscore
     ändert sich am reinen Distanz-Ranking nichts - die näher liegende

@@ -3304,8 +3304,8 @@ RELEVANCE_MAX_ADJUSTMENT = 0.15
 # passenden Quellen dieser Person fielen dadurch oft aus den Top-K heraus,
 # selbst wenn sie existieren (siehe authors.find_mentioned weiter unten, das
 # denselben Namensabgleich bereits für die Vita-Ergänzung nutzt). Wird eine
-# registrierte Autor:in erkannt, läuft deshalb ZUSÄTZLICH eine zweite, auf
-# ihre source_ids gefilterte Vektorsuche (vectorstore.query where=...) -
+# registrierte Autor:in erkannt, läuft deshalb ZUSÄTZLICH pro Quelle dieser
+# Autor:in eine eigene, gefilterte Vektorsuche (vectorstore.query where=...) -
 # bleibt innerhalb ihrer Werke weiterhin themensensitiv, statt wahllos die
 # ersten N zu nehmen. AUTHOR_MENTION_DISTANCE_FACTOR verschafft diesen
 # Treffern vor dem bestehenden Reranking (_rerank_by_relevance, unverändert)
@@ -3314,6 +3314,28 @@ RELEVANCE_MAX_ADJUSTMENT = 0.15
 # Kontext-Budgets, sie konkurrieren nur mit einem Vorteil um dieselben
 # Plätze wie alle anderen Kandidaten.
 AUTHOR_MENTION_DISTANCE_FACTOR = 0.5
+# Fix (2026-09-01, siehe Kommentar bei der Verwendung unten): PRO Quelle
+# statt einer gemeinsamen top_k-Suche über alle Chunks der Autor:in hinweg -
+# damit pro Quelle einzeln (statt nur pro Autor:in insgesamt) entschieden
+# werden kann, ob AUTHOR_MENTION_DISTANCE_FACTOR oder der stärkere
+# AUTHOR_MENTION_KEYWORD_MATCH_FACTOR gilt. Klein gehalten, da ohnehin nur
+# der jeweils beste Treffer je Quelle für die Konkurrenz um die
+# Endergebnisse zählt.
+AUTHOR_MENTION_TOP_K_PER_SOURCE = 3
+# Fix (2026-09-01, realer Fall "Andreas Schlegel und Zeitorientierung", siehe
+# oben): selbst pro Quelle gesucht, verlor die tatsächlich einschlägige
+# Quelle rein embedding-mäßig gegen zwei lange, LEDIGLICH gleichsprachige
+# Podcast-Transkripte derselben Person zu einem ganz anderen Thema - die
+# reine Vektor-Distanz allein reicht hier nicht aus. key_terms_de/en werden
+# beim Import bereits pro Quelle von einer KI kuratiert (siehe
+# app/summarization.py) - taucht einer dieser Begriffe wörtlich in der Frage
+# auf ("Zeitorientierung" ist genau so ein hinterlegter Begriff dieser
+# Quelle), ist das ein deutlich präziseres Signal als reine Embedding-Nähe
+# und bekommt deshalb einen erheblich stärkeren Rabatt als der normale
+# Autor:innen-Erwähnungs-Rabatt oben - reicht aus, um selbst gegen thematisch
+# unpassende, aber embedding-mäßig nähere Quellen derselben Person zu
+# gewinnen.
+AUTHOR_MENTION_KEYWORD_MATCH_FACTOR = 0.05
 
 # Backlog (2026-08-03): ohne Konversationsverlauf beantwortete das Modell
 # jede Folgefrage isoliert, ohne den bisherigen Gesprächsverlauf zu kennen -
@@ -3362,6 +3384,19 @@ CREATIVE_RATE_LIMIT_WINDOW_SECONDS = 600
 # ein wirklich einschlägiger Web-Treffer kann so mehrere nur thematisch
 # benachbarte kuratierte Treffer verdrängen, statt nie eine Chance zu
 # bekommen.
+
+
+def _source_matches_question_keywords(source: dict, question_text: str) -> bool:
+    """Siehe AUTHOR_MENTION_KEYWORD_MATCH_FACTOR oben - simpler,
+    case-insensitiver Substring-Abgleich wie authors.find_mentioned, nur
+    gegen die kuratierten Schlagworte einer einzelnen Quelle statt gegen
+    Autor:innen-Namen."""
+    question_lower = question_text.lower()
+    for field in ("key_terms_de", "key_terms_en"):
+        for term in source.get(field) or []:
+            if term.lower() in question_lower:
+                return True
+    return False
 
 
 def _rerank_by_relevance(
@@ -3593,24 +3628,45 @@ def ask(question: QuestionIn, request: Request, x_lang: str = Header(default=i18
         # überholten Kandidaten meist schon dabei, nur zu weit hinten).
         id_to_index = {chunk_id: i for i, chunk_id in enumerate(ids)}
         author_entries = {entry["name"]: entry for entry in authors.list_authors()}
-        author_source_ids = [
+        author_source_ids = {
             source_id
             for name in mentioned_author_names
             for source_id in author_entries.get(name, {}).get("source_ids", [])
-        ]
-        if author_source_ids:
-            author_hits = vectorstore.query(
+        }
+        # Fix (2026-09-01): eine EINZELNE, über alle Quellen der Autor:in
+        # gemeinsam laufende top_k-Suche (vorherige Fassung) kann pro Quelle
+        # keinen unterschiedlichen Rabatt vergeben - genau das braucht aber
+        # AUTHOR_MENTION_KEYWORD_MATCH_FACTOR unten (realer Fall "Andreas
+        # Schlegel und Zeitorientierung": die tatsächlich einschlägige, aber
+        # embedding-mäßig weiter entfernte Quelle verlor gegen zwei lange,
+        # nur gleichsprachige Podcast-Transkripte zu einem ganz anderen
+        # Thema derselben Person - ein einheitlicher Rabatt über alle
+        # Chunks hinweg ändert an dieser Reihenfolge nichts, er verschiebt
+        # beide nur gleichmäßig). Deshalb läuft PRO Quelle eine eigene,
+        # kleine Suche: erst dadurch lässt sich pro Quelle einzeln prüfen,
+        # ob ihre kuratierten Schlagworte zur Frage passen, und nur bei
+        # Treffer den deutlich stärkeren Rabatt anwenden statt des normalen.
+        for source_id in author_source_ids:
+            source_hits = vectorstore.query(
                 query_embedding,
-                top_k=question.top_k,
-                where={"source_id": {"$in": author_source_ids}},
+                top_k=AUTHOR_MENTION_TOP_K_PER_SOURCE,
+                where={"source_id": source_id},
+            )
+            keyword_match = _source_matches_question_keywords(
+                sources.get(source_id, {}), question.question
+            )
+            factor = (
+                AUTHOR_MENTION_KEYWORD_MATCH_FACTOR
+                if keyword_match
+                else AUTHOR_MENTION_DISTANCE_FACTOR
             )
             for chunk_id, doc, dist, meta in zip(
-                author_hits["ids"][0],
-                author_hits["documents"][0],
-                author_hits["distances"][0],
-                author_hits["metadatas"][0],
+                source_hits["ids"][0],
+                source_hits["documents"][0],
+                source_hits["distances"][0],
+                source_hits["metadatas"][0],
             ):
-                discounted_distance = dist * AUTHOR_MENTION_DISTANCE_FACTOR
+                discounted_distance = dist * factor
                 if chunk_id in id_to_index:
                     distances[id_to_index[chunk_id]] = discounted_distance
                 else:
