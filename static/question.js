@@ -964,14 +964,20 @@ restoreConversationHistory();
 // .location-Zuweisung verhindern.
 if (embedExpandButton) {
   embedExpandButton.addEventListener('click', async () => {
+    // Nutzerwunsch (2026-09-01): der neue Tab soll in der im Embed
+    // gewählten Sprache starten, statt selbst neu zu raten (siehe i18n.js:
+    // detectLang - eigener, ggf. durch Storage-Partitionierung sogar
+    // komplett getrennter localStorage in einem neuen Top-Level-Tab).
+    const langParam = `lang=${encodeURIComponent(getLang())}`;
     if (conversationHistory.length === 0) {
-      window.open('/', '_blank');
+      window.open(`/?${langParam}`, '_blank');
       return;
     }
     const newTab = window.open('', '_blank');
     embedExpandButton.disabled = true;
     const token = await createConversationHandoffToken(conversationHistory);
-    if (newTab) newTab.location.href = token ? `/?handoff=${encodeURIComponent(token)}` : '/';
+    const query = token ? `handoff=${encodeURIComponent(token)}&${langParam}` : langParam;
+    if (newTab) newTab.location.href = `/?${query}`;
     embedExpandButton.disabled = false;
   });
 }

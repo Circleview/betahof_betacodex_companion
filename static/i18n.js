@@ -1,7 +1,26 @@
 const SUPPORTED_LANGS = ['de', 'en'];
 const DEFAULT_LANG = 'en';
 
+// Nutzerwunsch (2026-09-01): wechselt man aus dem Embed-Snippet über das
+// "Vollständig öffnen"-Icon in den vollständigen Companion (siehe
+// question.js: embedExpandButton), soll die dort im Embed gewählte Sprache
+// mitgenommen werden, statt dass der neue Tab (eigener, ggf. durch
+// Storage-Partitionierung sogar komplett getrennter localStorage/eigene
+// navigator.language-basierte Erkennung) erneut selbst rät. Ein ?lang=-
+// Parameter hat deshalb Vorrang vor dem gespeicherten/erratenen Stand -
+// wird dabei übernommen (persistiert + Query-Parameter entfernt, Muster wie
+// conversation-handoff.js:consumeConversationHandoffToken - andere,
+// gleichzeitig vorhandene Parameter wie ?handoff= bleiben unangetastet).
 function detectLang() {
+  const params = new URLSearchParams(window.location.search);
+  const fromUrl = params.get('lang');
+  if (fromUrl && SUPPORTED_LANGS.includes(fromUrl)) {
+    localStorage.setItem('lang', fromUrl);
+    params.delete('lang');
+    const query = params.toString();
+    history.replaceState(null, '', window.location.pathname + (query ? `?${query}` : ''));
+    return fromUrl;
+  }
   const stored = localStorage.getItem('lang');
   if (stored && SUPPORTED_LANGS.includes(stored)) {
     return stored;

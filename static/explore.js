@@ -384,23 +384,37 @@ function renderGraph(data) {
 
   node.append('circle').attr('class', 'explore-node-circle').attr('r', radiusFor);
 
-  node
+  const photoImages = node
     .filter((d) => d.type === 'author' && d.photo_url)
     .append('image')
-    .attr('href', (d) => d.photo_url)
     .attr('x', (d) => -radiusFor(d))
     .attr('y', (d) => -radiusFor(d))
     .attr('width', (d) => radiusFor(d) * 2)
     .attr('height', (d) => radiusFor(d) * 2)
     .attr('preserveAspectRatio', 'xMidYMid slice')
     .attr('clip-path', (d, i) => `url(#explore-clip-${i})`)
-    // Nutzerfeedback (2026-08-23): Speicherverbrauch senken - Fotos sind
-    // extern frei eingetragene URLs (also potenziell hochauflösend), auch
-    // wenn sie hier nur winzig als Kreis erscheinen. lazy/async verzögert
-    // das Laden/Dekodieren außerhalb des sichtbaren Bereichs, statt alle
-    // ~50 Fotos sofort auf einmal zu dekodieren.
-    .attr('loading', 'lazy')
     .attr('decoding', 'async');
+
+  // Nutzerfeedback (2026-09-01, echter Absturz auf Mobilgeräten beim
+  // Navigieren/Klicken im Netzwerk): `loading="lazy"` (vorherige Fassung,
+  // direkt beim Anlegen des <image>-Elements gesetzt) ist eine HTML-<img>-
+  // Eigenschaft - SVG-<image> ignoriert sie in praktisch allen Browsern
+  // ersatzlos, das gewünschte gestaffelte Laden fand also nie statt. Bei
+  // einem vollen Netzwerk (~50 potenziell hochauflösende, extern frei
+  // eingetragene Autor:innen-Fotos) wurden dadurch trotz der Absicht im
+  // ursprünglichen Kommentar ALLE Fotos sofort UND gleichzeitig dekodiert -
+  // auf speicherknappen Mobilgeräten reicht dieser kurze Dekodier-Peak aus,
+  // um den ganzen Tab abstürzen zu lassen. Die eigentliche Bild-URL (href)
+  // wird deshalb jetzt selbst in kleinen, zeitlich versetzten Gruppen
+  // gesetzt statt sofort beim Erzeugen des Elements - der Browser dekodiert
+  // dadurch nie mehr als eine Handvoll Fotos gleichzeitig, unabhängig davon,
+  // ob sein natives Lazy-Loading für SVG greift oder nicht.
+  const PHOTO_LOAD_BATCH_SIZE = 4;
+  const PHOTO_LOAD_BATCH_DELAY_MS = 120;
+  photoImages.each(function (d, i) {
+    const delay = Math.floor(i / PHOTO_LOAD_BATCH_SIZE) * PHOTO_LOAD_BATCH_DELAY_MS;
+    setTimeout(() => this.setAttribute('href', d.photo_url), delay);
+  });
 
   const label = node
     .append('text')

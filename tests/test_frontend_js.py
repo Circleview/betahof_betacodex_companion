@@ -2235,6 +2235,41 @@ def test_neighbor_ids_includes_the_node_itself_and_direct_neighbors():
     assert result == ["a", "b"]
 
 
+# --- explore.js: Autor:innen-Fotos werden gestaffelt geladen (2026-09-01) ---
+
+
+def test_photo_images_do_not_set_href_synchronously_at_creation():
+    """Regression (realer Mobil-Absturz beim Navigieren/Klicken im
+    Netzwerk): das <image>-Element darf href nicht direkt in derselben
+    D3-Attribut-Kette wie x/y/width/height/clip-path setzen - genau das
+    dekodierte bisher ALLE (potenziell hochauflösenden, extern frei
+    eingetragenen) Autor:innen-Fotos gleichzeitig, `loading="lazy"` wird auf
+    SVG-<image> von praktisch keinem Browser beachtet. href muss stattdessen
+    separat, zeitversetzt (siehe PHOTO_LOAD_BATCH_SIZE/-_DELAY_MS) gesetzt
+    werden - dieser Test hält das strukturell fest, da renderGraph() selbst
+    (D3/SVG-lastig) nicht sinnvoll isoliert in Node ausführbar ist."""
+    js_source = (STATIC_DIR / "explore.js").read_text()
+    match = re.search(
+        r"const photoImages = node\s*\n.*?\.attr\('decoding', 'async'\);", js_source, re.S
+    )
+    assert match, "Die photoImages-Attribut-Kette wurde in explore.js nicht gefunden."
+    creation_chain = match.group(0)
+    assert "href" not in creation_chain, (
+        "href wird wieder direkt beim Erzeugen des <image>-Elements gesetzt - das "
+        "dekodiert alle Fotos gleichzeitig und kann auf Mobilgeräten zum Tab-Absturz führen."
+    )
+
+
+def test_photo_images_set_href_in_delayed_batches():
+    js_source = (STATIC_DIR / "explore.js").read_text()
+    match = re.search(r"photoImages\.each\(function \(d, i\) \{.*?\n  \}\);", js_source, re.S)
+    assert match, "Das gestaffelte Setzen von href wurde in explore.js nicht gefunden."
+    batch_source = match.group(0)
+    assert "setTimeout" in batch_source
+    assert "PHOTO_LOAD_BATCH_SIZE" in batch_source
+    assert "setAttribute('href', d.photo_url)" in batch_source
+
+
 # Nutzerwunsch (2026-08-26): Autor:innen/Schlagworte im Explore-Netzwerk
 # unabhängig voneinander ein-/ausblendbar - deriveAuthorOnlyEdges() bildet
 # dabei fehlende Autor-Autor-Kanten über geteilte (jetzt ausgeblendete)
@@ -2761,3 +2796,97 @@ def test_question_form_does_not_contain_turnstile_container(filename):
         f"#turnstile-container liegt in {filename} wieder innerhalb von #question-form - "
         "das verursacht das 'Mikrofon-Icon springt'-Problem erneut (siehe Backlog 2026-08-09)."
     )
+
+
+# --- i18n.js: detectLang liest ?lang= (2026-09-01) ---
+
+
+def _run_detect_lang(*, search: str, stored_lang: str | None, nav_language: str) -> dict:
+    """Führt i18n.js#detectLang per Node aus. Gibt sowohl den ermittelten
+    Sprachcode als auch den Zustand von localStorage/der (simulierten)
+    Adresszeile danach zurück, damit sich sowohl die Übernahme des
+    ?lang=-Parameters als auch dessen Entfernung aus der URL (bei Erhalt
+    anderer, gleichzeitig vorhandener Parameter) prüfen lässt."""
+    js_source = (STATIC_DIR / "i18n.js").read_text()
+    match = re.search(r"function detectLang\(\).*?\n\}", js_source, re.S)
+    assert match, "detectLang wurde in i18n.js nicht gefunden."
+    func_source = match.group(0)
+    store = {"lang": stored_lang} if stored_lang is not None else {}
+    script = f"""
+const store = {json.dumps(store)};
+global.localStorage = {{
+  getItem: (k) => (k in store ? store[k] : null),
+  setItem: (k, v) => {{ store[k] = v; }},
+}};
+let currentPath = {json.dumps("/" + search)};
+global.window = {{ location: {{ search: {json.dumps(search)}, pathname: '/' }} }};
+global.history = {{
+  replaceState: (state, title, url) => {{ currentPath = url; }},
+}};
+global.navigator = {{ language: {json.dumps(nav_language)} }};
+const SUPPORTED_LANGS = ['de', 'en'];
+const DEFAULT_LANG = 'en';
+
+{func_source}
+
+console.log(JSON.stringify({{ lang: detectLang(), storedLang: store.lang, path: currentPath }}));
+"""
+    result = subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True)
+    return json.loads(result.stdout)
+
+
+def test_detect_lang_prefers_url_param_over_stored_and_navigator_language():
+    result = _run_detect_lang(search="?lang=en", stored_lang="de", nav_language="de-DE")
+    assert result["lang"] == "en"
+
+
+def test_detect_lang_persists_url_param_to_local_storage():
+    result = _run_detect_lang(search="?lang=en", stored_lang="de", nav_language="de-DE")
+    assert result["storedLang"] == "en"
+
+
+def test_detect_lang_removes_lang_param_but_keeps_other_params():
+    # Analog zum Bug bei consumeConversationHandoffToken (siehe
+    # conversation-handoff.js): darf nur den eigenen Parameter entfernen,
+    # ein gleichzeitig vorhandenes ?handoff=<token> muss erhalten bleiben.
+    result = _run_detect_lang(search="?handoff=abc123&lang=en", stored_lang=None, nav_language="de-DE")
+    assert result["path"] == "/?handoff=abc123"
+
+
+def test_detect_lang_ignores_unsupported_url_param():
+    result = _run_detect_lang(search="?lang=fr", stored_lang="de", nav_language="de-DE")
+    assert result["lang"] == "de"
+
+
+def test_detect_lang_falls_back_to_stored_value_without_url_param():
+    result = _run_detect_lang(search="", stored_lang="en", nav_language="de-DE")
+    assert result["lang"] == "en"
+
+
+def test_detect_lang_falls_back_to_navigator_language_without_stored_value():
+    result = _run_detect_lang(search="", stored_lang=None, nav_language="de-DE")
+    assert result["lang"] == "de"
+
+
+# --- question.js: embedExpandButton gibt aktuelle Sprache mit (2026-09-01) ---
+
+
+def test_embed_expand_button_appends_current_lang_without_conversation_history():
+    js_source = (STATIC_DIR / "question.js").read_text()
+    match = re.search(
+        r"if \(embedExpandButton\) \{.*?\n\}", js_source, re.S
+    )
+    assert match, "embedExpandButton-Click-Handler wurde in question.js nicht gefunden."
+    handler_source = match.group(0)
+    assert "window.open(`/?${langParam}`" in handler_source
+    assert "getLang()" in handler_source
+
+
+def test_embed_expand_button_appends_current_lang_alongside_handoff_token():
+    js_source = (STATIC_DIR / "question.js").read_text()
+    match = re.search(
+        r"if \(embedExpandButton\) \{.*?\n\}", js_source, re.S
+    )
+    assert match
+    handler_source = match.group(0)
+    assert "handoff=${encodeURIComponent(token)}&${langParam}" in handler_source
