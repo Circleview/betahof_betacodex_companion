@@ -1685,7 +1685,18 @@ button.send-button {
   font: inherit;
   font-weight: 700;
   font-size: 0.85em;
-  vertical-align: super;
+  /* Nutzerfeedback (2026-09-01): vertical-align: super berechnet die
+     Zeilenbox-Höhe der GESAMTEN Zeile anhand der hochgestellten Position -
+     Zeilen mit einem [n]-Verweis bekamen dadurch sichtbar mehr Abstand zur
+     vorherigen Zeile als Zeilen ohne Verweis, innerhalb desselben Absatzes.
+     position:relative+top verschiebt den Button rein visuell, ohne dass die
+     Zeilenbox davon beeinflusst wird - line-height:0 verhindert zusätzlich,
+     dass die eigene (Button-typische) Zeilenhöhe des Elements die Zeile
+     aufbläht. */
+  position: relative;
+  top: -0.4em;
+  line-height: 0;
+  vertical-align: baseline;
   cursor: pointer;
 }
 
