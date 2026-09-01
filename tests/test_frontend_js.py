@@ -2987,6 +2987,40 @@ def test_turnstile_ready_promise_is_capped_with_a_timeout():
     assert "Promise.race([turnstileReadyPromise" in js_source
 
 
+# --- question.js: Sidebar dedupliziert Quellen statt Chunks (2026-09-01) ---
+
+
+def test_attach_answer_sources_deduplicates_sidebar_by_source_id_not_chunk_id():
+    # Regression (real gemeldet): zwei verschiedene [n]-Vorkommen, die auf
+    # unterschiedliche Chunks DERSELBEN Quelle verweisen, ließen dieselbe
+    # Quelle zweimal (identisch aussehend, gleicher Titel/gleiche
+    # KI-Zusammenfassung) in der Sidebar auftauchen, weil bisher nach
+    # chunk_id statt nach source_id dedupliziert wurde.
+    js_source = (STATIC_DIR / "question.js").read_text()
+    match = re.search(r"function attachAnswerSources\(bubble, sources\) \{.*?\n\}", js_source, re.S)
+    assert match, "attachAnswerSources wurde in question.js nicht gefunden."
+    func_source = match.group(0)
+    assert "conversationCitedSources.set(s.source_id, s)" in func_source
+    assert "conversationCitedSources.set(s.chunk_id, s)" not in func_source
+
+
+def test_build_sources_list_keys_details_by_source_id():
+    js_source = (STATIC_DIR / "question.js").read_text()
+    match = re.search(r"function buildSourcesList\(sources\) \{.*?\n\}", js_source, re.S)
+    assert match, "buildSourcesList wurde in question.js nicht gefunden."
+    func_source = match.group(0)
+    assert "details.dataset.sourceId = s.source_id" in func_source
+
+
+def test_render_sidebar_sources_preserves_open_state_by_source_id():
+    js_source = (STATIC_DIR / "question.js").read_text()
+    match = re.search(r"function renderSidebarSources\(\) \{.*?\n\}", js_source, re.S)
+    assert match, "renderSidebarSources wurde in question.js nicht gefunden."
+    func_source = match.group(0)
+    assert "dataset.sourceId" in func_source
+    assert "dataset.chunkId" not in func_source
+
+
 # --- question.js: Daumen-hoch/-runter je Antwort (2026-09-01) ---
 
 
@@ -3096,3 +3130,40 @@ def test_question_log_render_preserves_open_answer_details_across_filter():
     block = match.group(0)
     assert "querySelectorAll('details[open]')" in block
     assert "openTimestamps.has(d.dataset.timestamp)" in block
+
+
+# --- import.js: "Als geprüft markieren"-Button bei defektem Link (2026-09-01) ---
+
+
+def test_url_health_status_block_includes_verify_link_button():
+    js_source = (STATIC_DIR / "import.js").read_text()
+    match = re.search(r"if \(s\.url_reachable === false\) \{.*?\n  \}", js_source, re.S)
+    assert match, "Der url-health-status-Block wurde in import.js nicht gefunden."
+    block = match.group(0)
+    assert "verify-link-button" in block
+    assert "verifySourceLink(s.id, healthStatus, verifyBtn)" in block
+
+
+def test_verify_source_link_posts_to_verify_link_endpoint_and_reloads():
+    js_source = (STATIC_DIR / "import.js").read_text()
+    match = re.search(r"async function verifySourceLink\(sourceId, statusEl, button\) \{.*?\n\}", js_source, re.S)
+    assert match, "verifySourceLink wurde in import.js nicht gefunden."
+    func_source = match.group(0)
+    assert "/api/sources/${sourceId}/verify-link" in func_source
+    assert "loadSources();" in func_source
+
+
+# --- import.js: Scroll-Fokus beim Annehmen eines Quellenvorschlags (2026-09-01) ---
+
+
+def test_open_url_popover_with_url_scrolls_the_popover_into_view():
+    # Regression (real gemeldet): im Akkordeon-Modus (Mobile) landet das
+    # Formular normal im Dokumentfluss statt als schwebendes Overlay -
+    # ohne aktives Scrollen blieb es außerhalb des sichtbaren Bereichs,
+    # wenn die Nutzer:in beim Annehmen eines Quellenvorschlags tief in der
+    # Liste gescrollt war.
+    js_source = (STATIC_DIR / "import.js").read_text()
+    match = re.search(r"function openUrlPopoverWithUrl\(url\) \{.*?\n\}", js_source, re.S)
+    assert match, "openUrlPopoverWithUrl wurde in import.js nicht gefunden."
+    func_source = match.group(0)
+    assert "urlPopover.scrollIntoView(" in func_source

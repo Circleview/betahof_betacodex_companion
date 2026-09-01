@@ -2667,6 +2667,33 @@ button.send-button {
   margin-bottom: 0.9rem;
 }
 
+/* Nutzerwunsch (2026-09-01): "Als geprüft markieren"-Button direkt unter
+   der Fehlermeldung des automatischen Link-Checks - unauffällig, aber
+   klar als eigene Aktion erkennbar (analog .question-log-filter-btn). */
+.verify-link-button {
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  background: var(--color-bg);
+  color: var(--color-text-muted);
+  padding: 0.3rem 0.85rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  margin-top: -0.5rem;
+  margin-bottom: 0.9rem;
+  align-self: flex-start;
+}
+
+.verify-link-button:hover:not(:disabled) {
+  color: var(--color-accent);
+  border-color: var(--color-accent);
+}
+
+.verify-link-button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
 #typ-jobs,
 #typ-web-allowlist {
   position: relative;

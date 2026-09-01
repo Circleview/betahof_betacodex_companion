@@ -4387,6 +4387,94 @@ def test_check_source_url_without_role_is_forbidden(client, anon_client):
     assert response.status_code == 403
 
 
+def _mark_source_link_broken(source_id: str) -> None:
+    sources = main_module._load_sources()
+    sources[source_id]["url_reachable"] = False
+    sources[source_id]["url_reason_code"] = "http_error"
+    sources[source_id]["url_status_code"] = 404
+    sources[source_id]["url_checked_at"] = "2026-01-01T00:00:00+00:00"
+    main_module._save_sources(sources)
+
+
+def test_verify_source_link_marks_broken_link_as_reachable(client):
+    # Nutzerwunsch (2026-09-01, real gemeldet): der automatische Link-Check
+    # meldet gelegentlich fälschlich einen funktionierenden Link als nicht
+    # erreichbar - Quellen-Pfleger:innen können ihn nach eigener manueller
+    # Prüfung selbst wieder als in Ordnung markieren.
+    source_id = client.post(
+        "/api/sources", json={"title": "Mit URL", "url": "https://example.org", "text": "Text."}
+    ).json()["id"]
+    _mark_source_link_broken(source_id)
+
+    response = client.post(f"/api/sources/{source_id}/verify-link")
+
+    assert response.status_code == 200
+    entry = main_module._load_sources()[source_id]
+    assert entry["url_reachable"] is True
+    assert entry["url_reason_code"] is None
+    assert entry["url_status_code"] is None
+
+
+def test_verify_source_link_rejects_when_link_not_currently_broken(client):
+    source_id = client.post(
+        "/api/sources", json={"title": "Mit URL", "url": "https://example.org", "text": "Text."}
+    ).json()["id"]
+
+    response = client.post(f"/api/sources/{source_id}/verify-link")
+
+    assert response.status_code == 400
+
+
+def test_verify_source_link_requires_pfleger_role(client, anon_client):
+    source_id = client.post(
+        "/api/sources", json={"title": "Mit URL", "url": "https://example.org", "text": "Text."}
+    ).json()["id"]
+    _mark_source_link_broken(source_id)
+
+    response = anon_client.post(f"/api/sources/{source_id}/verify-link")
+
+    assert response.status_code == 403
+
+
+def test_verify_source_link_returns_404_for_unknown_source(client):
+    response = client.post("/api/sources/does-not-exist/verify-link")
+
+    assert response.status_code == 404
+
+
+def test_verify_source_link_logs_revertible_audit_entry(client):
+    source_id = client.post(
+        "/api/sources", json={"title": "Mit URL", "url": "https://example.org", "text": "Text."}
+    ).json()["id"]
+    _mark_source_link_broken(source_id)
+
+    client.post(f"/api/sources/{source_id}/verify-link")
+
+    entries = audit.list_entries()
+    assert entries[0]["action"] == "source_link_manually_verified"
+    assert entries[0]["entity_type"] == "source"
+    assert entries[0]["entity_id"] == source_id
+    assert entries[0]["revertible"] is True
+    assert entries[0]["changes"]["url_reachable"] == {"old": False, "new": True}
+
+
+def test_verify_source_link_can_be_reverted(client):
+    source_id = client.post(
+        "/api/sources", json={"title": "Mit URL", "url": "https://example.org", "text": "Text."}
+    ).json()["id"]
+    _mark_source_link_broken(source_id)
+    client.post(f"/api/sources/{source_id}/verify-link")
+    entry_id = audit.list_entries()[0]["id"]
+
+    response = client.post(f"/api/audit-log/{entry_id}/revert")
+
+    assert response.status_code == 200
+    entry = main_module._load_sources()[source_id]
+    assert entry["url_reachable"] is False
+    assert entry["url_reason_code"] == "http_error"
+    assert entry["url_status_code"] == 404
+
+
 def test_get_version_returns_a_string(client):
     response = client.get("/api/version")
     assert response.status_code == 200

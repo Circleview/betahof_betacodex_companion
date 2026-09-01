@@ -2680,6 +2680,53 @@ def check_source_url(
     return UrlCheckOut(has_url=True, **result)
 
 
+@app.post("/api/sources/{source_id}/verify-link", response_model=MessageOut)
+def verify_source_link(
+    source_id: str,
+    _user: str = Depends(require_role(users.QUELLEN_PFLEGER)),
+    x_lang: str = Header(default=i18n.DEFAULT_LANG),
+):
+    # Nutzerwunsch (2026-09-01): der automatische wöchentliche Link-Check
+    # (siehe _run_url_health_check_once) meldet gelegentlich einen Link als
+    # nicht erreichbar, obwohl er tatsächlich funktioniert (z.B. blockiert
+    # eine Website automatisierte Anfragen von Server-IPs, funktioniert aber
+    # im echten Browser). Statt den Warnhinweis bis zum nächsten Lauf (bis
+    # zu einer Woche) stehen zu lassen, können Quellen-Pfleger:innen den
+    # Link nach eigener manueller Prüfung als in Ordnung markieren - setzt
+    # url_reachable zurück auf True, bis der nächste automatische Lauf ihn
+    # erneut bewertet (überschreibt diese Markierung dann ggf. wieder,
+    # falls der Link tatsächlich weiterhin nicht erreichbar ist). Wie jede
+    # andere Feld-Änderung im Änderungs-Log protokolliert und damit
+    # rückgängig machbar (siehe audit.log_change/POST .../revert).
+    with _sources_write_lock:
+        sources = _load_sources()
+        if _source_is_missing(sources, source_id):
+            raise HTTPException(404, i18n.get_message("source_not_found", x_lang))
+        entry = sources[source_id]
+        if entry.get("url_reachable") is not False:
+            raise HTTPException(400, i18n.get_message("link_not_broken", x_lang))
+        before = dict(entry)
+        entry["url_reachable"] = True
+        entry["url_reason_code"] = None
+        entry["url_status_code"] = None
+        entry["url_checked_at"] = datetime.now(timezone.utc).isoformat()
+        title = entry.get("title", source_id)
+        _save_sources(sources)
+
+    changes = _diff_fields(
+        before,
+        {
+            "url_reachable": True,
+            "url_reason_code": None,
+            "url_status_code": None,
+            "url_checked_at": entry["url_checked_at"],
+        },
+    )
+    if changes:
+        audit.log_change(_user, "source_link_manually_verified", "source", source_id, title, changes)
+    return MessageOut(detail=i18n.get_message("link_verified", x_lang))
+
+
 @app.get("/api/sources/broken-links-count", response_model=BrokenLinksCountOut)
 def get_broken_links_count(_user: str = Depends(require_role(users.QUELLEN_PFLEGER))):
     # Backlog (2026-08-02): leichtgewichtiger Endpoint fürs Warn-Badge am

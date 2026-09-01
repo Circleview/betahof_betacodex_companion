@@ -1329,6 +1329,22 @@ function buildEditPanel(s, options = {}) {
     healthStatus.className = 'url-health-status';
     healthStatus.textContent = `${t('common.urlUnreachable')}: ${urlErrorText(s)}`;
     form.appendChild(healthStatus);
+
+    // Nutzerwunsch (2026-09-01): der automatische Link-Check meldet
+    // gelegentlich einen Link fälschlich als nicht erreichbar (z.B. blockt
+    // eine Website automatisierte Anfragen von Server-IPs, funktioniert im
+    // echten Browser aber einwandfrei). Statt den Warnhinweis bis zum
+    // nächsten automatischen Lauf (bis zu einer Woche) stehen zu lassen,
+    // kann eine Pflegerin/ein Pfleger den Link nach eigener manueller
+    // Prüfung selbst als in Ordnung markieren - siehe verifySourceLink.
+    const verifyBtn = document.createElement('button');
+    verifyBtn.type = 'button';
+    verifyBtn.className = 'verify-link-button';
+    verifyBtn.textContent = t('import.markLinkVerified');
+    verifyBtn.title = t('import.markLinkVerifiedTitle');
+    verifyBtn.setAttribute('aria-label', t('import.markLinkVerifiedTitle'));
+    verifyBtn.addEventListener('click', () => verifySourceLink(s.id, healthStatus, verifyBtn));
+    form.appendChild(verifyBtn);
   }
 
   const listenUrlField = buildFieldLabel('import.fieldListenUrl', 'listen-url', s.listen_url, 'url');
@@ -1614,6 +1630,31 @@ async function generateSummaryFields(sourceId, summaryInput, keyTermsInput, stat
     buttons.forEach((b) => {
       b.disabled = false;
     });
+  }
+}
+
+// Nutzerwunsch (2026-09-01): siehe Kommentar bei der Verwendung oben
+// (url-health-status-Block). loadSources() lädt danach den kompletten
+// Bestand neu (identisches Muster wie nach dem normalen Speichern-Klick,
+// siehe Formular-submit-Handler oben) - activeEditId bleibt dabei bewusst
+// unverändert, das gerade offene Bearbeiten-Panel bleibt also offen und
+// zeigt direkt den jetzt wieder grünen Zustand.
+async function verifySourceLink(sourceId, statusEl, button) {
+  button.disabled = true;
+  statusEl.textContent = t('import.verifyingLink');
+  try {
+    const res = await fetch(`/api/sources/${sourceId}/verify-link`, {
+      method: 'POST',
+      headers: devUserHeaders(),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || t('import.verifyLinkFailed'));
+    }
+    loadSources();
+  } catch (err) {
+    statusEl.textContent = t('common.errorPrefix') + err.message;
+    button.disabled = false;
   }
 }
 
@@ -2931,6 +2972,16 @@ function openUrlPopoverWithUrl(url) {
   document.getElementById('popover-status').textContent = '';
   document.getElementById('popover-url').value = stripTrackingParams(url);
   extractAndFillFromUrl(url);
+  // Nutzerwunsch (2026-09-01, real gemeldet): beim Annehmen eines
+  // Quellenvorschlags (einziger Aufrufer dieser Funktion) kann die
+  // Nutzer:in tief in der Vorschlagsliste gescrollt sein - im
+  // Akkordeon-Modus (Mobile, siehe setPopoverAccordionMode) landet das
+  // Formular dabei normal im Dokumentfluss (#mobile-import-slot) statt als
+  // schwebendes Overlay über der Kopfzeile, blieb also ohne aktives
+  // Scrollen außerhalb des sichtbaren Bereichs. Analog zum bereits
+  // bestehenden Rück-Scroll nach erfolgreichem Import (siehe
+  // quelltypBereich.scrollIntoView weiter unten im Submit-Handler).
+  urlPopover.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 function renderSourceSuggestionRow(suggestion) {

@@ -89,6 +89,7 @@ const ACTION_LABEL_KEYS = {
   author_bio_generated: 'changelog.actionAuthorBioGenerated',
   web_page_excluded: 'changelog.actionWebPageExcluded',
   web_page_included: 'changelog.actionWebPageIncluded',
+  source_link_manually_verified: 'changelog.actionSourceLinkManuallyVerified',
 };
 
 const FIELD_LABEL_KEYS = {
@@ -115,7 +116,19 @@ const FIELD_LABEL_KEYS = {
 // ("hat die Quelle gelöscht"/"hat umbenannt") plus target_label ("Alt →
 // Neu") sagen bereits alles Nötige, ein zusätzliches "null → 2026-..."
 // wäre nur verwirrend.
-const SKIP_CHANGE_FIELDS = new Set(['deleted_at', 'name']);
+// url_reachable/url_reason_code/url_status_code/url_checked_at werden bei
+// source_link_manually_verified NICHT einzeln aufgelistet - die
+// Aktionsbeschreibung ("hat den Link als geprüft markiert") sagt bereits
+// alles Nötige, ein zusätzliches "Link erreichbar: Nein → Ja" wäre nur
+// redundant (analog zu deleted_at/name oben).
+const SKIP_CHANGE_FIELDS = new Set([
+  'deleted_at',
+  'name',
+  'url_reachable',
+  'url_reason_code',
+  'url_status_code',
+  'url_checked_at',
+]);
 const AI_ACTIONS = new Set(['source_summary_generated', 'author_bio_generated']);
 
 function baseAction(action) {

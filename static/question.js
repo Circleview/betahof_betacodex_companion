@@ -366,7 +366,7 @@ function buildSourcesList(sources) {
   sources.forEach((s) => {
     const li = document.createElement('li');
     const details = document.createElement('details');
-    details.dataset.chunkId = s.chunk_id;
+    details.dataset.sourceId = s.source_id;
     const summaryToggle = document.createElement('summary');
     appendCitationHeading(summaryToggle, s);
     details.appendChild(summaryToggle);
@@ -925,14 +925,14 @@ const conversationCitedSources = new Map();
 // bereits aufgeklappter <details> bei (sonst klappt z.B. ein Sprachwechsel
 // oder eine neue Antwort eine gerade gelesene Zusammenfassung wieder zu).
 function renderSidebarSources() {
-  const openChunkIds = new Set(
-    [...sidebarSourcesList.querySelectorAll('details[open]')].map((d) => d.dataset.chunkId)
+  const openSourceIds = new Set(
+    [...sidebarSourcesList.querySelectorAll('details[open]')].map((d) => d.dataset.sourceId)
   );
   sidebarSourcesList.replaceChildren(
     ...buildSourcesList([...conversationCitedSources.values()]).children
   );
   sidebarSourcesList.querySelectorAll('details').forEach((d) => {
-    if (openChunkIds.has(d.dataset.chunkId)) d.open = true;
+    if (openSourceIds.has(d.dataset.sourceId)) d.open = true;
   });
 }
 
@@ -1000,8 +1000,19 @@ function renderAnswerText(bubble, question, answer) {
 
 function attachAnswerSources(bubble, sources) {
   makeCitationsClickable(bubble, sources);
+  // Nutzerfeedback (2026-09-01): die Sidebar (buildSourcesList) zeigt
+  // Quellen-Ebene an (Titel/KI-Zusammenfassung/Link), nicht den einzelnen
+  // Chunk-Ausschnitt - ein Dedup nach chunk_id ließ dieselbe Quelle mehrfach
+  // auftauchen, sobald zwei verschiedene [n]-Vorkommen auf unterschiedliche
+  // Chunks DERSELBEN Quelle verwiesen (z.B. [1] und [3] aus demselben
+  // Artikel). Beide Einträge sahen dabei identisch aus (gleicher Titel,
+  // gleiche Zusammenfassung), wirkten also wie ein Duplikat. source_id
+  // dedupliziert stattdessen korrekt auf Quellen-Ebene - die individuellen
+  // Chunk-Ausschnitte bleiben trotzdem weiterhin je [n]-Verweis eigenständig
+  // aufklappbar (siehe makeCitationsClickable oben, das unabhängig davon
+  // pro Chunk+Highlight arbeitet).
   extractCitedSources(bubble, sources).forEach((s) => {
-    conversationCitedSources.set(s.chunk_id, s);
+    conversationCitedSources.set(s.source_id, s);
   });
 }
 
