@@ -1339,7 +1339,7 @@ button.send-button {
   display: inline-flex;
   align-items: center;
   margin-left: 0.9rem;
-  gap: 0.15rem;
+  gap: 0.5rem;
   vertical-align: middle;
 }
 
