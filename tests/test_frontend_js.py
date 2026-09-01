@@ -2930,17 +2930,37 @@ def test_consume_ask_param_returns_null_when_absent():
     assert result["ask"] is None
 
 
-def test_ask_param_prefill_and_submit_wired_after_restore_conversation_history():
+def test_ask_param_auto_submit_is_wired_up():
     js_source = (STATIC_DIR / "question.js").read_text()
     match = re.search(
-        r"restoreConversationHistory\(\);\n\n.*?questionForm\.requestSubmit\(\);\n\}",
+        r"const askParam = consumeAskParam\(\);.*?questionForm\.requestSubmit\(\);\n\}",
         js_source,
         re.S,
     )
-    assert match, "Die ?q=-Vorbefüllung nach restoreConversationHistory() wurde nicht gefunden."
+    assert match, "Die ?q=-Vorbefüllung/Auto-Submit wurde in question.js nicht gefunden."
     block = match.group(0)
     assert "consumeAskParam()" in block
     assert "questionInput.value = askParam" in block
+
+
+def test_ask_param_auto_submit_runs_after_submit_listener_is_registered():
+    # Regression (2026-09-01, real gemeldet): der Auto-Submit-Block stand
+    # vorher VOR questionForm.addEventListener('submit', ...) im Datei-
+    # Quelltext - requestSubmit() löste das "submit"-Event zu diesem
+    # Zeitpunkt bereits synchron aus, aber noch OHNE registrierten Handler
+    # (der e.preventDefault() aufruft). Ohne Handler griff die native
+    # Browser-Formular-Absendung (echter GET-Reload derselben Seite, da
+    # #question-form kein eigenes action/method hat) - das erklärt das
+    # gemeldete Bild-Flackern, die verschwindende Frage und die nie
+    # ankommende Antwort. Der Auto-Submit-Aufruf muss deshalb TEXTUELL NACH
+    # der addEventListener('submit', ...)-Registrierung stehen.
+    js_source = (STATIC_DIR / "question.js").read_text()
+    listener_index = js_source.index("questionForm.addEventListener('submit'")
+    auto_submit_index = js_source.index("const askParam = consumeAskParam();")
+    assert auto_submit_index > listener_index, (
+        "Der ?q=-Auto-Submit-Aufruf steht vor der questionForm-submit-Listener-Registrierung - "
+        "requestSubmit() würde dann ohne registrierten Handler nativ absenden (echter Seiten-Reload)."
+    )
 
 
 def test_ask_param_auto_submit_waits_for_turnstile_before_submitting():

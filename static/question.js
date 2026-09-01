@@ -1067,19 +1067,6 @@ function consumeAskParam() {
   return ask;
 }
 
-const askParam = consumeAskParam();
-if (askParam) {
-  questionInput.value = askParam;
-  // Siehe Kommentar bei turnstileReadyPromise oben - ohne dieses Warten
-  // feuert requestSubmit() oft mit noch leerem Captcha-Token. Zeitlich
-  // gedeckelt (Muster wie turnstile.js:getToken) - lädt Cloudflares
-  // externes Skript aus irgendeinem Grund nie (z.B. Netzwerkproblem,
-  // Ad-Blocker), würde sonst nie abgesendet, statt wenigstens mit einer
-  // erkennbaren Fehlermeldung zu scheitern.
-  await Promise.race([turnstileReadyPromise, new Promise((resolve) => setTimeout(resolve, 5000))]);
-  questionForm.requestSubmit();
-}
-
 // Nutzerwunsch (2026-08-30): "Vollständig öffnen"-Icon im Embed-Widget -
 // öffnet den vollständigen Companion in einem neuen Tab, mit der laufenden
 // Konversation (falls vorhanden). Popup-Blocker-sicheres Muster: window.open
@@ -1294,6 +1281,28 @@ questionForm.addEventListener('submit', async (e) => {
     assistantBubble.textContent = t('common.errorPrefix') + err.message;
   }
 });
+
+// Fix (2026-09-01, real gemeldet: Frage verschwand nach kurzem Aufblitzen,
+// keine Antwort): stand vorher VOR der obigen questionForm.addEventListener
+// ('submit', ...)-Registrierung - requestSubmit() löste das "submit"-Event
+// zu diesem Zeitpunkt bereits synchron aus, aber ohne den JS-Handler (der
+// e.preventDefault() aufruft) griff die native Browser-Formular-Absendung
+// (echter GET-Reload derselben Seite, da #question-form kein eigenes
+// action/method hat) - genau das erklärt Bild-Flackern + verschwundene
+// Frage + nie ankommende Antwort. Muss deshalb NACH dem obigen
+// addEventListener('submit', ...) stehen.
+const askParam = consumeAskParam();
+if (askParam) {
+  questionInput.value = askParam;
+  // Siehe Kommentar bei turnstileReadyPromise oben - ohne dieses Warten
+  // feuert requestSubmit() oft mit noch leerem Captcha-Token. Zeitlich
+  // gedeckelt (Muster wie turnstile.js:getToken) - lädt Cloudflares
+  // externes Skript aus irgendeinem Grund nie (z.B. Netzwerkproblem,
+  // Ad-Blocker), würde sonst nie abgesendet, statt wenigstens mit einer
+  // erkennbaren Fehlermeldung zu scheitern.
+  await Promise.race([turnstileReadyPromise, new Promise((resolve) => setTimeout(resolve, 5000))]);
+  questionForm.requestSubmit();
+}
 
 async function refreshCitedSourceSummaries() {
   if (conversationCitedSources.size === 0) return;
