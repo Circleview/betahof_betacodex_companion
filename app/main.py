@@ -56,6 +56,7 @@ from app import (
 )
 from app.models import (
     AdminUserOut,
+    AnswerFeedbackIn,
     AuditLogEntryOut,
     AuthorOut,
     AuthorProfileIn,
@@ -2517,6 +2518,33 @@ def get_question_log(_user: str = Depends(require_role(users.QUELLEN_PFLEGER))):
     return question_log.list_entries()
 
 
+ANSWER_FEEDBACK_VALUES = {"good", "bad"}
+
+
+@app.post("/api/answer-feedback", response_model=MessageOut)
+def submit_answer_feedback(
+    payload: AnswerFeedbackIn, request: Request, x_lang: str = Header(default=i18n.DEFAULT_LANG)
+):
+    # Nutzerwunsch (2026-09-01): Daumen-hoch/-runter je Antwort (siehe
+    # static/question.js: attachFeedbackButtons). Bewusst OHNE Captcha,
+    # analog zu /api/speak: nur nach einer bereits erfolgreich beantworteten
+    # /api/ask-Anfrage erreichbar, die selbst schon captcha-/ratenbegrenzt
+    # ist. Ein deutlich lockereres Limit als /api/feedback (das E-Mails
+    # verschickt) reicht trotzdem, um Skript-Missbrauch des Logs zu
+    # verhindern - ein Klick pro Antwort ist normale Nutzung, mehrere pro
+    # Konversation üblich.
+    client_ip = request.client.host if request.client else "unknown"
+    if ratelimit.is_rate_limited(f"answer-feedback-ip:{client_ip}", max_requests=30, window_seconds=3600):
+        raise HTTPException(429, i18n.get_message("rate_limited", x_lang))
+    if payload.feedback not in ANSWER_FEEDBACK_VALUES:
+        raise HTTPException(400, i18n.get_message("invalid_feedback_value", x_lang))
+
+    if _should_log_question_event(request):
+        question_log.log_feedback(payload.question, payload.answer, payload.feedback)
+
+    return MessageOut(detail=i18n.get_message("feedback_sent", x_lang))
+
+
 def _restore_deleted_source(source_id: str, x_lang: str) -> None:
     """Rückgängig-machen einer Löschung (Backlog #99): der Rohdatensatz und
     eine angehängte PDF-/Audio-Datei waren nie weg (siehe delete_source) -
@@ -3423,8 +3451,42 @@ def _rerank_by_relevance(
     )
 
 
+# Nutzerwunsch (2026-09-01): einheitlicher Ausschluss für alle drei
+# Fragen-Log-Ereignistypen (first_question/no_answer/feedback) - vorher nur
+# inline beim first_question-Fall geprüft (Backlog #97), jetzt hier
+# extrahiert, damit _ask_event_stream (no_answer) und /api/answer-feedback
+# (feedback) dieselbe Regel verwenden. Ausgeschlossen: Dev/Stabil
+# (IS_DEV_ENVIRONMENT ist dort identisch gesetzt, siehe .env) und der
+# System-Admin selbst - Quellen-Pfleger:innen werden bewusst NICHT
+# ausgeschlossen (ihre eigene Nutzung bleibt ein sinnvolles Signal).
+def _should_log_question_event(request: Request) -> bool:
+    return not IS_DEV_ENVIRONMENT and not users.has_role(
+        _get_current_user_email(request), users.SYSTEM_ADMIN
+    )
+
+
+# Nutzerwunsch (2026-09-01): Grundlage für das "no_answer"-Ereignis im
+# Fragen-Log - die Systemanweisung (siehe app/llm.py: SYSTEM_PROMPTS) gibt
+# dem Modell diesen Satz WÖRTLICH vor, wenn die bereitgestellten
+# Textausschnitte die Frage nicht oder nur teilweise beantworten. Ein reiner
+# Substring-Check reicht deshalb aus (kein separates Konfidenz-Signal
+# nötig) - siehe _ask_event_stream unten.
+NO_ANSWER_PHRASES = {
+    "de": "Die vorliegende Quellenlage gibt darauf keine Antwort.",
+    "en": "The available sources do not answer this.",
+}
+
+
 def _ask_event_stream(
-    question_text, llm_chunks, lang, author_bios, chunk_refs, chunk_docs, query_embedding, history
+    question_text,
+    llm_chunks,
+    lang,
+    author_bios,
+    chunk_refs,
+    chunk_docs,
+    query_embedding,
+    history,
+    should_log_question_events,
 ):
     """Generator für die NDJSON-Stream-Antwort von /api/ask: ein frühes
     "sources"-Event (Titel/Autor:in/Link, siehe unten), dann ein "delta"-
@@ -3512,6 +3574,14 @@ def _ask_event_stream(
     if remaining:
         yield json.dumps({"type": "delta", "text": remaining}) + "\n"
 
+    # Nutzerwunsch (2026-09-01): "no_answer"-Ereignis im Fragen-Log, siehe
+    # NO_ANSWER_PHRASES oben - erst hier möglich, da answer_text erst jetzt
+    # feststeht. Dieselben Ausschlüsse wie beim first_question-Ereignis
+    # (siehe _should_log_question_event), von ask() vorberechnet
+    # übergeben, da ein Generator keinen direkten Zugriff auf request hat.
+    if should_log_question_events and NO_ANSWER_PHRASES.get(lang, NO_ANSWER_PHRASES["de"]) in answer_text:
+        question_log.log_no_answer(question_text, answer_text)
+
     # Backlog (2026-07-31, ergaenzt 2026-08-03): der fertige Antworttext
     # steht hier bereits fest - die folgende Highlight-Berechnung (lokales
     # Embedding-Modell, siehe _compute_occurrence_highlights/
@@ -3560,12 +3630,9 @@ def ask(question: QuestionIn, request: Request, x_lang: str = Header(default=i18
     # Backlog #97: anonymisiertes Log der ersten Frage einer Konversation -
     # bewusst schon hier, VOR der eigentlichen RAG-Suche, damit auch Fragen
     # ohne Treffer erfasst werden (gerade die sind für die Lücken-Analyse
-    # interessant). Ausgeschlossen: Dev/Stabil (IS_DEV_ENVIRONMENT ist dort
-    # identisch gesetzt, siehe .env) und der System-Admin selbst -
-    # Quellen-Pfleger:innen werden bewusst NICHT ausgeschlossen.
-    if question.is_first_message and not IS_DEV_ENVIRONMENT and not users.has_role(
-        _get_current_user_email(request), users.SYSTEM_ADMIN
-    ):
+    # interessant). Ausschlüsse siehe _should_log_question_event().
+    should_log_question_events = _should_log_question_event(request)
+    if question.is_first_message and should_log_question_events:
         question_log.log_question(question.question)
 
     sources = _load_sources()
@@ -3750,6 +3817,7 @@ def ask(question: QuestionIn, request: Request, x_lang: str = Header(default=i18
             chunk_docs,
             query_embedding,
             history,
+            should_log_question_events,
         ),
         media_type="application/x-ndjson",
     )

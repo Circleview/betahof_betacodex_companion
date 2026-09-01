@@ -58,6 +58,7 @@ MESSAGES = {
         "feedback_no_email": "(keine Angabe)",
         "mail_feedback_subject": "Feedback: BetaCodex Companion",
         "mail_feedback_body": "Neues Feedback über BetaCodex Companion:\n\n{message}\n\nAbsender:in: {sender}",
+        "invalid_feedback_value": "Ungültiger Feedback-Wert.",
     },
     "en": {
         "text_empty": "Text must not be empty.",
@@ -118,6 +119,7 @@ MESSAGES = {
         "feedback_no_email": "(not provided)",
         "mail_feedback_subject": "Feedback: BetaCodex Companion",
         "mail_feedback_body": "New feedback via BetaCodex Companion:\n\n{message}\n\nSender: {sender}",
+        "invalid_feedback_value": "Invalid feedback value.",
     },
 }
 

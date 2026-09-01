@@ -23,7 +23,24 @@
 </header>
 
 <section id="question-log-bereich" tabindex="-1">
-  <h2 data-i18n="questionLog.heading"></h2>
+  <!-- Nutzerwunsch (2026-09-01, Nachtrag): Filter rechtsbündig auf gleicher
+       Höhe wie die Überschrift, statt in einer eigenen Zeile darunter -
+       alle drei Ereignistypen standardmäßig aktiv, ein Klick blendet den
+       jeweiligen Typ ein/aus. Siehe question-log.js für die Filterlogik. -->
+  <div id="question-log-header-row" class="question-log-header-row">
+    <h2 data-i18n="questionLog.heading"></h2>
+    <div id="question-log-filter" class="question-log-filter">
+      <button type="button" class="question-log-filter-btn active" data-event-type="first_question">
+        <span data-i18n="questionLog.filter.firstQuestion"></span>
+      </button>
+      <button type="button" class="question-log-filter-btn active" data-event-type="no_answer">
+        <span data-i18n="questionLog.filter.noAnswer"></span>
+      </button>
+      <button type="button" class="question-log-filter-btn active" data-event-type="feedback">
+        <span data-i18n="questionLog.filter.feedback"></span>
+      </button>
+    </div>
+  </div>
   <p id="question-log-status" class="changelog-status" data-i18n="questionLog.loading"></p>
   <ul id="question-log-list" class="timeline-mode"></ul>
 </section>

@@ -1673,6 +1673,151 @@ def test_get_question_log_returns_entries_for_pfleger(client, monkeypatch):
     assert "Frage einer Pflegerin" in texts
 
 
+def test_question_log_entries_have_first_question_event_type(client, monkeypatch):
+    monkeypatch.setattr(main_module, "IS_DEV_ENVIRONMENT", False)
+    client.post("/api/ask", json={"question": "Frage einer Pflegerin", "is_first_message": True})
+
+    entries = question_log.list_entries()
+
+    assert entries[0]["event_type"] == "first_question"
+    assert entries[0].get("answer") is None
+    assert entries[0].get("feedback") is None
+
+
+def test_question_log_normalizes_legacy_entries_without_event_type(client, monkeypatch):
+    # Rückwärtskompatibilität: vor der Einführung mehrerer Ereignistypen
+    # gespeicherte Einträge haben noch kein event_type-Feld.
+    monkeypatch.setattr(
+        question_log,
+        "_load",
+        lambda: [{"text": "Alte Frage", "timestamp": "2026-01-01T00:00:00+00:00"}],
+    )
+
+    entries = question_log.list_entries()
+
+    assert entries[0]["event_type"] == "first_question"
+
+
+def test_ask_logs_no_answer_event_when_model_says_it_cannot_answer(client, monkeypatch):
+    # Nutzerwunsch (2026-09-01, realer Fall "Andreas Schlegel und
+    # Zeitorientierung"): die Systemanweisung gibt dem Modell diesen Satz
+    # WÖRTLICH vor (siehe app/llm.py SYSTEM_PROMPTS) - ein Substring-Check
+    # auf genau diesen Satz reicht deshalb, um den Fall zu erkennen.
+    monkeypatch.setattr(main_module, "IS_DEV_ENVIRONMENT", False)
+    monkeypatch.setattr(
+        llm,
+        "stream_answer_question",
+        lambda *a, **k: iter(["Die vorliegende Quellenlage gibt darauf keine Antwort."]),
+    )
+    client.post("/api/sources", json={"title": "Q", "text": "Text zu einem anderen Thema."})
+
+    client.post("/api/ask", json={"question": "Was ist Andreas Schlegels Sicht auf Zeitorientierung?"})
+
+    entries = question_log.list_entries()
+    no_answer_entries = [e for e in entries if e["event_type"] == "no_answer"]
+    assert len(no_answer_entries) == 1
+    assert no_answer_entries[0]["text"] == "Was ist Andreas Schlegels Sicht auf Zeitorientierung?"
+    assert no_answer_entries[0]["answer"] == "Die vorliegende Quellenlage gibt darauf keine Antwort."
+
+
+def test_ask_does_not_log_no_answer_event_for_a_real_answer(client, monkeypatch):
+    monkeypatch.setattr(main_module, "IS_DEV_ENVIRONMENT", False)
+    client.post("/api/sources", json={"title": "Q", "text": "Der BetaCodex beschreibt zwölf Prinzipien."})
+
+    client.post("/api/ask", json={"question": "Was ist der BetaCodex?"})
+
+    entries = question_log.list_entries()
+    assert [e for e in entries if e["event_type"] == "no_answer"] == []
+
+
+def test_ask_does_not_log_no_answer_event_in_dev_environment(client, monkeypatch):
+    # client-Fixture setzt IS_DEV_ENVIRONMENT bewusst auf True.
+    monkeypatch.setattr(
+        llm,
+        "stream_answer_question",
+        lambda *a, **k: iter(["Die vorliegende Quellenlage gibt darauf keine Antwort."]),
+    )
+    client.post("/api/sources", json={"title": "Q", "text": "Text."})
+
+    client.post("/api/ask", json={"question": "Frage ohne Antwort?"})
+
+    assert question_log.list_entries() == []
+
+
+def test_answer_feedback_logs_entry_with_question_answer_and_value(client, monkeypatch):
+    monkeypatch.setattr(main_module, "IS_DEV_ENVIRONMENT", False)
+
+    response = client.post(
+        "/api/answer-feedback",
+        json={"question": "Was ist der BetaCodex?", "answer": "Antworttext [1].", "feedback": "good"},
+    )
+
+    assert response.status_code == 200
+    entries = question_log.list_entries()
+    assert len(entries) == 1
+    assert entries[0] == {
+        "event_type": "feedback",
+        "text": "Was ist der BetaCodex?",
+        "answer": "Antworttext [1].",
+        "feedback": "good",
+        "timestamp": entries[0]["timestamp"],
+    }
+
+
+def test_answer_feedback_rejects_invalid_value(client, monkeypatch):
+    monkeypatch.setattr(main_module, "IS_DEV_ENVIRONMENT", False)
+
+    response = client.post(
+        "/api/answer-feedback",
+        json={"question": "Frage?", "answer": "Antwort.", "feedback": "meh"},
+    )
+
+    assert response.status_code == 400
+    assert question_log.list_entries() == []
+
+
+def test_answer_feedback_does_not_require_captcha(client, monkeypatch):
+    # Bewusst analog zu /api/speak: nur nach einer bereits erfolgreich
+    # beantworteten /api/ask-Anfrage erreichbar, siehe AnswerFeedbackIn.
+    monkeypatch.setattr(captcha, "verify_turnstile_token", lambda token, remote_ip=None: False)
+    monkeypatch.setattr(main_module, "IS_DEV_ENVIRONMENT", False)
+
+    response = client.post(
+        "/api/answer-feedback",
+        json={"question": "Frage?", "answer": "Antwort.", "feedback": "bad"},
+    )
+
+    assert response.status_code == 200
+
+
+def test_answer_feedback_not_logged_in_dev_environment(client):
+    # client-Fixture setzt IS_DEV_ENVIRONMENT bewusst auf True.
+    response = client.post(
+        "/api/answer-feedback",
+        json={"question": "Frage?", "answer": "Antwort.", "feedback": "good"},
+    )
+
+    assert response.status_code == 200
+    assert question_log.list_entries() == []
+
+
+def test_answer_feedback_rejects_after_rate_limit_exceeded(client, monkeypatch):
+    monkeypatch.setattr(main_module, "IS_DEV_ENVIRONMENT", False)
+    for _ in range(30):
+        response = client.post(
+            "/api/answer-feedback",
+            json={"question": "Frage?", "answer": "Antwort.", "feedback": "good"},
+        )
+        assert response.status_code == 200
+
+    response = client.post(
+        "/api/answer-feedback",
+        json={"question": "Frage?", "answer": "Antwort.", "feedback": "good"},
+    )
+
+    assert response.status_code == 429
+
+
 def test_feedback_sends_mail_to_admin_and_returns_confirmation(client, monkeypatch):
     monkeypatch.setenv("SYSTEM_ADMIN_EMAIL", "admin@test.local")
     calls = []

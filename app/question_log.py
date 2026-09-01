@@ -1,7 +1,17 @@
-"""Speichert anonymisiert die erste Frage jeder Konversation (Backlog #97) -
-kein Bezug zu Nutzerkonto oder IP, nur Text + Zeitstempel. Grundlage für eine
-spätere Trend-/Lücken-Analyse (z.B. eine Themen-Cloud), siehe app/main.py
-ask() für die Ausschlüsse (System-Admin, Dev/Stabil)."""
+"""Speichert anonymisiert drei Arten von Ereignissen aus der Konversation
+(kein Bezug zu Nutzerkonto oder IP, nur Text + Zeitstempel):
+- "first_question" (Backlog #97): die erste Frage jeder Konversation -
+  Grundlage für eine Trend-/Lücken-Analyse.
+- "no_answer" (Nutzerwunsch 2026-09-01): eine Frage, auf die der Companion
+  laut eigener Systemanweisung explizit keine (oder nur teilweise eine)
+  Antwort aus den Quellen geben konnte (siehe app/main.py: NO_ANSWER_PHRASES).
+- "feedback" (Nutzerwunsch 2026-09-01): Daumen-hoch/-runter zu einer
+  konkreten Antwort (siehe static/question.js: attachFeedbackButtons).
+
+Alle drei teilen sich dieselbe Datei/denselben Namensraum, damit sich das
+Fragen-Log (question-log.html) chronologisch gemischt und nach Ereignistyp
+filterbar darstellen lässt. Ausschlüsse (System-Admin, Dev/Stabil) prüft
+einheitlich app/main.py: _should_log_question_event()."""
 import json
 import os
 import threading
@@ -31,12 +41,29 @@ def _save(entries: list[dict]) -> None:
     tmp.replace(QUESTION_LOG_FILE)
 
 
-def log_question(text: str) -> None:
+def _append(entry: dict) -> None:
     with _question_log_lock:
         entries = _load()
-        entries.append({"text": text, "timestamp": datetime.now(timezone.utc).isoformat()})
+        entries.append({**entry, "timestamp": datetime.now(timezone.utc).isoformat()})
         _save(entries)
 
 
+def log_question(text: str) -> None:
+    _append({"event_type": "first_question", "text": text})
+
+
+def log_no_answer(question: str, answer: str) -> None:
+    _append({"event_type": "no_answer", "text": question, "answer": answer})
+
+
+def log_feedback(question: str, answer: str, feedback: str) -> None:
+    _append({"event_type": "feedback", "text": question, "answer": answer, "feedback": feedback})
+
+
 def list_entries() -> list[dict]:
-    return sorted(_load(), key=lambda e: e["timestamp"], reverse=True)
+    entries = _load()
+    # Rückwärtskompatibel: vor der Einführung mehrerer Ereignistypen
+    # gespeicherte Einträge haben noch kein event_type-Feld.
+    for entry in entries:
+        entry.setdefault("event_type", "first_question")
+    return sorted(entries, key=lambda e: e["timestamp"], reverse=True)

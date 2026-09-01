@@ -2890,3 +2890,165 @@ def test_embed_expand_button_appends_current_lang_alongside_handoff_token():
     assert match
     handler_source = match.group(0)
     assert "handoff=${encodeURIComponent(token)}&${langParam}" in handler_source
+
+
+# --- question.js: ?q= öffnet die Konversation mit genau dieser Frage (2026-09-01) ---
+
+
+def _run_consume_ask_param(*, search: str) -> dict:
+    js_source = (STATIC_DIR / "question.js").read_text()
+    match = re.search(r"function consumeAskParam\(\).*?\n\}", js_source, re.S)
+    assert match, "consumeAskParam wurde in question.js nicht gefunden."
+    func_source = match.group(0)
+    script = f"""
+let currentPath = null;
+global.window = {{ location: {{ search: {json.dumps(search)}, pathname: '/' }} }};
+global.history = {{
+  replaceState: (state, title, url) => {{ currentPath = url; }},
+}};
+
+{func_source}
+
+console.log(JSON.stringify({{ ask: consumeAskParam(), path: currentPath }}));
+"""
+    result = subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True)
+    return json.loads(result.stdout)
+
+
+def test_consume_ask_param_returns_decoded_question():
+    result = _run_consume_ask_param(search="?q=Was%20ist%20der%20BetaCodex%3F")
+    assert result["ask"] == "Was ist der BetaCodex?"
+
+
+def test_consume_ask_param_removes_only_its_own_param():
+    result = _run_consume_ask_param(search="?lang=en&q=Frage")
+    assert result["path"] == "/?lang=en"
+
+
+def test_consume_ask_param_returns_null_when_absent():
+    result = _run_consume_ask_param(search="?lang=en")
+    assert result["ask"] is None
+
+
+def test_ask_param_prefill_and_submit_wired_after_restore_conversation_history():
+    js_source = (STATIC_DIR / "question.js").read_text()
+    match = re.search(
+        r"restoreConversationHistory\(\);\n\n.*?questionForm\.requestSubmit\(\);\n\}",
+        js_source,
+        re.S,
+    )
+    assert match, "Die ?q=-Vorbefüllung nach restoreConversationHistory() wurde nicht gefunden."
+    block = match.group(0)
+    assert "consumeAskParam()" in block
+    assert "questionInput.value = askParam" in block
+
+
+# --- question.js: Daumen-hoch/-runter je Antwort (2026-09-01) ---
+
+
+def test_attach_feedback_buttons_sends_question_answer_and_value():
+    js_source = (STATIC_DIR / "question.js").read_text()
+    match = re.search(r"function attachFeedbackButtons\(bubble, question, answer\) \{.*?\n\}\n", js_source, re.S)
+    assert match, "attachFeedbackButtons wurde in question.js nicht gefunden."
+    func_source = match.group(0)
+    assert "/api/answer-feedback" in func_source
+    assert "JSON.stringify({ question, answer, feedback: value })" in func_source
+    assert "buildButton('good', THUMBS_UP_ICON, 'index.feedbackGoodTitle')" in func_source
+    assert "buildButton('bad', THUMBS_DOWN_ICON, 'index.feedbackBadTitle')" in func_source
+
+
+def test_attach_feedback_buttons_shows_permanent_checkmark_on_success():
+    # Nutzerwunsch (2026-09-01, Nachtrag): der Haken bleibt nach
+    # erfolgreichem Absenden dauerhaft stehen, kein Zurücksetzen auf das
+    # ursprüngliche Daumen-Icon.
+    js_source = (STATIC_DIR / "question.js").read_text()
+    match = re.search(r"function attachFeedbackButtons\(bubble, question, answer\) \{.*?\n\}\n", js_source, re.S)
+    assert match
+    func_source = match.group(0)
+    assert "btn.innerHTML = FEEDBACK_SENT_ICON" in func_source
+    assert "feedback-btn--sent" in func_source
+    assert "originalIcon" not in func_source
+    assert "setTimeout" not in func_source
+
+
+def test_attach_feedback_buttons_locks_both_buttons_after_success():
+    js_source = (STATIC_DIR / "question.js").read_text()
+    match = re.search(r"function attachFeedbackButtons\(bubble, question, answer\) \{.*?\n\}\n", js_source, re.S)
+    assert match
+    func_source = match.group(0)
+    assert "function lockButtons()" in func_source
+    assert "b.disabled = true" in func_source
+    assert "feedback-btn--locked" in func_source
+    assert "lockButtons();" in func_source
+
+
+def test_attach_feedback_buttons_unlocks_both_buttons_after_failure():
+    js_source = (STATIC_DIR / "question.js").read_text()
+    match = re.search(r"function attachFeedbackButtons\(bubble, question, answer\) \{.*?\n\}\n", js_source, re.S)
+    assert match
+    func_source = match.group(0)
+    assert "function unlockButtons()" in func_source
+    assert "unlockButtons();" in func_source
+    assert "success = res.ok" in func_source
+
+
+def test_attach_speak_button_wires_up_feedback_buttons():
+    js_source = (STATIC_DIR / "question.js").read_text()
+    match = re.search(r"function attachSpeakButton\(bubble, question, answer\) \{.*?\n\}\n", js_source, re.S)
+    assert match, "attachSpeakButton wurde in question.js nicht gefunden."
+    assert "attachFeedbackButtons(bubble, question, answer)" in match.group(0)
+
+
+# --- question-log.js: neue Ereignistypen, Filter, Frage als Link (2026-09-01) ---
+
+
+def test_question_log_builds_ask_deep_link_opening_in_new_tab():
+    js_source = (STATIC_DIR / "question-log.js").read_text()
+    match = re.search(r"function buildQuestionLink\(text\) \{.*?\n\}", js_source, re.S)
+    assert match, "buildQuestionLink wurde in question-log.js nicht gefunden."
+    func_source = match.group(0)
+    assert "/?q=${encodeURIComponent(text)}" in func_source
+    assert "a.target = '_blank'" in func_source
+    assert "a.rel = 'noopener'" in func_source
+
+
+def test_question_log_event_type_labels_cover_all_three_types():
+    js_source = (STATIC_DIR / "question-log.js").read_text()
+    match = re.search(r"const EVENT_TYPE_LABEL_KEYS = \{.*?\n\};", js_source, re.S)
+    assert match, "EVENT_TYPE_LABEL_KEYS wurde in question-log.js nicht gefunden."
+    labels = match.group(0)
+    assert "first_question:" in labels
+    assert "no_answer:" in labels
+    assert "feedback:" in labels
+
+
+def test_question_log_filter_toggles_active_class_and_reapplies_filter():
+    js_source = (STATIC_DIR / "question-log.js").read_text()
+    match = re.search(r"filterButtons\.forEach\(\(btn\) => \{.*?\n\}\);", js_source, re.S)
+    assert match, "Die Filter-Button-Verdrahtung wurde in question-log.js nicht gefunden."
+    block = match.group(0)
+    assert "activeEventTypes.delete(eventType)" in block
+    assert "activeEventTypes.add(eventType)" in block
+    assert "applyFilter()" in block
+
+
+def test_question_log_answer_is_wrapped_in_collapsible_details():
+    # Nutzerwunsch (2026-09-01): die volle Antwort steht standardmäßig
+    # eingeklappt, damit das Log auf einen Blick überschaubar bleibt - ein
+    # Klick auf "Antwort anzeigen" öffnet sie.
+    js_source = (STATIC_DIR / "question-log.js").read_text()
+    match = re.search(r"if \(entry\.answer\) \{.*?\n  \}", js_source, re.S)
+    assert match, "Der Antwort-Block in buildEntryElement wurde nicht gefunden."
+    block = match.group(0)
+    assert "document.createElement('details')" in block
+    assert "document.createElement('summary')" in block
+    assert "t('questionLog.showAnswer')" in block
+
+
+def test_question_log_render_preserves_open_answer_details_across_filter():
+    js_source = (STATIC_DIR / "question-log.js").read_text()
+    match = re.search(r"function render\(entries\) \{.*?\n\}", js_source, re.S)
+    assert match, "render() wurde in question-log.js nicht gefunden."
+    block = match.group(0)
+    assert "querySelectorAll('details[open]')" in block
+    assert "openTimestamps.has(d.dataset.timestamp)" in block

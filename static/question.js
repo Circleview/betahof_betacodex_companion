@@ -788,7 +788,93 @@ function attachSpeedButton() {
   return btn;
 }
 
-function attachSpeakButton(bubble, answer) {
+const THUMBS_UP_ICON =
+  '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" ' +
+  'stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
+  '<path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3z"></path>' +
+  '<path d="M7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3"></path>' +
+  '</svg>';
+
+const THUMBS_DOWN_ICON =
+  '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" ' +
+  'stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
+  '<path d="M10 15v4a3 3 0 0 0 3 3l4-9V2H5.72a2 2 0 0 0-2 1.7l-1.38 9a2 2 0 0 0 2 2.3z"></path>' +
+  '<path d="M17 2h2.67A2.31 2.31 0 0 1 22 4v7a2.31 2.31 0 0 1-2.33 2H17"></path>' +
+  '</svg>';
+
+const FEEDBACK_SENT_ICON =
+  '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" ' +
+  'stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">' +
+  '<polyline points="20 6 9 17 4 12"></polyline>' +
+  '</svg>';
+
+// Nutzerwunsch (2026-09-01): Daumen-hoch/-runter pro Antwort - schreibt ein
+// Feedback-Ereignis ins Fragen-Log (siehe app/main.py:
+// submit_answer_feedback), damit sich gute/schlechte Antworten später
+// gezielt nachschlagen lassen (Frage+Antwort, im Fragen-Log per Klick
+// direkt im Konversationsmodus nachvollziehbar). Bewusst ohne Anmeldung/
+// Captcha erreichbar (siehe AnswerFeedbackIn). Nach erfolgreichem Absenden
+// bleibt der grüne Haken dauerhaft stehen und BEIDE Buttons werden
+// dauerhaft deaktiviert/ausgegraut - ein zweites Feedback zu derselben
+// Antwort ist nicht vorgesehen. Schlägt der Request fehl (z.B.
+// Netzwerkfehler), bleiben beide Buttons stattdessen normal nutzbar, damit
+// ein erneuter Versuch möglich ist.
+function attachFeedbackButtons(bubble, question, answer) {
+  const wrap = document.createElement('span');
+  wrap.className = 'answer-feedback';
+  const buttons = [];
+
+  function lockButtons() {
+    buttons.forEach((b) => {
+      b.disabled = true;
+      b.classList.add('feedback-btn--locked');
+    });
+  }
+
+  function unlockButtons() {
+    buttons.forEach((b) => {
+      b.disabled = false;
+    });
+  }
+
+  function buildButton(value, icon, titleKey) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = `feedback-btn feedback-btn--${value}`;
+    btn.innerHTML = icon;
+    btn.title = t(titleKey);
+    btn.setAttribute('aria-label', t(titleKey));
+    btn.addEventListener('click', async () => {
+      if (btn.disabled) return;
+      lockButtons();
+      let success = false;
+      try {
+        const res = await fetch('/api/answer-feedback', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ question, answer, feedback: value }),
+        });
+        success = res.ok;
+      } catch (err) {
+        success = false;
+      }
+      if (success) {
+        btn.innerHTML = FEEDBACK_SENT_ICON;
+        btn.classList.add('feedback-btn--sent');
+      } else {
+        unlockButtons();
+      }
+    });
+    buttons.push(btn);
+    return btn;
+  }
+
+  wrap.appendChild(buildButton('good', THUMBS_UP_ICON, 'index.feedbackGoodTitle'));
+  wrap.appendChild(buildButton('bad', THUMBS_DOWN_ICON, 'index.feedbackBadTitle'));
+  bubble.appendChild(wrap);
+}
+
+function attachSpeakButton(bubble, question, answer) {
   const btn = document.createElement('button');
   btn.type = 'button';
   btn.className = 'speak-answer-btn';
@@ -804,6 +890,7 @@ function attachSpeakButton(bubble, answer) {
   });
   bubble.appendChild(btn);
   bubble.appendChild(attachSpeedButton());
+  attachFeedbackButtons(bubble, question, answer);
   return btn;
 }
 
@@ -891,14 +978,14 @@ const conversationHistory = loadConversationHistory();
 // Wiederherstellen einer gespeicherten Konversation (beides schon bekannt)
 // laufen weiterhin beide Schritte direkt hintereinander, siehe
 // renderAnswerBubble unten.
-function renderAnswerText(bubble, answer) {
+function renderAnswerText(bubble, question, answer) {
   bubble.innerHTML = renderMarkdown(answer);
   // Unabhängig von Quellen/Zitaten (die ggf. erst später/asynchron
   // eintreffen, siehe attachAnswerSources) - fett hervorgehobene Begriffe
   // stehen schon jetzt fest, einmalig statt bei jedem Zwischenstand während
   // des Streamens neu zu binden.
   makeTermsClickable(bubble);
-  return attachSpeakButton(bubble, answer);
+  return attachSpeakButton(bubble, question, answer);
 }
 
 function attachAnswerSources(bubble, sources) {
@@ -912,8 +999,8 @@ function attachAnswerSources(bubble, sources) {
 // der gespeicherten Konversation nach einem Seitenwechsel - dort liegen
 // Antwort und Quellen von Anfang an beide vor, kein Grund für die beiden
 // Schritte oben zeitlich zu trennen.
-function renderAnswerBubble(bubble, answer, sources) {
-  const speakBtn = renderAnswerText(bubble, answer);
+function renderAnswerBubble(bubble, question, answer, sources) {
+  const speakBtn = renderAnswerText(bubble, question, answer);
   attachAnswerSources(bubble, sources);
   return speakBtn;
 }
@@ -929,7 +1016,7 @@ function restoreConversationHistory() {
 
     const { message: assistantMessage, bubble: assistantBubble } = buildChatMessage('assistant');
     chatMessages.appendChild(assistantMessage);
-    renderAnswerBubble(assistantBubble, answer, sources);
+    renderAnswerBubble(assistantBubble, question, answer, sources);
   });
   renderSidebarSources();
   // Ohne "smooth"/Verzögerung: beim Wiederherstellen soll die Ansicht
@@ -951,6 +1038,30 @@ if (handoffHistory && handoffHistory.length) {
 }
 
 restoreConversationHistory();
+
+// Nutzerwunsch (2026-09-01): Fragen-Log-Einträge (siehe question-log.js)
+// verlinken die protokollierte Frage über einen ?q=-Parameter - öffnet den
+// Konversationsmodus in einem neuen Tab und stellt genau diese Frage
+// automatisch, ohne sie erneut abtippen zu müssen. So lässt sich ein
+// gemeldeter Fall nachvollziehen und eine Quellenverbesserung direkt
+// dagegen testen. Entfernt NUR diesen einen Parameter aus der Adresszeile
+// (Muster wie conversation-handoff.js:consumeConversationHandoffToken),
+// andere gleichzeitig vorhandene Parameter (z.B. ?lang=) bleiben erhalten.
+function consumeAskParam() {
+  const params = new URLSearchParams(window.location.search);
+  const ask = params.get('q');
+  if (!ask) return null;
+  params.delete('q');
+  const query = params.toString();
+  history.replaceState(null, '', window.location.pathname + (query ? `?${query}` : ''));
+  return ask;
+}
+
+const askParam = consumeAskParam();
+if (askParam) {
+  questionInput.value = askParam;
+  questionForm.requestSubmit();
+}
 
 // Nutzerwunsch (2026-08-30): "Vollständig öffnen"-Icon im Embed-Widget -
 // öffnet den vollständigen Companion in einem neuen Tab, mit der laufenden
@@ -1119,7 +1230,7 @@ questionForm.addEventListener('submit', async (e) => {
         // u.U. spürbar langsamere Hervorhebungs-Berechnung zu warten - die
         // kommt erst später über das "done"-Event nach (siehe unten).
         finalAnswer = answer;
-        speakBtn = renderAnswerText(assistantBubble, answer);
+        speakBtn = renderAnswerText(assistantBubble, question, answer);
         if (earlySources) {
           attachAnswerSources(assistantBubble, earlySources);
           renderSidebarSources();

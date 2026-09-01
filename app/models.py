@@ -100,7 +100,17 @@ class CreativeRequestIn(BaseModel):
 
 
 class QuestionLogEntryOut(BaseModel):
+    # Nutzerwunsch (2026-09-01): das Fragen-Log kennt jetzt drei
+    # Ereignistypen ("first_question"/"no_answer"/"feedback", siehe
+    # app/question_log.py) statt nur der ersten Frage jeder Konversation -
+    # answer/feedback sind deshalb optional (nur bei den beiden neuen Typen
+    # gefüllt). Alte, bereits gespeicherte Einträge ohne event_type werden
+    # beim Lesen (question_log.list_entries) auf "first_question"
+    # normalisiert.
+    event_type: str
     text: str
+    answer: str | None = None
+    feedback: str | None = None
     timestamp: str
 
 
@@ -108,6 +118,17 @@ class FeedbackIn(BaseModel):
     message: str
     email: str = ""
     turnstile_token: str = ""
+
+
+class AnswerFeedbackIn(BaseModel):
+    # Nutzerwunsch (2026-09-01): Daumen-hoch/-runter je Antwort im
+    # Konversationsmodus (siehe static/question.js: attachFeedbackButtons) -
+    # bewusst ohne turnstile_token (analog zu SpeechIn/app/main.py:
+    # synthesize_speech: nur nach einer bereits erfolgreich beantworteten,
+    # selbst schon captcha-/ratenbegrenzten /api/ask-Anfrage erreichbar).
+    question: str
+    answer: str
+    feedback: str
 
 
 class ChunkRef(BaseModel):
