@@ -240,6 +240,15 @@ function devUserHeaders() {
 }
 
 function updateSourceManagementVisibility() {
+  // Nutzerwunsch (2026-09-02): Nutzer:innen ohne Quellen-Pfleger:innen-Rolle
+  // können auf dieser Seite nichts verwalten, nur die bereits importierten
+  // Quellen einsehen - "Quellen verwalten" als Überschrift ist für sie
+  // irreführend. Muss auch bei einem Sprachwechsel erneut gesetzt werden
+  // (siehe i18n:changed weiter unten), da applyStaticTranslations() das
+  // [data-i18n]-Attribut sonst wieder auf den Standardtext zurücksetzt.
+  document.getElementById('import-page-heading').textContent = hasPflegerRole()
+    ? t('import.title')
+    : t('import.titleReadOnly');
   quelltypBereich.classList.toggle('hidden', !hasPflegerRole());
   reindexBereich.classList.toggle('hidden', !hasPflegerRole());
   // Sichtbarkeit des Broken-Links-Buttons hängt zusätzlich von der Anzahl
@@ -3962,6 +3971,7 @@ function renderCreateAuthorDateRow(overrideAuthorValues, overrideDateValue) {
 }
 
 document.addEventListener('i18n:changed', () => {
+  updateSourceManagementVisibility();
   loadSources();
   loadAuthors();
   renderCreateAuthorDateRow();

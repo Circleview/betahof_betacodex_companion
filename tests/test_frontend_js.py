@@ -3167,3 +3167,34 @@ def test_open_url_popover_with_url_scrolls_the_popover_into_view():
     assert match, "openUrlPopoverWithUrl wurde in import.js nicht gefunden."
     func_source = match.group(0)
     assert "urlPopover.scrollIntoView(" in func_source
+
+
+# --- import.js: Seitentitel für Nutzer:innen ohne Pfleger:innen-Rolle (2026-09-02) ---
+
+
+def test_update_source_management_visibility_sets_read_only_heading_without_pfleger_role():
+    js_source = (STATIC_DIR / "import.js").read_text()
+    match = re.search(r"function updateSourceManagementVisibility\(\) \{.*?\n\}", js_source, re.S)
+    assert match, "updateSourceManagementVisibility wurde in import.js nicht gefunden."
+    func_source = match.group(0)
+    assert "t('import.title')" in func_source
+    assert "t('import.titleReadOnly')" in func_source
+    assert "hasPflegerRole()" in func_source
+    assert "import-page-heading" in func_source
+
+
+def test_i18n_changed_reapplies_source_management_visibility():
+    # Regression: applyStaticTranslations() (i18n.js) setzt [data-i18n]-
+    # Elemente bei jedem Sprachwechsel auf ihren Standardtext zurück - ohne
+    # erneuten Aufruf hier würde die rollenabhängige Überschrift nach einem
+    # Sprachwechsel wieder "Quellen verwalten" zeigen, selbst ohne
+    # Pfleger:innen-Rolle.
+    js_source = (STATIC_DIR / "import.js").read_text()
+    match = re.search(r"document\.addEventListener\('i18n:changed', \(\) => \{.*?\n\}\);", js_source, re.S)
+    assert match, "Der i18n:changed-Listener wurde in import.js nicht gefunden."
+    assert "updateSourceManagementVisibility();" in match.group(0)
+
+
+def test_import_page_heading_element_exists_in_html():
+    html = (STATIC_DIR / "import.html").read_text()
+    assert 'id="import-page-heading"' in html

@@ -66,6 +66,7 @@
   "auth.roleSystemAdmin": "System admin",
 
   "import.title": "Manage sources",
+  "import.titleReadOnly": "Underlying sources",
   "import.typeTextTitle": "Paste text",
   "import.typeUrlTitle": "URL",
   "import.typeFileTitle": "Upload PDF",

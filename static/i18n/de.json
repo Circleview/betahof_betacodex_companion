@@ -66,6 +66,7 @@
   "auth.roleSystemAdmin": "System-Admin",
 
   "import.title": "Quellen verwalten",
+  "import.titleReadOnly": "Zugrundliegende Quellen",
   "import.typeTextTitle": "Text einfügen",
   "import.typeUrlTitle": "URL",
   "import.typeFileTitle": "PDF hochladen",
