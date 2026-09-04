@@ -4541,6 +4541,78 @@ def test_other_pages_stay_denied_even_when_embed_enabled(client, monkeypatch):
     assert "frame-ancestors 'none'" in response.headers["Content-Security-Policy"]
 
 
+# Nutzerwunsch (2026-09-04): das Embed-Widget soll auch nutzbar sein, OHNE
+# die Early-Access-Sperre aufzuheben - vorher fing enforce_early_access
+# /embed.html und alle seine JS-/API-Abhängigkeiten ab, obwohl EMBED_ENABLED
+# und EARLY_ACCESS_PASSWORD technisch unabhängige Schalter sind.
+
+
+def test_embed_page_reachable_without_early_access_unlock(anon_client, monkeypatch):
+    monkeypatch.setenv("EMBED_ENABLED", "true")
+    monkeypatch.setenv("EARLY_ACCESS_PASSWORD", "geheim123")
+
+    response = anon_client.get("/embed.html")
+
+    assert response.status_code == 200
+    assert 'id="question-form"' in response.text
+
+
+def test_embed_static_dependencies_exempt_from_early_access(anon_client, monkeypatch):
+    monkeypatch.setenv("EMBED_ENABLED", "true")
+    monkeypatch.setenv("EARLY_ACCESS_PASSWORD", "geheim123")
+
+    for path in (
+        "/question.js",
+        "/markdown.js",
+        "/auth.js",
+        "/turnstile.js",
+        "/speech.js",
+        "/ndjson-stream.js",
+        "/conversation-handoff.js",
+    ):
+        response = anon_client.get(path)
+        assert response.status_code == 200, path
+        assert "early-access-form" not in response.text, path
+
+    favicon_response = anon_client.get("/icons/favicon.png")
+    assert favicon_response.status_code == 200
+    assert favicon_response.headers["content-type"].startswith("image/")
+
+
+def test_embed_api_dependencies_exempt_from_early_access(anon_client, monkeypatch):
+    monkeypatch.setenv("EMBED_ENABLED", "true")
+    monkeypatch.setenv("EARLY_ACCESS_PASSWORD", "geheim123")
+
+    assert anon_client.get("/api/turnstile-config").status_code == 200
+    assert anon_client.get("/api/auth/whoami").status_code == 200
+    assert anon_client.get("/api/sources").status_code == 200
+
+    # /api/ask, /api/speech und /api/answer-feedback sind POST-only - ein GET
+    # darauf erreicht bei tatsächlichem Durchlassen trotzdem das FastAPI-
+    # Routing (404/405 statt der immer-200 Gate-Seite mit Formular).
+    for path in ("/api/ask", "/api/speech", "/api/answer-feedback"):
+        response = anon_client.get(path)
+        assert 'id="early-access-form"' not in response.text, path
+
+
+def test_embed_exemption_stays_narrow(anon_client, monkeypatch):
+    # Regression-Schutz für die bewusste Entscheidung (2026-09-04): das
+    # "Vollständig öffnen"-Icon im Embed-Widget soll für anonyme
+    # Besucher:innen weiterhin auf der Early-Access-Gate-Seite landen, statt
+    # den kompletten Companion mit freizuschalten.
+    monkeypatch.setenv("EMBED_ENABLED", "true")
+    monkeypatch.setenv("EARLY_ACCESS_PASSWORD", "geheim123")
+
+    index_response = anon_client.get("/")
+    assert 'id="early-access-form"' in index_response.text
+
+    import_response = anon_client.get("/import.html")
+    assert 'id="early-access-form"' in import_response.text
+
+    handoff_response = anon_client.get("/api/conversation-handoff/some-token")
+    assert 'id="early-access-form"' in handoff_response.text
+
+
 def test_get_turnstile_config_returns_configured_site_key(client, monkeypatch):
     monkeypatch.setattr(main_module, "TURNSTILE_SITE_KEY", "1x00000000000000000000AA")
 

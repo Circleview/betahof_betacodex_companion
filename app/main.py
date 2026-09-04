@@ -256,6 +256,31 @@ _EARLY_ACCESS_EXEMPT_PATHS = {
     "/i18n.js",
     "/i18n/de.json",
     "/i18n/en.json",
+    # Nutzerwunsch (2026-09-04): das Einbetten-Widget soll unabhängig vom
+    # Aufheben der Early-Access-Sperre nutzbar sein - EMBED_ENABLED
+    # entscheidet weiterhin allein, ob /embed.html überhaupt existiert (statt
+    # 404, siehe get_embed_page). Liste enthält bewusst NUR, was für die
+    # eigentliche Frage-Antwort-Funktion des Widgets nötig ist - das
+    # "Vollständig öffnen"-Icon (Backlog #75, conversation-handoff.js) führt
+    # für anonyme Embed-Besucher:innen weiterhin zur Early-Access-Gate-Seite
+    # von index.html, da /api/conversation-handoff absichtlich NICHT
+    # exemptiert ist (createConversationHandoffToken() fängt das bereits
+    # ab und navigiert stattdessen ohne Token, siehe dortiger Kommentar).
+    "/embed.html",
+    "/icons/favicon.png",
+    "/question.js",
+    "/markdown.js",
+    "/auth.js",
+    "/turnstile.js",
+    "/speech.js",
+    "/ndjson-stream.js",
+    "/conversation-handoff.js",
+    "/api/ask",
+    "/api/turnstile-config",
+    "/api/auth/whoami",
+    "/api/sources",
+    "/api/speech",
+    "/api/answer-feedback",
     # Fix (2026-08-02): ohne diese Ausnahme griff die Sperre auch hier - der
     # Magic-Link-Token in der URL wurde nie geprüft, stattdessen bekam jede
     # Person ohne Early-Access-Cookie (also praktisch jeder erste Klick auf

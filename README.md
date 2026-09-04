@@ -203,6 +203,12 @@ einmal abrufbares Server-Handoff statt dauerhafter Speicherung, da
 Übergabe greift auch beim "Quelle ansehen/bearbeiten"-Link einer
 Zitatangabe, der ebenfalls in einem neuen Tab landet.
 
+Das Widget ist unabhängig von einer aktiven Early-Access-Sperre nutzbar -
+anonyme Besucher:innen können im Embed direkt fragen, ohne das
+Early-Access-Passwort zu kennen. Nur das "Vollständig öffnen"-Icon landet
+für sie weiterhin auf der Early-Access-Gate-Seite, da der vollständige
+Companion (`/`, `/import.html`) davon unberührt bleibt.
+
 ---
 
 ## Wie es funktioniert (RAG)
@@ -417,6 +423,7 @@ Commit-/Tag-Nachrichten in Git.
 
 | Version | Wesentliche Änderungen |
 |---|---|
+| v0.62.0 | Neu: das Embed-Widget (`/embed.html`) ist jetzt auch nutzbar, ohne die Early-Access-Sperre aufzuheben - bisher fing die Early-Access-Middleware das Widget selbst sowie all seine JS-/API-Abhängigkeiten (u. a. `/api/ask`, `/api/turnstile-config`, `/api/auth/whoami`) ab, obwohl `EMBED_ENABLED` und `EARLY_ACCESS_PASSWORD` technisch unabhängige Schalter sind - beide waren bisher faktisch dennoch aneinander gekoppelt. Das "Vollständig öffnen"-Icon führt für anonyme Embed-Besucher:innen bewusst weiterhin zur Early-Access-Gate-Seite, da der vollständige Companion selbst nicht mitfreigegeben wird |
 | v0.61.7 | Fix: Tippfehler in der v0.61.6-Überschrift für Nutzer:innen ohne Quellen-Pfleger:innen-Rolle - "Zugrundliegende" → "Zugrundeliegende Quellen" |
 | v0.61.6 | Fix: die Quellenverwaltung zeigte für Nutzer:innen ohne Quellen-Pfleger:innen-Rolle irreführend "Quellen verwalten" als Überschrift, obwohl sie dort nichts verwalten können, nur die bereits importierten Quellen einsehen - zeigt für sie jetzt "Zugrundliegende Quellen" ("Underlying sources") |
 | v0.61.5 | Fix: in der Konversationsansicht konnte dieselbe Quelle mehrfach in der Sidebar erscheinen, wenn zwei verschiedene `[n]`-Verweise auf unterschiedliche Chunks derselben Quelle zeigten (identisch aussehende Einträge, dedupliziert wurde bisher nach chunk_id statt nach source_id). Fix: der automatische Link-Check meldet gelegentlich einen tatsächlich funktionierenden Link fälschlich als nicht erreichbar - Quellen-Pfleger:innen können den Link jetzt im Bearbeiten-Panel nach eigener manueller Prüfung selbst als geprüft markieren (setzt den Status zurück bis zur nächsten automatischen Prüfung, im Änderungs-Log protokolliert und dort rückgängig machbar). Fix: nahm man einen Quellenvorschlag an, während man tief in der Vorschlagsliste gescrollt war, blieb das sich öffnende Import-Formular im mobilen Akkordeon-Modus außerhalb des sichtbaren Bereichs - scrollt jetzt automatisch dorthin |
