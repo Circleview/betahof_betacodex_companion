@@ -9,7 +9,12 @@
   --color-accent-tint: rgba(178, 47, 28, 0.08);
   --color-warning: #9a6400;
   --color-warning-tint: rgba(154, 100, 0, 0.1);
-  --radius: 6px;
+  /* Nutzerwunsch (Livegang-Vorbereitung, 2026-09-10): an betacodex.org/home
+     angeglichen (dort per getComputedStyle() auf den Primär-Buttons
+     gemessen: 2.5px, siehe button[type="submit"]-Regel weiter unten) - eine
+     zentrale Variable, damit Eingabefelder/Textboxen/Panels/Popovers etc.
+     konsistent mitziehen statt nur die Buttons. */
+  --radius: 2.5px;
   --font-sans: "Inter", -apple-system, "system-ui", "Segoe UI", Roboto,
     "Helvetica Neue", Arial, sans-serif;
   /* Explore-Modus (Nutzerwunsch 2026-08-23): eigene, gedeckte Cluster-Palette
@@ -775,12 +780,15 @@ button {
    dessen "Get started"/"Join now"-Buttons ermittelt (Element-Picker
    funktionierte auf der Zielseite nicht zuverlässig, ein erster Versuch mit
    999px beruhte auf einer fehlgedeuteten DevTools-Hervorhebung im
-   Screenshot). Akzentfarbe/Font-Stack waren bereits identisch. */
+   Screenshot). Akzentfarbe/Font-Stack waren bereits identisch. border-radius
+   nutzt jetzt wieder var(--radius) (die selbst auf 2.5px angepasst wurde,
+   siehe :root) statt eines eigenen Literals - eine einzige Quelle für den
+   ganzen App-weit konsistenten Wert. */
 button[type="submit"], .send-button, #popover-load, #popover-upload {
   background: var(--color-accent);
   color: #fff;
   border: none;
-  border-radius: 2.5px;
+  border-radius: var(--radius);
   padding: 0.8rem 3rem;
   font-size: 0.95rem;
   font-weight: 700;
