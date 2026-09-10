@@ -216,6 +216,20 @@ h3 {
   margin-bottom: 1rem;
 }
 
+/* Nutzerwunsch (Livegang-Vorbereitung, 2026-09-10): Links im Rechtstext
+   hatten bisher keine eigene Regel und fielen auf die Browser-Vorgabe
+   zurück (Standard-Blau statt Akzentfarbe) - gleiches Muster wie
+   #chat-messages a. */
+.legal-page a {
+  color: var(--color-accent);
+  text-decoration: underline;
+}
+
+.legal-page a:hover,
+.legal-page a:focus-visible {
+  color: var(--color-accent-hover);
+}
+
 .legal-updated {
   color: var(--color-text-muted);
   font-size: 0.9rem;
