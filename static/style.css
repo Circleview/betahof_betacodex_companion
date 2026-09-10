@@ -4195,6 +4195,29 @@ details a {
   color: var(--color-text);
 }
 
+/* Nutzerwunsch (Livegang-Vorbereitung, 2026-09-10): laienverständliche
+   "In Kürze"-Zusammenfassung oben auf den Rechtstext-Seiten (Datenschutz),
+   VOR den formal-juristischen Abschnitten - gleiches Kasten-Muster wie
+   .creative-disclaimer oben, aber neutral statt warnend eingefärbt, da hier
+   keine Vorsicht signalisiert werden soll, nur ein schneller Überblick. */
+.legal-summary {
+  margin: 0 0 1.5rem;
+  padding: 0.9rem 1.1rem;
+  border-left: 3px solid var(--color-accent);
+  background: var(--color-surface);
+  border-radius: var(--radius);
+  font-size: 0.92rem;
+  line-height: 1.55;
+}
+
+.legal-summary p {
+  margin: 0 0 0.6rem;
+}
+
+.legal-summary p:last-child {
+  margin-bottom: 0;
+}
+
 .creative-disclaimer a {
   color: var(--color-accent);
 }
