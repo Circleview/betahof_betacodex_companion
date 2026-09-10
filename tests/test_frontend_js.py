@@ -3344,3 +3344,72 @@ def test_build_embed_snippet_includes_resize_listener_matching_embed_html():
     # übereinstimmen, sonst bleibt die Höhenanpassung wirkungslos.
     assert "betacodex-chat-embed-resize" in embed_html
     assert "e.source!==f.contentWindow" in snippet.replace(" ", "")
+
+
+# --- legal-page-lang-nav.js: Sprachumschalter navigiert auf Rechtstext-Seiten (2026-09-10) ---
+
+
+def _run_legal_page_lang_nav(*, pathname: str, clicked_lang: str):
+    """Simuliert einen Klick auf den DE/EN-Button im Sprachumschalter auf
+    einer der vier Rechtstext-Seiten und gibt zurück, wohin (falls
+    überhaupt) navigiert wurde."""
+    js_source = (STATIC_DIR / "legal-page-lang-nav.js").read_text()
+    script = f"""
+global.window = {{ location: {{ pathname: {json.dumps(pathname)}, href: '' }} }};
+const listeners = [];
+const switcher = {{
+  addEventListener: (type, handler, useCapture) => listeners.push({{ type, handler, useCapture }}),
+}};
+global.document = {{ getElementById: (id) => (id === 'lang-switcher' ? switcher : null) }};
+
+{js_source}
+
+const btn = {{ textContent: {json.dumps(clicked_lang.upper())}, closest: () => btn }};
+let defaultPrevented = false;
+let stopped = false;
+const event = {{
+  target: btn,
+  preventDefault: () => {{ defaultPrevented = true; }},
+  stopImmediatePropagation: () => {{ stopped = true; }},
+}};
+listeners[0].handler(event);
+console.log(JSON.stringify({{
+  navigatedTo: global.window.location.href,
+  defaultPrevented,
+  stopped,
+  registeredCapture: listeners[0].useCapture,
+}}));
+"""
+    return _run_node(script)
+
+
+def test_legal_page_lang_nav_navigates_to_counterpart_page():
+    result = _run_legal_page_lang_nav(pathname="/datenschutz.html", clicked_lang="en")
+    assert result["navigatedTo"] == "/privacy.html"
+    assert result["defaultPrevented"] is True
+    assert result["stopped"] is True
+
+
+def test_legal_page_lang_nav_does_not_navigate_for_current_language():
+    result = _run_legal_page_lang_nav(pathname="/datenschutz.html", clicked_lang="de")
+    assert result["navigatedTo"] == ""
+
+
+def test_legal_page_lang_nav_listener_uses_capture_phase():
+    # Muss VOR dem eigenen setLang()-Klick-Handler des Buttons laufen (siehe
+    # i18n.js: renderLangSwitcher) - nur die Capture-Phase garantiert das.
+    result = _run_legal_page_lang_nav(pathname="/impressum.html", clicked_lang="en")
+    assert result["registeredCapture"] is True
+    assert result["navigatedTo"] == "/legal-notice.html"
+
+
+def test_legal_page_lang_nav_covers_all_four_legal_pages():
+    cases = [
+        ("/datenschutz.html", "en", "/privacy.html"),
+        ("/privacy.html", "de", "/datenschutz.html"),
+        ("/impressum.html", "en", "/legal-notice.html"),
+        ("/legal-notice.html", "de", "/impressum.html"),
+    ]
+    for pathname, clicked_lang, expected in cases:
+        result = _run_legal_page_lang_nav(pathname=pathname, clicked_lang=clicked_lang)
+        assert result["navigatedTo"] == expected, pathname

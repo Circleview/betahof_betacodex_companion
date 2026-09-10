@@ -10,11 +10,20 @@
 <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
 <title>Datenschutzerklärung – BetaCodex Chat</title>
 <link rel="stylesheet" href="/style.css">
+<!-- Fürs Feedback-Popover im Footer (Backlog #85) - die Turnstile-Anbindung
+     wird zentral von turnstile.js definiert (importiert über footer.js),
+     genau wie auf index.html/import.html. -->
+<script src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit" async></script>
 </head>
 <body>
 <a href="#legal-content" class="skip-link" data-i18n="common.skipToContent"></a>
-<header>
-  <h1><a href="/" id="brand-link" class="brand-link"><span class="brand-dot" aria-hidden="true"></span>BetaCodex Chat</a></h1>
+<!-- Nutzerwunsch (Livegang-Vorbereitung, 2026-09-10): vollständiger
+     Navigations-Header wie auf den übrigen Seiten (Chat/Kreativ/Explore/
+     Fragen-Log-Icons, Sprachumschalter, Login) - zuvor nur der bloße
+     Marken-Link, siehe header.js für den Aufbau. -->
+<header id="site-header">
+  <span id="lang-switcher" class="lang-switcher"></span>
+  <span id="auth-widget" class="auth-widget"></span>
 </header>
 
 <section id="legal-content" class="legal-page" tabindex="-1">
@@ -27,22 +36,25 @@
 
   <div class="legal-summary">
     <p><strong>In Kürze:</strong> BetaCodex Chat ist ein KI-Wissensassistent,
-    der Fragen zum BetaCodex ausschließlich auf Basis einer kuratierten
-    Quellensammlung beantwortet - mit Quellenverweis zu jeder Aussage, statt
-    die Texte selbst durchsuchen zu müssen. Ein zusätzlicher Kreativ-Modus
-    hilft beim Verfassen eigener BetaCodex-informierter Texte.</p>
+    der Fragen zum BetaCodex auf Basis einer kuratierten Quellensammlung
+    beantwortet - mit Quellenverweis zu jeder Aussage. Die Quellen sind,
+    anders als bei anderen KI-Assistenten, kuratiert für echte
+    Dezentralisierung, funktionierende Selbstorganisation und demokratische
+    Organisationsgestaltung. Ein zusätzlicher Kreativ-Modus unterstützt beim
+    Verfassen eigener Texte zum BetaCodex.</p>
     <p>Betrieben wird der Dienst von der <a href="/impressum.html">Beta Hof
     GmbH</a>, gehostet auf einem Server in Deutschland (Hetzner Cloud,
     Falkenstein).</p>
-    <p>Für gewöhnliche Besucher:innen findet <strong>kein</strong>
-    Analyse-/Werbe-Tracking statt und es wird kein Nutzerkonto benötigt. Zur
-    internen Qualitätssicherung speichern wir dauerhaft einen kleinen,
-    nicht mit IP-Adresse oder Konto verknüpften Ausschnitt an Fragen (die
-    jeweils erste Frage jeder Konversation, unbeantwortete Fragen sowie
-    Fragen mit abgegebenem Feedback, siehe Abschnitt 5) - diese Daten sind
-    für sich genommen nicht Ihrer Person zuordenbar. Personenbezogen wird es
-    nur für eingeladene Redakteur:innen, die sich per E-Mail-Login anmelden
-    (Abschnitt 8). Details zu allen Punkten in den folgenden Abschnitten.</p>
+    <p>Für Besucher:innen findet <strong>kein</strong> Analyse-/Werbe-Tracking
+    statt und es wird kein Nutzerkonto benötigt. Zur internen
+    Qualitätssicherung speichern wir dauerhaft einen kleinen, nicht mit
+    IP-Adresse oder Konto verknüpften Ausschnitt an Fragen (die jeweils
+    erste Frage einer neuen Konversation, Fragen zu denen der
+    Wissensassistent keine Antworten findet, sowie Fragen mit abgegebenem
+    Feedback, siehe Abschnitt 5) - diese Daten sind keiner Person
+    zuordenbar. Eine Zuordnung erfolgt ausschließlich für eingeladene
+    Redakteur:innen, die sich per E-Mail-Login anmelden (Abschnitt 8).
+    Details zu allen Punkten in den folgenden Abschnitten.</p>
   </div>
 
   <h3>1. Verantwortlicher</h3>
@@ -207,6 +219,8 @@
 
 <footer class="site-footer" id="site-footer"></footer>
 
+<script src="/legal-page-lang-nav.js"></script>
+<script type="module" src="/init-header.js"></script>
 <script type="module" src="/init-footer.js"></script>
 </body>
 </html>
