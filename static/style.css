@@ -769,12 +769,16 @@ button {
    bekäme ohne diese Ergänzung keine Akzentfarbe. Für bestehende
    .send-button-Elemente (immer schon type="submit", siehe index.html/
    embed.html) ändert das nichts. */
+/* Nutzerwunsch (Livegang-Vorbereitung, 2026-09-10): Look-and-Feel an
+   betacodex.org/home angeglichen, da dieses Tool dort eingebettet wird -
+   Werte (Pill-Form, Padding, Akzentfarbe bereits identisch) per Chrome-
+   DevTools von dessen "Get started"/"Join now"-Buttons übernommen. */
 button[type="submit"], .send-button, #popover-load, #popover-upload {
   background: var(--color-accent);
   color: #fff;
   border: none;
-  border-radius: var(--radius);
-  padding: 0.7rem 1.75rem;
+  border-radius: 999px;
+  padding: 0.8rem 3rem;
   font-size: 0.95rem;
   font-weight: 700;
   cursor: pointer;
