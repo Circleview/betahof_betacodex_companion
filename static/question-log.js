@@ -26,6 +26,13 @@ const filterButtons = Array.from(document.querySelectorAll('.question-log-filter
 
 let allEntries = [];
 const activeEventTypes = new Set(filterButtons.map((btn) => btn.dataset.eventType));
+// Nutzerwunsch (Livegang-Vorbereitung, 2026-09-10): Löschfunktion für
+// einzelne Einträge (jeden event_type) - zweistufige Bestätigung direkt am
+// Button statt eines nativen confirm()-Dialogs, gleiches Muster wie das
+// Abbrechen eines Imports in import.js. Modul-weites Set statt lokalem
+// Zustand pro Element, damit es ein erneutes render() (z.B. durch einen
+// Filter-Klick) übersteht.
+const deleteConfirmPendingIds = new Set();
 
 function isSameDay(a, b) {
   return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
@@ -134,7 +141,41 @@ function buildEntryElement(entry) {
     li.appendChild(details);
   }
 
+  const deleteBtn = document.createElement('button');
+  deleteBtn.type = 'button';
+  deleteBtn.className = 'link-button question-log-delete-button';
+  deleteBtn.textContent = deleteConfirmPendingIds.has(entry.id)
+    ? t('questionLog.deleteConfirmButton')
+    : t('questionLog.deleteButton');
+  deleteBtn.addEventListener('click', () => deleteEntry(entry));
+  li.appendChild(deleteBtn);
+
   return li;
+}
+
+// Nutzerwunsch (Livegang-Vorbereitung, 2026-09-10): löscht einen einzelnen
+// Fragen-Log-Eintrag unwiderruflich (jeden event_type). Zweistufige
+// Bestätigung direkt am Button statt eines nativen confirm()-Dialogs,
+// siehe deleteConfirmPendingIds oben.
+async function deleteEntry(entry) {
+  if (!deleteConfirmPendingIds.has(entry.id)) {
+    deleteConfirmPendingIds.add(entry.id);
+    applyFilter();
+    return;
+  }
+  try {
+    const res = await fetch(`/api/question-log/${entry.id}`, {
+      method: 'DELETE',
+      headers: { 'X-Lang': getLang() },
+    });
+    if (!res.ok) throw new Error();
+    deleteConfirmPendingIds.delete(entry.id);
+    allEntries = allEntries.filter((e) => e.id !== entry.id);
+    applyFilter();
+  } catch (err) {
+    statusEl.textContent = t('questionLog.deleteFailed');
+    statusEl.classList.remove('hidden');
+  }
 }
 
 function render(entries) {

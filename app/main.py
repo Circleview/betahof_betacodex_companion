@@ -2522,6 +2522,21 @@ def get_question_log(_user: str = Depends(require_role(users.QUELLEN_PFLEGER))):
     return question_log.list_entries()
 
 
+# Nutzerwunsch (Livegang-Vorbereitung, 2026-09-10): löscht einen einzelnen
+# Fragen-Log-Eintrag unwiderruflich (jeden event_type - erste Frage,
+# unbeantwortete Frage, Feedback) - deckt das in der Datenschutzerklärung
+# (Abschnitt 5/11) beschriebene, zuvor nur manuelle Löschen tatsächlich als
+# Funktion ab. Dieselbe Rolle wie beim Lesen (QUELLEN_PFLEGER), keine
+# strengere Sonderregel für diesen Endpoint.
+@app.delete("/api/question-log/{entry_id}", response_model=MessageOut)
+def delete_question_log_entry(
+    entry_id: str, x_lang: str = Header(default=i18n.DEFAULT_LANG), _user: str = Depends(require_role(users.QUELLEN_PFLEGER))
+):
+    if not question_log.delete_entry(entry_id):
+        raise HTTPException(404, i18n.get_message("question_log_entry_not_found", x_lang))
+    return MessageOut(detail=i18n.get_message("question_log_entry_deleted", x_lang))
+
+
 ANSWER_FEEDBACK_VALUES = {"good", "bad"}
 
 
@@ -3538,6 +3553,7 @@ def _ask_event_stream(
     query_embedding,
     history,
     should_log_question_events,
+    first_question_log_id,
 ):
     """Generator für die NDJSON-Stream-Antwort von /api/ask: ein frühes
     "sources"-Event (Titel/Autor:in/Link, siehe unten), dann ein "delta"-
@@ -3633,6 +3649,13 @@ def _ask_event_stream(
     if should_log_question_events and NO_ANSWER_PHRASES.get(lang, NO_ANSWER_PHRASES["de"]) in answer_text:
         question_log.log_no_answer(question_text, answer_text)
 
+    # Nutzerwunsch (Livegang-Vorbereitung, 2026-09-10): die Antwort zur
+    # ersten Frage soll ebenfalls im Fragen-Log stehen - log_question() oben
+    # in ask() konnte sie noch nicht kennen (lief bewusst VOR der Suche,
+    # siehe dortiger Kommentar), wird hier nachgetragen.
+    if first_question_log_id:
+        question_log.set_answer(first_question_log_id, answer_text)
+
     # Backlog (2026-07-31, ergaenzt 2026-08-03): der fertige Antworttext
     # steht hier bereits fest - die folgende Highlight-Berechnung (lokales
     # Embedding-Modell, siehe _compute_occurrence_highlights/
@@ -3681,10 +3704,14 @@ def ask(question: QuestionIn, request: Request, x_lang: str = Header(default=i18
     # Backlog #97: anonymisiertes Log der ersten Frage einer Konversation -
     # bewusst schon hier, VOR der eigentlichen RAG-Suche, damit auch Fragen
     # ohne Treffer erfasst werden (gerade die sind für die Lücken-Analyse
-    # interessant). Ausschlüsse siehe _should_log_question_event().
+    # interessant). Ausschlüsse siehe _should_log_question_event(). Die id
+    # wird unten an _ask_event_stream weitergereicht, das die Antwort
+    # nachträgt, sobald sie feststeht (Nutzerwunsch, Livegang-Vorbereitung
+    # 2026-09-10, siehe question_log.set_answer).
     should_log_question_events = _should_log_question_event(request)
+    first_question_log_id = None
     if question.is_first_message and should_log_question_events:
-        question_log.log_question(question.question)
+        first_question_log_id = question_log.log_question(question.question)
 
     sources = _load_sources()
     if not sources:
@@ -3869,6 +3896,7 @@ def ask(question: QuestionIn, request: Request, x_lang: str = Header(default=i18
             query_embedding,
             history,
             should_log_question_events,
+            first_question_log_id,
         ),
         media_type="application/x-ndjson",
     )

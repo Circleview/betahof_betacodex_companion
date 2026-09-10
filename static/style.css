@@ -2517,6 +2517,16 @@ button.send-button {
   margin: 0.3rem 0 0;
 }
 
+/* Nutzerwunsch (Livegang-Vorbereitung, 2026-09-10): Löschen-Button pro
+   Eintrag - klein/dezent wie summary oben, damit er im ohnehin dichten
+   Zeitstrahl nicht dominiert. */
+.question-log-delete-button {
+  display: block;
+  margin: 0.4rem 0 0;
+  font-size: 0.8rem;
+  font-weight: 400;
+}
+
 .question-log-answer-details summary {
   cursor: pointer;
   font-size: 0.8rem;

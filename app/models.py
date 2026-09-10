@@ -107,6 +107,7 @@ class QuestionLogEntryOut(BaseModel):
     # gefüllt). Alte, bereits gespeicherte Einträge ohne event_type werden
     # beim Lesen (question_log.list_entries) auf "first_question"
     # normalisiert.
+    id: str
     event_type: str
     text: str
     answer: str | None = None

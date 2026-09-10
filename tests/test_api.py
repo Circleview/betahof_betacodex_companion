@@ -1673,6 +1673,28 @@ def test_get_question_log_returns_entries_for_pfleger(client, monkeypatch):
     assert "Frage einer Pflegerin" in texts
 
 
+def test_delete_question_log_entry_requires_pfleger_role(anon_client):
+    response = anon_client.delete("/api/question-log/some-id")
+    assert response.status_code == 403
+
+
+def test_delete_question_log_entry_returns_404_for_unknown_id(client, monkeypatch):
+    monkeypatch.setattr(main_module, "IS_DEV_ENVIRONMENT", False)
+    response = client.delete("/api/question-log/does-not-exist")
+    assert response.status_code == 404
+
+
+def test_delete_question_log_entry_removes_it(client, monkeypatch):
+    monkeypatch.setattr(main_module, "IS_DEV_ENVIRONMENT", False)
+    client.post("/api/ask", json={"question": "Frage einer Pflegerin", "is_first_message": True})
+    entry_id = question_log.list_entries()[0]["id"]
+
+    response = client.delete(f"/api/question-log/{entry_id}")
+
+    assert response.status_code == 200
+    assert question_log.list_entries() == []
+
+
 def test_question_log_entries_have_first_question_event_type(client, monkeypatch):
     monkeypatch.setattr(main_module, "IS_DEV_ENVIRONMENT", False)
     client.post("/api/ask", json={"question": "Frage einer Pflegerin", "is_first_message": True})
@@ -1680,8 +1702,24 @@ def test_question_log_entries_have_first_question_event_type(client, monkeypatch
     entries = question_log.list_entries()
 
     assert entries[0]["event_type"] == "first_question"
-    assert entries[0].get("answer") is None
     assert entries[0].get("feedback") is None
+
+
+def test_first_question_log_entry_gets_answer_attached(client, monkeypatch):
+    # Nutzerwunsch (Livegang-Vorbereitung, 2026-09-10): log_question() läuft
+    # bewusst VOR der RAG-Suche/Antwort-Erzeugung (siehe app/main.py: ask()),
+    # die Antwort wird deshalb erst nachträglich per question_log.set_answer
+    # ergänzt, sobald _ask_event_stream sie fertig hat.
+    monkeypatch.setattr(main_module, "IS_DEV_ENVIRONMENT", False)
+    client.post("/api/sources", json={"title": "Q", "text": "Text."})
+
+    res = client.post("/api/ask", json={"question": "Frage einer Pflegerin", "is_first_message": True})
+    assert res.status_code == 200
+
+    entries = question_log.list_entries()
+
+    assert entries[0]["event_type"] == "first_question"
+    assert entries[0]["answer"] == "Testantwort [1]."
 
 
 def test_question_log_normalizes_legacy_entries_without_event_type(client, monkeypatch):
@@ -1756,6 +1794,7 @@ def test_answer_feedback_logs_entry_with_question_answer_and_value(client, monke
     entries = question_log.list_entries()
     assert len(entries) == 1
     assert entries[0] == {
+        "id": entries[0]["id"],
         "event_type": "feedback",
         "text": "Was ist der BetaCodex?",
         "answer": "Antworttext [1].",
