@@ -209,6 +209,15 @@ Early-Access-Passwort zu kennen. Nur das "Vollständig öffnen"-Icon landet
 für sie weiterhin auf der Early-Access-Gate-Seite, da der vollständige
 Companion (`/`, `/import.html`) davon unberührt bleibt.
 
+Das generierte `<iframe>`-Snippet passt sich dynamisch zur
+Einbettungsumgebung an: die Breite füllt per CSS den verfügbaren Platz bis
+zu einer einstellbaren max-width, die Höhe wird per `postMessage` vom Embed
+selbst gemeldet (wächst z. B. mit jeder neuen Chat-Nachricht) und vom
+kleinen Inline-Skript im Snippet übernommen. Startet standardmäßig auf
+Englisch (nicht anhand der Browser-Sprache geraten, da Drittseiten-
+Besucher:innen sprachlich nicht zwangsläufig dazu passen) - der
+Sprachumschalter bleibt bedienbar.
+
 ---
 
 ## Wie es funktioniert (RAG)
@@ -423,6 +432,7 @@ Commit-/Tag-Nachrichten in Git.
 
 | Version | Wesentliche Änderungen |
 |---|---|
+| v0.63.0 | Neu (Livegang-Vorbereitung): automatische Sprachumschaltung im Konversations- und Kreativ-Modus (Haupt-Website + Embed) anhand der tatsächlichen Antwort/des erzeugten Dokuments, mit kurzem Hinweis im Chat bzw. über der Kreativ-Textbox (30s Auto-Hide); Standard-Sprache jetzt überall Englisch; responsives Embed-iframe (Breite/Höhe passen sich der Einbettungsumgebung an, Mobil-Erkennung bleibt korrekt); Rename "BetaCodex Companion" → "BetaCodex Chat" überall im Code/Header/Mails/Manifest; eigene Impressum-Seite (DE+EN) statt externem Link; Early-Access-Sperre per Feature-Toggle deaktivierbar (Code bleibt für Reaktivierung erhalten); Look-and-Feel (Button-Rundung/-Padding) an betacodex.org/home angeglichen; Datenschutzerklärung an tatsächliche Funktionen angeglichen (u. a. Speicherung von erster Frage/unbeantworteten Fragen/Feedback korrekt dokumentiert) plus laienverständliche "In Kürze"-Zusammenfassung; vollständiger Navigations-Header auch auf den vier Rechtstext-Seiten; Fragen-Log: Einträge einzeln löschbar, Antwort zur ersten Frage wird jetzt mitgespeichert |
 | v0.62.2 | Fix: Konsolen-Warnung "[Cloudflare Turnstile] Unable to find onload callback 'onTurnstileLoad'" auf allen Seiten mit Cloudflare-Turnstile-Einbindung (`index.html`, `import.html`, `explore.html`, `creative.html`, `embed.html`, `question-log.html`, `changelog.html`) entfernt - der `?onload=onTurnstileLoad`-Query-Parameter im `<script>`-Tag verlangte, dass der Callback schon existiert, wenn Cloudflares async geladenes SDK fertig ist, was das als ES-Modul deferred ausgeführte `turnstile.js` nicht immer schaffte. Rein kosmetisch (ein bereits vorhandener Fallback hielt die Funktion intakt), aber verwirrend in der Konsole. `turnstile.js` prüft jetzt direkt (per kurzem Polling) auf `window.turnstile`, ohne noch auf einen Callback angewiesen zu sein - `?onload=` und das jetzt überflüssige `defer` sind aus allen sieben `<script>`-Tags entfernt |
 | v0.62.1 | Fix (intern, keine Verhaltensänderung): zwei mechanische Code-Duplikate entfernt (ponytail-Audit) - `tests/test_frontend_js.py` nutzt jetzt einen gemeinsamen `_run_node()`-Helfer statt 36 identischer `subprocess.run`/`json.loads`-Stellen, `app/main.py` bündelt die fünf wortgleichen Sleep-Loop-Hintergrund-Worker (URL-Gesundheits-Check, Quellenvorschlag-Suche, Zusammenfassungs-Nachzug, Autor:innen-Foto-Cache, Web-Allowlist-Crawl) in einer generischen `_run_periodic()`. Takt, Fehlerbehandlung und alle `_..._once()`-Funktionen unverändert, 952/952 Tests weiterhin grün |
 | v0.62.0 | Neu: das Embed-Widget (`/embed.html`) ist jetzt auch nutzbar, ohne die Early-Access-Sperre aufzuheben - bisher fing die Early-Access-Middleware das Widget selbst sowie all seine JS-/API-Abhängigkeiten (u. a. `/api/ask`, `/api/turnstile-config`, `/api/auth/whoami`) ab, obwohl `EMBED_ENABLED` und `EARLY_ACCESS_PASSWORD` technisch unabhängige Schalter sind - beide waren bisher faktisch dennoch aneinander gekoppelt. Das "Vollständig öffnen"-Icon führt für anonyme Embed-Besucher:innen bewusst weiterhin zur Early-Access-Gate-Seite, da der vollständige Companion selbst nicht mitfreigegeben wird |
