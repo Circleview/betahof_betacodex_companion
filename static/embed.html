@@ -70,5 +70,28 @@
 </section>
 
 <script type="module" src="/question.js"></script>
+<!-- Nutzerwunsch (Livegang-Vorbereitung, 2026-09-10): meldet die tatsächliche
+     Dokumenthöhe per postMessage an das einbettende Fenster, sooft sie sich
+     ändert (Breite löst buildEmbedSnippet in footer.js rein per CSS, siehe
+     dortiger Kommentar). Inline statt eigener Datei (ponytail-Review) - nur
+     hier genutzt, spart einen zusätzlichen HTTP-Request für ein Widget, das
+     auf fremden Seiten möglichst schnell laden soll, sowie einen eigenen
+     Early-Access-Exempt-Eintrag. ResizeObserver auf documentElement statt
+     manueller Aufrufe an jeder Stelle, die den Inhalt verändern könnte (neue
+     Nachricht, Sprachwechsel, aufklappende Quellen-Karte, Turnstile-
+     Challenge...) - erfasst jede Höhenänderung automatisch, unabhängig
+     davon, wodurch sie ausgelöst wurde; sein erster Callback liefert schon
+     die initiale Höhe, ein zusätzlicher load-Listener wäre nur eine
+     redundante Doppelmeldung. Mobil-Erkennung im Embed selbst (siehe
+     question.js: matchMedia) bleibt davon unberührt - sie wertet ohnehin die
+     tatsächliche Breite dieses iframes aus. -->
+<script>
+  function reportHeightToParent() {
+    if (window.parent === window) return;
+    const height = document.documentElement.scrollHeight;
+    window.parent.postMessage({ type: 'betacodex-chat-embed-resize', height }, '*');
+  }
+  new ResizeObserver(reportHeightToParent).observe(document.documentElement);
+</script>
 </body>
 </html>

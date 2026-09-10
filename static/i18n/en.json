@@ -226,7 +226,7 @@
   "footer.privacyPolicy": "Privacy Policy",
   "footer.embed": "Embed",
   "footer.embedHeading": "Embed the conversation view",
-  "footer.embedWidthLabel": "Width (px)",
+  "footer.embedWidthLabel": "Maximum width (px)",
   "footer.embedCopyButton": "Copy snippet",
   "footer.embedCopied": "Copied!",
 

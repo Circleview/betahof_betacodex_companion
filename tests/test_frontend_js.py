@@ -2838,29 +2838,24 @@ def test_detect_lang_falls_back_to_stored_value_without_url_param():
     assert result["lang"] == "en"
 
 
-def test_detect_lang_falls_back_to_navigator_language_without_stored_value():
+def test_detect_lang_defaults_to_english_regardless_of_navigator_language():
+    """Nutzerwunsch (Livegang-Vorbereitung, 2026-09-10): IMMER mit Englisch
+    starten, unabhängig von der Browser-Spracheinstellung - der zuvor nur
+    für embed.html geltende Sonderfall ist jetzt der allgemeine Standard.
+    Der Sprachumschalter bleibt bedienbar (siehe Test unten)."""
     result = _run_detect_lang(search="", stored_lang=None, nav_language="de-DE")
-    assert result["lang"] == "de"
+    assert result["lang"] == "en"
 
 
-def test_detect_lang_defaults_to_english_on_embed_page_regardless_of_navigator_language():
-    """Nutzerwunsch (Livegang-Vorbereitung, 2026-09-10): embed.html soll
-    IMMER mit Englisch starten, auch bei deutscher Browser-Spracheinstellung
-    - anders als der übrige Companion (siehe Test oben)."""
+def test_detect_lang_default_applies_to_embed_page_too():
+    # Kein Unterschied mehr zwischen embed.html und anderen Seiten - siehe
+    # Kommentar in i18n.js#detectLang.
     result = _run_detect_lang(search="", stored_lang=None, nav_language="de-DE", pathname="/embed.html")
     assert result["lang"] == "en"
 
 
-def test_detect_lang_embed_page_still_honors_stored_language_choice():
-    """Der Sprachumschalter im Embed muss weiterhin funktionieren - eine
-    bereits gespeicherte Wahl (z.B. zuvor selbst auf Deutsch umgeschaltet)
-    hat weiterhin Vorrang vor dem neuen Englisch-Standard."""
-    result = _run_detect_lang(search="", stored_lang="de", nav_language="de-DE", pathname="/embed.html")
-    assert result["lang"] == "de"
-
-
-def test_detect_lang_embed_page_still_honors_url_param():
-    result = _run_detect_lang(search="?lang=de", stored_lang=None, nav_language="en-US", pathname="/embed.html")
+def test_detect_lang_still_honors_stored_german_choice():
+    result = _run_detect_lang(search="", stored_lang="de", nav_language="de-DE")
     assert result["lang"] == "de"
 
 
@@ -3250,3 +3245,102 @@ def test_i18n_changed_reapplies_source_management_visibility():
 def test_import_page_heading_element_exists_in_html():
     html = (STATIC_DIR / "import.html").read_text()
     assert 'id="import-page-heading"' in html
+
+
+# --- footer.js: responsives Embed-iframe (Livegang-Vorbereitung, 2026-09-10) ---
+
+
+def _run_build_embed_snippet(width):
+    """Führt footer.js#buildEmbedSnippet per Node aus."""
+    js_source = (STATIC_DIR / "footer.js").read_text()
+    match = re.search(r"function buildEmbedSnippet\(width\) \{.*?\n\}", js_source, re.S)
+    assert match, "buildEmbedSnippet wurde in footer.js nicht gefunden."
+    func_source = match.group(0)
+    script = f"""
+global.window = {{ location: {{ origin: 'https://companion.betahof.com' }} }};
+global.document = {{ currentScript: null }};
+
+{func_source}
+
+console.log(JSON.stringify(buildEmbedSnippet({json.dumps(width)})));
+"""
+    return _run_node(script)
+
+
+def test_build_embed_snippet_iframe_width_fills_container_up_to_max_width():
+    snippet = _run_build_embed_snippet(480)
+    assert "width:100%" in snippet
+    assert "max-width:480px" in snippet
+
+
+def test_build_embed_snippet_falls_back_to_default_width_for_invalid_input():
+    snippet = _run_build_embed_snippet(None)
+    assert "max-width:480px" in snippet
+
+
+def test_build_embed_snippet_rounds_and_uses_custom_width():
+    snippet = _run_build_embed_snippet(320.7)
+    assert "max-width:321px" in snippet
+
+
+def test_embed_html_reports_height_to_parent_on_resize():
+    """Führt das Inline-Skript aus embed.html#reportHeightToParent per Node
+    aus (ponytail-Review, 2026-09-10: inline statt eigener embed-resize.js -
+    hier direkt aus embed.html extrahiert, damit dieser Test nicht separat
+    von der HTML-Datei abdriften kann)."""
+    html = (STATIC_DIR / "embed.html").read_text()
+    match = re.search(r"<script>\s*function reportHeightToParent.*?</script>", html, re.S)
+    assert match, "Das Resize-Inline-Skript wurde in embed.html nicht gefunden."
+    script_body = match.group(0).replace("<script>", "").replace("</script>", "")
+    script = f"""
+global.document = {{ documentElement: {{ scrollHeight: 321 }} }};
+const posted = [];
+global.window = {{}};
+global.window.parent = {{ postMessage: (data, origin) => posted.push({{ data, origin }}) }};
+global.ResizeObserver = class {{
+  constructor(cb) {{ this.cb = cb; }}
+  observe() {{ this.cb(); }}
+}};
+
+{script_body}
+
+console.log(JSON.stringify(posted));
+"""
+    posted = _run_node(script)
+    assert len(posted) == 1
+    assert posted[0]["data"]["type"] == "betacodex-chat-embed-resize"
+    assert posted[0]["data"]["height"] == 321
+    assert posted[0]["origin"] == "*"
+
+
+def test_embed_html_skips_reporting_when_not_embedded():
+    html = (STATIC_DIR / "embed.html").read_text()
+    match = re.search(r"<script>\s*function reportHeightToParent.*?</script>", html, re.S)
+    assert match, "Das Resize-Inline-Skript wurde in embed.html nicht gefunden."
+    script_body = match.group(0).replace("<script>", "").replace("</script>", "")
+    script = f"""
+global.document = {{ documentElement: {{ scrollHeight: 321 }} }};
+const posted = [];
+global.window = {{}};
+global.window.parent = global.window;
+global.ResizeObserver = class {{
+  constructor(cb) {{ this.cb = cb; }}
+  observe() {{ this.cb(); }}
+}};
+
+{script_body}
+
+console.log(JSON.stringify(posted));
+"""
+    posted = _run_node(script)
+    assert posted == []
+
+
+def test_build_embed_snippet_includes_resize_listener_matching_embed_html():
+    snippet = _run_build_embed_snippet(480)
+    embed_html = (STATIC_DIR / "embed.html").read_text()
+    assert "betacodex-chat-embed-resize" in snippet
+    # Derselbe Nachrichtentyp muss auf beiden Seiten (Embed + Snippet)
+    # übereinstimmen, sonst bleibt die Höhenanpassung wirkungslos.
+    assert "betacodex-chat-embed-resize" in embed_html
+    assert "e.source!==f.contentWindow" in snippet.replace(" ", "")

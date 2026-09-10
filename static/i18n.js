@@ -25,17 +25,12 @@ function detectLang() {
   if (stored && SUPPORTED_LANGS.includes(stored)) {
     return stored;
   }
-  // Nutzerwunsch (Livegang-Vorbereitung, 2026-09-10): das Embed-Widget soll
-  // IMMER mit Englisch starten (der Sprachumschalter bleibt bedienbar,
-  // siehe renderLangSwitcher) - anders als der übrige Companion NICHT
-  // anhand von navigator.language raten, da das Widget auf Drittseiten
-  // eingebettet läuft, deren Besucher:innen sprachlich nicht zwangsläufig
-  // zur Browser-Spracheinstellung passen.
-  if (window.location.pathname === '/embed.html') {
-    return DEFAULT_LANG;
-  }
-  const nav = (navigator.language || navigator.userLanguage || DEFAULT_LANG).toLowerCase();
-  return nav.startsWith('de') ? 'de' : DEFAULT_LANG;
+  // Nutzerwunsch (Livegang-Vorbereitung, 2026-09-10): IMMER mit Englisch
+  // starten (der Sprachumschalter bleibt bedienbar, siehe
+  // renderLangSwitcher) - nicht mehr anhand von navigator.language raten.
+  // Macht den zuvor embed.html-spezifischen Sonderfall hier überflüssig
+  // (galt vorher nur dort, jetzt überall gleich).
+  return DEFAULT_LANG;
 }
 
 let currentLang = detectLang();

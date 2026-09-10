@@ -173,17 +173,38 @@ function buildFeedbackTrigger() {
 // Backlog #75: Popover fürs Embed-Snippet - Trigger-Button öffnet ein
 // Popover, Klick außerhalb schließt es (bleibt bewusst bei diesem Muster,
 // anders als der Feedback-Bereich - hier gibt es keine nach oben
-// überstehenden Inhalte, das Clipping-Risiko besteht also nicht). Nur die
-// Breite ist konfigurierbar (Höhe bleibt fix), da
-// ausschließlich die Breite vom Nutzer als anpassbar gewünscht wurde - eine
-// schmale Standardbreite unter der 900px-Schwelle, ab der die Quellen-
+// überstehenden Inhalte, das Clipping-Risiko besteht also nicht). Der
+// Breiten-Eingabewert wirkt jetzt als max-width statt als feste Breite -
+// eine schmale Standardbreite unter der 900px-Schwelle, ab der die Quellen-
 // Sidebar im Embed erscheint (siehe static/style.css), passt für die
 // meisten Einbettungs-Szenarien (z.B. eine Seitenspalte).
+//
+// Nutzerwunsch (Livegang-Vorbereitung, 2026-09-10): iframe passt sich
+// dynamisch/relativ zur Einbettungsumgebung an - Breite füllt per CSS
+// (width: 100%) den verfügbaren Platz bis zur oben genannten max-width,
+// die Höhe kann die einbettende Seite nicht selbst kennen (wächst mit
+// jeder neuen Chat-Nachricht) und wird deshalb per postMessage vom Embed
+// gemeldet (siehe static/embed-resize.js) - das kleine Inline-Skript hier
+// hört genau darauf und setzt die Höhe entsprechend. document.currentScript.
+// previousElementSibling statt einer festen ID, damit mehrere Einbettungen
+// derselben Seite (z.B. zum Breiten-Vergleich) einander nicht in die Quere
+// kommen. Mobil-Erkennung im Embed selbst (siehe question.js: matchMedia)
+// bleibt unberührt - sie wertet ohnehin die tatsächliche iframe-Breite aus,
+// die durch width: 100% jetzt sogar echter auf schmalen Bildschirmen
+// schrumpft statt immer eine feste Pixelzahl zu sein.
 function buildEmbedSnippet(width) {
   const safeWidth = Number.isFinite(width) && width > 0 ? Math.round(width) : 480;
   return (
-    `<iframe src="${window.location.origin}/embed.html" width="${safeWidth}" height="600" ` +
-    'style="border:0" loading="lazy" title="BetaCodex Chat"></iframe>'
+    `<iframe src="${window.location.origin}/embed.html" ` +
+    `style="border:0;display:block;width:100%;max-width:${safeWidth}px;height:600px" ` +
+    'loading="lazy" title="BetaCodex Chat"></iframe>\n' +
+    '<script>(function(){' +
+    'var f=document.currentScript.previousElementSibling;' +
+    "window.addEventListener('message',function(e){" +
+    "if(e.source!==f.contentWindow||!e.data||e.data.type!=='betacodex-chat-embed-resize')return;" +
+    'f.style.height=e.data.height+"px";' +
+    '});' +
+    '})()</script>'
   );
 }
 

@@ -226,7 +226,7 @@
   "footer.privacyPolicy": "Datenschutz",
   "footer.embed": "Einbetten",
   "footer.embedHeading": "Konversationsansicht einbetten",
-  "footer.embedWidthLabel": "Breite (px)",
+  "footer.embedWidthLabel": "Maximale Breite (px)",
   "footer.embedCopyButton": "Snippet kopieren",
   "footer.embedCopied": "Kopiert!",
 
