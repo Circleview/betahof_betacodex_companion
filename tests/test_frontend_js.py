@@ -8,6 +8,14 @@ import pytest
 STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
 
 
+def _run_node(script: str):
+    """Führt ein Node-Skript aus und parst dessen stdout als JSON - gemeinsame
+    Grundlage für alle _run_*-Helfer unten, die jeweils nur den JS-Quelltext
+    zusammenbauen."""
+    result = subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True)
+    return json.loads(result.stdout)
+
+
 def _run_strip_markdown_for_speech(text: str) -> str:
     """Führt static/speech.js#stripMarkdownForSpeech per Node aus (statt die
     Regeln in Python nachzubauen) - die Funktion importiert selbst /i18n.js
@@ -18,8 +26,7 @@ def _run_strip_markdown_for_speech(text: str) -> str:
     assert match, "stripMarkdownForSpeech wurde in speech.js nicht gefunden."
     func_source = match.group(0).replace("export function", "function")
     script = f"{func_source}\nconsole.log(JSON.stringify(stripMarkdownForSpeech({json.dumps(text)})));"
-    result = subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True)
-    return json.loads(result.stdout)
+    return _run_node(script)
 
 
 def _run_speech_rate_cycle(num_clicks: int) -> list[float]:
@@ -51,8 +58,7 @@ for (let i = 0; i < {num_clicks}; i++) {{
 }}
 console.log(JSON.stringify(rates));
 """
-    result = subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True)
-    return json.loads(result.stdout)
+    return _run_node(script)
 
 def _run_find_highlight_range(text, highlight):
     """Führt static/question.js#findHighlightRange per Node real aus - reine
@@ -66,8 +72,7 @@ def _run_find_highlight_range(text, highlight):
 {func_source}
 console.log(JSON.stringify(findHighlightRange({json.dumps(text)}, {json.dumps(highlight)})));
 """
-    result = subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True)
-    return json.loads(result.stdout)
+    return _run_node(script)
 
 
 def test_find_highlight_range_returns_exact_match():
@@ -144,8 +149,7 @@ console.log(JSON.stringify(container.children.map((c) => ({{
   textContent: c.textContent || null,
 }}))));
 """
-    result = subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True)
-    return json.loads(result.stdout)
+    return _run_node(script)
 
 
 def test_append_title_text_links_title_when_url_present():
@@ -224,8 +228,7 @@ async function main() {{
 }}
 main();
 """
-    result = subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True)
-    return json.loads(result.stdout)
+    return _run_node(script)
 
 
 def _run_citations_click_sequence(paragraph_text, sources, click_sequence):
@@ -330,8 +333,7 @@ for (const index of {json.dumps(click_sequence)}) {{
 }}
 console.log(JSON.stringify(results));
 """
-    result = subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True)
-    return json.loads(result.stdout)
+    return _run_node(script)
 
 
 def _run_citations_click_all_and_read_markers(paragraph_text, sources):
@@ -443,8 +445,7 @@ const markers = buttons.map((btn) => {{
 }});
 console.log(JSON.stringify(markers));
 """
-    result = subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True)
-    return json.loads(result.stdout)
+    return _run_node(script)
 
 
 def test_citation_click_maps_each_occurrence_to_its_own_highlight_across_interleaved_numbers():
@@ -715,8 +716,7 @@ global.fetch = async () => ({{ json: async () => ({json.dumps(fetched_sources)})
   console.log(JSON.stringify({{ allSources, appliedSearchQuery }}));
 }})();
 """
-    result = subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True)
-    return json.loads(result.stdout)
+    return _run_node(script)
 
 
 def test_load_full_source_text_merges_text_into_existing_sources_by_id():
@@ -829,8 +829,7 @@ const controller = createSpeechController({{}});
 controller.startListening();
 console.log(JSON.stringify({{ constructedCount, resumeCalls }}));
 """
-    result = subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True)
-    output = json.loads(result.stdout)
+    output = _run_node(script)
     assert output == {"constructedCount": 1, "resumeCalls": 1}
 
 
@@ -889,8 +888,7 @@ controller.speak('Erster Satz. Zweiter Satz. Dritter Satz.');
 // wurde) müssen bereits ALLE drei Sätze angefragt worden sein.
 console.log(JSON.stringify(fetchCalls));
 """
-    result = subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True)
-    calls = json.loads(result.stdout)
+    calls = _run_node(script)
     assert calls == ["Erster Satz.", "Zweiter Satz.", "Dritter Satz."]
 
 
@@ -947,8 +945,7 @@ const controller = createSpeechController({{}});
 controller.speak('Erster Satz. Zweiter Satz.');
 setTimeout(() => console.log(JSON.stringify(playedOrder)), 50);
 """
-    result = subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True)
-    played_order = json.loads(result.stdout)
+    played_order = _run_node(script)
     assert played_order == ["buf-for:Erster Satz.", "buf-for:Zweiter Satz."]
 
 
@@ -987,8 +984,7 @@ const controller = createSpeechController({{}});
 controller.speak('Erster Satz. Zweiter Satz. Dritter Satz.');
 console.log(JSON.stringify(priorityByText));
 """
-    result = subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True)
-    priorities = json.loads(result.stdout)
+    priorities = _run_node(script)
     assert priorities == {
         "Erster Satz.": "high",
         "Zweiter Satz.": "low",
@@ -1057,8 +1053,7 @@ const controller = createSpeechController({{}});
 controller.speak('Einziger Satz.');
 setTimeout(() => console.log(JSON.stringify({{ fetchBodies, createdSourcePlaybackRate }})), 20);
 """
-    result = subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True)
-    output = json.loads(result.stdout)
+    output = _run_node(script)
     assert output["fetchBodies"] == [{"text": "Einziger Satz.", "rate": 1.75}]
     # Der Wert bleibt bei der FakeAudioContext-Standardvorgabe (1) - der Code
     # darf ihn nicht anfassen, sonst käme die Tonhöhenverzerrung zurück.
@@ -1123,8 +1118,7 @@ const controller = createSpeechController({{}});
 controller.speak('Erster Satz. Zweiter Satz.');
 setTimeout(() => console.log(JSON.stringify({{ startCalls, resumeCalls }})), 50);
 """
-    result = subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True)
-    output = json.loads(result.stdout)
+    output = _run_node(script)
     # Beide Sätze müssen tatsächlich gestartet worden sein (kein Hängenbleiben
     # nach dem ersten) UND resume() muss (mindestens) für den zweiten Satz
     # erneut aufgerufen worden sein.
@@ -1166,8 +1160,7 @@ const recognition = recognitionInstances[0];
 
 {scenario_js}
 """
-    result = subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True)
-    return json.loads(result.stdout)
+    return _run_node(script)
 
 
 def test_interim_transcript_fires_before_recording_ends():
@@ -1257,8 +1250,7 @@ updateBrokenLinksBadge({json.dumps(visible)}).then(() => {{
   console.log(JSON.stringify({{ hidden }}));
 }});
 """
-    result = subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True)
-    return json.loads(result.stdout)
+    return _run_node(script)
 
 
 def test_update_broken_links_badge_shown_when_pfleger_has_broken_sources():
@@ -1324,8 +1316,7 @@ for (const step of {steps_js}) {{
 }}
 console.log(JSON.stringify(results));
 """
-    result = subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True)
-    return json.loads(result.stdout)
+    return _run_node(script)
 
 
 def test_sticky_header_stays_expanded_while_scrolling_down_before_it_sticks():
@@ -1397,8 +1388,7 @@ for (const action of {actions_js}) {{
 }}
 console.log(JSON.stringify(results));
 """
-    result = subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True)
-    return json.loads(result.stdout)
+    return _run_node(script)
 
 
 def test_sticky_header_expand_is_delayed_and_cancelable_to_avoid_flicker():
@@ -1524,8 +1514,7 @@ async function main() {{
 }}
 main();
 """
-    result = subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True)
-    return json.loads(result.stdout)
+    return _run_node(script)
 
 
 def test_source_suggestion_row_accept_calls_accept_endpoint_and_opens_url_popover():
@@ -1631,8 +1620,7 @@ async function main() {{
 }}
 main();
 """
-    result = subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True)
-    return json.loads(result.stdout)
+    return _run_node(script)
 
 
 def test_error_job_shows_retry_and_cancel_buttons():
@@ -1708,8 +1696,7 @@ console.log(JSON.stringify({{
   btnHidden: btnEl.classList.hidden,
 }}));
 """
-    result = subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True)
-    return json.loads(result.stdout)
+    return _run_node(script)
 
 
 def test_update_broken_links_button_hidden_when_no_broken_sources():
@@ -1778,8 +1765,7 @@ global.document = {{
 
 {action_js}
 """
-    result = subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True)
-    return json.loads(result.stdout)
+    return _run_node(script)
 
 
 def test_youtube_transcript_fallback_hint_hidden_by_default():
@@ -1837,8 +1823,7 @@ def _run_photo_credit_domain(call_expr: str):
 {match.group(0)}
 console.log(JSON.stringify({call_expr}));
 """
-    result = subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True)
-    return json.loads(result.stdout)
+    return _run_node(script)
 
 
 def test_photo_credit_domain_maps_known_cdn_hosts_to_platform_name():
@@ -1888,8 +1873,7 @@ def _run_import_js_functions(patterns: list[str], call_expr: str):
         assert match, f"Muster {pattern!r} wurde in import.js nicht gefunden."
         parts.append(match.group(0))
     script = "\n".join(parts) + f"\nconsole.log(JSON.stringify({call_expr}));\n"
-    result = subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True)
-    return json.loads(result.stdout)
+    return _run_node(script)
 
 
 # Nutzerwunsch (2026-08-26): kein manuelles Plattform-Feld mehr im Social-
@@ -1923,8 +1907,7 @@ function isFilterActive() {{ return false; }}
 
 console.log(JSON.stringify(sortSources({json.dumps(sources)}).map((s) => ({{ id: s.id, __sortAuthor: s.__sortAuthor }}))));
 """
-    result = subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True)
-    return json.loads(result.stdout)
+    return _run_node(script)
 
 
 def test_sort_sources_expands_single_source_author_for_own_heading():
@@ -2037,8 +2020,7 @@ for (const clientWidth of {steps_js}) {{
 }}
 console.log(JSON.stringify(results));
 """
-    result = subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True)
-    return json.loads(result.stdout)
+    return _run_node(script)
 
 
 def test_source_toolbar_hides_sort_toolbar_when_too_narrow_for_all_icons():
@@ -2129,8 +2111,7 @@ async function main() {{
 }}
 main();
 """
-    result = subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True)
-    return json.loads(result.stdout)
+    return _run_node(script)
 
 
 def test_remove_source_suggestion_row_fades_out_immediately_without_removing():
@@ -2182,8 +2163,7 @@ def _run_explore_js_function(function_pattern: str, call_expr: str):
 {func_source}
 console.log(JSON.stringify({call_expr}));
 """
-    result = subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True)
-    return json.loads(result.stdout)
+    return _run_node(script)
 
 
 def test_node_url_links_author_nodes_to_the_author_filter():
@@ -2490,8 +2470,7 @@ function findButtons(node, acc) {{
 }}
 console.log(JSON.stringify(findButtons(container, [])));
 """
-    result = subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True)
-    return json.loads(result.stdout)
+    return _run_node(script)
 
 
 def test_highlight_terms_does_not_highlight_a_matching_author_name():
@@ -2539,8 +2518,7 @@ def _run_creative_source_label(source):
     match = re.search(r"export function creativeSourceLabel.*?\n\}", js_source, re.S)
     assert match, "creativeSourceLabel wurde in creative.js nicht gefunden."
     script = f"{match.group(0)}\nconsole.log(JSON.stringify(creativeSourceLabel({json.dumps(source)})));"
-    result = subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True)
-    return json.loads(result.stdout)
+    return _run_node(script)
 
 
 def test_creative_source_label_appends_hostname_when_url_present():
@@ -2583,8 +2561,7 @@ def _run_apply_markdown_to_selection(value, selection_start, selection_end, acti
         f"console.log(JSON.stringify(applyMarkdownToSelection("
         f"{json.dumps(value)}, {selection_start}, {selection_end}, {json.dumps(action)})));"
     )
-    result = subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True)
-    return json.loads(result.stdout)
+    return _run_node(script)
 
 
 def test_apply_markdown_bold_wraps_selection():
@@ -2633,8 +2610,7 @@ def _run_parse_creative_sections(markdown):
     match = re.search(r"export function parseCreativeSections.*?\n\}", js_source, re.S)
     assert match, "parseCreativeSections wurde in creative.js nicht gefunden."
     script = f"{match.group(0)}\nconsole.log(JSON.stringify(parseCreativeSections({json.dumps(markdown)})));"
-    result = subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True)
-    return json.loads(result.stdout)
+    return _run_node(script)
 
 
 def test_parse_creative_sections_returns_empty_list_for_empty_document():
@@ -2678,8 +2654,7 @@ def _run_splice_creative_section(document, start, end, replacement):
         f"console.log(JSON.stringify(spliceCreativeSection("
         f"{json.dumps(document)}, {start}, {end}, {json.dumps(replacement)})));"
     )
-    result = subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True)
-    return json.loads(result.stdout)
+    return _run_node(script)
 
 
 def test_splice_creative_section_replaces_middle_section():
@@ -2712,8 +2687,7 @@ def _run_render_markdown(text):
     )
     assert match, "renderMarkdown (+ escapeHtml) wurde in markdown.js nicht gefunden."
     script = f"{match.group(0)}\nconsole.log(JSON.stringify(renderMarkdown({json.dumps(text)})));"
-    result = subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True)
-    return json.loads(result.stdout)
+    return _run_node(script)
 
 
 def test_render_markdown_escapes_html():
@@ -2831,8 +2805,7 @@ const DEFAULT_LANG = 'en';
 
 console.log(JSON.stringify({{ lang: detectLang(), storedLang: store.lang, path: currentPath }}));
 """
-    result = subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True)
-    return json.loads(result.stdout)
+    return _run_node(script)
 
 
 def test_detect_lang_prefers_url_param_over_stored_and_navigator_language():
@@ -2911,8 +2884,7 @@ global.history = {{
 
 console.log(JSON.stringify({{ ask: consumeAskParam(), path: currentPath }}));
 """
-    result = subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True)
-    return json.loads(result.stdout)
+    return _run_node(script)
 
 
 def test_consume_ask_param_returns_decoded_question():

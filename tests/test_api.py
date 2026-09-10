@@ -209,8 +209,8 @@ def client(tmp_path, monkeypatch):
     # Sofort-Crawl selbst gezielt prüfen, überschreiben dieses Mock lokal.
     monkeypatch.setattr(main_module, "_run_web_crawl_subprocess", lambda entry_id, url_prefix, max_pages: 0)
 
-    # Der tägliche Vorschlags-Vorrat-Worker (_source_suggestion_discovery_worker)
-    # läuft seit seiner Einführung sofort einmal beim Start jedes echten
+    # Der tägliche Vorschlags-Vorrat-Worker (_run_source_suggestion_discovery_once
+    # via _run_periodic) läuft seit seiner Einführung sofort einmal beim Start jedes echten
     # ASGI-Prozesses (_start_background_workers), also auch bei JEDER
     # TestClient(main_module.app)-Instanziierung hier. _run_source_suggestion_
     # discovery_once() bricht nur ab, wenn der Vorrat schon SOURCE_SUGGESTION_

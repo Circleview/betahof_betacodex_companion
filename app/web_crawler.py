@@ -2,7 +2,8 @@
 Indizierung der in app/web_allowlist.py freigegebenen Domains/Pfade.
 
 Läuft AUSSCHLIESSLICH im wöchentlichen Hintergrund-Worker (siehe
-app/main.py: _web_allowlist_crawl_worker), niemals zur Antwortzeit -
+app/main.py: _run_web_allowlist_crawl_once via _run_periodic), niemals zur
+Antwortzeit -
 app/main.py:ask() liest nur die hier bereits fertig indizierte Chroma-
 Collection (vectorstore.query_web). So löst der Fallback nie eine Live-
 Netzwerk-Anfrage nach außen aus, die die Antwortzeit einer laufenden

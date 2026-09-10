@@ -1111,15 +1111,18 @@ def _run_url_health_check_once() -> None:
         _persist_url_health_results(pending_results)
 
 
-def _url_health_check_worker() -> None:
+def _run_periodic(run_once_fn, interval_seconds: float) -> None:
+    """Generische Sleep-Loop für die INTERVALL-basierten Hintergrund-Worker
+    unten: läuft sofort einmal beim Prozessstart, danach im festen Takt. Ein
+    Fehlschlag im aktuellen Durchlauf (z.B. defektes sources.json) beendet
+    den Worker nicht dauerhaft, sondern wird erst beim nächsten Takt erneut
+    versucht."""
     while True:
         try:
-            _run_url_health_check_once()
+            run_once_fn()
         except Exception:
-            # Ein Fehlschlag (z.B. defektes sources.json) darf den Worker
-            # nicht dauerhaft beenden - nächster Versuch beim nächsten Takt.
             pass
-        time.sleep(URL_HEALTH_CHECK_INTERVAL_SECONDS)
+        time.sleep(interval_seconds)
 
 
 # Nutzerwunsch (2026-08-22): die Quellenlage soll nicht nur wachsen, wenn
@@ -1215,15 +1218,6 @@ def _run_source_suggestion_discovery_once() -> None:
         added += 1
 
 
-def _source_suggestion_discovery_worker() -> None:
-    while True:
-        try:
-            _run_source_suggestion_discovery_once()
-        except Exception:
-            pass
-        time.sleep(SOURCE_SUGGESTION_INTERVAL_SECONDS)
-
-
 # Nutzerwunsch (2026-08-03): fehlende Zusammenfassungen (egal ob durch die
 # Retries in _generate_summary_background immer noch nicht gelungen, oder
 # aus der Zeit vor diesem Fix) automatisch nachziehen - laeuft nach
@@ -1247,17 +1241,6 @@ def _backfill_missing_summaries_once() -> None:
             _generate_summary_background(source_id, text)
 
 
-def _summary_backfill_worker() -> None:
-    while True:
-        try:
-            _backfill_missing_summaries_once()
-        except Exception:
-            # Ein Fehlschlag (z.B. defektes sources.json) darf den Worker
-            # nicht dauerhaft beenden - naechster Versuch beim naechsten Takt.
-            pass
-        time.sleep(SUMMARY_BACKFILL_INTERVAL_SECONDS)
-
-
 # Nutzerwunsch (2026-08-23): externe Autor:innen-Fotos sterben regelmäßig
 # weg (v.a. LinkedIn-CDN-URLs mit eingebautem Ablaufdatum, siehe app/
 # author_photos.py) - dieser tägliche Lauf holt für jede Autorin/jeden
@@ -1279,15 +1262,6 @@ def _cache_missing_author_photos_once() -> None:
         ):
             continue
         author_photos.cache_photo(author["name"], photo_url)
-
-
-def _author_photo_cache_worker() -> None:
-    while True:
-        try:
-            _cache_missing_author_photos_once()
-        except Exception:
-            pass
-        time.sleep(AUTHOR_PHOTO_CACHE_INTERVAL_SECONDS)
 
 
 # Backlog: LLM/Internet-Fallback bei dünner Quellenlage - Nutzerwunsch, dass
@@ -1348,10 +1322,11 @@ def _index_web_allowlist_entry_with_status(entry_id: str, url_prefix: str, max_p
     beiden Aufrufstellen genutzt (Sofort-Crawl + wöchentlicher Sweep).
 
     Nutzerfeedback (real reproduziert): ein Server-Neustart löst sofort
-    einen wöchentlichen Sweep-Durchlauf aus (siehe _web_allowlist_crawl_
-    worker) - läuft zufällig zeitgleich noch ein Sofort-Crawl desselben
-    Eintrags (z.B. gerade erst angelegt/manuell erneut angestoßen), würden
-    beide unabhängig voneinander dieselben URLs entdecken und indizieren -
+    einen wöchentlichen Sweep-Durchlauf aus (siehe _run_web_allowlist_
+    crawl_once via _run_periodic) - läuft zufällig zeitgleich noch ein
+    Sofort-Crawl desselben Eintrags (z.B. gerade erst angelegt/manuell
+    erneut angestoßen), würden beide unabhängig voneinander dieselben URLs
+    entdecken und indizieren -
     doppelte Seiten mit unterschiedlichen page_ids in web_index.py. Ein
     einfacher Status-Check VOR dem Start genügt hier (kein echtes Lock
     nötig): das Risiko eines exakt gleichzeitigen zweiten Check-Aufrufs ist
@@ -1383,15 +1358,6 @@ def _run_web_allowlist_crawl_once() -> None:
             continue
 
 
-def _web_allowlist_crawl_worker() -> None:
-    while True:
-        try:
-            _run_web_allowlist_crawl_once()
-        except Exception:
-            pass
-        time.sleep(WEB_ALLOWLIST_CRAWL_INTERVAL_SECONDS)
-
-
 def _recover_interrupted_web_allowlist_indexing() -> None:
     """Nach einem Server-Neustart/-Absturz kann kein Eintrag mehr wirklich
     "running" sein (der Hintergrund-Thread, der das gesetzt hat, existiert
@@ -1412,8 +1378,9 @@ def _index_new_web_allowlist_entry(entry_id: str, url_prefix: str, max_pages: in
     try:
         _index_web_allowlist_entry_with_status(entry_id, url_prefix, max_pages)
     except Exception:
-        # Der wöchentliche Sweep (_web_allowlist_crawl_worker) versucht es
-        # ohnehin erneut - ein fehlschlagender Sofort-Lauf ist unkritisch.
+        # Der wöchentliche Sweep (_run_web_allowlist_crawl_once via
+        # _run_periodic) versucht es ohnehin erneut - ein fehlschlagender
+        # Sofort-Lauf ist unkritisch.
         pass
 
 
@@ -1539,12 +1506,24 @@ def _start_background_workers() -> None:
     dem zugehörigen Sweep-Thread."""
     users.ensure_bootstrap_admin(os.environ.get("SYSTEM_ADMIN_EMAIL", ""))
     _normalize_pflaeging_spelling_once()
-    threading.Thread(target=_url_health_check_worker, daemon=True).start()
-    threading.Thread(target=_source_suggestion_discovery_worker, daemon=True).start()
-    threading.Thread(target=_summary_backfill_worker, daemon=True).start()
-    threading.Thread(target=_author_photo_cache_worker, daemon=True).start()
+    threading.Thread(
+        target=_run_periodic, args=(_run_url_health_check_once, URL_HEALTH_CHECK_INTERVAL_SECONDS), daemon=True
+    ).start()
+    threading.Thread(
+        target=_run_periodic,
+        args=(_run_source_suggestion_discovery_once, SOURCE_SUGGESTION_INTERVAL_SECONDS),
+        daemon=True,
+    ).start()
+    threading.Thread(
+        target=_run_periodic, args=(_backfill_missing_summaries_once, SUMMARY_BACKFILL_INTERVAL_SECONDS), daemon=True
+    ).start()
+    threading.Thread(
+        target=_run_periodic, args=(_cache_missing_author_photos_once, AUTHOR_PHOTO_CACHE_INTERVAL_SECONDS), daemon=True
+    ).start()
     _recover_interrupted_web_allowlist_indexing()
-    threading.Thread(target=_web_allowlist_crawl_worker, daemon=True).start()
+    threading.Thread(
+        target=_run_periodic, args=(_run_web_allowlist_crawl_once, WEB_ALLOWLIST_CRAWL_INTERVAL_SECONDS), daemon=True
+    ).start()
     _recover_interrupted_processing_jobs()
     threading.Thread(target=_warm_up_local_models, daemon=True).start()
 
