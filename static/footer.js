@@ -306,24 +306,31 @@ function renderFooter() {
   versionLink.id = 'footer-version';
   versionLink.title = t('footer.github');
 
-  // Backlog #115: eigene, lokale Seite (nicht extern wie das Impressum) -
-  // beschreibt die Datenverarbeitung DIESER Anwendung, nicht die von
-  // Beta Hof allgemein. Zwei fest sprachige HTML-Dateien statt i18n-Keys,
-  // da eine Datenschutzerklärung als zusammenhängendes, korrektes Dokument
-  // gelesen werden muss statt aus einzeln übersetzten Fragmenten zu bestehen.
+  // Backlog #115: eigene, lokale Seite (nicht extern wie zuvor das
+  // Impressum) - beschreibt die Datenverarbeitung DIESER Anwendung, nicht
+  // die von Beta Hof allgemein. Zwei fest sprachige HTML-Dateien statt
+  // i18n-Keys, da eine Datenschutzerklärung als zusammenhängendes,
+  // korrektes Dokument gelesen werden muss statt aus einzeln übersetzten
+  // Fragmenten zu bestehen.
   const privacyPolicyLink = buildLink(
     getLang() === 'en' ? '/privacy.html' : '/datenschutz.html',
     t('footer.privacyPolicy')
   );
 
+  // Nutzerwunsch (Livegang-Vorbereitung, 2026-09-10): eigene, lokale
+  // Impressum-Seite statt externem Link auf betahof.de/impressum/ - Daten
+  // von dort übernommen (siehe static/impressum.html/legal-notice.html),
+  // gleiches Zwei-Datei-Prinzip wie bei der Datenschutzerklärung oben.
+  const impressumLink = buildLink(
+    getLang() === 'en' ? '/legal-notice.html' : '/impressum.html',
+    t('footer.impressum')
+  );
+
   // Nutzerwunsch (2026-08-30): Reihenfolge Feedback -> betacodex.org ->
-  // Einbetten (nur falls aktiv) -> Version, Rest unverändert. Der separate
-  // "Beta Hof"-Beratungslink wurde auf Nutzerwunsch ganz entfernt (Impressum
-  // verlinkt zwar weiterhin auf betahof.de, ist aber ein eigener, klar
-  // beschrifteter Rechtstext-Link, kein "Beta Hof"-Verweis).
+  // Einbetten (nur falls aktiv) -> Version, Rest unverändert.
   const children = [taglineSpan, buildFeedbackTrigger(), buildLink('https://betacodex.org', 'betacodex.org')];
   if (embedEnabled) children.push(buildEmbedWidget());
-  children.push(versionLink, buildLink('https://www.betahof.de/impressum/', t('footer.impressum')), privacyPolicyLink);
+  children.push(versionLink, impressumLink, privacyPolicyLink);
   footer.replaceChildren(...children);
 }
 
