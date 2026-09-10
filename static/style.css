@@ -771,13 +771,19 @@ button {
    embed.html) ändert das nichts. */
 /* Nutzerwunsch (Livegang-Vorbereitung, 2026-09-10): Look-and-Feel an
    betacodex.org/home angeglichen, da dieses Tool dort eingebettet wird -
-   Werte (Pill-Form, Padding, Akzentfarbe bereits identisch) per Chrome-
-   DevTools von dessen "Get started"/"Join now"-Buttons übernommen. */
+   Padding per Chrome-DevTools von dessen "Get started"/"Join now"-Buttons
+   übernommen (Akzentfarbe/Font-Stack waren bereits identisch). Der
+   border-radius blieb NUR bei var(--radius) - ein erster Versuch mit einer
+   vollen Pill-Form (999px) beruhte auf einer Fehleinschätzung (die orange
+   DevTools-Hervorhebung im ersten Screenshot wurde fälschlich als
+   Button-Form gelesen); ein zweiter, unverfälschter Screenshot zeigte nur
+   leicht gerundete Ecken, klar keine Pille - exakter px-Wert steht noch
+   aus, bis dahin bewusst beim bisherigen, ähnlich moderaten Wert belassen. */
 button[type="submit"], .send-button, #popover-load, #popover-upload {
   background: var(--color-accent);
   color: #fff;
   border: none;
-  border-radius: 999px;
+  border-radius: var(--radius);
   padding: 0.8rem 3rem;
   font-size: 0.95rem;
   font-weight: 700;
