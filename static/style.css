@@ -1202,9 +1202,15 @@ body:not(.chat-started) #question-form {
    nichts. Generalisiert von #question-form auf jedes button.send-button
    (Fix 2026-08-30): der neue Abschnitts-Überarbeiten-Submit-Button in
    creative.js liegt außerhalb von #question-form, soll aber dieselbe
-   Mobil-Optik (runder Papierflieger-Button) bekommen. */
+   Mobil-Optik (runder Papierflieger-Button) bekommen.
+   Fix (Livegang-Vorbereitung, 2026-09-10, gemeldeter Bug): border-radius
+   hier ENTFERNT - button.send-button (Element+Klasse) hatte dieselbe
+   Spezifität wie button[type="submit"]/.send-button weiter oben, gewann
+   aber durch die spätere Position im Stylesheet immer, wodurch jede
+   Änderung an der border-radius dort wirkungslos blieb (der eigentliche
+   von betacodex.org übernommene Wert kam nie sichtbar an). Erbt den
+   korrekten Wert jetzt von der Regel weiter oben. */
 button.send-button {
-  border-radius: var(--radius);
   flex-shrink: 0;
 }
 
