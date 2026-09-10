@@ -1,4 +1,4 @@
-import { initI18n, t, getLang } from '/i18n.js';
+import { initI18n, t, getLang, setLang, detectTextLanguage } from '/i18n.js';
 import { renderMarkdown } from '/markdown.js';
 import { initAuth, hasRole, onAuthChange } from '/auth.js';
 import { createTurnstileWidget } from '/turnstile.js';
@@ -1239,12 +1239,29 @@ questionForm.addEventListener('submit', async (e) => {
         }
         assistantBubble.innerHTML = renderMarkdown(liveText);
       },
-      (answer) => {
+      async (answer) => {
         // Backlog (2026-07-31, ergänzt 2026-08-03): Vorlesen-Button UND
         // Zitat-Verweise so früh wie möglich freischalten, ohne auf die
         // u.U. spürbar langsamere Hervorhebungs-Berechnung zu warten - die
         // kommt erst später über das "done"-Event nach (siehe unten).
         finalAnswer = answer;
+        // Fix (Livegang-Vorbereitung, 2026-09-10, gemeldeter Bug): die
+        // Sprache wird jetzt aus der TATSÄCHLICHEN ANTWORT erkannt statt aus
+        // der Frage - das Modell entscheidet selbst (siehe SYSTEM_PROMPTS in
+        // app/llm.py: "Detect the question's language yourself"), unabhängig
+        // vom X-Lang-Header. Eine Erkennung anhand der Frage konnte deshalb
+        // von der tatsächlichen Antwortsprache abweichen (z.B. bei
+        // mehrdeutigen Fragen wie "What ist X about?") - die UI hätte dann
+        // "auf Englisch umgeschaltet" gemeldet, während die Antwort auf
+        // Deutsch kam. Anhand der (meist deutlich längeren, zuverlässiger
+        // erkennbaren) Antwort kann UI und Inhalt nie widersprüchlich sein.
+        const detectedLang = detectTextLanguage(answer);
+        if (detectedLang && detectedLang !== getLang()) {
+          await setLang(detectedLang);
+          const { message: noticeMessage, bubble: noticeBubble } = buildChatMessage('system');
+          noticeBubble.textContent = t('index.autoLangSwitchNotice');
+          chatMessages.insertBefore(noticeMessage, assistantMessage);
+        }
         speakBtn = renderAnswerText(assistantBubble, question, answer);
         if (earlySources) {
           attachAnswerSources(assistantBubble, earlySources);

@@ -2775,12 +2775,14 @@ def test_question_form_does_not_contain_turnstile_container(filename):
 # --- i18n.js: detectLang liest ?lang= (2026-09-01) ---
 
 
-def _run_detect_lang(*, search: str, stored_lang: str | None, nav_language: str) -> dict:
+def _run_detect_lang(*, search: str, stored_lang: str | None, nav_language: str, pathname: str = "/") -> dict:
     """Führt i18n.js#detectLang per Node aus. Gibt sowohl den ermittelten
     Sprachcode als auch den Zustand von localStorage/der (simulierten)
     Adresszeile danach zurück, damit sich sowohl die Übernahme des
     ?lang=-Parameters als auch dessen Entfernung aus der URL (bei Erhalt
-    anderer, gleichzeitig vorhandener Parameter) prüfen lässt."""
+    anderer, gleichzeitig vorhandener Parameter) prüfen lässt. pathname
+    simuliert, auf welcher Seite detectLang() läuft (Standard '/' = nicht
+    embed.html, siehe test_detect_lang_defaults_to_english_on_embed_page)."""
     js_source = (STATIC_DIR / "i18n.js").read_text()
     match = re.search(r"function detectLang\(\).*?\n\}", js_source, re.S)
     assert match, "detectLang wurde in i18n.js nicht gefunden."
@@ -2792,8 +2794,8 @@ global.localStorage = {{
   getItem: (k) => (k in store ? store[k] : null),
   setItem: (k, v) => {{ store[k] = v; }},
 }};
-let currentPath = {json.dumps("/" + search)};
-global.window = {{ location: {{ search: {json.dumps(search)}, pathname: '/' }} }};
+let currentPath = {json.dumps(pathname + search)};
+global.window = {{ location: {{ search: {json.dumps(search)}, pathname: {json.dumps(pathname)} }} }};
 global.history = {{
   replaceState: (state, title, url) => {{ currentPath = url; }},
 }};
@@ -2839,6 +2841,84 @@ def test_detect_lang_falls_back_to_stored_value_without_url_param():
 def test_detect_lang_falls_back_to_navigator_language_without_stored_value():
     result = _run_detect_lang(search="", stored_lang=None, nav_language="de-DE")
     assert result["lang"] == "de"
+
+
+def test_detect_lang_defaults_to_english_on_embed_page_regardless_of_navigator_language():
+    """Nutzerwunsch (Livegang-Vorbereitung, 2026-09-10): embed.html soll
+    IMMER mit Englisch starten, auch bei deutscher Browser-Spracheinstellung
+    - anders als der übrige Companion (siehe Test oben)."""
+    result = _run_detect_lang(search="", stored_lang=None, nav_language="de-DE", pathname="/embed.html")
+    assert result["lang"] == "en"
+
+
+def test_detect_lang_embed_page_still_honors_stored_language_choice():
+    """Der Sprachumschalter im Embed muss weiterhin funktionieren - eine
+    bereits gespeicherte Wahl (z.B. zuvor selbst auf Deutsch umgeschaltet)
+    hat weiterhin Vorrang vor dem neuen Englisch-Standard."""
+    result = _run_detect_lang(search="", stored_lang="de", nav_language="de-DE", pathname="/embed.html")
+    assert result["lang"] == "de"
+
+
+def test_detect_lang_embed_page_still_honors_url_param():
+    result = _run_detect_lang(search="?lang=de", stored_lang=None, nav_language="en-US", pathname="/embed.html")
+    assert result["lang"] == "de"
+
+
+def _run_detect_text_language(text: str) -> str | None:
+    """Führt i18n.js#detectTextLanguage per Node aus (Stoppwort-Heuristik für
+    die automatische Sprachumschaltung, Livegang-Vorbereitung 2026-09-10)."""
+    js_source = (STATIC_DIR / "i18n.js").read_text()
+    match = re.search(
+        r"const DE_MARKER_WORDS.*?\nexport function detectTextLanguage\(text\).*?\n\}", js_source, re.S
+    )
+    assert match, "detectTextLanguage (inkl. Wortlisten) wurde in i18n.js nicht gefunden."
+    func_source = match.group(0).replace("export function", "function")
+    script = f"""
+{func_source}
+console.log(JSON.stringify(detectTextLanguage({json.dumps(text)})));
+"""
+    return _run_node(script)
+
+
+def test_detect_text_language_recognizes_german_question():
+    assert _run_detect_text_language("Was ist ein List Owner?") == "de"
+
+
+def test_detect_text_language_recognizes_english_question():
+    assert _run_detect_text_language("What is a List Owner?") == "en"
+
+
+def test_detect_text_language_umlaut_alone_is_a_strong_german_signal():
+    # Umlaute/ß kommen im Englischen nicht vor - schon ein kurzer Satz mit
+    # einem einzigen Umlaut soll sicher als Deutsch erkannt werden.
+    assert _run_detect_text_language("Wer führt Teams?") == "de"
+
+
+def test_detect_text_language_returns_null_for_pure_domain_jargon():
+    # "List Owner" ist in beiden Sprachen derselbe (Lehnwort-)Fachbegriff -
+    # ohne Funktionswörter darf NICHT geraten werden (siehe Kommentar in
+    # i18n.js: lieber nichts erkennen als riskant falsch umschalten).
+    assert _run_detect_text_language("List Owner") is None
+
+
+def test_detect_text_language_returns_null_for_empty_text():
+    assert _run_detect_text_language("") is None
+
+
+def test_detect_text_language_ignores_case():
+    assert _run_detect_text_language("WAS IST DAS?") == "de"
+
+
+def test_detect_text_language_recognizes_english_imperative_instruction():
+    # Regressionstest (live im Browser gefunden, 2026-09-10): eine Kreativ-
+    # Modus-Anweisung ist ein Imperativ, keine Frage - enthielt zunächst
+    # keines der (nur fragenorientierten) Marker-Wörter und wurde fälschlich
+    # nicht erkannt.
+    assert _run_detect_text_language("Write a short blog post about decentralized decision making") == "en"
+
+
+def test_detect_text_language_recognizes_german_imperative_instruction():
+    assert _run_detect_text_language("Schreibe einen kurzen Artikel über dezentrale Entscheidungsfindung") == "de"
 
 
 # --- question.js: embedExpandButton gibt aktuelle Sprache mit (2026-09-01) ---

@@ -1,4 +1,4 @@
-# BetaCodex Companion
+# BetaCodex Chat
 
 Ein KI-Wissensassistent, der Fragen zum BetaCodex ausschließlich auf Basis
 kuratierter, geprüfter Quellen beantwortet – mit lückenloser Quellenangabe
@@ -30,7 +30,7 @@ Open-Source-Lizenz frei zur Verfügung; mehr dazu unter
 BetaCodex-Wissen ist umfangreich und über viele Quellen verteilt –
 Blogposts, Bücher, Vorträge, Podcasts. Wer sich hineinarbeiten will, sucht
 sich bisher mühsam durch verschiedene Kanäle, statt eine Frage einfach
-stellen zu können. Der BetaCodex Companion schließt diese Lücke: eine
+stellen zu können. Der BetaCodex Chat schließt diese Lücke: eine
 Chat-Oberfläche im Stil von Google NotebookLM, die ausschließlich aus
 einem kuratierten, geprüften Quellenbestand antwortet – nie aus
 allgemeinem Internet- oder Modellwissen.
@@ -213,7 +213,7 @@ Companion (`/`, `/import.html`) davon unberührt bleibt.
 
 ## Wie es funktioniert (RAG)
 
-BetaCodex Companion ist ein **RAG-System** (Retrieval-Augmented
+BetaCodex Chat ist ein **RAG-System** (Retrieval-Augmented
 Generation) – ein Chatbot, der Fragen ausschließlich auf Basis der
 eigenen, kuratierten Quellen beantwortet, nicht aus dem allgemeinen Wissen
 des Sprachmodells. Jede Antwort ist mit Belegstellen aus den echten

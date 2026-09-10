@@ -4,9 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="robots" content="noindex, nofollow, noarchive">
-<meta name="description" content="Kreativ-Modus des BetaCodex Companion – Blogposts, Artikel und Workshop-Konzepte auf Grundlage des BetaCodex verfassen.">
-<meta property="og:title" content="Kreativ-Modus – BetaCodex Companion">
-<meta property="og:description" content="Kreativ-Modus des BetaCodex Companion – Blogposts, Artikel und Workshop-Konzepte auf Grundlage des BetaCodex verfassen.">
+<meta name="description" content="Kreativ-Modus des BetaCodex Chat – Blogposts, Artikel und Workshop-Konzepte auf Grundlage des BetaCodex verfassen.">
+<meta property="og:title" content="Kreativ-Modus – BetaCodex Chat">
+<meta property="og:description" content="Kreativ-Modus des BetaCodex Chat – Blogposts, Artikel und Workshop-Konzepte auf Grundlage des BetaCodex verfassen.">
 <meta property="og:type" content="website">
 <meta property="og:image" content="/icons/apple-touch-icon.png">
 <meta name="twitter:card" content="summary">
@@ -15,7 +15,7 @@
 <link rel="icon" type="image/png" href="/icons/favicon.png">
 <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
 <link rel="manifest" href="/manifest.json">
-<title>Kreativ-Modus &ndash; BetaCodex Companion</title>
+<title>Kreativ-Modus &ndash; BetaCodex Chat</title>
 <link rel="stylesheet" href="/style.css">
 <script src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit" async></script>
 </head>
@@ -38,6 +38,12 @@
         <button type="button" data-md-action="list" data-i18n-title="creative.toolbarList">&bull;</button>
         <button type="button" id="creative-preview-toggle"></button>
       </div>
+      <!-- Nutzerwunsch (Livegang-Vorbereitung, 2026-09-10): Hinweis bei
+           automatischer Sprachumschaltung (siehe creative.js:
+           maybeAutoSwitchLang) - bewusst ÜBER der Textbox statt darin, damit
+           er nicht mit dem generierten Dokumenttext vermischt wird. Blendet
+           sich nach 30s selbst wieder aus (siehe showLangSwitchNotice). -->
+      <p id="creative-lang-switch-notice" class="creative-lang-switch-notice hidden" role="status"></p>
       <!-- Nutzerwunsch (2026-08-26): sichtbare "Dokument"-Überschrift entfernt -
            data-i18n-title setzt trotzdem title+aria-label (siehe i18n.js),
            damit das Feld weiterhin einen zugänglichen Namen hat. -->

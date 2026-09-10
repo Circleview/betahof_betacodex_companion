@@ -183,7 +183,7 @@ function buildEmbedSnippet(width) {
   const safeWidth = Number.isFinite(width) && width > 0 ? Math.round(width) : 480;
   return (
     `<iframe src="${window.location.origin}/embed.html" width="${safeWidth}" height="600" ` +
-    'style="border:0" loading="lazy" title="BetaCodex Companion"></iframe>'
+    'style="border:0" loading="lazy" title="BetaCodex Chat"></iframe>'
   );
 }
 

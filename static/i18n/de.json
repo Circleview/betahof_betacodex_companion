@@ -26,7 +26,7 @@
   "common.urlErrorUnknown": "Unbekannter Fehler beim Abruf",
   "common.skipToContent": "Zum Inhalt springen",
 
-  "index.brandName": "BetaCodex Companion",
+  "index.brandName": "BetaCodex Chat",
   "index.viewConversation": "Zur Konversation",
   "index.viewSources": "Alle Quellen anzeigen",
   "index.tagline": "Kuratierte Quellen – für zeitgemäße Unternehmen.",
@@ -45,6 +45,7 @@
   "index.termFollowUpQuestion": "Erzähl mir mehr über {term}.",
   "index.termFollowUpTitle": "Mehr zu „{term}“ erfahren",
   "index.usedSourcesHeading": "Verwendete Quellen",
+  "index.autoLangSwitchNotice": "Sprache automatisch auf Deutsch umgestellt, weil die Frage auf Deutsch gestellt wurde.",
 
   "auth.iconTitle": "Konto",
   "auth.emailPlaceholder": "E-Mail-Adresse",
@@ -232,7 +233,7 @@
   "embed.expandButtonTitle": "Vollständig öffnen",
 
   "earlyAccess.heading": "Geschlossener Testzugang",
-  "earlyAccess.body": "Diese Instanz von BetaCodex Companion ist aktuell nur für ausgewählte Tester:innen freigeschaltet. Bitte gib das dir mitgeteilte Passwort ein.",
+  "earlyAccess.body": "Diese Instanz von BetaCodex Chat ist aktuell nur für ausgewählte Tester:innen freigeschaltet. Bitte gib das dir mitgeteilte Passwort ein.",
   "earlyAccess.passwordPlaceholder": "Passwort",
   "earlyAccess.submitButton": "Freischalten",
   "earlyAccess.genericError": "Freischaltung fehlgeschlagen",
@@ -280,6 +281,7 @@
   "creative.noBetacodexSources": "Keine passenden kuratierten Quellen gefunden.",
   "creative.noWebSources": "Keine Web-Quellen verwendet.",
   "creative.error": "Fehler beim Erzeugen. Bitte erneut versuchen.",
+  "creative.autoLangSwitchNotice": "Sprache automatisch auf Deutsch umgestellt, weil die Anweisung auf Deutsch gegeben wurde.",
   "questionLog.title": "Fragen-Log",
   "questionLog.heading": "Fragen-Log",
   "questionLog.today": "Heute",

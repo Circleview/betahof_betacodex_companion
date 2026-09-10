@@ -139,7 +139,7 @@ h3 {
   }
 }
 
-/* Fix: Klick auf "BetaCodex Companion" öffnet die Konversationsseite mit
+/* Fix: Klick auf "BetaCodex Chat" öffnet die Konversationsseite mit
    leerer Konversation (siehe brand-link-Click-Handler in init-footer.js).
    Übernimmt die Flex-Ausrichtung der generischen h1-Regel, da diese jetzt
    nicht mehr direkt auf brand-dot/Text wirkt, sondern nur noch auf dieses
@@ -982,6 +982,26 @@ body:not(.chat-started) #question-form {
 
 .chat-message--user {
   align-items: flex-end;
+}
+
+/* Nutzerwunsch (Livegang-Vorbereitung, 2026-09-10): kurzer, unaufdringlicher
+   Hinweis, wenn die Sprache automatisch anhand der Eingabe umgeschaltet
+   wurde (siehe question.js) - bewusst ohne Bubble-Hintergrund/-Rahmen und
+   zentriert, damit er sich klar von den eigentlichen Frage-/Antwort-Bubbles
+   abhebt, statt wie eine dritte Gesprächspartei zu wirken. */
+.chat-message--system {
+  align-items: center;
+}
+
+.chat-message--system .chat-bubble {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  padding: 0.2rem 0.75rem;
+  max-width: 90%;
+  font-size: 0.82rem;
+  color: var(--color-text-muted);
+  text-align: center;
 }
 
 .chat-bubble {
@@ -4270,6 +4290,16 @@ details a {
 #creative-document {
   font-family: var(--font-sans);
   line-height: 1.5;
+}
+
+/* Nutzerwunsch (Livegang-Vorbereitung, 2026-09-10): analog zu
+   .chat-message--system in question.js, hier aber über der Textbox statt
+   als Gesprächs-Bubble. */
+.creative-lang-switch-notice {
+  margin: 0 0 0.4rem;
+  font-size: 0.82rem;
+  color: var(--color-text-muted);
+  text-align: center;
 }
 
 .creative-document-preview {

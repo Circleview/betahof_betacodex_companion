@@ -26,7 +26,7 @@
   "common.urlErrorUnknown": "Unknown error while checking the link",
   "common.skipToContent": "Skip to content",
 
-  "index.brandName": "BetaCodex Companion",
+  "index.brandName": "BetaCodex Chat",
   "index.viewConversation": "Go to conversation",
   "index.viewSources": "View all sources",
   "index.tagline": "Curated sources – for management-free organizations.",
@@ -45,6 +45,7 @@
   "index.termFollowUpQuestion": "Tell me more about {term}.",
   "index.termFollowUpTitle": "Learn more about \"{term}\"",
   "index.usedSourcesHeading": "Sources used",
+  "index.autoLangSwitchNotice": "Automatically switched to English because the question was asked in English.",
 
   "auth.iconTitle": "Account",
   "auth.emailPlaceholder": "Email address",
@@ -232,7 +233,7 @@
   "embed.expandButtonTitle": "Open full view",
 
   "earlyAccess.heading": "Closed testing access",
-  "earlyAccess.body": "This instance of BetaCodex Companion is currently only open to selected testers. Please enter the password you were given.",
+  "earlyAccess.body": "This instance of BetaCodex Chat is currently only open to selected testers. Please enter the password you were given.",
   "earlyAccess.passwordPlaceholder": "Password",
   "earlyAccess.submitButton": "Unlock",
   "earlyAccess.genericError": "Unlock failed",
@@ -280,6 +281,7 @@
   "creative.noBetacodexSources": "No matching curated sources found.",
   "creative.noWebSources": "No web sources used.",
   "creative.error": "Failed to generate. Please try again.",
+  "creative.autoLangSwitchNotice": "Automatically switched to English because the instruction was given in English.",
   "questionLog.title": "Question log",
   "questionLog.heading": "Question log",
   "questionLog.today": "Today",

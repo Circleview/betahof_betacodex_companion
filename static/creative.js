@@ -1,4 +1,4 @@
-import { initI18n, t, getLang } from '/i18n.js';
+import { initI18n, t, getLang, setLang, detectTextLanguage } from '/i18n.js';
 import { initAuth } from '/auth.js';
 import { createTurnstileWidget } from '/turnstile.js';
 import { readNdjsonStream } from '/ndjson-stream.js';
@@ -68,6 +68,33 @@ const webListEl = document.getElementById('creative-sources-web');
 const toolbarButtons = Array.from(document.querySelectorAll('#creative-toolbar button[data-md-action]'));
 const previewToggleBtn = document.getElementById('creative-preview-toggle');
 const previewEl = document.getElementById('creative-document-preview');
+const langSwitchNoticeEl = document.getElementById('creative-lang-switch-notice');
+
+// Nutzerwunsch (Livegang-Vorbereitung, 2026-09-10): schreibt jemand eine
+// Anweisung (Hauptformular oder Abschnitts-Überarbeitung, siehe beide
+// Aufrufstellen unten) in der jeweils anderen Sprache, schaltet die ganze
+// Seite automatisch dorthin um - analog zu question.js, hier aber mit einem
+// Hinweis ÜBER der Dokument-Textbox statt einer Chat-Bubble, der sich nach
+// 30s von selbst wieder ausblendet (nicht bei jedem erneuten Auftreten
+// hart neu startet - clearTimeout sorgt dafür, dass ein zweiter Wechsel
+// innerhalb der 30s die Anzeigezeit wieder auf volle 30s zurücksetzt).
+let langSwitchNoticeTimer = null;
+function showLangSwitchNotice() {
+  langSwitchNoticeEl.textContent = t('creative.autoLangSwitchNotice');
+  langSwitchNoticeEl.classList.remove('hidden');
+  clearTimeout(langSwitchNoticeTimer);
+  langSwitchNoticeTimer = setTimeout(() => {
+    langSwitchNoticeEl.classList.add('hidden');
+  }, 30000);
+}
+
+async function maybeAutoSwitchLang(text) {
+  const detectedLang = detectTextLanguage(text);
+  if (detectedLang && detectedLang !== getLang()) {
+    await setLang(detectedLang);
+    showLangSwitchNotice();
+  }
+}
 
 // Nutzerwunsch (2026-08-26): Anweisungsfeld soll mit dem eingegebenen Text
 // mitwachsen, statt intern zu scrollen - Höhe bei jeder Eingabe auf den
@@ -85,6 +112,20 @@ function autoGrowTextarea(el) {
   el.style.height = `${el.scrollHeight + borderHeight}px`;
 }
 instructionField.addEventListener('input', () => autoGrowTextarea(instructionField));
+
+// Nutzerwunsch (Livegang-Vorbereitung, 2026-09-10): Umschalt+Enter sendet die
+// Anweisung ab (wie ein Klick auf "Erzeugen") - bewusst NICHT einfaches
+// Enter wie im Konversationsmodus (siehe question.js), da eine Anweisung
+// hier öfter mehrzeilig ist und einfaches Enter deshalb als normaler
+// Zeilenumbruch reserviert bleibt. isComposing schützt IME-Eingaben (z.B.
+// Japanisch/Chinesisch), bei denen Enter die Zeichenauswahl bestätigt statt
+// abzuschicken.
+instructionField.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && e.shiftKey && !e.isComposing) {
+    e.preventDefault();
+    form.requestSubmit();
+  }
+});
 
 // Nutzerwunsch (2026-08-28): ein Verweis aus dem Konversationsmodus (siehe
 // llm.CREATIVE_LINK_PLACEHOLDER/app/main.py) kann die ursprüngliche Frage
@@ -516,6 +557,10 @@ async function submitSectionRevision(index) {
       { document: (evt) => { revisedSectionText = evt.document; } },
       t('creative.error')
     );
+    // Fix (Livegang-Vorbereitung, 2026-09-10): Sprache aus dem tatsächlich
+    // überarbeiteten Abschnittstext erkennen, siehe Kommentar bei der
+    // Ganzdokument-Generierung oben.
+    await maybeAutoSwitchLang(revisedSectionText);
     documentField.value = spliceCreativeSection(documentField.value, section.start, section.end, revisedSectionText);
     sectionDrafts.delete(index);
     openSectionIndex = null;
@@ -712,6 +757,14 @@ form.addEventListener('submit', async (event) => {
       },
       t('creative.error')
     );
+
+    // Fix (Livegang-Vorbereitung, 2026-09-10, gemeldeter Bug): Sprache aus
+    // dem TATSÄCHLICH ERZEUGTEN Dokument erkennen statt aus der Anweisung -
+    // das Modell entscheidet die Antwortsprache selbst (siehe SYSTEM_PROMPTS
+    // in app/llm.py), eine Erkennung anhand der Anweisung konnte davon
+    // abweichen (Hinweis erschien dann gar nicht, siehe question.js für
+    // dieselbe Korrektur).
+    await maybeAutoSwitchLang(liveText);
 
     // Eine Ganzdokument-Ersetzung macht alle bisherigen Abschnitts-Offsets
     // und darauf bezogene, noch nicht abgeschickte Entwürfe ungültig - ein
