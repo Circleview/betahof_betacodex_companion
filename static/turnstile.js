@@ -12,11 +12,11 @@
 // ein No-op-Widget - der Backend-Check ist dann ebenfalls deaktiviert (siehe
 // app/captcha.py), die App bleibt also auch ohne Turnstile-Setup voll nutzbar.
 //
-// Das JS-SDK wird pro Seite nur EINMAL eingebunden (<script ...
-// ?onload=onTurnstileLoad>, siehe index.html/import.html) und ruft beim
-// Laden dieses Modul auf - alle Aufrufer:innen von createTurnstileWidget()
-// warten auf dasselbe Bereitschafts-Signal, unabhängig davon, wie viele
-// Formulare auf der jeweiligen Seite ein eigenes Widget brauchen.
+// Das JS-SDK wird pro Seite nur EINMAL eingebunden (<script ... async>,
+// siehe index.html/import.html) - alle Aufrufer:innen von
+// createTurnstileWidget() warten auf dasselbe Bereitschafts-Signal,
+// unabhängig davon, wie viele Formulare auf der jeweiligen Seite ein
+// eigenes Widget brauchen.
 
 let turnstileSiteKey = '';
 const siteKeyPromise = fetch('/api/turnstile-config')
@@ -28,15 +28,29 @@ const siteKeyPromise = fetch('/api/turnstile-config')
     turnstileSiteKey = '';
   });
 
-let resolveApiReady;
+// Fix (2026-09-10, gemeldete Konsolen-Warnung "[Cloudflare Turnstile]
+// Unable to find onload callback"): der bisherige ?onload=onTurnstileLoad-
+// Query-Parameter im <script>-Tag verlangt, dass window.onTurnstileLoad
+// bereits existiert, wenn Cloudflares (async geladenes) SDK-Skript fertig
+// ist - dieses Modul lief als ES-Modul (deferred) aber teils erst danach,
+// Cloudflare loggte dann die Warnung, bevor es je wieder nachschaut (das
+// Ergebnis blieb dank eines Fallbacks zwar funktional korrekt, die Warnung
+// aber sichtbar). turnstile.ready() wäre Cloudflares eigenes Bereitschafts-
+// Signal, verlangt laut Cloudflare selbst aber zwingend ein <script>-Tag
+// OHNE async/defer (live getestet: sonst wirft es einen eigenen Fehler) -
+// mit async (bewusst beibehalten, blockiert sonst das Rendering) bleibt nur
+// dieses einfache Polling auf window.turnstile selbst, das schon vorher als
+// Fallback lief und nachweislich zuverlässig funktioniert.
 const apiReadyPromise = new Promise((resolve) => {
-  resolveApiReady = resolve;
+  const waitForSdk = () => {
+    if (window.turnstile) {
+      resolve();
+    } else {
+      setTimeout(waitForSdk, 20);
+    }
+  };
+  waitForSdk();
 });
-window.onTurnstileLoad = () => resolveApiReady();
-// Falls das SDK bereits vor diesem Modul geladen wurde (z.B. aus dem
-// Browser-Cache), hat Cloudflare den Callback dann schon verpasst -
-// window.turnstile ist in dem Fall aber schon vorhanden.
-if (window.turnstile) resolveApiReady();
 
 // containerId muss beim Aufruf bereits im DOM existieren, aber nicht
 // zwingend sichtbar sein - Cloudflare rendert zuverlässig auch in einen
