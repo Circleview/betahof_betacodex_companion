@@ -3944,8 +3944,12 @@ details a {
   margin-bottom: 1.25rem;
 }
 
+/* Fix (2026-09-10, Nutzerfeedback): full-width wirkte in Kombination mit
+   dem größeren Padding der betacodex.org-angeglichenen Buttons überdimensioniert -
+   normale Buttongröße, rechtsbündig unter dem Formular statt gestreckt. */
 .footer-feedback-panel button[type="submit"] {
-  width: 100%;
+  display: block;
+  margin-left: auto;
 }
 
 /* Gleiches Muster wie .jobs-bar-close (import.js/style.css) - Schließen-
