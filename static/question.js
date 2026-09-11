@@ -538,13 +538,25 @@ function makeCitationsClickable(container, sources) {
 // klickbar sein - ein Klick vertieft den Begriff als neue Folgefrage,
 // eingebettet in den bestehenden, verlaufsbewussten Frage-Mechanismus
 // (dieselbe questionForm/questionInput, dieselbe Historie), statt eine
-// eigene, parallele Anfrage-Logik aufzubauen. `strong.md-heading` (Markdown-
-// Überschriften, siehe markdown.js) bleibt bewusst ausgenommen - das sind
-// keine "Begriffe", sondern Gliederungselemente.
+// eigene, parallele Anfrage-Logik aufzubauen. `strong.md-heading` (echte
+// "#"-Markdown-Überschriften, siehe markdown.js) bleibt bewusst ausgenommen -
+// das sind keine "Begriffe", sondern Gliederungselemente.
 function makeTermsClickable(container) {
   container.querySelectorAll('strong:not(.md-heading)').forEach((el) => {
     const term = el.textContent.trim();
     if (!term) return;
+    // Nutzerfeedback (2026-09-11): das Modell formatiert Zwischenüberschriften
+    // ohne "#"-Syntax gelegentlich nur als fett gesetzte, eigene Zeile - mal
+    // als kompletter Absatz ("**Titel**" allein zwischen Leerzeilen), mal als
+    // erste Zeile EINES mehrzeiligen Absatzes ("**§1 Titel**<br>Fließtext
+    // danach", per einfachem Zeilenumbruch statt neuem Absatz). Ein <strong>,
+    // das seine Zeile komplett für sich allein einnimmt (davor/danach nur
+    // Zeilenumbruch oder Absatzgrenze, kein Fließtext), wird deshalb wie eine
+    // echte Überschrift behandelt (schwarz, nicht klickbar) statt wie ein
+    // einzelnes Fachbegriff-Schlagwort mitten im Text.
+    const isLineBoundary = (node) =>
+      !node || node.nodeName === 'BR' || (node.nodeType === Node.TEXT_NODE && !node.textContent.trim());
+    if (isLineBoundary(el.previousSibling) && isLineBoundary(el.nextSibling)) return;
     el.classList.add('term-followup');
     el.title = t('index.termFollowUpTitle', { term });
     el.addEventListener('click', (event) => {

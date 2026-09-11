@@ -2717,6 +2717,138 @@ def test_render_markdown_plain_heading_unaffected():
     assert html == '<p><strong class="md-heading">Einfache Überschrift</strong></p><p>Text danach.</p>'
 
 
+def _run_make_terms_clickable(paragraphs):
+    """Führt static/question.js#makeTermsClickable per Node aus, mit einem
+    minimalen FakeNode-DOM (kein volles jsdom nötig, siehe
+    _run_append_title_text) - querySelectorAll ist fest auf den einen in der
+    Funktion genutzten Selektor 'strong:not(.md-heading)' zugeschnitten.
+    `paragraphs` ist eine Liste von Absätzen, jeder Absatz eine Liste von
+    Kindknoten: {"type": "text", "value": "..."} / {"type": "br"} /
+    {"type": "strong", "text": "...", "heading": bool}."""
+    js_source = (STATIC_DIR / "question.js").read_text()
+    match = re.search(r"function makeTermsClickable.*?\n\}", js_source, re.S)
+    assert match, "makeTermsClickable wurde in question.js nicht gefunden."
+    func_source = match.group(0)
+    script = f"""
+const Node = {{ TEXT_NODE: 3 }};
+function t(key) {{ return key; }}
+const questionInput = {{ value: '' }};
+const questionForm = {{ requestSubmit() {{}} }};
+
+class FakeNode {{
+  constructor(nodeType, tagOrText, {{ className }} = {{}}) {{
+    this.nodeType = nodeType;
+    this.children = [];
+    this.parentNode = null;
+    if (nodeType === Node.TEXT_NODE) {{
+      this.nodeName = '#text';
+      this._text = tagOrText;
+    }} else {{
+      this.nodeName = tagOrText.toUpperCase();
+      this.classList = new Set(className ? [className] : []);
+      this.classList.add = Set.prototype.add.bind(this.classList);
+    }}
+  }}
+  appendChild(child) {{
+    child.parentNode = this;
+    this.children.push(child);
+    return child;
+  }}
+  get previousSibling() {{
+    const i = this.parentNode.children.indexOf(this);
+    return i > 0 ? this.parentNode.children[i - 1] : null;
+  }}
+  get nextSibling() {{
+    const i = this.parentNode.children.indexOf(this);
+    return i < this.parentNode.children.length - 1 ? this.parentNode.children[i + 1] : null;
+  }}
+  get textContent() {{
+    if (this.nodeType === Node.TEXT_NODE) return this._text;
+    return this.children.map((c) => c.textContent).join('');
+  }}
+  querySelectorAll(selector) {{
+    if (selector !== 'strong:not(.md-heading)') throw new Error('unerwarteter Selektor: ' + selector);
+    const found = [];
+    const walk = (node) => {{
+      for (const child of node.children) {{
+        if (child.nodeType !== Node.TEXT_NODE) {{
+          if (child.nodeName === 'STRONG' && !child.classList.has('md-heading')) found.push(child);
+          walk(child);
+        }}
+      }}
+    }};
+    walk(this);
+    return found;
+  }}
+  addEventListener() {{}}
+}}
+
+const container = new FakeNode(1, 'div');
+for (const paragraph of {json.dumps(paragraphs)}) {{
+  const p = new FakeNode(1, 'p');
+  container.appendChild(p);
+  for (const node of paragraph) {{
+    if (node.type === 'text') p.appendChild(new FakeNode(Node.TEXT_NODE, node.value));
+    else if (node.type === 'br') p.appendChild(new FakeNode(1, 'br'));
+    else if (node.type === 'strong') {{
+      const strong = new FakeNode(1, 'strong', node.heading ? {{ className: 'md-heading' }} : {{}});
+      strong.appendChild(new FakeNode(Node.TEXT_NODE, node.text));
+      p.appendChild(strong);
+    }}
+  }}
+}}
+
+{func_source}
+
+makeTermsClickable(container);
+const result = container.querySelectorAll('strong:not(.md-heading)').map((el) => ({{
+  text: el.textContent,
+  clickable: el.classList.has('term-followup'),
+}}));
+console.log(JSON.stringify(result));
+"""
+    return _run_node(script)
+
+
+def test_make_terms_clickable_keeps_inline_term_clickable():
+    result = _run_make_terms_clickable(
+        [[{"type": "text", "value": "Beta-Unternehmen zeichnen sich durch "},
+          {"type": "strong", "text": "überdurchschnittliche Rentabilität"},
+          {"type": "text", "value": " aus."}]]
+    )
+    assert result == [{"text": "überdurchschnittliche Rentabilität", "clickable": True}]
+
+
+def test_make_terms_clickable_excludes_standalone_paragraph_heading():
+    # Regression (2026-09-11): "**Die ersten drei Prinzipien**" als einziger
+    # Inhalt eines eigenen Absatzes - eine informelle Zwischenüberschrift
+    # ohne "#"-Syntax, keine klickbare Schlagwort-Folgefrage.
+    result = _run_make_terms_clickable([[{"type": "strong", "text": "Die ersten drei Prinzipien"}]])
+    assert result == [{"text": "Die ersten drei Prinzipien", "clickable": False}]
+
+
+def test_make_terms_clickable_excludes_heading_line_followed_by_br_in_same_paragraph():
+    # Regression (2026-09-11): "**§1 Titel**<br>Fließtext" - Überschrift und
+    # Folgetext im selben Absatz (nur per Zeilenumbruch getrennt statt
+    # eigenem Absatz), trotzdem keine klickbare Folgefrage für die Zeile.
+    result = _run_make_terms_clickable(
+        [[{"type": "strong", "text": "§1 Teamautonomie"},
+          {"type": "br"},
+          {"type": "text", "value": "Dieses Prinzip verkörpert die klare Einsicht."}]]
+    )
+    assert result == [{"text": "§1 Teamautonomie", "clickable": False}]
+
+
+def test_make_terms_clickable_keeps_term_at_paragraph_start_when_prose_continues_inline():
+    # Ein Fachbegriff als erstes Wort eines fließenden Satzes (kein
+    # Zeilenumbruch danach) ist kein Überschriften-Muster und bleibt klickbar.
+    result = _run_make_terms_clickable(
+        [[{"type": "strong", "text": "Teamautonomie"},
+          {"type": "text", "value": " ist ein zentrales Prinzip."}]]
+    )
+    assert result == [{"text": "Teamautonomie", "clickable": True}]
+
+
 def test_render_markdown_renders_internal_link():
     html = _run_render_markdown("Schau mal im [Kreativ-Modus](/creative.html?instruction=Test) vorbei.")
     assert '<a href="/creative.html?instruction=Test">Kreativ-Modus</a>' in html
