@@ -1722,9 +1722,12 @@ button.send-button {
 /* Nutzerwunsch (2026-08-25): fett hervorgehobene Begriffe in einer Antwort
    klickbar machen (siehe question.js: makeTermsClickable). Bewusst OHNE
    permanente Unterstreichung (Nutzerfeedback: eine gepunktete Linie wirkte
-   zu unruhig) - die Klickbarkeit zeigt sich stattdessen erst beim Hover. */
+   zu unruhig).
+   Nutzerwunsch (2026-09-11): Farbe dauerhaft im App-üblichen Rot (nicht nur
+   beim Hover) - fett ist bereits durch das umschließende <strong> gegeben. */
 .term-followup {
   cursor: pointer;
+  color: var(--color-accent);
 }
 
 .term-followup:hover {
