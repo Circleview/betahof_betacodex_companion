@@ -432,6 +432,7 @@ Commit-/Tag-Nachrichten in Git.
 
 | Version | Wesentliche Änderungen |
 |---|---|
+| v0.63.4 | Fix: eine Überschrift, die das Modell zusätzlich fett markierte ("## **Titel**"), wurde fälschlich zum klickbaren, roten Schlagwort-Link statt schwarzer, nicht-klickbarer Überschrift zu bleiben - Ursache war ein verschachteltes `<strong>` durch die bisherige Verarbeitungsreihenfolge (erst Fett-Ersetzung, dann Überschriften-Erkennung) in `renderMarkdown()` |
 | v0.63.3 | Fix: klickbare Schlagwort-Begriffe in Antworten (Folgefragen-Links auf fett hervorgehobene Begriffe, `.term-followup`) waren nur beim Hover im Akzent-Rot eingefärbt - jetzt dauerhaft im App-üblichen Rot sichtbar, fett kommt weiterhin vom umschließenden `<strong>` |
 | v0.63.2 | Fix: der "Absenden"-Button im Feedback-Popover im Footer war auf dem Desktop unnötig breit (full-width) - jetzt rechtsbündig direkt unter der Textbox |
 | v0.63.1 | Fix: Links auf den Rechtstext-Seiten (Datenschutz/Impressum) fielen auf die Browser-Standardfarbe (Blau) zurück statt die App-Akzentfarbe zu nutzen - jetzt konsistent zum Rest der App. Fix: E-Mail-Adresse im Impressum (DE+EN) als HTML-Entities statt Klartext kodiert, für Menschen identisch lesbar, aber ohne literales "@" im rohen Quelltext, das einfache Spam-Bot-Scraper erkennen könnten |
