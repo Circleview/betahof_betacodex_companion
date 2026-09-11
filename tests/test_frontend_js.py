@@ -2702,6 +2702,21 @@ def test_render_markdown_bold_and_italic():
     assert html == "<p><strong>fett</strong> und <em>kursiv</em></p>"
 
 
+def test_render_markdown_heading_is_not_nested_when_also_bold():
+    # Regression (2026-09-11): schreibt das Modell eine Überschrift
+    # zusätzlich fett ("## **Titel**"), darf daraus kein verschachteltes
+    # <strong> ohne .md-heading-Klasse entstehen - genau das machte die
+    # Überschrift in question.js (makeTermsClickable) versehentlich zu einem
+    # klickbaren, rot eingefärbten Schlagwort-Link (.term-followup).
+    html = _run_render_markdown("## **Wichtiger Titel**\n\nText danach.")
+    assert html == '<p><strong class="md-heading">Wichtiger Titel</strong></p><p>Text danach.</p>'
+
+
+def test_render_markdown_plain_heading_unaffected():
+    html = _run_render_markdown("### Einfache Überschrift\n\nText danach.")
+    assert html == '<p><strong class="md-heading">Einfache Überschrift</strong></p><p>Text danach.</p>'
+
+
 def test_render_markdown_renders_internal_link():
     html = _run_render_markdown("Schau mal im [Kreativ-Modus](/creative.html?instruction=Test) vorbei.")
     assert '<a href="/creative.html?instruction=Test">Kreativ-Modus</a>' in html
