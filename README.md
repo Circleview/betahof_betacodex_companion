@@ -432,6 +432,7 @@ Commit-/Tag-Nachrichten in Git.
 
 | Version | Wesentliche Änderungen |
 |---|---|
+| v0.63.5 | Fix: fett gesetzte Zwischenüberschriften ohne "#"-Markdown-Syntax (nur eine eigene fett gesetzte Zeile, z. B. "**§1 Titel**" gefolgt von Fließtext) wurden fälschlich zu klickbaren, roten Schlagwort-Links - `makeTermsClickable()` erkennt jetzt strukturell, ob ein `<strong>` seine Zeile komplett für sich allein einnimmt (davor/danach nur Zeilenumbruch oder Absatzgrenze) und behandelt es dann wie eine echte Überschrift (schwarz, nicht klickbar); echte Inline-Fachbegriffe bleiben unverändert klickbar/rot |
 | v0.63.4 | Fix: eine Überschrift, die das Modell zusätzlich fett markierte ("## **Titel**"), wurde fälschlich zum klickbaren, roten Schlagwort-Link statt schwarzer, nicht-klickbarer Überschrift zu bleiben - Ursache war ein verschachteltes `<strong>` durch die bisherige Verarbeitungsreihenfolge (erst Fett-Ersetzung, dann Überschriften-Erkennung) in `renderMarkdown()` |
 | v0.63.3 | Fix: klickbare Schlagwort-Begriffe in Antworten (Folgefragen-Links auf fett hervorgehobene Begriffe, `.term-followup`) waren nur beim Hover im Akzent-Rot eingefärbt - jetzt dauerhaft im App-üblichen Rot sichtbar, fett kommt weiterhin vom umschließenden `<strong>` |
 | v0.63.2 | Fix: der "Absenden"-Button im Feedback-Popover im Footer war auf dem Desktop unnötig breit (full-width) - jetzt rechtsbündig direkt unter der Textbox |
