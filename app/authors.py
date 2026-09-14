@@ -1,8 +1,16 @@
+import difflib
 import json
+import re
 from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 AUTHORS_FILE = BASE_DIR / "data" / "authors.json"
+
+# Ab dieser Nachnamenlänge lohnt sich ein Tippfehler-toleranter Abgleich -
+# bei kürzeren Nachnamen (z.B. "Li") würde ein Tippfehler-Radius zu viele
+# unbeteiligte Wörter fälschlich treffen.
+_FUZZY_MIN_SURNAME_LEN = 4
+_FUZZY_CUTOFF = 0.8
 
 
 def _normalize(name: str) -> str:
@@ -70,12 +78,29 @@ def list_authors() -> list[dict]:
 
 
 def find_mentioned(text: str) -> list[str]:
-    """Findet registrierte Autor:innen, deren vollständiger Name wörtlich in
-    text vorkommt (z.B. eine Chat-Frage) - Grundlage dafür, biografische
-    Fragen ("Wer ist X?") mit der gepflegten Autor:innen-Vita zu beantworten
-    statt nur mit inhaltlich unpassenden Quellen-Chunks (siehe app/main.py,
-    ask()). Bewusst simpler Substring-Abgleich (case-insensitive), kein
-    Fuzzy-Matching - ein zu großzügiger Treffer würde die strikte
-    Quellenbindung der Antwort unnötig aufweichen."""
+    """Findet registrierte Autor:innen, die in text (z.B. eine Chat-Frage)
+    per vollem Namen, per Nachnamen allein (Wortgrenze, siehe Bug
+    2026-09-14: "List die Texte von Ackoff auf" nannte nie "Russell Ackoff"
+    vollständig) oder per Tippfehler-nahem Nachnamen (z.B. "Russel Ackoff")
+    erwähnt werden - Grundlage dafür, biografische Fragen ("Wer ist X?") mit
+    der gepflegten Autor:innen-Vita zu beantworten statt nur mit inhaltlich
+    unpassenden Quellen-Chunks (siehe app/main.py, ask()). Reiner Vorname
+    allein zählt bewusst NICHT (zu häufig mehrdeutig, siehe
+    test_find_mentioned_ignores_partial_first_name_only) - die
+    Tippfehler-Toleranz gilt deshalb nur für den Nachnamen, nicht für
+    beliebige Wörter im Text."""
     text_lower = text.lower()
-    return [entry["name"] for entry in list_authors() if entry["name"].lower() in text_lower]
+    words = re.findall(r"\w+", text_lower)
+    mentioned = []
+    for entry in list_authors():
+        full_name_lower = entry["name"].lower()
+        surname = full_name_lower.rsplit(" ", 1)[-1]
+        exact = full_name_lower in text_lower or re.search(rf"\b{re.escape(surname)}\b", text_lower)
+        fuzzy = (
+            not exact
+            and len(surname) >= _FUZZY_MIN_SURNAME_LEN
+            and difflib.get_close_matches(surname, words, n=1, cutoff=_FUZZY_CUTOFF)
+        )
+        if exact or fuzzy:
+            mentioned.append(entry["name"])
+    return mentioned

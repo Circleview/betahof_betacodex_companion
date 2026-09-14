@@ -109,6 +109,32 @@ def test_find_mentioned_ignores_partial_first_name_only(tmp_path, monkeypatch):
     assert authors.find_mentioned("Was denkt Peter über Führung?") == []
 
 
+def test_find_mentioned_matches_surname_only(tmp_path, monkeypatch):
+    _isolate(tmp_path, monkeypatch)
+    authors.register_author("Russell Ackoff", "source-1")
+
+    assert authors.find_mentioned("List die Texte von Ackoff auf.") == ["Russell Ackoff"]
+    # Realer Bug 2026-09-14: Tippfehler im Vornamen ("Russel" statt
+    # "Russell") verhinderte bisher den Treffer, obwohl der Nachname korrekt
+    # geschrieben war.
+    assert authors.find_mentioned("Russel Ackoff spricht über Führung.") == ["Russell Ackoff"]
+
+
+def test_find_mentioned_tolerates_surname_typo(tmp_path, monkeypatch):
+    _isolate(tmp_path, monkeypatch)
+    authors.register_author("Russell Ackoff", "source-1")
+
+    assert authors.find_mentioned("Was sagt Ackof über Systeme?") == ["Russell Ackoff"]
+    assert authors.find_mentioned("Was sagt Akcoff über Systeme?") == ["Russell Ackoff"]
+
+
+def test_find_mentioned_no_fuzzy_match_for_short_surname(tmp_path, monkeypatch):
+    _isolate(tmp_path, monkeypatch)
+    authors.register_author("Jos de Blok", "source-1")
+
+    assert authors.find_mentioned("Wir haben ein Bob dabei.") == []
+
+
 def test_find_mentioned_returns_empty_list_without_match(tmp_path, monkeypatch):
     _isolate(tmp_path, monkeypatch)
     authors.register_author("Peter Pröll", "source-1")
