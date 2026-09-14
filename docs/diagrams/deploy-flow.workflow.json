@@ -1,0 +1,57 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "BetaCodex Chat: CI/CD-Deploy-Ablauf",
+    "animation": "trace",
+    "visual_preset": "signal-flow",
+    "quality_profile": "showcase"
+  },
+  "lanes": [
+    { "id": "dev", "label": "Entwickler:in" },
+    { "id": "ci", "label": "GitHub Actions" },
+    { "id": "server", "label": "Hetzner-Server" },
+    { "id": "fail", "label": "Fehlerfall", "variant": "exception" }
+  ],
+  "phases": [
+    { "id": "trigger", "label": "Ausloesen", "fromCol": 0, "toCol": 1 },
+    { "id": "verify", "label": "Pruefen", "fromCol": 2, "toCol": 2, "variant": "emphasis" },
+    { "id": "rollout", "label": "Ausrollen", "fromCol": 3, "toCol": 5, "variant": "dashed" }
+  ],
+  "mainPath": ["push", "test", "gate", "deploy", "healthcheck", "switch"],
+  "nodes": [
+    { "id": "push", "lane": "dev", "col": 0, "type": "external", "label": "git tag Push", "sublabel": "vX.Y.Z", "width": 132 },
+    { "id": "test", "lane": "ci", "col": 1, "type": "backend", "label": "Testsuite", "sublabel": "pytest + Node-Tests", "width": 132 },
+    { "id": "gate", "lane": "ci", "col": 2, "type": "security", "label": "Tests OK?", "sublabel": "Deploy-Gate", "width": 132 },
+    { "id": "abort", "lane": "fail", "col": 2, "type": "security", "label": "Abbruch", "sublabel": "kein Deploy", "width": 132 },
+    { "id": "deploy", "lane": "server", "col": 3, "type": "backend", "label": "SSH-Deploy", "sublabel": "deploy.sh startet neue Farbe", "width": 132 },
+    { "id": "healthcheck", "lane": "server", "col": 4, "type": "backend", "label": "Health-Check", "sublabel": "curl /api/version", "width": 132 },
+    { "id": "switch", "lane": "server", "col": 5, "type": "security", "label": "Caddy-Switch", "sublabel": "Reload auf neue Farbe", "width": 132 }
+  ],
+  "edges": [
+    { "id": "trigger-test", "from": "push", "to": "test", "variant": "emphasis" },
+    { "id": "test-gate", "from": "test", "to": "gate", "variant": "default" },
+    { "id": "gate-abort", "from": "gate", "to": "abort", "label": "nein", "variant": "dashed", "role": "branch" },
+    { "id": "gate-deploy", "from": "gate", "to": "deploy", "label": "ja", "variant": "emphasis" },
+    { "id": "deploy-healthcheck", "from": "deploy", "to": "healthcheck", "variant": "default" },
+    { "id": "healthcheck-switch", "from": "healthcheck", "to": "switch", "label": "erreichbar", "variant": "emphasis" }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Zero-Downtime",
+      "items": [
+        "Neue Farbe startet, bevor Caddy umschaltet",
+        "Alte Farbe wird danach gestoppt, nicht vorher"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Freigabe-Pflicht",
+      "items": [
+        "Ein Tag-Push deployt automatisch live - kein manueller Freigabe-Klick",
+        "Deshalb vor jedem Tag-Push explizit beim Team nachfragen"
+      ]
+    }
+  ]
+}

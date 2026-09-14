@@ -1,0 +1,48 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "BetaCodex Chat: Produktions-Architektur",
+    "visual_preset": "blueprint",
+    "animation": "trace",
+    "quality_profile": "showcase"
+  },
+  "components": [
+    { "id": "user", "type": "external", "label": "Nutzer:in", "sublabel": "Browser", "pos": [40, 260], "size": [120, 60] },
+    { "id": "github", "type": "external", "label": "GitHub Repo", "sublabel": "Quell-Code", "pos": [40, 430], "size": [140, 62] },
+    { "id": "actions", "type": "cloud", "label": "GitHub Actions", "sublabel": "Tests + SSH-Deploy", "pos": [250, 430], "size": [140, 62] },
+    { "id": "caddy", "type": "security", "label": "Caddy", "sublabel": "TLS + Reverse Proxy", "pos": [260, 260], "size": [126, 60] },
+    { "id": "app", "type": "backend", "label": "FastAPI-Instanz", "sublabel": "Blue/Green, Port 8000/8001", "tag": "Zero-Downtime-Deploy", "pos": [480, 260], "size": [150, 64] },
+    { "id": "shared_data", "type": "database", "label": "shared/data + .env", "sublabel": "JSON-Dateien + ChromaDB", "tag": "Symlink", "pos": [480, 430], "size": [150, 62] },
+    { "id": "claude_api", "type": "cloud", "label": "Claude API", "sublabel": "Anthropic Haiku 4.5", "pos": [720, 260], "size": [140, 60] }
+  ],
+  "boundaries": [
+    { "kind": "region", "label": "Hetzner Cloud CX23 (Falkenstein)", "wraps": ["caddy", "app", "shared_data"], "pad": 20 }
+  ],
+  "connections": [
+    { "from": "user", "to": "caddy", "label": "HTTPS", "variant": "emphasis" },
+    { "from": "caddy", "to": "app", "label": "aktive Farbe", "variant": "emphasis" },
+    { "from": "app", "to": "shared_data", "label": "liest/schreibt", "route": "straight", "labelDy": 24 },
+    { "from": "app", "to": "claude_api", "label": "Antwort-Generierung", "variant": "emphasis", "labelDy": -26 },
+    { "from": "github", "to": "actions", "label": "git tag Push", "variant": "dashed" },
+    { "from": "actions", "to": "app", "label": "SSH-Deploy (Farbwechsel)", "variant": "security", "route": "orthogonal-v" }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Blue-Green statt Downtime",
+      "items": [
+        "Zwei Instanzen (Port 8000/8001), Caddy routet auf die jeweils aktive",
+        "shared/data + .env per Symlink geteilt, nicht dupliziert"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Deploy braucht Freigabe",
+      "items": [
+        "Ein Tag-Push (vX.Y.Z) deployt automatisch live",
+        "Deshalb vor jedem Tag-Push explizit beim Team nachfragen"
+      ]
+    }
+  ]
+}

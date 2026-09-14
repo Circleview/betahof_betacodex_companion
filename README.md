@@ -336,6 +336,15 @@ dabei gemockt) plus Node-basierte Tests für Frontend-Logik
 in Node aus). Ein Pre-Commit-Hook verhindert versehentliche
 `.env`-Commits.
 
+**Diagramme:** `docs/diagrams/` enthält drei interaktive HTML-Diagramme
+(erzeugt mit dem Archify-Skill) plus ihre JSON-Spezifikationen: der
+RAG-Antwortfluss (`rag-flow.*`), die Produktions-Architektur
+(`architecture.*`) und der CI/CD-Deploy-Ablauf (`deploy-flow.*`). Bei
+architekturell relevanten Änderungen (neue Komponenten, geänderter
+Anfrage-/Deploy-Fluss) die passende `.json`-Spezifikation entsprechend
+anpassen und über `node ~/.agents/skills/archify/bin/archify.mjs deliver
+<type> <spec.json> <output.html> --quality showcase --json` neu ausliefern.
+
 ### Lokal starten
 
 ```bash

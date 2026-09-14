@@ -1,0 +1,70 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "BetaCodex Chat: RAG-Antwortfluss",
+    "animation": "trace",
+    "visual_preset": "signal-flow",
+    "quality_profile": "showcase"
+  },
+  "lanes": [
+    { "id": "ui", "label": "Chat-Oberflaeche" },
+    { "id": "retrieval", "label": "Quellen-Suche" },
+    { "id": "boost", "label": "Autor:innen-Erkennung", "variant": "exception" },
+    { "id": "llm", "label": "Sprachmodell" },
+    { "id": "evidence", "label": "Belege & Zitate", "variant": "exception" }
+  ],
+  "phases": [
+    { "id": "intake", "label": "Frage stellen", "fromCol": 0, "toCol": 1 },
+    { "id": "retrieve", "label": "Quellen finden", "fromCol": 2, "toCol": 3, "variant": "emphasis" },
+    { "id": "respond", "label": "Antworten + belegen", "fromCol": 4, "toCol": 5, "variant": "dashed" }
+  ],
+  "groups": [
+    { "id": "boost_group", "label": "Nur bei Autor:innen-Erwaehnung", "lane": "boost", "fromCol": 2, "toCol": 2, "variant": "security" },
+    { "id": "evidence_group", "label": "Zitat-Beleg-Pfad", "lane": "evidence", "fromCol": 4, "toCol": 5, "variant": "dashed" }
+  ],
+  "mainPath": ["user", "chat", "search", "rerank", "claude", "answer"],
+  "nodes": [
+    { "id": "user", "lane": "ui", "col": 0, "type": "external", "label": "Nutzer:in", "sublabel": "stellt Frage", "width": 132 },
+    { "id": "chat", "lane": "ui", "col": 1, "type": "frontend", "label": "Chat-UI", "sublabel": "Frage + Verlauf", "width": 132 },
+    { "id": "answer", "lane": "ui", "col": 5, "type": "frontend", "label": "Antwort im Chat", "sublabel": "[n] anklickbar", "width": 132 },
+    { "id": "search", "lane": "retrieval", "col": 2, "type": "database", "label": "Vektorsuche", "sublabel": "ChromaDB + Web-Index", "width": 132 },
+    { "id": "rerank", "lane": "retrieval", "col": 3, "type": "backend", "label": "Relevanz-Ranking", "sublabel": "Top-K Textausschnitte", "width": 132 },
+    { "id": "log", "lane": "retrieval", "col": 1, "type": "database", "label": "Fragen-Log", "sublabel": "1. Frage / keine Antwort", "width": 132 },
+    { "id": "boost", "lane": "boost", "col": 2, "type": "backend", "label": "Autor:innen-Boost", "sublabel": "Nachname/Tippfehler-Abgleich", "tag": "Distanz-Rabatt", "width": 132 },
+    { "id": "claude", "lane": "llm", "col": 4, "type": "cloud", "label": "Claude Haiku 4.5", "sublabel": "Antwort + verdeckte Zitate", "width": 132 },
+    { "id": "quotes", "lane": "evidence", "col": 4, "type": "database", "label": "Zitat-Block", "sublabel": "woertliche Belege je [n]", "tag": "---QUOTES---", "width": 132 },
+    { "id": "highlight", "lane": "evidence", "col": 5, "type": "backend", "label": "Zitat-Highlighting", "sublabel": "anfuehrungszeichen-tolerant", "width": 132 }
+  ],
+  "edges": [
+    { "id": "ask", "from": "user", "to": "chat", "variant": "default" },
+    { "id": "log-question", "from": "chat", "to": "log", "label": "protokolliert 1. Frage", "variant": "dashed", "role": "branch" },
+    { "id": "embed-search", "from": "chat", "to": "search", "label": "Frage embedden", "variant": "emphasis" },
+    { "id": "author-check", "from": "search", "to": "boost", "label": "Autor:in erkannt?", "variant": "security", "role": "branch" },
+    { "id": "boost-rerank", "from": "boost", "to": "rerank", "label": "Distanz-Rabatt", "variant": "dashed" },
+    { "id": "search-rerank", "from": "search", "to": "rerank", "variant": "default" },
+    { "id": "context-claude", "from": "rerank", "to": "claude", "label": "Top-K Kontext", "variant": "emphasis" },
+    { "id": "claude-quotes", "from": "claude", "to": "quotes", "label": "---QUOTES---", "variant": "dashed" },
+    { "id": "quotes-highlight", "from": "quotes", "to": "highlight", "variant": "default" },
+    { "id": "claude-answer", "from": "claude", "to": "answer", "label": "sichtbarer Text", "variant": "emphasis", "role": "return", "fromSide": "right", "toSide": "right", "route": "outside-right" },
+    { "id": "highlight-answer", "from": "highlight", "to": "answer", "label": "Highlights je Quelle", "variant": "emphasis" }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Strikte Quellenbindung",
+      "items": [
+        "Claude antwortet nur aus den Top-K Textausschnitten",
+        "Kein Treffer: Modell sagt das woertlich statt zu erfinden"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Autor:innen-Boost (Fix 2026-09-14)",
+      "items": [
+        "Erkennt vollen Namen, Nachnamen allein oder Tippfehler",
+        "Rabatt nur pro Quelle bei passendem Schlagwort staerker"
+      ]
+    }
+  ]
+}
