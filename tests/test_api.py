@@ -1701,7 +1701,7 @@ def test_question_log_entries_have_first_question_event_type(client, monkeypatch
 
     entries = question_log.list_entries()
 
-    assert entries[0]["event_type"] == "first_question"
+    assert entries[0]["event_types"] == ["first_question"]
     assert entries[0].get("feedback") is None
 
 
@@ -1718,7 +1718,7 @@ def test_first_question_log_entry_gets_answer_attached(client, monkeypatch):
 
     entries = question_log.list_entries()
 
-    assert entries[0]["event_type"] == "first_question"
+    assert entries[0]["event_types"] == ["first_question"]
     assert entries[0]["answer"] == "Testantwort [1]."
 
 
@@ -1733,7 +1733,7 @@ def test_question_log_normalizes_legacy_entries_without_event_type(client, monke
 
     entries = question_log.list_entries()
 
-    assert entries[0]["event_type"] == "first_question"
+    assert entries[0]["event_types"] == ["first_question"]
 
 
 def test_ask_logs_no_answer_event_when_model_says_it_cannot_answer(client, monkeypatch):
@@ -1752,10 +1752,33 @@ def test_ask_logs_no_answer_event_when_model_says_it_cannot_answer(client, monke
     client.post("/api/ask", json={"question": "Was ist Andreas Schlegels Sicht auf Zeitorientierung?"})
 
     entries = question_log.list_entries()
-    no_answer_entries = [e for e in entries if e["event_type"] == "no_answer"]
+    no_answer_entries = [e for e in entries if "no_answer" in e["event_types"]]
     assert len(no_answer_entries) == 1
     assert no_answer_entries[0]["text"] == "Was ist Andreas Schlegels Sicht auf Zeitorientierung?"
     assert no_answer_entries[0]["answer"] == "Die vorliegende Quellenlage gibt darauf keine Antwort."
+
+
+def test_ask_merges_no_answer_into_existing_first_question_entry(client, monkeypatch):
+    """Regressionstest (Bug 2026-09-14, per Screenshot gemeldet): eine
+    Frage, die sowohl die erste Frage einer Konversation ist als auch keine
+    Antwort fand, darf nur EINEN Log-Eintrag mit beiden Labels erzeugen,
+    nicht zwei separate mit identischem Text."""
+    monkeypatch.setattr(main_module, "IS_DEV_ENVIRONMENT", False)
+    monkeypatch.setattr(
+        llm,
+        "stream_answer_question",
+        lambda *a, **k: iter(["Die vorliegende Quellenlage gibt darauf keine Antwort."]),
+    )
+    client.post("/api/sources", json={"title": "Q", "text": "Text zu einem anderen Thema."})
+
+    client.post(
+        "/api/ask",
+        json={"question": "Frage ohne Antwort", "is_first_message": True},
+    )
+
+    entries = question_log.list_entries()
+    assert len(entries) == 1
+    assert set(entries[0]["event_types"]) == {"first_question", "no_answer"}
 
 
 def test_ask_does_not_log_no_answer_event_for_a_real_answer(client, monkeypatch):
@@ -1765,7 +1788,7 @@ def test_ask_does_not_log_no_answer_event_for_a_real_answer(client, monkeypatch)
     client.post("/api/ask", json={"question": "Was ist der BetaCodex?"})
 
     entries = question_log.list_entries()
-    assert [e for e in entries if e["event_type"] == "no_answer"] == []
+    assert [e for e in entries if "no_answer" in e["event_types"]] == []
 
 
 def test_ask_does_not_log_no_answer_event_in_dev_environment(client, monkeypatch):
@@ -1795,7 +1818,7 @@ def test_answer_feedback_logs_entry_with_question_answer_and_value(client, monke
     assert len(entries) == 1
     assert entries[0] == {
         "id": entries[0]["id"],
-        "event_type": "feedback",
+        "event_types": ["feedback"],
         "text": "Was ist der BetaCodex?",
         "answer": "Antworttext [1].",
         "feedback": "good",
@@ -2630,6 +2653,45 @@ def test_ask_uses_original_chunk_whitespace_not_llm_quote_for_highlight(client, 
     highlight = ask_result(response)["sources"][0]["highlighted_texts"][0]
     assert highlight == "Jede Liste besitzt einen\xa0List-Owner."
     assert "\xa0" in highlight
+
+
+def test_ask_matches_llm_quote_despite_typographic_quote_mismatch(client, monkeypatch):
+    """Regressionstest (Bug 2026-09-14, per Screenshot gemeldet, realer Fall
+    Russell-Ackoff-Interview): der Quelltext (gecrawlt/PDF) enthält oft
+    typografische Apostrophe/Anführungszeichen (hier ’), das Modell zitiert
+    im ---QUOTES---Block aber mit geraden ('). _find_quote_span() fand die
+    Textstelle dadurch nicht - das Highlighting fiel auf die semantisch
+    nächstliegende (aber ggf. falsche) Satz-Vermutung zurück, was bei einer
+    mehrfach zitierten Quelle zu vertauschten Highlights führen konnte."""
+    client.post(
+        "/api/sources",
+        json={
+            "title": "Ackoff Interview",
+            "authors": ["Russell Ackoff"],
+            "text": (
+                "Most managers currently manage the actions of their "
+                "organizations’ parts taken separately. That is a false premise."
+            ),
+        },
+    )
+    monkeypatch.setattr(
+        llm,
+        "stream_answer_question",
+        lambda question, chunks, lang="de", author_bios=None, history=None: iter([
+            "Antwort [1].\n\n---QUOTES---\n"
+            # Modell nutzt gerades Apostroph, Quelle typografisches (’).
+            '[1]: "Most managers currently manage the actions of their organizations\' parts taken separately."\n'
+        ]),
+    )
+
+    response = client.post("/api/ask", json={"question": "Was sagt Ackoff über Führung?"})
+
+    assert response.status_code == 200
+    highlight = ask_result(response)["sources"][0]["highlighted_texts"][0]
+    assert highlight == (
+        "Most managers currently manage the actions of their "
+        "organizations’ parts taken separately."
+    )
 
 
 def test_ask_skips_eager_local_highlight_computation_for_cited_chunks(client, monkeypatch):

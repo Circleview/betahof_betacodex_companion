@@ -3063,6 +3063,24 @@ def test_detect_text_language_recognizes_german_imperative_instruction():
     assert _run_detect_text_language("Schreibe einen kurzen Artikel über dezentrale Entscheidungsfindung") == "de"
 
 
+def test_detect_text_language_ignores_long_quoted_foreign_language_excerpt():
+    # Regressionstest, realer Bug 2026-09-14: eine kurze deutsche Antwort mit
+    # einem langen woertlichen englischen Zitat (Quellenmaterial im
+    # Original) wurde faelschlich als Englisch erkannt, obwohl Frage UND
+    # umgebender Antworttext durchgehend Deutsch waren - die Zitatwoerter
+    # duerfen nicht in die Spracherkennung der Antwort einfliessen.
+    text = (
+        'Ackoff argumentiert, dass Manager typischerweise die einzelnen Teile '
+        'einer Organisation verbessern, anstatt die Interaktionen zwischen '
+        'ihnen zu gestalten. Er sagt dazu: "Most managers currently manage '
+        "the actions of their organizations' parts taken separately. This is "
+        "based on the false assumption that improving the performance of the "
+        "parts separately necessarily improves the performance of the whole, "
+        'the corporation. That is a false premise."'
+    )
+    assert _run_detect_text_language(text) == "de"
+
+
 # --- question.js: embedExpandButton gibt aktuelle Sprache mit (2026-09-01) ---
 
 

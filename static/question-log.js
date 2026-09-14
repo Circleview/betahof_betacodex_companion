@@ -97,19 +97,26 @@ function buildFeedbackBadge(feedback) {
 
 function buildEntryElement(entry) {
   const li = document.createElement('li');
-  li.className = `question-log-entry question-log-entry--${entry.event_type}`;
+  // Fix (2026-09-14, gemeldeter Bug): eine Frage, auf die mehrere
+  // Kriterien gleichzeitig zutreffen (z.B. "erste Frage" UND "keine
+  // Antwort gefunden"), ist jetzt EIN Eintrag mit mehreren event_types
+  // statt zwei separaten, identisch aussehenden Einträgen - bekommt hier
+  // entsprechend mehrere Badges/Modifier-Klassen statt nur einer.
+  li.className = ['question-log-entry', ...entry.event_types.map((et) => `question-log-entry--${et}`)].join(' ');
 
   const time = document.createElement('span');
   time.className = 'question-log-time';
   time.textContent = formatTime(new Date(entry.timestamp));
   li.appendChild(time);
 
-  const badge = document.createElement('span');
-  badge.className = 'question-log-type-badge';
-  badge.textContent = t(EVENT_TYPE_LABEL_KEYS[entry.event_type] || EVENT_TYPE_LABEL_KEYS.first_question);
-  li.appendChild(badge);
+  entry.event_types.forEach((eventType) => {
+    const badge = document.createElement('span');
+    badge.className = 'question-log-type-badge';
+    badge.textContent = t(EVENT_TYPE_LABEL_KEYS[eventType] || EVENT_TYPE_LABEL_KEYS.first_question);
+    li.appendChild(badge);
+  });
 
-  if (entry.event_type === 'feedback' && entry.feedback) {
+  if (entry.event_types.includes('feedback') && entry.feedback) {
     li.appendChild(buildFeedbackBadge(entry.feedback));
   }
 
@@ -216,7 +223,10 @@ function render(entries) {
 }
 
 function applyFilter() {
-  render(allEntries.filter((entry) => activeEventTypes.has(entry.event_type)));
+  // "oder"-Semantik (Nutzerwunsch 2026-09-14): eine Frage mit mehreren
+  // event_types taucht auf, sobald MINDESTENS eines davon aktiv gefiltert
+  // ist - auch wenn ein anderes ihrer Labels gerade ausgeblendet ist.
+  render(allEntries.filter((entry) => entry.event_types.some((et) => activeEventTypes.has(et))));
 }
 
 filterButtons.forEach((btn) => {

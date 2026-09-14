@@ -107,8 +107,13 @@ class QuestionLogEntryOut(BaseModel):
     # gefüllt). Alte, bereits gespeicherte Einträge ohne event_type werden
     # beim Lesen (question_log.list_entries) auf "first_question"
     # normalisiert.
+    # Fix (2026-09-14, gemeldeter Bug): eine Frage, auf die MEHRERE Kriterien
+    # gleichzeitig zutreffen (z.B. "erste Frage" UND "keine Antwort
+    # gefunden"), bekam bisher zwei separate Log-Einträge mit identischem
+    # Text - erscheint jetzt als EIN Eintrag mit mehreren event_types (Liste
+    # statt Einzelwert), siehe question_log.add_event_type.
     id: str
-    event_type: str
+    event_types: list[str]
     text: str
     answer: str | None = None
     feedback: str | None = None

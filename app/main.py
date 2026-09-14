@@ -3245,11 +3245,31 @@ def extract_url(payload: UrlIn, _user: str = Depends(require_role(users.QUELLEN_
 # -Schreibweise), an exakt der vom Zitat referenzierten Stelle - der
 # Frontend-Exakttreffer greift dann direkt, die Regex bleibt nur noch
 # Sicherheitsnetz statt Regelfall.
+#
+# Fix (2026-09-14, gemeldeter Bug "falsches Highlight"): genau die oben schon
+# als bekannte Lücke benannten Anführungszeichen-Varianten waren der reale
+# Fall - Quelltexte (v.a. gecrawlt/PDF) enthalten oft typografische
+# Apostrophe/Anführungszeichen (’‘“”), das Modell zitiert im ---QUOTES---
+# Block aber mit geraden ('/"). Schlug der Match dadurch fehl, fiel das
+# Highlighting auf die semantisch (nicht wörtlich) nächstliegende Satz-
+# Vermutung zurück - bei mehrfach zitierter Quelle konnte das dann das
+# Highlight der JEWEILS ANDEREN Textstelle zeigen. Jede Anführungszeichen-
+# Variante wird deshalb vor dem Vergleich auf eine gemeinsame Zeichenklasse
+# abgebildet, unabhängig davon, welche Schreibweise auf welcher Seite steht.
+_QUOTE_CHAR_CLASSES = {"'": "['’‘`]", '"': '["“”]'}
+
+
 def _find_quote_span(doc: str, candidate: str) -> str | None:
     words = candidate.split()
     if not words:
         return None
-    pattern = r"\s+".join(re.escape(word) for word in words)
+    escaped_words = []
+    for word in words:
+        escaped = re.escape(word)
+        for literal, char_class in _QUOTE_CHAR_CLASSES.items():
+            escaped = escaped.replace(re.escape(literal), char_class)
+        escaped_words.append(escaped)
+    pattern = r"\s+".join(escaped_words)
     match = re.search(pattern, doc, re.IGNORECASE)
     return doc[match.start() : match.end()] if match else None
 
@@ -3646,8 +3666,15 @@ def _ask_event_stream(
     # feststeht. Dieselben Ausschlüsse wie beim first_question-Ereignis
     # (siehe _should_log_question_event), von ask() vorberechnet
     # übergeben, da ein Generator keinen direkten Zugriff auf request hat.
+    # Fix (2026-09-14, gemeldeter Bug): ist dieselbe Frage bereits als
+    # first_question geloggt (first_question_log_id bekannt), wird
+    # "no_answer" dort ERGÄNZT statt einen zweiten, doppelten Eintrag mit
+    # identischem Text anzulegen (siehe question_log.add_event_type).
     if should_log_question_events and NO_ANSWER_PHRASES.get(lang, NO_ANSWER_PHRASES["de"]) in answer_text:
-        question_log.log_no_answer(question_text, answer_text)
+        if first_question_log_id:
+            question_log.add_event_type(first_question_log_id, "no_answer")
+        else:
+            question_log.log_no_answer(question_text, answer_text)
 
     # Nutzerwunsch (Livegang-Vorbereitung, 2026-09-10): die Antwort zur
     # ersten Frage soll ebenfalls im Fragen-Log stehen - log_question() oben

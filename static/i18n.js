@@ -140,9 +140,20 @@ const EN_MARKER_WORDS = new Set([
 ]);
 const DE_ONLY_CHARS = /[äöüß]/i;
 
+// Fix (2026-09-14, gemeldeter Bug): eine Antwort zitiert Quellen oft wörtlich
+// (siehe app/llm.py SYSTEM_PROMPTS, Anführungszeichen-Zitate im Fließtext) -
+// diese Zitate stehen im Original der Quelle und duerfen von der Sprache der
+// umgebenden Antwort abweichen (z.B. deutsche Antwort mit englischem
+// Original-Zitat). Ohne Ausschluss kippte die Erkennung bei kurzer
+// deutscher Antwort + langem englischem Zitat faelschlich auf Englisch,
+// obwohl Frage UND umgebender Antworttext durchgehend Deutsch waren.
+// Straight Quotes reichen - das Modell nutzt fuer Zitate durchgaengig ".
+const QUOTED_TEXT_RE = /"[^"]*"/g;
+
 export function detectTextLanguage(text) {
-  const words = (text.toLowerCase().match(/[a-zäöüß]+/g) || []);
-  let deScore = DE_ONLY_CHARS.test(text) ? 2 : 0;
+  const textWithoutQuotes = text.replace(QUOTED_TEXT_RE, ' ');
+  const words = (textWithoutQuotes.toLowerCase().match(/[a-zäöüß]+/g) || []);
+  let deScore = DE_ONLY_CHARS.test(textWithoutQuotes) ? 2 : 0;
   let enScore = 0;
   for (const word of words) {
     if (DE_MARKER_WORDS.has(word)) deScore += 1;

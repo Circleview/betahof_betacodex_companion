@@ -56,7 +56,7 @@ def _append(entry: dict) -> str:
 
 
 def log_question(text: str) -> str:
-    return _append({"event_type": "first_question", "text": text})
+    return _append({"event_types": ["first_question"], "text": text})
 
 
 def set_answer(entry_id: str, answer: str) -> None:
@@ -77,12 +77,57 @@ def set_answer(entry_id: str, answer: str) -> None:
                 return
 
 
+def add_event_type(entry_id: str, event_type: str) -> bool:
+    """Ergänzt einen bestehenden Eintrag um einen weiteren event_type, statt
+    für dieselbe Frage einen komplett separaten Eintrag anzulegen (Bug
+    2026-09-14, per Screenshot gemeldet: eine Frage, die sowohl "erste
+    Frage" als auch z.B. "keine Antwort gefunden" war, tauchte bisher
+    zweimal im Log auf, jeweils nur mit einem Label). Wird von app/main.py
+    für "no_answer" genutzt, wenn dieselbe Anfrage bereits einen
+    first_question-Eintrag hat (first_question_log_id bekannt - kein
+    Text-Abgleich nötig, da beide Ereignisse aus demselben ask()-Aufruf
+    stammen). Gibt False zurück, wenn die id nicht (mehr) existiert (z.B.
+    zwischenzeitlich gelöscht)."""
+    with _question_log_lock:
+        entries = _load()
+        for entry in entries:
+            if entry.get("id") == entry_id:
+                event_types = entry.setdefault("event_types", [])
+                if event_type not in event_types:
+                    event_types.append(event_type)
+                    _save(entries)
+                return True
+        return False
+
+
 def log_no_answer(question: str, answer: str) -> None:
-    _append({"event_type": "no_answer", "text": question, "answer": answer})
+    """Nur für den Fall, dass KEIN first_question-Eintrag für dieselbe
+    Anfrage existiert (z.B. eine spätere Folgefrage in der Konversation,
+    nicht die erste) - sonst siehe add_event_type()."""
+    _append({"event_types": ["no_answer"], "text": question, "answer": answer})
 
 
 def log_feedback(question: str, answer: str, feedback: str) -> None:
-    _append({"event_type": "feedback", "text": question, "answer": answer, "feedback": feedback})
+    """Feedback kommt über einen eigenen, späteren Request ohne Bezug zu
+    einer evtl. schon geloggten id (siehe /api/answer-feedback) - anders als
+    bei add_event_type() oben deshalb ein Abgleich über den exakten Frage-
+    UND Antworttext: eine identische Kombination ist praktisch immer
+    derselbe reale Konversations-Turn (Antworten sind frei generierter
+    Text, eine zufällige Kollision ist nicht realistisch). Findet sich ein
+    Treffer (neuester zuerst), wird "feedback" dort ergänzt statt eines
+    separaten Eintrags - sonst (z.B. Feedback zu einer nicht geloggten
+    Folgefrage) wie bisher ein eigener Eintrag."""
+    with _question_log_lock:
+        entries = _load()
+        for entry in reversed(entries):
+            if entry.get("text") == question and entry.get("answer") == answer:
+                event_types = entry.setdefault("event_types", [])
+                if "feedback" not in event_types:
+                    event_types.append("feedback")
+                entry["feedback"] = feedback
+                _save(entries)
+                return
+    _append({"event_types": ["feedback"], "text": question, "answer": answer, "feedback": feedback})
 
 
 def list_entries() -> list[dict]:
@@ -96,7 +141,12 @@ def list_entries() -> list[dict]:
     # nächsten Laden nicht mehr zum tatsächlichen Eintrag passen).
     changed = False
     for entry in entries:
-        entry.setdefault("event_type", "first_question")
+        # Migration (2026-09-14): vor der Mehrfach-Label-Fähigkeit gespeicherte
+        # Einträge haben noch das alte einzelne "event_type"-Feld statt der
+        # neuen "event_types"-Liste.
+        if "event_types" not in entry:
+            entry["event_types"] = [entry.pop("event_type", "first_question")]
+            changed = True
         if "id" not in entry:
             entry["id"] = uuid.uuid4().hex
             changed = True
