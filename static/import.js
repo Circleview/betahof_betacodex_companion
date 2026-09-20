@@ -230,9 +230,9 @@ function hasPflegerRole() {
   return hasRole('quellen_pfleger');
 }
 
-function devUserHeaders() {
-  // Name beibehalten (viele Call-Sites), sendet aber keinen Header mehr -
-  // die Identität kommt jetzt automatisch über das Session-Cookie mit.
+function jsonHeaders() {
+  // Die Identität kommt über das Session-Cookie mit - hier nur Content-Type
+  // und Sprache (Name früher devUserHeaders, als noch X-Dev-User gesendet wurde).
   return {
     'Content-Type': 'application/json',
     'X-Lang': getLang(),
@@ -337,7 +337,7 @@ function renderJobsListInto(list, jobs) {
       retryBtn.addEventListener('click', async () => {
         retryBtn.disabled = true;
         try {
-          await fetch(`/api/sources/${job.id}/reprocess`, { method: 'POST', headers: devUserHeaders() });
+          await fetch(`/api/sources/${job.id}/reprocess`, { method: 'POST', headers: jsonHeaders() });
           await Promise.all([fetchImportJobs(), loadSources()]);
         } finally {
           retryBtn.disabled = false;
@@ -367,7 +367,7 @@ function renderJobsListInto(list, jobs) {
         }
         cancelBtn.disabled = true;
         try {
-          await fetch(`/api/sources/${job.id}`, { method: 'DELETE', headers: devUserHeaders() });
+          await fetch(`/api/sources/${job.id}`, { method: 'DELETE', headers: jsonHeaders() });
           cancelConfirmPendingJobIds.delete(job.id);
           await Promise.all([fetchImportJobs(), loadSources()]);
         } finally {
@@ -403,7 +403,7 @@ const cancelConfirmPendingJobIds = new Set();
 async function fetchImportJobs() {
   if (!hasPflegerRole()) return;
   try {
-    const res = await fetch('/api/import-jobs', { headers: devUserHeaders() });
+    const res = await fetch('/api/import-jobs', { headers: jsonHeaders() });
     if (!res.ok) return;
     const jobs = await res.json();
     renderJobsIcon(jobs);
@@ -744,7 +744,7 @@ async function extractAndFillFromUrl(url) {
   try {
     const res = await fetch('/api/extract-url', {
       method: 'POST',
-      headers: devUserHeaders(),
+      headers: jsonHeaders(),
       body: JSON.stringify({ url }),
     });
     if (!res.ok) {
@@ -1401,7 +1401,7 @@ function buildEditPanel(s, options = {}) {
       // Bezug zur User-Geste und der Browser blockiert das Popup lautlos.
       const pdfWindow = window.open('', '_blank');
       try {
-        const res = await fetch(`/api/sources/${s.id}/pdf`, { headers: devUserHeaders() });
+        const res = await fetch(`/api/sources/${s.id}/pdf`, { headers: jsonHeaders() });
         if (!res.ok) throw new Error(t('import.openPdfFailed'));
         const blob = await res.blob();
         if (pdfWindow) {
@@ -1550,7 +1550,7 @@ function buildEditPanel(s, options = {}) {
       try {
         const res = await fetch(`/api/sources/${s.id}`, {
           method: 'PUT',
-          headers: devUserHeaders(),
+          headers: jsonHeaders(),
           body: JSON.stringify({
             title: titleInput.value,
             authors: getAuthorValues(),
@@ -1578,7 +1578,7 @@ function buildEditPanel(s, options = {}) {
         for (const [name, profile] of Object.entries(newAuthorProfiles)) {
           await fetch(`/api/authors/${encodeURIComponent(name)}`, {
             method: 'PUT',
-            headers: devUserHeaders(),
+            headers: jsonHeaders(),
             body: JSON.stringify(profile),
           }).catch(() => {});
         }
@@ -1623,7 +1623,7 @@ async function generateSummaryFields(sourceId, summaryInput, keyTermsInput, stat
   try {
     const res = await fetch(`/api/sources/${sourceId}/generate-summary`, {
       method: 'POST',
-      headers: devUserHeaders(),
+      headers: jsonHeaders(),
     });
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
@@ -1654,7 +1654,7 @@ async function verifySourceLink(sourceId, statusEl, button) {
   try {
     const res = await fetch(`/api/sources/${sourceId}/verify-link`, {
       method: 'POST',
-      headers: devUserHeaders(),
+      headers: jsonHeaders(),
     });
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
@@ -1681,7 +1681,7 @@ async function extractKeyTermsFromSummary(summaryInput, keyTermsInput, statusEl,
   try {
     const res = await fetch('/api/sources/generate-key-terms-preview', {
       method: 'POST',
-      headers: devUserHeaders(),
+      headers: jsonHeaders(),
       body: JSON.stringify({ text: summaryInput.value }),
     });
     if (!res.ok) {
@@ -1707,7 +1707,7 @@ function scheduleDeletion(s) {
       activeEditId = null;
     }
     try {
-      await fetch(`/api/sources/${s.id}`, { method: 'DELETE', headers: devUserHeaders() });
+      await fetch(`/api/sources/${s.id}`, { method: 'DELETE', headers: jsonHeaders() });
     } catch (err) {
       // Fehler beim endgültigen Löschen: Quelle taucht beim nächsten Laden wieder auf.
     }
@@ -2554,7 +2554,7 @@ function renderWebAllowlistPagesList(listEl, entryId, pages) {
         const action = page.excluded ? 'include' : 'exclude';
         const res = await fetch(`/api/web-allowlist/${entryId}/pages/${page.id}/${action}`, {
           method: 'POST',
-          headers: devUserHeaders(),
+          headers: jsonHeaders(),
         });
         if (res.ok) {
           page.excluded = !page.excluded;
@@ -2647,7 +2647,7 @@ function renderWebAllowlistCandidateRow(entryId, candidate, onDecided) {
     try {
       const res = await fetch(`/api/web-allowlist/${entryId}/candidates/${candidate.id}/${action}`, {
         method: 'POST',
-        headers: devUserHeaders(),
+        headers: jsonHeaders(),
       });
       if (res.ok) {
         onDecided();
@@ -2839,7 +2839,7 @@ function renderWebAllowlistList() {
       }
       deleteBtn.disabled = true;
       try {
-        await fetch(`/api/web-allowlist/${entry.id}`, { method: 'DELETE', headers: devUserHeaders() });
+        await fetch(`/api/web-allowlist/${entry.id}`, { method: 'DELETE', headers: jsonHeaders() });
         await loadWebAllowlist();
       } finally {
         deleteBtn.disabled = false;
@@ -2886,7 +2886,7 @@ function renderWebAllowlistList() {
         try {
           await fetch(`/api/web-allowlist/${entry.id}/mark-reviewed`, {
             method: 'POST',
-            headers: devUserHeaders(),
+            headers: jsonHeaders(),
           });
           await loadWebAllowlist();
         } finally {
@@ -3033,7 +3033,7 @@ function renderSourceSuggestionRow(suggestion) {
     try {
       const res = await fetch(`/api/source-suggestions/${suggestion.id}/${action}`, {
         method: 'POST',
-        headers: devUserHeaders(),
+        headers: jsonHeaders(),
       });
       if (!res.ok) throw new Error('failed');
       // Nutzerwunsch: "Abgelehnte Quellen verschwinden mit einer einfachen
@@ -3162,7 +3162,7 @@ webAllowlistForm.addEventListener('submit', async (e) => {
   try {
     const res = await fetch('/api/web-allowlist', {
       method: 'POST',
-      headers: devUserHeaders(),
+      headers: jsonHeaders(),
       body: JSON.stringify({
         url_prefix: urlPrefixInput.value.trim(),
         label: labelInput.value.trim(),
@@ -3550,7 +3550,7 @@ async function generateAuthorBio(name, bioInput, statusEl, buttons) {
   try {
     const res = await fetch(`/api/authors/${encodeURIComponent(name)}/generate-bio`, {
       method: 'POST',
-      headers: devUserHeaders(),
+      headers: jsonHeaders(),
     });
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
@@ -3580,7 +3580,7 @@ async function generateAuthorBioPreview(name, text, bioInput, statusEl, buttons)
   try {
     const res = await fetch('/api/authors/generate-bio-preview', {
       method: 'POST',
-      headers: devUserHeaders(),
+      headers: jsonHeaders(),
       body: JSON.stringify({ name, text }),
     });
     if (!res.ok) {
@@ -3810,7 +3810,7 @@ function buildAuthorEditPanel(a) {
       if (newName && newName !== currentName) {
         const renameRes = await fetch(`/api/authors/${encodeURIComponent(currentName)}/rename`, {
           method: 'POST',
-          headers: devUserHeaders(),
+          headers: jsonHeaders(),
           body: JSON.stringify({ new_name: newName }),
         });
         if (!renameRes.ok) {
@@ -3822,7 +3822,7 @@ function buildAuthorEditPanel(a) {
 
       const res = await fetch(`/api/authors/${encodeURIComponent(currentName)}`, {
         method: 'PUT',
-        headers: devUserHeaders(),
+        headers: jsonHeaders(),
         body: JSON.stringify({
           bio: bioInput.value,
           photo_url: photoUrlInput.value,
@@ -3889,7 +3889,7 @@ document.getElementById('source-form').addEventListener('submit', async (e) => {
   try {
     const res = await fetch('/api/sources', {
       method: 'POST',
-      headers: devUserHeaders(),
+      headers: jsonHeaders(),
       body: JSON.stringify(payload),
     });
     if (!res.ok) {
@@ -3909,7 +3909,7 @@ document.getElementById('source-form').addEventListener('submit', async (e) => {
     for (const [name, profile] of Object.entries(newAuthorProfiles)) {
       await fetch(`/api/authors/${encodeURIComponent(name)}`, {
         method: 'PUT',
-        headers: devUserHeaders(),
+        headers: jsonHeaders(),
         body: JSON.stringify(profile),
       }).catch(() => {});
     }

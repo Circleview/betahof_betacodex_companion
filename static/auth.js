@@ -56,10 +56,6 @@ export function hasRole(role) {
   return currentUser.roles.includes('system_admin') || currentUser.roles.includes(role);
 }
 
-export function getCurrentEmail() {
-  return currentUser.email;
-}
-
 export function onAuthChange(callback) {
   listeners.push(callback);
 }

@@ -1443,15 +1443,6 @@ button.send-button {
   }
 }
 
-.chat-sources-heading {
-  font-size: 0.8rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
-  color: var(--color-text-muted);
-  margin: 0.75rem 0 0.4rem;
-}
-
 #sources-sidebar {
   display: none;
 }
@@ -4199,10 +4190,6 @@ details a {
 
 .explore-node-open-icon:hover path {
   stroke: var(--color-accent-hover);
-}
-
-.explore-search-row {
-  margin-top: 0.5rem;
 }
 
 /* Nutzerwunsch (2026-08-26): Kreativ-Modus - eigene, klar abgetrennte Seite

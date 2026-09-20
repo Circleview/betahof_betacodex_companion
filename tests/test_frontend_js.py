@@ -1429,7 +1429,7 @@ def test_sticky_header_never_collapses_at_page_top():
 def _run_source_suggestion_row_click(action: str, *, fetch_ok: bool = True) -> dict:
     """Führt static/import.js#renderSourceSuggestionRow per Node aus und
     simuliert einen Klick auf "Annehmen" oder "Ablehnen" - mit minimalen
-    Stubs für fetch/t/devUserHeaders (kein volles jsdom nötig, siehe
+    Stubs für fetch/t/jsonHeaders (kein volles jsdom nötig, siehe
     _run_append_title_text). openUrlPopoverWithUrl (separate Funktion,
     siehe import.js) wird durch einen Spy ersetzt, der nur festhält, ob und
     mit welcher URL er aufgerufen wurde - hier geht es um die Annehmen/
@@ -1442,7 +1442,7 @@ def _run_source_suggestion_row_click(action: str, *, fetch_ok: bool = True) -> d
     func_source = match.group(0)
     script = f"""
 function t(key) {{ return key; }}
-function devUserHeaders() {{ return {{}}; }}
+function jsonHeaders() {{ return {{}}; }}
 let openUrlPopoverCalledWith = null;
 function openUrlPopoverWithUrl(url) {{ openUrlPopoverCalledWith = url; }}
 // removeSourceSuggestionRow (Nachrücken samt Fade-Transitionen) hat eine
@@ -1544,7 +1544,7 @@ def test_source_suggestion_row_reenables_buttons_on_failed_request():
 def _run_render_jobs_list_error_job_click(button_index: int, *, clicks: int = 1) -> dict:
     """Führt static/import.js#renderJobsListInto per Node aus und simuliert
     Klicks auf den Retry- oder den neuen Abbrechen-Button eines
-    fehlgeschlagenen Jobs - mit minimalen Stubs für fetch/t/devUserHeaders/
+    fehlgeschlagenen Jobs - mit minimalen Stubs für fetch/t/jsonHeaders/
     fetchImportJobs/loadSources (kein volles jsdom nötig, siehe
     _run_append_title_text)."""
     js_source = (STATIC_DIR / "import.js").read_text()
@@ -1553,7 +1553,7 @@ def _run_render_jobs_list_error_job_click(button_index: int, *, clicks: int = 1)
     func_source = match.group(0)
     script = f"""
 function t(key) {{ return key; }}
-function devUserHeaders() {{ return {{}}; }}
+function jsonHeaders() {{ return {{}}; }}
 function jobStepLabel() {{ return ''; }}
 let fetchImportJobsCalled = false;
 async function fetchImportJobs() {{ fetchImportJobsCalled = true; }}

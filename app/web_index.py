@@ -33,10 +33,6 @@ def _save(pages: dict) -> None:
     tmp.replace(WEB_INDEX_FILE)
 
 
-def list_pages() -> dict:
-    return _load()
-
-
 def pages_for_entry(allowlist_entry_id: str) -> dict:
     return {pid: p for pid, p in _load().items() if p.get("allowlist_entry_id") == allowlist_entry_id}
 
