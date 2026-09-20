@@ -4518,3 +4518,30 @@ details a {
 #creative-new-btn:hover:not(:disabled) {
   color: var(--color-accent);
 }
+
+/* Erfolgsbestätigung beim Kopieren (creative.js#showCopiedFeedback): grüner
+   Haken, der sich von links nach rechts einzeichnet (gleiches Grün wie
+   .feedback-btn--sent). */
+#creative-copy-btn.copied {
+  color: #2e7d32;
+  border-color: #2e7d32;
+}
+
+.copy-check-path {
+  stroke-dasharray: 26;
+  stroke-dashoffset: 26;
+  animation: copy-check-draw 0.35s ease-out forwards;
+}
+
+@keyframes copy-check-draw {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .copy-check-path {
+    animation: none;
+    stroke-dashoffset: 0;
+  }
+}

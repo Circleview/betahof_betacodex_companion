@@ -642,9 +642,34 @@ window.addEventListener('pagehide', saveCreativeDocument);
 // Kopiert das Dokument samt Formatierung: text/html (gerendertes Markdown, so
 // übernehmen Word/Mail/Docs Überschriften, Fett usw.) plus text/plain als
 // Markdown-Quelltext für Ziele ohne HTML-Unterstützung.
-document.getElementById('creative-copy-btn').addEventListener('click', async () => {
+const copyBtn = document.getElementById('creative-copy-btn');
+const copyIconHtml = copyBtn.innerHTML;
+const COPIED_CHECK_HTML =
+  '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" ' +
+  'stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+  '<polyline class="copy-check-path" points="4 12.5 9.5 18 20 6.5"></polyline></svg>';
+const COPIED_FEEDBACK_MS = 1600;
+let copiedTimer = null;
+
+// Sichtbare Bestätigung: das Kopieren-Icon weicht kurz einem grün
+// eingezeichneten Haken und kehrt danach zurück.
+function showCopiedFeedback() {
+  clearTimeout(copiedTimer);
+  copyBtn.innerHTML = COPIED_CHECK_HTML;
+  copyBtn.classList.add('copied');
+  copiedTimer = setTimeout(() => {
+    copyBtn.innerHTML = copyIconHtml;
+    copyBtn.classList.remove('copied');
+  }, COPIED_FEEDBACK_MS);
+}
+
+// Kopiert das Dokument samt Formatierung: text/html (gerendertes Markdown, so
+// übernehmen Word/Mail/Docs Überschriften, Fett usw.) plus text/plain als
+// Markdown-Quelltext für Ziele ohne HTML-Unterstützung.
+copyBtn.addEventListener('click', async () => {
   const text = documentField.value;
   if (!text.trim()) return;
+  let copied = false;
   try {
     await navigator.clipboard.write([
       new ClipboardItem({
@@ -652,10 +677,12 @@ document.getElementById('creative-copy-btn').addEventListener('click', async () 
         'text/plain': new Blob([text], { type: 'text/plain' }),
       }),
     ]);
+    copied = true;
   } catch (err) {
     // ClipboardItem fehlt (älterer Browser) - wenigstens den Klartext kopieren.
-    await navigator.clipboard.writeText(text).catch(() => {});
+    copied = await navigator.clipboard.writeText(text).then(() => true, () => false);
   }
+  if (copied) showCopiedFeedback();
 });
 
 document.getElementById('creative-new-btn').addEventListener('click', () => {
