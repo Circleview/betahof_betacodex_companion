@@ -120,6 +120,10 @@ class QuestionLogEntryOut(BaseModel):
     # "creative" bei Feedback aus dem Kreativ-Modus (text = Anweisung,
     # answer = erzeugter Text); fehlt bei allen Konversations-Einträgen.
     mode: str | None = None
+    # Die Antwort wird auf der Fragen-Log-Seite erst beim Aufklappen einzeln
+    # nachgeladen (GET /api/question-log?include_answers=false liefert sie
+    # nicht mit) - has_answer zeigt trotzdem an, ob es eine gibt.
+    has_answer: bool = False
     timestamp: str
 
 

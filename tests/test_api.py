@@ -1695,6 +1695,35 @@ def test_get_question_log_returns_entries_for_pfleger(client, monkeypatch):
     assert "Frage einer Pflegerin" in texts
 
 
+def test_get_question_log_can_omit_answers_and_flag_which_entries_have_one(client, monkeypatch):
+    monkeypatch.setattr(main_module, "IS_DEV_ENVIRONMENT", False)
+    client.post("/api/answer-feedback", json={"question": "Mit Antwort?", "answer": "Ja, hier.", "feedback": "good"})
+    question_log.log_question("Ohne Antwort")
+
+    lean = {e["text"]: e for e in client.get("/api/question-log?include_answers=false").json()}
+    full = {e["text"]: e for e in client.get("/api/question-log").json()}
+
+    assert lean["Mit Antwort?"]["answer"] is None and lean["Mit Antwort?"]["has_answer"] is True
+    assert lean["Ohne Antwort"]["has_answer"] is False
+    assert full["Mit Antwort?"]["answer"] == "Ja, hier."
+
+
+def test_get_single_question_log_entry_returns_answer_or_404(client, monkeypatch):
+    monkeypatch.setattr(main_module, "IS_DEV_ENVIRONMENT", False)
+    client.post("/api/answer-feedback", json={"question": "Frage?", "answer": "Volle Antwort.", "feedback": "bad"})
+    entry_id = question_log.list_entries()[0]["id"]
+
+    ok = client.get(f"/api/question-log/{entry_id}")
+    missing = client.get("/api/question-log/does-not-exist")
+
+    assert ok.status_code == 200 and ok.json()["answer"] == "Volle Antwort."
+    assert missing.status_code == 404
+
+
+def test_get_single_question_log_entry_requires_pfleger_role(anon_client):
+    assert anon_client.get("/api/question-log/some-id").status_code == 403
+
+
 def test_delete_question_log_entry_requires_pfleger_role(anon_client):
     response = anon_client.delete("/api/question-log/some-id")
     assert response.status_code == 403
@@ -1877,6 +1906,21 @@ def test_answer_feedback_rejects_unknown_mode(client, monkeypatch):
 
     assert response.status_code == 400
     assert question_log.list_entries() == []
+
+
+def test_answer_feedback_rejects_too_long_question_or_answer_but_accepts_the_maximum(client, monkeypatch):
+    monkeypatch.setattr(main_module, "IS_DEV_ENVIRONMENT", False)
+    max_q = main_module.ANSWER_FEEDBACK_MAX_QUESTION_CHARS
+    max_a = main_module.ANSWER_FEEDBACK_MAX_ANSWER_CHARS
+
+    too_long_q = client.post("/api/answer-feedback", json={"question": "x" * (max_q + 1), "answer": "a", "feedback": "good"})
+    too_long_a = client.post("/api/answer-feedback", json={"question": "q", "answer": "x" * (max_a + 1), "feedback": "good"})
+    assert too_long_q.status_code == 400 and too_long_a.status_code == 400
+    assert question_log.list_entries() == []
+
+    at_limit = client.post("/api/answer-feedback", json={"question": "x" * max_q, "answer": "x" * max_a, "feedback": "good"})
+    assert at_limit.status_code == 200
+    assert len(question_log.list_entries()) == 1
 
 
 def test_answer_feedback_rejects_invalid_value(client, monkeypatch):

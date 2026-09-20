@@ -3328,7 +3328,7 @@ def test_question_log_answer_is_wrapped_in_collapsible_details():
     # eingeklappt, damit das Log auf einen Blick überschaubar bleibt - ein
     # Klick auf "Antwort anzeigen" öffnet sie.
     js_source = (STATIC_DIR / "question-log.js").read_text()
-    match = re.search(r"if \(entry\.answer\) \{.*?\n  \}", js_source, re.S)
+    match = re.search(r"if \(entry\.has_answer\) \{.*?\n  \}", js_source, re.S)
     assert match, "Der Antwort-Block in buildEntryElement wurde nicht gefunden."
     block = match.group(0)
     assert "document.createElement('details')" in block
@@ -3338,7 +3338,7 @@ def test_question_log_answer_is_wrapped_in_collapsible_details():
 
 def test_question_log_render_preserves_open_answer_details_across_filter():
     js_source = (STATIC_DIR / "question-log.js").read_text()
-    match = re.search(r"function render\(entries\) \{.*?\n\}", js_source, re.S)
+    match = re.search(r"function render\(\) \{.*?\n\}", js_source, re.S)
     assert match, "render() wurde in question-log.js nicht gefunden."
     block = match.group(0)
     assert "querySelectorAll('details[open]')" in block
@@ -3662,3 +3662,30 @@ def test_question_log_links_creative_entries_to_creative_mode_with_badge():
         strings = json.loads((STATIC_DIR / "i18n" / f"{lang}.json").read_text())
         for key in ("creative.feedbackGoodTitle", "creative.feedbackBadTitle", "questionLog.eventType.creative", "questionLog.openCreativeTitle"):
             assert key in strings
+
+
+# --- question-log.js: Lazy Loading (Antworten beim Aufklappen, Seiten per Sentinel) ---
+
+
+def test_question_log_loads_lean_list_and_fetches_answer_only_when_opened():
+    js_source = (STATIC_DIR / "question-log.js").read_text()
+    assert "/api/question-log?include_answers=false" in js_source
+    match = re.search(r"async function loadAnswer\(entry, answerEl\) \{.*?\n\}", js_source, re.S)
+    assert match, "loadAnswer wurde in question-log.js nicht gefunden."
+    block = match.group(0)
+    assert "answerCache.has(entry.id)" in block  # schon geladen: kein zweiter Request
+    assert "/api/question-log/${entry.id}" in block
+    assert "if (details.open) loadAnswer(entry, answer)" in js_source
+
+
+def test_question_log_filter_runs_over_all_entries_and_paging_only_limits_rendering():
+    js_source = (STATIC_DIR / "question-log.js").read_text()
+    apply_filter = re.search(r"function applyFilter\(.*?\n\}", js_source, re.S).group(0)
+    assert "allEntries.filter(" in apply_filter  # Filter über den kompletten Bestand
+    assert "visibleCount = LOG_PAGE_SIZE" in apply_filter  # neuer Filter -> wieder ab Seite 1
+    render = re.search(r"function render\(\) \{.*?\n\}", js_source, re.S).group(0)
+    assert "filteredEntries.slice(0, visibleCount)" in render
+    assert "new IntersectionObserver" in render
+    assert "visibleCount += LOG_PAGE_SIZE" in render
+    # Löschen darf den Scroll-Stand (bereits geladene Seiten) nicht zurücksetzen.
+    assert js_source.count("applyFilter({ resetPaging: false })") == 2

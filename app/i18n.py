@@ -63,6 +63,7 @@ MESSAGES = {
         "mail_feedback_subject": "Feedback: BetaCodex Chat",
         "mail_feedback_body": "Neues Feedback über BetaCodex Chat:\n\n{message}\n\nAbsender:in: {sender}",
         "invalid_feedback_value": "Ungültiger Feedback-Wert.",
+        "feedback_too_long": "Der Text ist zu lang.",
     },
     "en": {
         "text_empty": "Text must not be empty.",
@@ -128,6 +129,7 @@ MESSAGES = {
         "mail_feedback_subject": "Feedback: BetaCodex Chat",
         "mail_feedback_body": "New feedback via BetaCodex Chat:\n\n{message}\n\nSender: {sender}",
         "invalid_feedback_value": "Invalid feedback value.",
+        "feedback_too_long": "The text is too long.",
     },
 }
 

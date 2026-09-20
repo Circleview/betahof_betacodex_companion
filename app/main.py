@@ -1504,8 +1504,24 @@ def _start_background_workers() -> None:
     threading.Thread(
         target=_run_periodic, args=(_run_web_allowlist_crawl_once, WEB_ALLOWLIST_CRAWL_INTERVAL_SECONDS), daemon=True
     ).start()
+    threading.Thread(
+        target=_run_periodic,
+        args=(_purge_expired_question_log_entries_once, QUESTION_LOG_PURGE_INTERVAL_SECONDS),
+        daemon=True,
+    ).start()
     _recover_interrupted_processing_jobs()
     threading.Thread(target=_warm_up_local_models, daemon=True).start()
+
+
+# Aufbewahrungsfrist des Fragen-Logs (Nutzerwunsch): Einträge werden nach zwei
+# Jahren automatisch gelöscht (siehe Datenschutzerklärung). Läuft wie die
+# übrigen periodischen Worker sofort beim Start und danach täglich.
+QUESTION_LOG_RETENTION_DAYS = 730
+QUESTION_LOG_PURGE_INTERVAL_SECONDS = 24 * 3600
+
+
+def _purge_expired_question_log_entries_once() -> None:
+    question_log.purge_older_than(QUESTION_LOG_RETENTION_DAYS)
 
 
 def _reindex_all_sources() -> None:
@@ -2498,8 +2514,31 @@ def get_audit_log(_user: str = Depends(require_role(users.QUELLEN_PFLEGER))):
 
 
 @app.get("/api/question-log", response_model=list[QuestionLogEntryOut])
-def get_question_log(_user: str = Depends(require_role(users.QUELLEN_PFLEGER))):
-    return question_log.list_entries()
+def get_question_log(
+    include_answers: bool = True, _user: str = Depends(require_role(users.QUELLEN_PFLEGER))
+):
+    # include_answers=false (Fragen-Log-Seite): die Antworttexte sind der
+    # Löwenanteil der Datenmenge - die Liste kommt ohne sie (has_answer zeigt
+    # nur, dass es eine gibt), jede Antwort wird erst beim Aufklappen über
+    # GET /api/question-log/{id} nachgeladen (gleiche Idee wie
+    # include_text=false bei /api/sources).
+    return [
+        {
+            **{k: v for k, v in entry.items() if include_answers or k != "answer"},
+            "has_answer": bool(entry.get("answer")),
+        }
+        for entry in question_log.list_entries()
+    ]
+
+
+@app.get("/api/question-log/{entry_id}", response_model=QuestionLogEntryOut)
+def get_question_log_entry(
+    entry_id: str, x_lang: str = Header(default=i18n.DEFAULT_LANG), _user: str = Depends(require_role(users.QUELLEN_PFLEGER))
+):
+    entry = question_log.get_entry(entry_id)
+    if entry is None:
+        raise HTTPException(404, i18n.get_message("question_log_entry_not_found", x_lang))
+    return {**entry, "has_answer": bool(entry.get("answer"))}
 
 
 # Nutzerwunsch (Livegang-Vorbereitung, 2026-09-10): löscht einen einzelnen
@@ -2519,6 +2558,13 @@ def delete_question_log_entry(
 
 ANSWER_FEEDBACK_VALUES = {"good", "bad"}
 ANSWER_FEEDBACK_MODES = {"conversation", "creative"}
+# Der Endpunkt ist ohne Captcha erreichbar und schreibt Frage/Antwort ins
+# Fragen-Log - ohne Obergrenze könnte ein Skript das Log (und damit jeden
+# Schreibvorgang und die Log-Seite) mit Riesentexten aufblähen. Grenzen
+# entsprechen den Kreativ-Limits für Anweisung/Dokument (der Kreativ-Text ist
+# der längste legitime Inhalt).
+ANSWER_FEEDBACK_MAX_QUESTION_CHARS = 2000
+ANSWER_FEEDBACK_MAX_ANSWER_CHARS = 20000
 
 
 @app.post("/api/answer-feedback", response_model=MessageOut)
@@ -2538,6 +2584,11 @@ def submit_answer_feedback(
         raise HTTPException(429, i18n.get_message("rate_limited", x_lang))
     if payload.feedback not in ANSWER_FEEDBACK_VALUES or payload.mode not in ANSWER_FEEDBACK_MODES:
         raise HTTPException(400, i18n.get_message("invalid_feedback_value", x_lang))
+    if (
+        len(payload.question) > ANSWER_FEEDBACK_MAX_QUESTION_CHARS
+        or len(payload.answer) > ANSWER_FEEDBACK_MAX_ANSWER_CHARS
+    ):
+        raise HTTPException(400, i18n.get_message("feedback_too_long", x_lang))
 
     if _should_log_question_event(request):
         question_log.log_feedback(payload.question, payload.answer, payload.feedback, payload.mode)

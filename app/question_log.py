@@ -14,7 +14,7 @@ filterbar darstellen lässt. Ausschlüsse (System-Admin, Dev/Stabil) prüft
 einheitlich app/main.py: _should_log_question_event()."""
 import threading
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from app import jsonstore
@@ -149,6 +149,31 @@ def list_entries() -> list[dict]:
     if changed:
         _save(entries)
     return sorted(entries, key=lambda e: e["timestamp"], reverse=True)
+
+
+def get_entry(entry_id: str) -> dict | None:
+    return next((e for e in list_entries() if e["id"] == entry_id), None)
+
+
+def purge_older_than(days: int) -> int:
+    """Löscht alle Einträge, die älter als `days` Tage sind (Aufbewahrungsfrist,
+    siehe app/main.py: QUESTION_LOG_RETENTION_DAYS), und gibt die Anzahl der
+    gelöschten Einträge zurück. Einträge ohne les-baren Zeitstempel bleiben
+    bewusst erhalten - im Zweifel nicht löschen."""
+    cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+
+    def expired(entry: dict) -> bool:
+        try:
+            return datetime.fromisoformat(entry["timestamp"]) < cutoff
+        except (KeyError, ValueError, TypeError):
+            return False
+
+    with _question_log_lock:
+        entries = _load()
+        kept = [e for e in entries if not expired(e)]
+        if len(kept) != len(entries):
+            _save(kept)
+        return len(entries) - len(kept)
 
 
 def delete_entry(entry_id: str) -> bool:

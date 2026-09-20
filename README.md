@@ -154,6 +154,13 @@ Assistent das offen, statt zu spekulieren.
   bleibt über Reload erhalten). Das Feedback landet mit Anweisung und
   erzeugtem Text im Fragen-Log (Badge "Kreativ-Modus", der Link öffnet die
   Anweisung im Kreativ-Modus).
+- Fragen-Log (Quellen-Pfleger:innen): lädt schnell auch bei vielen Einträgen -
+  die Liste kommt schlank ohne Antworttexte (jede Antwort erst beim
+  Aufklappen), gerendert werden seitenweise 30 Einträge (Nachladen beim
+  Scrollen), die Filter wirken trotzdem immer auf den gesamten Bestand.
+  Einträge werden nach zwei Jahren automatisch gelöscht (täglicher
+  Hintergrund-Job), das Feedback-API nimmt höchstens 2.000 Zeichen
+  Frage/Anweisung und 20.000 Zeichen Antwort/Text an.
 
 ### Quellen pflegen (Quellen-Pfleger:innen)
 

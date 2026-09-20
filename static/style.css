@@ -4577,3 +4577,14 @@ details a {
 .creative-feedback .answer-feedback {
   margin-left: 0;
 }
+
+/* Unsichtbares Ende-Marker-Element der Fragen-Log-Liste (question-log.js):
+   löst per IntersectionObserver das Nachladen der nächsten Seite aus - wie
+   .source-list-sentinel bei der Quellenliste. */
+#question-log-list li.question-log-sentinel {
+  padding: 0;
+  margin: 0;
+  border-bottom: none;
+  height: 1px;
+  grid-column: 1 / -1;
+}

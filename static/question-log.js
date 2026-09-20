@@ -24,7 +24,18 @@ const listEl = document.getElementById('question-log-list');
 const statusEl = document.getElementById('question-log-status');
 const filterButtons = Array.from(document.querySelectorAll('.question-log-filter-btn'));
 
+// Wie die Quellenliste (import.js: SOURCES_PAGE_SIZE): ALLE Einträge liegen als
+// schlanke Liste (ohne Antworttexte) vor - Filter wirken deshalb immer auf den
+// kompletten Bestand -, gerendert werden aber nur die ersten LOG_PAGE_SIZE
+// des gefilterten Ergebnisses; beim Erreichen des Listenendes (Sentinel +
+// IntersectionObserver) kommt die nächste Seite dazu. Die Antwort eines
+// Eintrags wird erst beim Aufklappen einzeln nachgeladen und dann gemerkt.
+const LOG_PAGE_SIZE = 30;
 let allEntries = [];
+let filteredEntries = [];
+let visibleCount = LOG_PAGE_SIZE;
+let logObserver = null;
+const answerCache = new Map();
 const activeEventTypes = new Set(filterButtons.map((btn) => btn.dataset.eventType));
 // Nutzerwunsch (Livegang-Vorbereitung, 2026-09-10): Löschfunktion für
 // einzelne Einträge (jeden event_type) - zweistufige Bestätigung direkt am
@@ -101,6 +112,23 @@ function buildFeedbackBadge(feedback) {
   return span;
 }
 
+async function loadAnswer(entry, answerEl) {
+  if (answerCache.has(entry.id)) {
+    answerEl.textContent = answerCache.get(entry.id);
+    return;
+  }
+  answerEl.textContent = t('questionLog.loading');
+  try {
+    const res = await fetch(`/api/question-log/${entry.id}`, { headers: { 'X-Lang': getLang() } });
+    if (!res.ok) throw new Error();
+    const full = await res.json();
+    answerCache.set(entry.id, full.answer || '');
+    answerEl.textContent = answerCache.get(entry.id);
+  } catch (err) {
+    answerEl.textContent = t('questionLog.loadFailed');
+  }
+}
+
 function buildEntryElement(entry) {
   const li = document.createElement('li');
   // Fix (2026-09-14, gemeldeter Bug): eine Frage, auf die mehrere
@@ -133,7 +161,7 @@ function buildEntryElement(entry) {
   text.appendChild(buildQuestionLink(entry.text, entry.mode));
   li.appendChild(text);
 
-  if (entry.answer) {
+  if (entry.has_answer) {
     // Nutzerwunsch (2026-09-01): die volle Antwort steht standardmäßig
     // eingeklappt, damit das Log auf einen Blick überschaubar bleibt (nur
     // Frage + Badges) - ein Klick auf "Antwort anzeigen" öffnet sie, um die
@@ -142,7 +170,8 @@ function buildEntryElement(entry) {
     // hat). data-timestamp dient nur als stabiler Schlüssel, um einen
     // bereits geöffneten Zustand über ein erneutes render() (z.B. beim
     // Filtern) hinweg zu erhalten - analog zu question.js:
-    // renderSidebarSources.
+    // renderSidebarSources. Der Antworttext selbst kommt erst beim
+    // Aufklappen (siehe loadAnswer).
     const details = document.createElement('details');
     details.className = 'question-log-answer-details';
     details.dataset.timestamp = entry.timestamp;
@@ -151,8 +180,11 @@ function buildEntryElement(entry) {
     details.appendChild(summary);
     const answer = document.createElement('p');
     answer.className = 'question-log-answer';
-    answer.textContent = entry.answer;
+    answer.textContent = answerCache.get(entry.id) || '';
     details.appendChild(answer);
+    details.addEventListener('toggle', () => {
+      if (details.open) loadAnswer(entry, answer);
+    });
     li.appendChild(details);
   }
 
@@ -175,7 +207,7 @@ function buildEntryElement(entry) {
 async function deleteEntry(entry) {
   if (!deleteConfirmPendingIds.has(entry.id)) {
     deleteConfirmPendingIds.add(entry.id);
-    applyFilter();
+    applyFilter({ resetPaging: false });
     return;
   }
   try {
@@ -186,21 +218,23 @@ async function deleteEntry(entry) {
     if (!res.ok) throw new Error();
     deleteConfirmPendingIds.delete(entry.id);
     allEntries = allEntries.filter((e) => e.id !== entry.id);
-    applyFilter();
+    answerCache.delete(entry.id);
+    applyFilter({ resetPaging: false });
   } catch (err) {
     statusEl.textContent = t('questionLog.deleteFailed');
     statusEl.classList.remove('hidden');
   }
 }
 
-function render(entries) {
+function render() {
   // Bleibt über ein erneutes render() hinweg erhalten (z.B. beim Filtern) -
   // siehe Kommentar bei buildEntryElement/details.dataset.timestamp.
   const openTimestamps = new Set(
     Array.from(listEl.querySelectorAll('details[open]')).map((d) => d.dataset.timestamp)
   );
+  logObserver?.disconnect();
   listEl.replaceChildren();
-  if (!entries.length) {
+  if (!filteredEntries.length) {
     statusEl.textContent = t('questionLog.empty');
     statusEl.classList.remove('hidden');
     return;
@@ -209,7 +243,7 @@ function render(entries) {
 
   let gridRow = 0;
   let lastDayKey = null;
-  entries.forEach((entry) => {
+  filteredEntries.slice(0, visibleCount).forEach((entry) => {
     const date = new Date(entry.timestamp);
     const key = dayKey(date);
     if (key !== lastDayKey) {
@@ -228,13 +262,36 @@ function render(entries) {
     if (openTimestamps.has(d.dataset.timestamp)) d.open = true;
   });
   listEl.style.setProperty('--timeline-row-end', String(gridRow + 1));
+
+  // Noch nicht gerenderte Einträge übrig: unsichtbares Sentinel ans Ende, das
+  // beim Scrollen die nächste Seite nachlädt (Daten liegen ja schon vor).
+  if (filteredEntries.length > visibleCount) {
+    const sentinel = document.createElement('li');
+    sentinel.className = 'question-log-sentinel';
+    sentinel.style.gridRow = String(gridRow + 1);
+    listEl.appendChild(sentinel);
+    logObserver = new IntersectionObserver(
+      (observed) => {
+        if (observed.some((o) => o.isIntersecting)) {
+          logObserver.disconnect();
+          visibleCount += LOG_PAGE_SIZE;
+          render();
+        }
+      },
+      { rootMargin: '400px' }
+    );
+    logObserver.observe(sentinel);
+  }
 }
 
-function applyFilter() {
+function applyFilter({ resetPaging = true } = {}) {
   // "oder"-Semantik (Nutzerwunsch 2026-09-14): eine Frage mit mehreren
   // event_types taucht auf, sobald MINDESTENS eines davon aktiv gefiltert
-  // ist - auch wenn ein anderes ihrer Labels gerade ausgeblendet ist.
-  render(allEntries.filter((entry) => entry.event_types.some((et) => activeEventTypes.has(et))));
+  // ist - auch wenn ein anderes ihrer Labels gerade ausgeblendet ist. Der
+  // Filter läuft über ALLE Einträge, nicht nur über die gerade gerenderten.
+  filteredEntries = allEntries.filter((entry) => entry.event_types.some((et) => activeEventTypes.has(et)));
+  if (resetPaging) visibleCount = LOG_PAGE_SIZE;
+  render();
 }
 
 filterButtons.forEach((btn) => {
@@ -256,7 +313,7 @@ async function loadQuestionLog() {
   statusEl.textContent = t('questionLog.loading');
   statusEl.classList.remove('hidden');
   try {
-    const res = await fetch('/api/question-log', { headers: { 'X-Lang': getLang() } });
+    const res = await fetch('/api/question-log?include_answers=false', { headers: { 'X-Lang': getLang() } });
     if (res.status === 403) {
       listEl.replaceChildren();
       statusEl.textContent = t('questionLog.noAccess');
