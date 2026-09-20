@@ -458,13 +458,6 @@ function buildSectionElement(section, index) {
   return { wrapper, panel, textarea, micBtn, submitBtn, reviseBtn };
 }
 
-// Baut die Vorschau komplett aus parseCreativeSections() neu auf (siehe
-// dort) - ruft für jeden Abschnitt weiterhin das UNVERÄNDERTE renderMarkdown
-// auf (Wiederverwendung, keine neue Rendering-Logik für den eigentlichen
-// Inhalt). Wird bei jedem Wechsel in den Vorschau-Modus, nach jeder
-// erfolgreichen Abschnitts-Überarbeitung und bei Sprachwechsel (siehe
-// i18n:changed unten) neu aufgerufen - openSectionIndex/sectionDrafts
-// überleben das, weil sie NICHT im DOM, sondern in Modul-Variablen liegen.
 // Lässt "Bearbeiten" und die Abschnitts-Stifte einmal aufblinken, damit
 // sichtbar wird, dass der Text editierbar ist (CSS: .attention-flash).
 function flashEditAffordances() {
@@ -474,6 +467,13 @@ function flashEditAffordances() {
   });
 }
 
+// Baut die Vorschau komplett aus parseCreativeSections() neu auf (siehe
+// dort) - ruft für jeden Abschnitt weiterhin das UNVERÄNDERTE renderMarkdown
+// auf (Wiederverwendung, keine neue Rendering-Logik für den eigentlichen
+// Inhalt). Wird bei jedem Wechsel in den Vorschau-Modus, nach jeder
+// erfolgreichen Abschnitts-Überarbeitung und bei Sprachwechsel (siehe
+// i18n:changed unten) neu aufgerufen - openSectionIndex/sectionDrafts
+// überleben das, weil sie NICHT im DOM, sondern in Modul-Variablen liegen.
 function renderPreviewSections() {
   if (sectionIsListening) {
     sectionSpeechController.stopListening();
@@ -650,35 +650,15 @@ window.addEventListener('pagehide', saveCreativeDocument);
 
 // Kopiert das Dokument samt Formatierung: text/html (gerendertes Markdown, so
 // übernehmen Word/Mail/Docs Überschriften, Fett usw.) plus text/plain als
-// Markdown-Quelltext für Ziele ohne HTML-Unterstützung.
+// Markdown-Quelltext für Ziele ohne HTML-Unterstützung. Bei Erfolg zeigt
+// .copied (CSS) kurz einen grünen Haken statt des Kopieren-Icons.
 const copyBtn = document.getElementById('creative-copy-btn');
-const copyIconHtml = copyBtn.innerHTML;
-const COPIED_CHECK_HTML =
-  '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" ' +
-  'stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
-  '<polyline class="copy-check-path" points="4 12.5 9.5 18 20 6.5"></polyline></svg>';
 const COPIED_FEEDBACK_MS = 1600;
 let copiedTimer = null;
 
-// Sichtbare Bestätigung: das Kopieren-Icon weicht kurz einem grün
-// eingezeichneten Haken und kehrt danach zurück.
-function showCopiedFeedback() {
-  clearTimeout(copiedTimer);
-  copyBtn.innerHTML = COPIED_CHECK_HTML;
-  copyBtn.classList.add('copied');
-  copiedTimer = setTimeout(() => {
-    copyBtn.innerHTML = copyIconHtml;
-    copyBtn.classList.remove('copied');
-  }, COPIED_FEEDBACK_MS);
-}
-
-// Kopiert das Dokument samt Formatierung: text/html (gerendertes Markdown, so
-// übernehmen Word/Mail/Docs Überschriften, Fett usw.) plus text/plain als
-// Markdown-Quelltext für Ziele ohne HTML-Unterstützung.
 copyBtn.addEventListener('click', async () => {
   const text = documentField.value;
   if (!text.trim()) return;
-  let copied = false;
   try {
     await navigator.clipboard.write([
       new ClipboardItem({
@@ -686,17 +666,30 @@ copyBtn.addEventListener('click', async () => {
         'text/plain': new Blob([text], { type: 'text/plain' }),
       }),
     ]);
-    copied = true;
   } catch (err) {
-    // ClipboardItem fehlt (älterer Browser) - wenigstens den Klartext kopieren.
-    copied = await navigator.clipboard.writeText(text).then(() => true, () => false);
+    return; // Zwischenablage nicht erlaubt - kein Haken.
   }
-  if (copied) showCopiedFeedback();
+  clearTimeout(copiedTimer);
+  copyBtn.classList.add('copied');
+  copiedTimer = setTimeout(() => copyBtn.classList.remove('copied'), COPIED_FEEDBACK_MS);
 });
 
-document.getElementById('creative-new-btn').addEventListener('click', () => {
+// Zweistufige Bestätigung direkt am Button statt eines nativen confirm()-
+// Dialogs (gleiches Muster wie Fragen-Log/Quellenlöschung): erster Klick
+// blendet per .confirming das "Sicher? ..."-Label ein, der zweite verwirft
+// den Text. Fällt nach kurzer Zeit von selbst zurück.
+const newBtn = document.getElementById('creative-new-btn');
+let newConfirmTimer = null;
+
+newBtn.addEventListener('click', () => {
   if (creativeBusy) return;
-  if (documentField.value.trim() && !window.confirm(t('creative.newTextConfirm'))) return;
+  const needsConfirm = documentField.value.trim() && !newBtn.classList.contains('confirming');
+  clearTimeout(newConfirmTimer);
+  newBtn.classList.toggle('confirming', Boolean(needsConfirm));
+  if (needsConfirm) {
+    newConfirmTimer = setTimeout(() => newBtn.classList.remove('confirming'), 5000);
+    return;
+  }
   documentField.value = '';
   instructionField.value = '';
   autoGrowTextarea(instructionField);

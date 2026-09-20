@@ -259,7 +259,7 @@
   "creative.heading": "Creative Mode",
   "creative.newTextTitle": "Work on a new creative text",
   "creative.copyTitle": "Copy text",
-  "creative.newTextConfirm": "Discard the current text and start over?",
+  "creative.newTextConfirmButton": "Sure? Discard text",
   "creative.disclaimer": "In addition to curated BetaCodex sources, this mode also draws on general internet and model knowledge (e.g. for workshop facilitation methods) - unlike the strict {linkStart}conversation view{linkEnd}, which relies exclusively on curated sources.",
   "creative.documentLabel": "Document",
   "creative.documentPlaceholder": "Your text will appear here – still empty. Enter an instruction below to generate the first draft.",

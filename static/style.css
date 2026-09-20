@@ -4505,20 +4505,6 @@ details a {
   gap: 0.5rem;
 }
 
-#creative-new-btn {
-  background: none;
-  border: none;
-  padding: 0.25rem;
-  color: var(--color-text-muted);
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-}
-
-#creative-new-btn:hover:not(:disabled) {
-  color: var(--color-accent);
-}
-
 /* Erfolgsbestätigung beim Kopieren (creative.js#showCopiedFeedback): grüner
    Haken, der sich von links nach rechts einzeichnet (gleiches Grün wie
    .feedback-btn--sent). */
@@ -4527,7 +4513,19 @@ details a {
   border-color: #2e7d32;
 }
 
-.copy-check-path {
+#creative-copy-btn .copy-check {
+  display: none;
+}
+
+#creative-copy-btn.copied .copy-icon {
+  display: none;
+}
+
+#creative-copy-btn.copied .copy-check {
+  display: inline;
+}
+
+.copy-check polyline {
   stroke-dasharray: 26;
   stroke-dashoffset: 26;
   animation: copy-check-draw 0.35s ease-out forwards;
@@ -4540,7 +4538,7 @@ details a {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .copy-check-path {
+  .copy-check polyline {
     animation: none;
     stroke-dashoffset: 0;
   }
@@ -4559,4 +4557,21 @@ details a {
     background: var(--color-accent-tint);
     box-shadow: 0 0 0 4px color-mix(in srgb, var(--color-accent) 35%, transparent);
   }
+}
+
+/* Zweistufige Bestätigung des Neu-anfangen-Buttons (creative.js). Grundstil
+   kommt von .feedback-btn. */
+#creative-new-btn.confirming {
+  color: var(--color-accent);
+}
+
+.creative-new-confirm {
+  display: none;
+  margin-left: 0.35rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+#creative-new-btn.confirming .creative-new-confirm {
+  display: inline;
 }

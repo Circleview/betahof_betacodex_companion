@@ -3606,7 +3606,7 @@ def test_creative_page_has_new_text_and_copy_buttons_with_bilingual_titles():
         strings = json.loads((STATIC_DIR / "i18n" / f"{lang}.json").read_text())
         assert strings["creative.newTextTitle"] == new_title
         assert strings["creative.copyTitle"] == copy_title
-        assert "creative.newTextConfirm" in strings
+        assert "creative.newTextConfirmButton" in strings
 
 
 def test_flash_edit_affordances_flashes_toggle_and_section_buttons_once():

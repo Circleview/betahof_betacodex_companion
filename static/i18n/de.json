@@ -259,7 +259,7 @@
   "creative.heading": "Kreativ-Modus",
   "creative.newTextTitle": "Neuen Kreativ-Text erarbeiten",
   "creative.copyTitle": "Text kopieren",
-  "creative.newTextConfirm": "Den aktuellen Text verwerfen und neu anfangen?",
+  "creative.newTextConfirmButton": "Sicher? Text verwerfen",
   "creative.disclaimer": "Dieser Modus nutzt zusätzlich zu den kuratierten BetaCodex-Quellen auch allgemeines Internet- und Modellwissen (z. B. für Workshop-Methodik) - anders als die strikte {linkStart}Konversationsansicht{linkEnd}, die ausschließlich auf kuratierten Quellen beruht.",
   "creative.documentLabel": "Dokument",
   "creative.documentPlaceholder": "Hier entsteht dein Text – noch leer. Gib unten eine Anweisung ein, um den ersten Entwurf zu erzeugen.",
