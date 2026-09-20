@@ -99,7 +99,7 @@ def log_no_answer(question: str, answer: str) -> None:
     _append({"event_types": ["no_answer"], "text": question, "answer": answer})
 
 
-def log_feedback(question: str, answer: str, feedback: str) -> None:
+def log_feedback(question: str, answer: str, feedback: str, mode: str = "conversation") -> None:
     """Feedback kommt über einen eigenen, späteren Request ohne Bezug zu
     einer evtl. schon geloggten id (siehe /api/answer-feedback) - anders als
     bei add_event_type() oben deshalb ein Abgleich über den exakten Frage-
@@ -108,7 +108,10 @@ def log_feedback(question: str, answer: str, feedback: str) -> None:
     Text, eine zufällige Kollision ist nicht realistisch). Findet sich ein
     Treffer (neuester zuerst), wird "feedback" dort ergänzt statt eines
     separaten Eintrags - sonst (z.B. Feedback zu einer nicht geloggten
-    Folgefrage) wie bisher ein eigener Eintrag."""
+    Folgefrage) wie bisher ein eigener Eintrag. Feedback aus dem Kreativ-Modus
+    (mode="creative", text = Anweisung, answer = erzeugter Text) bekommt das
+    zusätzliche Feld "mode", damit das Fragen-Log es kennzeichnen kann."""
+    extra = {} if mode == "conversation" else {"mode": mode}
     with _question_log_lock:
         entries = _load()
         for entry in reversed(entries):
@@ -117,9 +120,10 @@ def log_feedback(question: str, answer: str, feedback: str) -> None:
                 if "feedback" not in event_types:
                     event_types.append("feedback")
                 entry["feedback"] = feedback
+                entry.update(extra)
                 _save(entries)
                 return
-    _append({"event_types": ["feedback"], "text": question, "answer": answer, "feedback": feedback})
+    _append({"event_types": ["feedback"], "text": question, "answer": answer, "feedback": feedback, **extra})
 
 
 def list_entries() -> list[dict]:

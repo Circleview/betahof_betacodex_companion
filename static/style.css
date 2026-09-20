@@ -4566,3 +4566,14 @@ details a {
 #creative-new-btn.confirming .creative-new-confirm {
   display: inline;
 }
+
+/* Daumen-Feedback unter dem erzeugten Text im Kreativ-Modus - gleiche
+   Komponente wie in der Konversation (.answer-feedback), nur ohne den dort
+   nötigen linken Abstand zu den Audio-Icons. */
+.creative-feedback {
+  margin: 0.4rem 0 0;
+}
+
+.creative-feedback .answer-feedback {
+  margin-left: 0;
+}

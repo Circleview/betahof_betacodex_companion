@@ -117,6 +117,9 @@ class QuestionLogEntryOut(BaseModel):
     text: str
     answer: str | None = None
     feedback: str | None = None
+    # "creative" bei Feedback aus dem Kreativ-Modus (text = Anweisung,
+    # answer = erzeugter Text); fehlt bei allen Konversations-Einträgen.
+    mode: str | None = None
     timestamp: str
 
 
@@ -135,6 +138,9 @@ class AnswerFeedbackIn(BaseModel):
     question: str
     answer: str
     feedback: str
+    # Nutzerwunsch: dieselben Daumen gibt es auch im Kreativ-Modus - dort ist
+    # "question" die Anweisung und "answer" der erzeugte Text.
+    mode: str = "conversation"
 
 
 class ChunkRef(BaseModel):

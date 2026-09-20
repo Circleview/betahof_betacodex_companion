@@ -2518,6 +2518,7 @@ def delete_question_log_entry(
 
 
 ANSWER_FEEDBACK_VALUES = {"good", "bad"}
+ANSWER_FEEDBACK_MODES = {"conversation", "creative"}
 
 
 @app.post("/api/answer-feedback", response_model=MessageOut)
@@ -2535,11 +2536,11 @@ def submit_answer_feedback(
     client_ip = request.client.host if request.client else "unknown"
     if ratelimit.is_rate_limited(f"answer-feedback-ip:{client_ip}", max_requests=30, window_seconds=3600):
         raise HTTPException(429, i18n.get_message("rate_limited", x_lang))
-    if payload.feedback not in ANSWER_FEEDBACK_VALUES:
+    if payload.feedback not in ANSWER_FEEDBACK_VALUES or payload.mode not in ANSWER_FEEDBACK_MODES:
         raise HTTPException(400, i18n.get_message("invalid_feedback_value", x_lang))
 
     if _should_log_question_event(request):
-        question_log.log_feedback(payload.question, payload.answer, payload.feedback)
+        question_log.log_feedback(payload.question, payload.answer, payload.feedback, payload.mode)
 
     return MessageOut(detail=i18n.get_message("feedback_sent", x_lang))
 

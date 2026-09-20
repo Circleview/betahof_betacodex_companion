@@ -3237,33 +3237,34 @@ def test_render_sidebar_sources_preserves_open_state_by_source_id():
 
 
 def test_attach_feedback_buttons_sends_question_answer_and_value():
-    js_source = (STATIC_DIR / "question.js").read_text()
-    match = re.search(r"function attachFeedbackButtons\(bubble, question, answer\) \{.*?\n\}\n", js_source, re.S)
-    assert match, "attachFeedbackButtons wurde in question.js nicht gefunden."
+    js_source = (STATIC_DIR / "answer-feedback.js").read_text()
+    match = re.search(r"export function buildAnswerFeedback\(.*?\n\}\n", js_source, re.S)
+    assert match, "buildAnswerFeedback wurde in answer-feedback.js nicht gefunden."
     func_source = match.group(0)
     assert "/api/answer-feedback" in func_source
-    assert "JSON.stringify({ question, answer, feedback: value })" in func_source
-    assert "buildButton('good', THUMBS_UP_ICON, 'index.feedbackGoodTitle')" in func_source
-    assert "buildButton('bad', THUMBS_DOWN_ICON, 'index.feedbackBadTitle')" in func_source
+    assert "JSON.stringify({ question, answer, feedback: value, mode })" in func_source
+    assert "buildButton('good', THUMBS_UP_ICON)" in func_source
+    assert "buildButton('bad', THUMBS_DOWN_ICON)" in func_source
+    assert "index.feedbackGoodTitle" in js_source and "creative.feedbackGoodTitle" in js_source
 
 
 def test_attach_feedback_buttons_shows_permanent_checkmark_on_success():
     # Nutzerwunsch (2026-09-01, Nachtrag): der Haken bleibt nach
     # erfolgreichem Absenden dauerhaft stehen, kein Zurücksetzen auf das
     # ursprüngliche Daumen-Icon.
-    js_source = (STATIC_DIR / "question.js").read_text()
-    match = re.search(r"function attachFeedbackButtons\(bubble, question, answer\) \{.*?\n\}\n", js_source, re.S)
+    js_source = (STATIC_DIR / "answer-feedback.js").read_text()
+    match = re.search(r"export function buildAnswerFeedback\(.*?\n\}\n", js_source, re.S)
     assert match
     func_source = match.group(0)
-    assert "btn.innerHTML = FEEDBACK_SENT_ICON" in func_source
+    assert "btn.innerHTML = FEEDBACK_SENT_ICON" in js_source
     assert "feedback-btn--sent" in func_source
     assert "originalIcon" not in func_source
     assert "setTimeout" not in func_source
 
 
 def test_attach_feedback_buttons_locks_both_buttons_after_success():
-    js_source = (STATIC_DIR / "question.js").read_text()
-    match = re.search(r"function attachFeedbackButtons\(bubble, question, answer\) \{.*?\n\}\n", js_source, re.S)
+    js_source = (STATIC_DIR / "answer-feedback.js").read_text()
+    match = re.search(r"export function buildAnswerFeedback\(.*?\n\}\n", js_source, re.S)
     assert match
     func_source = match.group(0)
     assert "function lockButtons()" in func_source
@@ -3273,8 +3274,8 @@ def test_attach_feedback_buttons_locks_both_buttons_after_success():
 
 
 def test_attach_feedback_buttons_unlocks_both_buttons_after_failure():
-    js_source = (STATIC_DIR / "question.js").read_text()
-    match = re.search(r"function attachFeedbackButtons\(bubble, question, answer\) \{.*?\n\}\n", js_source, re.S)
+    js_source = (STATIC_DIR / "answer-feedback.js").read_text()
+    match = re.search(r"export function buildAnswerFeedback\(.*?\n\}\n", js_source, re.S)
     assert match
     func_source = match.group(0)
     assert "function unlockButtons()" in func_source
@@ -3294,7 +3295,7 @@ def test_attach_speak_button_wires_up_feedback_buttons():
 
 def test_question_log_builds_ask_deep_link_opening_in_new_tab():
     js_source = (STATIC_DIR / "question-log.js").read_text()
-    match = re.search(r"function buildQuestionLink\(text\) \{.*?\n\}", js_source, re.S)
+    match = re.search(r"function buildQuestionLink\(text, mode\) \{.*?\n\}", js_source, re.S)
     assert match, "buildQuestionLink wurde in question-log.js nicht gefunden."
     func_source = match.group(0)
     assert "/?q=${encodeURIComponent(text)}" in func_source
@@ -3636,3 +3637,28 @@ const after = all.map((b) => b.classList.has('attention-flash'));
 console.log(JSON.stringify({{ during, after }}));
 """
     assert _run_node(script) == {"during": [True, True, True], "after": [False, False, False]}
+
+
+def test_creative_mode_uses_shared_feedback_component_below_text_box_and_logs_creative_mode():
+    """Kreativ-Modus: Daumen-Feedback nutzt dieselbe Komponente wie die
+    Konversation (answer-feedback.js), sitzt unter Textfeld UND Vorschau und
+    meldet mode 'creative' ans Fragen-Log."""
+    html = (STATIC_DIR / "creative.html").read_text()
+    assert html.index('id="creative-document-preview"') < html.index('id="creative-feedback"')
+    assert html.index('id="creative-feedback"') < html.index('for="creative-instruction"')
+    js = (STATIC_DIR / "creative.js").read_text()
+    assert "import { buildAnswerFeedback } from '/answer-feedback.js'" in js
+    assert "mode: 'creative'" in js
+    assert "buildAnswerFeedback" in (STATIC_DIR / "question.js").read_text()
+
+
+def test_question_log_links_creative_entries_to_creative_mode_with_badge():
+    js_source = (STATIC_DIR / "question-log.js").read_text()
+    match = re.search(r"function buildQuestionLink\(text, mode\) \{.*?\n\}", js_source, re.S)
+    assert match
+    assert "/creative.html?instruction=${encodeURIComponent(text)}" in match.group(0)
+    assert "entry.mode === 'creative'" in js_source
+    for lang in ("de", "en"):
+        strings = json.loads((STATIC_DIR / "i18n" / f"{lang}.json").read_text())
+        for key in ("creative.feedbackGoodTitle", "creative.feedbackBadTitle", "questionLog.eventType.creative", "questionLog.openCreativeTitle"):
+            assert key in strings

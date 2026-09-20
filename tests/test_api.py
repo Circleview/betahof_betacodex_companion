@@ -1848,6 +1848,37 @@ def test_answer_feedback_logs_entry_with_question_answer_and_value(client, monke
     }
 
 
+def test_answer_feedback_from_creative_mode_is_logged_with_mode_marker(client, monkeypatch):
+    monkeypatch.setattr(main_module, "IS_DEV_ENVIRONMENT", False)
+
+    response = client.post(
+        "/api/answer-feedback",
+        json={"question": "Schreibe einen Blogpost.", "answer": "# Titel\n\nText.", "feedback": "bad", "mode": "creative"},
+    )
+
+    assert response.status_code == 200
+    entry = question_log.list_entries()[0]
+    assert entry["event_types"] == ["feedback"]
+    assert (entry["text"], entry["answer"], entry["feedback"], entry["mode"]) == (
+        "Schreibe einen Blogpost.",
+        "# Titel\n\nText.",
+        "bad",
+        "creative",
+    )
+
+
+def test_answer_feedback_rejects_unknown_mode(client, monkeypatch):
+    monkeypatch.setattr(main_module, "IS_DEV_ENVIRONMENT", False)
+
+    response = client.post(
+        "/api/answer-feedback",
+        json={"question": "Frage?", "answer": "Antwort.", "feedback": "good", "mode": "quatsch"},
+    )
+
+    assert response.status_code == 400
+    assert question_log.list_entries() == []
+
+
 def test_answer_feedback_rejects_invalid_value(client, monkeypatch):
     monkeypatch.setattr(main_module, "IS_DEV_ENVIRONMENT", False)
 

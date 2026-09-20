@@ -4,6 +4,7 @@ import { createTurnstileWidget } from '/turnstile.js';
 import { readNdjsonStream } from '/ndjson-stream.js';
 import { renderMarkdown } from '/markdown.js';
 import { createSpeechController } from '/speech.js';
+import { buildAnswerFeedback } from '/answer-feedback.js';
 
 // Nutzerwunsch (2026-08-26): Kreativ-Modus - anders als die strikte
 // Konversationsansicht kein wachsender Chat-Verlauf, sondern ein
@@ -63,6 +64,7 @@ const documentField = document.getElementById('creative-document');
 const instructionField = document.getElementById('creative-instruction');
 const submitBtn = document.getElementById('creative-submit');
 const errorEl = document.getElementById('creative-error');
+const feedbackEl = document.getElementById('creative-feedback');
 const betacodexListEl = document.getElementById('creative-sources-betacodex');
 const webListEl = document.getElementById('creative-sources-web');
 const toolbarButtons = Array.from(document.querySelectorAll('#creative-toolbar button[data-md-action]'));
@@ -575,6 +577,7 @@ async function submitSectionRevision(index) {
     openSectionIndex = null;
     renderPreviewSections();
     showSources(doneEvent.sources);
+    setGeneration({ instruction, text: revisedSectionText, sent: null });
   } catch (err) {
     // Fehlschlag darf die eingetippte Anweisung nicht zerstören und das
     // Panel nicht schließen - Nutzer:in soll ohne erneutes Eintippen
@@ -663,6 +666,45 @@ try {
 } catch (err) {
   // s.o.
 }
+// Daumen-Feedback zur letzten Erzeugung (Anweisung, erzeugter Text, ggf. schon
+// abgegebenes Urteil) - bleibt wie Text und Quellen über einen Reload
+// erhalten, damit ein bereits bewerteter Text nicht erneut bewertbar wirkt.
+const CREATIVE_GENERATION_STORAGE_KEY = 'creativeGeneration';
+let generation = null;
+try {
+  generation = JSON.parse(sessionStorage.getItem(CREATIVE_GENERATION_STORAGE_KEY));
+} catch (err) {
+  // s.o.
+}
+
+function renderFeedback() {
+  feedbackEl.replaceChildren();
+  feedbackEl.classList.toggle('hidden', !generation);
+  if (!generation) return;
+  feedbackEl.appendChild(
+    buildAnswerFeedback({
+      question: generation.instruction,
+      answer: generation.text,
+      mode: 'creative',
+      sent: generation.sent,
+      onSent: (value) => setGeneration({ ...generation, sent: value }),
+    })
+  );
+}
+
+function setGeneration(next) {
+  generation = next;
+  try {
+    sessionStorage.setItem(CREATIVE_GENERATION_STORAGE_KEY, JSON.stringify(next));
+  } catch (err) {
+    // s.o.
+  }
+  renderFeedback();
+}
+
+renderFeedback();
+document.addEventListener('i18n:changed', renderFeedback);
+
 documentField.addEventListener('input', saveCreativeDocument);
 window.addEventListener('pagehide', saveCreativeDocument);
 
@@ -714,6 +756,7 @@ newBtn.addEventListener('click', () => {
   sectionDrafts.clear();
   openSectionIndex = null;
   showSources({ betacodex: [], web: [] });
+  setGeneration(null);
   errorEl.classList.add('hidden');
   if (previewMode) setPreviewMode(false);
   saveCreativeDocument();
@@ -824,6 +867,8 @@ form.addEventListener('submit', async (event) => {
   const previousDocument = documentField.value;
   let liveText = '';
   let generated = false;
+  const previousGeneration = generation;
+  setGeneration(null);
   documentField.value = '';
 
   try {
@@ -878,11 +923,13 @@ form.addEventListener('submit', async (event) => {
     showSources(doneEvent.sources);
     instructionField.value = '';
     autoGrowTextarea(instructionField);
+    setGeneration({ instruction, text: liveText, sent: null });
     generated = true;
   } catch (err) {
     // Ein fehlgeschlagener Versuch darf das bisherige Dokument nie
     // zerstören - Original wiederherstellen statt leer zu lassen.
     documentField.value = previousDocument;
+    setGeneration(previousGeneration);
     errorEl.textContent = t('common.errorPrefix') + err.message;
     errorEl.classList.remove('hidden');
   } finally {

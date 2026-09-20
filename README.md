@@ -149,6 +149,11 @@ Assistent das offen, statt zu spekulieren.
   ~18 s Wartezeit durch mehrere Suchrunden vor dem ersten Wort).
 - Dasselbe Werk (Titel + Autor:innen) erscheint in der Quellenliste nur
   einmal, auch wenn es als mehrere Quellen-Datensätze vorliegt.
+- Daumen-hoch/-runter unter dem erzeugten Text (in Bearbeiten- wie
+  Vorschau-Ansicht, gleiche Komponente wie in der Konversation, Zustand
+  bleibt über Reload erhalten). Das Feedback landet mit Anweisung und
+  erzeugtem Text im Fragen-Log (Badge "Kreativ-Modus", der Link öffnet die
+  Anweisung im Kreativ-Modus).
 
 ### Quellen pflegen (Quellen-Pfleger:innen)
 

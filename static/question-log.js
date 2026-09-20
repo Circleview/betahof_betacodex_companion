@@ -75,16 +75,22 @@ const EVENT_TYPE_LABEL_KEYS = {
 
 // Öffnet den Konversationsmodus in einem neuen Tab mit genau dieser Frage
 // (siehe question.js: consumeAskParam - liest ?q=, füllt das Eingabefeld
-// und stellt die Frage automatisch, kein zusätzlicher Klick nötig).
-function buildQuestionLink(text) {
+// und stellt die Frage automatisch, kein zusätzlicher Klick nötig). Bei
+// Einträgen aus dem Kreativ-Modus (mode 'creative', text = Anweisung) statt
+// dessen den Kreativ-Modus mit vorausgefüllter Anweisung (?instruction=).
+function buildQuestionLink(text, mode) {
+  const creative = mode === 'creative';
+  const titleKey = creative ? 'questionLog.openCreativeTitle' : 'questionLog.openConversationTitle';
   const a = document.createElement('a');
   a.className = 'question-log-question-link';
-  a.href = `/?q=${encodeURIComponent(text)}`;
+  a.href = creative
+    ? `/creative.html?instruction=${encodeURIComponent(text)}`
+    : `/?q=${encodeURIComponent(text)}`;
   a.target = '_blank';
   a.rel = 'noopener';
   a.textContent = text;
-  a.title = t('questionLog.openConversationTitle');
-  a.setAttribute('aria-label', t('questionLog.openConversationTitle'));
+  a.title = t(titleKey);
+  a.setAttribute('aria-label', t(titleKey));
   return a;
 }
 
@@ -109,10 +115,12 @@ function buildEntryElement(entry) {
   time.textContent = formatTime(new Date(entry.timestamp));
   li.appendChild(time);
 
-  entry.event_types.forEach((eventType) => {
+  const badgeKeys = entry.event_types.map((et) => EVENT_TYPE_LABEL_KEYS[et] || EVENT_TYPE_LABEL_KEYS.first_question);
+  if (entry.mode === 'creative') badgeKeys.push('questionLog.eventType.creative');
+  badgeKeys.forEach((key) => {
     const badge = document.createElement('span');
     badge.className = 'question-log-type-badge';
-    badge.textContent = t(EVENT_TYPE_LABEL_KEYS[eventType] || EVENT_TYPE_LABEL_KEYS.first_question);
+    badge.textContent = t(key);
     li.appendChild(badge);
   });
 
@@ -122,7 +130,7 @@ function buildEntryElement(entry) {
 
   const text = document.createElement('p');
   text.className = 'question-log-text';
-  text.appendChild(buildQuestionLink(entry.text));
+  text.appendChild(buildQuestionLink(entry.text, entry.mode));
   li.appendChild(text);
 
   if (entry.answer) {
