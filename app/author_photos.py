@@ -16,12 +16,13 @@ Komplett unabhängig von app/author_profiles.py (bewusst kein gemeinsamer
 Speicher, gleiche Entkopplungs-Idee wie dort für app/authors.py) - eigenes
 kleines Manifest statt eines neuen Felds in author_profiles.json."""
 import hashlib
-import json
 import urllib.request
 from io import BytesIO
 from pathlib import Path
 
 from PIL import Image
+
+from app import jsonstore
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 AUTHOR_PHOTOS_DIR = BASE_DIR / "data" / "author_photos"
@@ -55,14 +56,11 @@ def _slug(name: str) -> str:
 
 
 def _load_manifest() -> dict:
-    if not MANIFEST_FILE.exists():
-        return {}
-    return json.loads(MANIFEST_FILE.read_text())
+    return jsonstore.load(MANIFEST_FILE, {})
 
 
 def _save_manifest(manifest: dict) -> None:
-    AUTHOR_PHOTOS_DIR.mkdir(parents=True, exist_ok=True)
-    MANIFEST_FILE.write_text(json.dumps(manifest, ensure_ascii=False, indent=2))
+    jsonstore.save(MANIFEST_FILE, manifest)
 
 
 def photo_path(name: str, size: str) -> Path:

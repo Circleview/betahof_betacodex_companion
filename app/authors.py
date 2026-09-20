@@ -1,7 +1,8 @@
 import difflib
-import json
 import re
 from pathlib import Path
+
+from app import jsonstore
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 AUTHORS_FILE = BASE_DIR / "data" / "authors.json"
@@ -24,14 +25,11 @@ def normalize_name(name: str) -> str:
 
 
 def _load() -> dict:
-    if AUTHORS_FILE.exists():
-        return json.loads(AUTHORS_FILE.read_text())
-    return {}
+    return jsonstore.load(AUTHORS_FILE, {})
 
 
 def _save(authors: dict) -> None:
-    AUTHORS_FILE.parent.mkdir(parents=True, exist_ok=True)
-    AUTHORS_FILE.write_text(json.dumps(authors, ensure_ascii=False, indent=2))
+    jsonstore.save(AUTHORS_FILE, authors)
 
 
 def register_author(name: str, source_id: str) -> None:

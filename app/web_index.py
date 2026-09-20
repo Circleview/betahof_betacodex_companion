@@ -6,10 +6,10 @@ freigegebene Domain/Sektion), mit gerade so viel Metadatum, wie
 app/main.py:ask() für eine zitierfähige ChunkRef braucht (title/url/
 indexed_at). Die eigentlichen Text-Chunks liegen in der separaten
 Chroma-Collection app/vectorstore.WEB_FALLBACK_COLLECTION_NAME."""
-import json
-import os
 import threading
 from pathlib import Path
+
+from app import jsonstore
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 WEB_INDEX_FILE = BASE_DIR / "data" / "web_index.json"
@@ -18,19 +18,11 @@ _web_index_lock = threading.Lock()
 
 
 def _load() -> dict:
-    if not WEB_INDEX_FILE.exists():
-        return {}
-    try:
-        return json.loads(WEB_INDEX_FILE.read_text())
-    except Exception:
-        return {}
+    return jsonstore.load(WEB_INDEX_FILE, {}, tolerant=True)
 
 
 def _save(pages: dict) -> None:
-    WEB_INDEX_FILE.parent.mkdir(parents=True, exist_ok=True)
-    tmp = WEB_INDEX_FILE.with_suffix(f".json.{os.getpid()}.{threading.get_ident()}.tmp")
-    tmp.write_text(json.dumps(pages, ensure_ascii=False, indent=2))
-    tmp.replace(WEB_INDEX_FILE)
+    jsonstore.save(WEB_INDEX_FILE, pages)
 
 
 def pages_for_entry(allowlist_entry_id: str) -> dict:

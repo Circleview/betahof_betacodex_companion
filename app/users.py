@@ -1,6 +1,7 @@
-import json
 from datetime import datetime, timezone
 from pathlib import Path
+
+from app import jsonstore
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 USERS_FILE = BASE_DIR / "data" / "users.json"
@@ -16,12 +17,7 @@ def _normalize_email(email: str) -> str:
 
 
 def _load() -> dict:
-    if not USERS_FILE.exists():
-        return {}
-    try:
-        data = json.loads(USERS_FILE.read_text())
-    except Exception:
-        return {}
+    data = jsonstore.load(USERS_FILE, {}, tolerant=True)
     # Defensiv: eine veraltete/vergessene users.json (z.B. aus dem alten
     # Dev-Rollen-Stub) soll nie zum Absturz führen - Einträge ohne die
     # erwartete Form (kein gültiger E-Mail-Key, keine "roles"-Liste) werden
@@ -34,8 +30,7 @@ def _load() -> dict:
 
 
 def _save(users: dict) -> None:
-    USERS_FILE.parent.mkdir(parents=True, exist_ok=True)
-    USERS_FILE.write_text(json.dumps(users, ensure_ascii=False, indent=2))
+    jsonstore.save(USERS_FILE, users)
 
 
 def get_user(email: str) -> dict | None:

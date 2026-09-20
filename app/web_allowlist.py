@@ -5,11 +5,11 @@ periodisch zu indizieren und in app/main.py:ask() als ergänzende Quelle
 heranzuziehen. Bewusst getrennt von sources.json: das sind keine manuell
 kuratierten Einzel-Quellen, sondern ganze (Teil-)Websites, deren einzelne
 Unterseiten app/web_index.py verwaltet."""
-import json
-import os
 import threading
 import uuid
 from pathlib import Path
+
+from app import jsonstore
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 WEB_ALLOWLIST_FILE = BASE_DIR / "data" / "web_allowlist.json"
@@ -21,19 +21,11 @@ _web_allowlist_lock = threading.Lock()
 
 
 def _load() -> dict:
-    if not WEB_ALLOWLIST_FILE.exists():
-        return {}
-    try:
-        return json.loads(WEB_ALLOWLIST_FILE.read_text())
-    except Exception:
-        return {}
+    return jsonstore.load(WEB_ALLOWLIST_FILE, {}, tolerant=True)
 
 
 def _save(entries: dict) -> None:
-    WEB_ALLOWLIST_FILE.parent.mkdir(parents=True, exist_ok=True)
-    tmp = WEB_ALLOWLIST_FILE.with_suffix(f".json.{os.getpid()}.{threading.get_ident()}.tmp")
-    tmp.write_text(json.dumps(entries, ensure_ascii=False, indent=2))
-    tmp.replace(WEB_ALLOWLIST_FILE)
+    jsonstore.save(WEB_ALLOWLIST_FILE, entries)
 
 
 def list_entries() -> dict:

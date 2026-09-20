@@ -12,12 +12,12 @@ Alle drei teilen sich dieselbe Datei/denselben Namensraum, damit sich das
 Fragen-Log (question-log.html) chronologisch gemischt und nach Ereignistyp
 filterbar darstellen lässt. Ausschlüsse (System-Admin, Dev/Stabil) prüft
 einheitlich app/main.py: _should_log_question_event()."""
-import json
-import os
 import threading
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
+
+from app import jsonstore
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 QUESTION_LOG_FILE = BASE_DIR / "data" / "question_log.json"
@@ -27,19 +27,11 @@ _question_log_lock = threading.Lock()
 
 
 def _load() -> list[dict]:
-    if not QUESTION_LOG_FILE.exists():
-        return []
-    try:
-        return json.loads(QUESTION_LOG_FILE.read_text())
-    except Exception:
-        return []
+    return jsonstore.load(QUESTION_LOG_FILE, [], tolerant=True)
 
 
 def _save(entries: list[dict]) -> None:
-    QUESTION_LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
-    tmp = QUESTION_LOG_FILE.with_suffix(f".json.{os.getpid()}.{threading.get_ident()}.tmp")
-    tmp.write_text(json.dumps(entries, ensure_ascii=False, indent=2))
-    tmp.replace(QUESTION_LOG_FILE)
+    jsonstore.save(QUESTION_LOG_FILE, entries)
 
 
 def _append(entry: dict) -> str:

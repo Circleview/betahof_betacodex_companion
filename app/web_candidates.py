@@ -8,11 +8,11 @@ gezielt einzelne für die Aufnahme auswählen ("Positivselektion") - bewusst
 getrennt von app/web_index.py: dort stehen nur bereits WIRKLICH
 indizierte Seiten (mit Chunks in der Chroma-Collection), hier nur
 Vorschläge (Titel+Kurztext, keine Chunks/Embeddings gespeichert)."""
-import json
-import os
 import threading
 import uuid
 from pathlib import Path
+
+from app import jsonstore
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 WEB_CANDIDATES_FILE = BASE_DIR / "data" / "web_candidates.json"
@@ -21,19 +21,11 @@ _web_candidates_lock = threading.Lock()
 
 
 def _load() -> dict:
-    if not WEB_CANDIDATES_FILE.exists():
-        return {}
-    try:
-        return json.loads(WEB_CANDIDATES_FILE.read_text())
-    except Exception:
-        return {}
+    return jsonstore.load(WEB_CANDIDATES_FILE, {}, tolerant=True)
 
 
 def _save(candidates: dict) -> None:
-    WEB_CANDIDATES_FILE.parent.mkdir(parents=True, exist_ok=True)
-    tmp = WEB_CANDIDATES_FILE.with_suffix(f".json.{os.getpid()}.{threading.get_ident()}.tmp")
-    tmp.write_text(json.dumps(candidates, ensure_ascii=False, indent=2))
-    tmp.replace(WEB_CANDIDATES_FILE)
+    jsonstore.save(WEB_CANDIDATES_FILE, candidates)
 
 
 def candidates_for_entry(allowlist_entry_id: str, status: str | None = "pending") -> dict:

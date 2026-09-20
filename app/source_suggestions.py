@@ -7,13 +7,13 @@ an - das läuft komplett über das bestehende "Quelle per URL"-Formular
 (pending/accepted/rejected). Getrennt von app/web_candidates.py, da dortige
 Kandidaten an einen bereits freigegebenen allowlist_entry_id gebunden sind -
 hier geht es um komplett neue, unbekannte Domains/Autor:innen."""
-import json
-import os
 import random
 import threading
 import uuid
 from pathlib import Path
 from urllib.parse import urlparse
+
+from app import jsonstore
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 SOURCE_SUGGESTIONS_FILE = BASE_DIR / "data" / "source_suggestions.json"
@@ -28,19 +28,11 @@ _lock = threading.Lock()
 
 
 def _load() -> dict:
-    if not SOURCE_SUGGESTIONS_FILE.exists():
-        return {}
-    try:
-        return json.loads(SOURCE_SUGGESTIONS_FILE.read_text())
-    except Exception:
-        return {}
+    return jsonstore.load(SOURCE_SUGGESTIONS_FILE, {}, tolerant=True)
 
 
 def _save(suggestions: dict) -> None:
-    SOURCE_SUGGESTIONS_FILE.parent.mkdir(parents=True, exist_ok=True)
-    tmp = SOURCE_SUGGESTIONS_FILE.with_suffix(f".json.{os.getpid()}.{threading.get_ident()}.tmp")
-    tmp.write_text(json.dumps(suggestions, ensure_ascii=False, indent=2))
-    tmp.replace(SOURCE_SUGGESTIONS_FILE)
+    jsonstore.save(SOURCE_SUGGESTIONS_FILE, suggestions)
 
 
 def _load_weights() -> dict:
@@ -48,24 +40,14 @@ def _load_weights() -> dict:
     # per Nutzerfeedback 2026-08-23 durch echte Zufallsauswahl ersetzt, siehe
     # pick_next_authors) - ein evtl. noch vorhandener Altwert wird einfach
     # ignoriert, kein Migrationscode nötig.
-    if not SOURCE_SUGGESTION_WEIGHTS_FILE.exists():
-        return {"authors": {}, "domains": {}}
-    try:
-        data = json.loads(SOURCE_SUGGESTION_WEIGHTS_FILE.read_text())
-    except Exception:
-        return {"authors": {}, "domains": {}}
+    data = jsonstore.load(SOURCE_SUGGESTION_WEIGHTS_FILE, {}, tolerant=True)
     data.setdefault("authors", {})
     data.setdefault("domains", {})
     return data
 
 
 def _save_weights(weights: dict) -> None:
-    SOURCE_SUGGESTION_WEIGHTS_FILE.parent.mkdir(parents=True, exist_ok=True)
-    tmp = SOURCE_SUGGESTION_WEIGHTS_FILE.with_suffix(
-        f".json.{os.getpid()}.{threading.get_ident()}.tmp"
-    )
-    tmp.write_text(json.dumps(weights, ensure_ascii=False, indent=2))
-    tmp.replace(SOURCE_SUGGESTION_WEIGHTS_FILE)
+    jsonstore.save(SOURCE_SUGGESTION_WEIGHTS_FILE, weights)
 
 
 def domain_of(url: str) -> str:

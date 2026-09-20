@@ -1,5 +1,6 @@
-import json
 from pathlib import Path
+
+from app import jsonstore
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 AUTHOR_PROFILES_FILE = BASE_DIR / "data" / "author_profiles.json"
@@ -39,15 +40,12 @@ def _migrate_entry(entry: dict) -> dict:
 
 
 def _load() -> dict:
-    if not AUTHOR_PROFILES_FILE.exists():
-        return {}
-    raw = json.loads(AUTHOR_PROFILES_FILE.read_text())
+    raw = jsonstore.load(AUTHOR_PROFILES_FILE, {})
     return {key: _migrate_entry(entry) for key, entry in raw.items()}
 
 
 def _save(profiles: dict) -> None:
-    AUTHOR_PROFILES_FILE.parent.mkdir(parents=True, exist_ok=True)
-    AUTHOR_PROFILES_FILE.write_text(json.dumps(profiles, ensure_ascii=False, indent=2))
+    jsonstore.save(AUTHOR_PROFILES_FILE, profiles)
 
 
 def get_profile(name: str) -> dict:

@@ -36,6 +36,7 @@ from app import (
     embeddings,
     extraction,
     i18n,
+    jsonstore,
     llm,
     mail,
     monitoring,
@@ -360,9 +361,7 @@ def get_turnstile_config():
 
 
 def _load_sources() -> dict:
-    if not SOURCES_FILE.exists():
-        return {}
-    sources = json.loads(SOURCES_FILE.read_text())
+    sources = jsonstore.load(SOURCES_FILE, {})
     for entry in sources.values():
         if "authors" not in entry:
             # Migration vom alten einzelnen "author"-Feld auf eine Liste -
@@ -378,26 +377,7 @@ def _load_sources() -> dict:
 
 
 def _save_sources(sources: dict) -> None:
-    # Atomar schreiben (Temp-Datei + Rename statt direktem write_text):
-    # write_text() truncatet die Datei zuerst und schreibt dann - liest ein
-    # anderer Thread währenddessen (siehe _finish_synchronous_import, das
-    # parallel zum Request-Thread auf sources.json zugreift), bekommt er
-    # eine leere/unvollständige Datei und _load_sources() crasht mit
-    # JSONDecodeError. os.replace() ist auf POSIX-Systemen atomar - ein
-    # gleichzeitiger Leser sieht immer entweder die alte oder die neue
-    # vollständige Version, nie einen Zwischenzustand.
-    #
-    # Der Temp-Dateiname MUSS je Aufruf eindeutig sein (siehe reales
-    # Datenverlust-Vorkommnis 2026-07-28): teilten sich zwei gleichzeitige
-    # Schreibvorgänge denselben Temp-Pfad, konnte Schreibvorgang B den
-    # Temp-Dateiinhalt von Schreibvorgang A überschreiben, BEVOR A
-    # umbenennt - A's replace() hätte dann B's (evtl. kleineren/älteren)
-    # Datensatz "gewonnen", nicht A's eigenen. Das atomare Rename schützt
-    # nur EINEN Schreiber vor kaputten Lesevorgängen, nicht mehrere
-    # Schreiber voreinander.
-    tmp_path = SOURCES_FILE.with_suffix(f".json.{os.getpid()}.{threading.get_ident()}.tmp")
-    tmp_path.write_text(json.dumps(sources, ensure_ascii=False, indent=2))
-    tmp_path.replace(SOURCES_FILE)
+    jsonstore.save(SOURCES_FILE, sources)
 
 
 def _diff_fields(before: dict, new_values: dict) -> dict:

@@ -7,12 +7,12 @@ speichert NUR die tatsächlich geänderten Felder als {"feld": {"old": ...,
 "new": ...}} - ein Revert liest genau diesen einen Eintrag und stellt nur
 diese Felder wieder her, andere seither geänderte Felder bleiben unberührt.
 """
-import json
-import os
 import threading
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
+
+from app import jsonstore
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 AUDIT_LOG_FILE = BASE_DIR / "data" / "audit_log.json"
@@ -25,12 +25,7 @@ _audit_log_lock = threading.Lock()
 
 
 def _load_raw() -> list[dict]:
-    if not AUDIT_LOG_FILE.exists():
-        return []
-    try:
-        return json.loads(AUDIT_LOG_FILE.read_text())
-    except Exception:
-        return []
+    return jsonstore.load(AUDIT_LOG_FILE, [], tolerant=True)
 
 
 def _normalize(entry: dict) -> dict:
@@ -52,10 +47,7 @@ def _load() -> list[dict]:
 
 
 def _save(entries: list[dict]) -> None:
-    AUDIT_LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
-    tmp = AUDIT_LOG_FILE.with_suffix(f".json.{os.getpid()}.{threading.get_ident()}.tmp")
-    tmp.write_text(json.dumps(entries, ensure_ascii=False, indent=2))
-    tmp.replace(AUDIT_LOG_FILE)
+    jsonstore.save(AUDIT_LOG_FILE, entries)
 
 
 def _append(entry: dict) -> dict:

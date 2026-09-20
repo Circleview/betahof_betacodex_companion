@@ -1,5 +1,6 @@
-import json
 from pathlib import Path
+
+from app import jsonstore
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 TERMS_FILE = BASE_DIR / "data" / "terms.json"
@@ -10,14 +11,11 @@ def _normalize(term: str) -> str:
 
 
 def _load() -> dict:
-    if TERMS_FILE.exists():
-        return json.loads(TERMS_FILE.read_text())
-    return {}
+    return jsonstore.load(TERMS_FILE, {})
 
 
 def _save(terms: dict) -> None:
-    TERMS_FILE.parent.mkdir(parents=True, exist_ok=True)
-    TERMS_FILE.write_text(json.dumps(terms, ensure_ascii=False, indent=2))
+    jsonstore.save(TERMS_FILE, terms)
 
 
 def register_term(term: str, source_id: str) -> None:
