@@ -574,8 +574,7 @@ async function submitSectionRevision(index) {
     sectionDrafts.delete(index);
     openSectionIndex = null;
     renderPreviewSections();
-    renderSourceList(betacodexListEl, doneEvent.sources.betacodex, 'creative.noBetacodexSources');
-    renderSourceList(webListEl, doneEvent.sources.web, 'creative.noWebSources');
+    showSources(doneEvent.sources);
   } catch (err) {
     // Fehlschlag darf die eingetippte Anweisung nicht zerstören und das
     // Panel nicht schließen - Nutzer:in soll ohne erneutes Eintippen
@@ -645,6 +644,25 @@ try {
 } catch (err) {
   // s.o.
 }
+// Die Quellen zum Text (rechte Spalte) werden mit ihm zusammen gehalten.
+const CREATIVE_SOURCES_STORAGE_KEY = 'creativeSources';
+
+function showSources(sources) {
+  renderSourceList(betacodexListEl, sources.betacodex, 'creative.noBetacodexSources');
+  renderSourceList(webListEl, sources.web, 'creative.noWebSources');
+  try {
+    sessionStorage.setItem(CREATIVE_SOURCES_STORAGE_KEY, JSON.stringify(sources));
+  } catch (err) {
+    // s.o.
+  }
+}
+
+try {
+  const storedSources = JSON.parse(sessionStorage.getItem(CREATIVE_SOURCES_STORAGE_KEY));
+  if (storedSources) showSources(storedSources);
+} catch (err) {
+  // s.o.
+}
 documentField.addEventListener('input', saveCreativeDocument);
 window.addEventListener('pagehide', saveCreativeDocument);
 
@@ -695,8 +713,7 @@ newBtn.addEventListener('click', () => {
   autoGrowTextarea(instructionField);
   sectionDrafts.clear();
   openSectionIndex = null;
-  renderSourceList(betacodexListEl, [], 'creative.noBetacodexSources');
-  renderSourceList(webListEl, [], 'creative.noWebSources');
+  showSources({ betacodex: [], web: [] });
   errorEl.classList.add('hidden');
   if (previewMode) setPreviewMode(false);
   saveCreativeDocument();
@@ -858,8 +875,7 @@ form.addEventListener('submit', async (event) => {
     // beim nächsten Aufklappen der Vorschau irreführend.
     sectionDrafts.clear();
     openSectionIndex = null;
-    renderSourceList(betacodexListEl, doneEvent.sources.betacodex, 'creative.noBetacodexSources');
-    renderSourceList(webListEl, doneEvent.sources.web, 'creative.noWebSources');
+    showSources(doneEvent.sources);
     instructionField.value = '';
     autoGrowTextarea(instructionField);
     generated = true;
