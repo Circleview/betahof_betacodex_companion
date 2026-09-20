@@ -2201,13 +2201,17 @@ button.send-button {
 .alphabet-jump-bar {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.3rem;
+  /* Bewusst eng (Nutzerwunsch): 13 Buchstaben sollen auf gängigen
+     Smartphone-Breiten in eine Zeile passen, das Alphabet also in zwei
+     statt drei Zeilen (13 * 1.4rem + 12 * 0.1rem = 19.4rem = 310px, passt
+     damit auch in die Inhaltsbreite eines 375px-Geräts). */
+  gap: 0.1rem;
   margin-bottom: 1rem;
 }
 
 .alphabet-jump-btn {
-  min-width: 1.6rem;
-  padding: 0.15rem 0.3rem;
+  min-width: 1.4rem;
+  padding: 0.15rem 0.2rem;
   border: none;
   background: none;
   color: var(--color-accent);
