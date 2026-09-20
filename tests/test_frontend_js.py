@@ -3578,3 +3578,32 @@ def test_legal_page_lang_nav_covers_all_four_legal_pages():
     for pathname, clicked_lang, expected in cases:
         result = _run_legal_page_lang_nav(pathname=pathname, clicked_lang=clicked_lang)
         assert result["navigatedTo"] == expected, pathname
+
+
+def test_format_countdown_renders_minutes_and_padded_seconds():
+    """static/footer.js#formatCountdown - Feedback-Cooldown-Anzeige (m:ss,
+    aufgerundet, nie negativ)."""
+    js_source = (STATIC_DIR / "footer.js").read_text()
+    match = re.search(r"function formatCountdown.*?\n\}", js_source, re.S)
+    assert match, "formatCountdown wurde in footer.js nicht gefunden."
+    script = f"""
+{match.group(0)}
+console.log(JSON.stringify([60000, 59001, 5000, 1, 0, -50].map(formatCountdown)));
+"""
+    assert _run_node(script) == ["1:00", "1:00", "0:05", "0:01", "0:00", "0:00"]
+
+
+def test_creative_page_has_new_text_and_copy_buttons_with_bilingual_titles():
+    """Kreativ-Modus: 'Neu anfangen'-Button neben der Überschrift und
+    'Text kopieren'-Button links neben der Vorschau - Tooltips in DE+EN."""
+    html = (STATIC_DIR / "creative.html").read_text()
+    assert 'id="creative-new-btn"' in html and 'id="creative-copy-btn"' in html
+    assert html.index("creative-copy-btn") < html.index("creative-preview-toggle")
+    for lang, new_title, copy_title in (
+        ("de", "Neuen Kreativ-Text erarbeiten", "Text kopieren"),
+        ("en", "Work on a new creative text", "Copy text"),
+    ):
+        strings = json.loads((STATIC_DIR / "i18n" / f"{lang}.json").read_text())
+        assert strings["creative.newTextTitle"] == new_title
+        assert strings["creative.copyTitle"] == copy_title
+        assert "creative.newTextConfirm" in strings

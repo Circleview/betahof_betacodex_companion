@@ -618,6 +618,62 @@ document.addEventListener('i18n:changed', () => {
   if (previewMode) renderPreviewSections();
 });
 
+// Wie die Konversation (question.js, sessionStorage): das Dokument überlebt
+// Seitenwechsel/Reload im selben Tab. pagehide deckt auch programmatische
+// Änderungen (Streaming, Toolbar) ab, 'input' das Tippen von Hand.
+const CREATIVE_DOC_STORAGE_KEY = 'creativeDocument';
+
+function saveCreativeDocument() {
+  try {
+    sessionStorage.setItem(CREATIVE_DOC_STORAGE_KEY, documentField.value);
+  } catch (err) {
+    // sessionStorage voll/deaktiviert - Dokument bleibt für diese Ansicht erhalten.
+  }
+}
+
+try {
+  documentField.value = sessionStorage.getItem(CREATIVE_DOC_STORAGE_KEY) || '';
+} catch (err) {
+  // s.o.
+}
+documentField.addEventListener('input', saveCreativeDocument);
+window.addEventListener('pagehide', saveCreativeDocument);
+
+// Kopiert das Dokument samt Formatierung: text/html (gerendertes Markdown, so
+// übernehmen Word/Mail/Docs Überschriften, Fett usw.) plus text/plain als
+// Markdown-Quelltext für Ziele ohne HTML-Unterstützung.
+document.getElementById('creative-copy-btn').addEventListener('click', async () => {
+  const text = documentField.value;
+  if (!text.trim()) return;
+  try {
+    await navigator.clipboard.write([
+      new ClipboardItem({
+        'text/html': new Blob([renderMarkdown(text)], { type: 'text/html' }),
+        'text/plain': new Blob([text], { type: 'text/plain' }),
+      }),
+    ]);
+  } catch (err) {
+    // ClipboardItem fehlt (älterer Browser) - wenigstens den Klartext kopieren.
+    await navigator.clipboard.writeText(text).catch(() => {});
+  }
+});
+
+document.getElementById('creative-new-btn').addEventListener('click', () => {
+  if (creativeBusy) return;
+  if (documentField.value.trim() && !window.confirm(t('creative.newTextConfirm'))) return;
+  documentField.value = '';
+  instructionField.value = '';
+  autoGrowTextarea(instructionField);
+  sectionDrafts.clear();
+  openSectionIndex = null;
+  renderSourceList(betacodexListEl, [], 'creative.noBetacodexSources');
+  renderSourceList(webListEl, [], 'creative.noWebSources');
+  errorEl.classList.add('hidden');
+  if (previewMode) setPreviewMode(false);
+  saveCreativeDocument();
+  documentField.focus();
+});
+
 toolbarButtons.forEach((btn) => {
   btn.addEventListener('click', () => {
     const result = applyMarkdownToSelection(

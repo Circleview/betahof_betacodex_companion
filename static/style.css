@@ -4358,7 +4358,7 @@ details a {
   cursor: not-allowed;
 }
 
-#creative-preview-toggle {
+#creative-copy-btn {
   margin-left: auto;
 }
 
@@ -4493,3 +4493,28 @@ details a {
   font-style: italic;
 }
 
+
+.feedback-cooldown {
+  color: var(--color-text-muted);
+  font-size: 0.75rem;
+}
+
+.creative-heading-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+#creative-new-btn {
+  background: none;
+  border: none;
+  padding: 0.25rem;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+}
+
+#creative-new-btn:hover:not(:disabled) {
+  color: var(--color-accent);
+}

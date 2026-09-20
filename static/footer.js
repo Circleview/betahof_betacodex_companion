@@ -27,10 +27,32 @@ let feedbackTurnstileRendered = false;
 
 function renderFeedbackTurnstileWidget() {
   if (feedbackTurnstileRendered) return;
+  // Während des Cooldowns steht kein Formular (und damit kein Container) im DOM.
+  if (!document.getElementById('feedback-turnstile-container')) return;
   feedbackTurnstileRendered = true;
   createTurnstileWidget('feedback-turnstile-container').then((widget) => {
     feedbackTurnstileWidget = widget;
   });
+}
+
+function resetFeedbackTurnstile() {
+  feedbackTurnstileWidget.destroy();
+  feedbackTurnstileWidget = { getToken: () => '', reset: () => {}, destroy: () => {} };
+  feedbackTurnstileRendered = false;
+}
+
+// Nach einem erfolgreichen Absenden darf erst nach dieser Wartezeit erneut
+// Feedback gesendet werden (Serverseitig gilt zusätzlich das Rate-Limit von
+// /api/feedback). Als Zeitstempel statt Zähler gespeichert, damit ein
+// Sprachwechsel (baut den Footer neu auf) den Cooldown nicht zurücksetzt.
+const FEEDBACK_COOLDOWN_MS = 60 * 1000;
+let feedbackCooldownUntil = 0;
+let feedbackCooldownTimer = null;
+
+function formatCountdown(ms) {
+  const totalSeconds = Math.max(0, Math.ceil(ms / 1000));
+  const seconds = String(totalSeconds % 60).padStart(2, '0');
+  return `${Math.floor(totalSeconds / 60)}:${seconds}`;
 }
 
 const CLOSE_ICON =
@@ -77,7 +99,47 @@ function ensureFeedbackPanel() {
   return panel;
 }
 
-function buildFeedbackForm() {
+// Wrapper, dessen Inhalt zwischen Formular und Cooldown-Ansicht wechselt.
+function buildFeedbackSection() {
+  const box = document.createElement('div');
+  renderFeedbackSection(box, '');
+  return box;
+}
+
+function renderFeedbackSection(box, confirmationText) {
+  clearInterval(feedbackCooldownTimer);
+  if (Date.now() >= feedbackCooldownUntil) {
+    box.replaceChildren(buildFeedbackForm(box));
+    return;
+  }
+  const children = [];
+  if (confirmationText) {
+    const confirmation = document.createElement('p');
+    confirmation.textContent = confirmationText;
+    children.push(confirmation);
+  }
+  const timer = document.createElement('p');
+  timer.className = 'feedback-cooldown';
+  children.push(timer);
+  box.replaceChildren(...children);
+  const tick = () => {
+    const remaining = feedbackCooldownUntil - Date.now();
+    if (remaining <= 0) {
+      clearInterval(feedbackCooldownTimer);
+      // Das alte Formular (samt Turnstile-Container) ist längst entfernt.
+      resetFeedbackTurnstile();
+      renderFeedbackSection(box, '');
+      const panel = document.getElementById('footer-feedback-panel');
+      if (panel && !panel.classList.contains('hidden')) renderFeedbackTurnstileWidget();
+      return;
+    }
+    timer.textContent = t('footer.feedbackCooldown', { time: formatCountdown(remaining) });
+  };
+  tick();
+  feedbackCooldownTimer = setInterval(tick, 1000);
+}
+
+function buildFeedbackForm(box) {
   const form = document.createElement('form');
 
   const { label: messageLabel, input: messageInput } = buildFeedbackField(
@@ -128,16 +190,14 @@ function buildFeedbackForm() {
       feedbackTurnstileWidget.reset();
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.detail || t('footer.feedbackFailed'));
-      form.replaceChildren();
-      const confirmation = document.createElement('p');
-      confirmation.textContent = data.detail;
-      form.appendChild(confirmation);
+      feedbackCooldownUntil = Date.now() + FEEDBACK_COOLDOWN_MS;
+      renderFeedbackSection(box, data.detail);
+      return;
     } catch (err) {
       status.textContent = t('common.errorPrefix') + err.message;
-    } finally {
-      submitBtn.disabled = false;
-      submitBtn.textContent = t('footer.feedbackSubmit');
     }
+    submitBtn.disabled = false;
+    submitBtn.textContent = t('footer.feedbackSubmit');
   });
 
   return form;
@@ -301,12 +361,10 @@ function renderFooter() {
   // gerendert". Das Panel klappt dabei bewusst wieder zu (analog dazu, wie
   // sich auch #search-bar bei jedem renderSourceList()-Aufruf nicht selbst
   // merkt, ob es offen war).
-  feedbackTurnstileWidget.destroy();
-  feedbackTurnstileWidget = { getToken: () => '', reset: () => {}, destroy: () => {} };
-  feedbackTurnstileRendered = false;
+  resetFeedbackTurnstile();
   const feedbackPanel = ensureFeedbackPanel();
   if (feedbackPanel) {
-    feedbackPanel.replaceChildren(buildFeedbackPanelCloseButton(feedbackPanel), buildFeedbackForm());
+    feedbackPanel.replaceChildren(buildFeedbackPanelCloseButton(feedbackPanel), buildFeedbackSection());
     feedbackPanel.classList.add('hidden');
   }
 
