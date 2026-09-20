@@ -4031,7 +4031,7 @@ def creative(payload: CreativeRequestIn, request: Request, x_lang: str = Header(
 
     llm_chunks = []
     betacodex_sources = []
-    seen_betacodex_sources = set()
+    betacodex_by_work = {}
     if sources:
         query_text = _creative_retrieval_query(instruction, document)
         query_embedding = embeddings.embed_query(query_text)
@@ -4052,20 +4052,24 @@ def creative(payload: CreativeRequestIn, request: Request, x_lang: str = Header(
             # verwendet hat. Mehrere Chunks derselben Quelle (z.B. mehrere
             # Treffer desselben Dokuments unter den Top-K) landen weiterhin
             # alle in llm_chunks (jeder Chunk ist eigener Kontext-Text), aber
-            # nur einmal in der angezeigten Quellenliste - dedupliziert über
-            # die URL (Fallback: Titel, falls eine Quelle keine URL hat).
-            dedup_key = meta["url"] or meta["title"]
-            if dedup_key in seen_betacodex_sources:
+            # nur einmal in der angezeigten Quellenliste. Schlüssel ist das
+            # WERK (Titel + Autor:innen), nicht die URL: dasselbe Buch kann
+            # als zwei Quellen-Datensätze vorliegen (z.B. einmal mit,
+            # einmal ohne URL) und würde sonst doppelt erscheinen - der
+            # Eintrag mit Link gewinnt dann.
+            work_key = (meta["title"].strip().lower(), tuple(authors_list))
+            existing = betacodex_by_work.get(work_key)
+            if existing:
+                existing["url"] = existing["url"] or meta["url"] or None
                 continue
-            seen_betacodex_sources.add(dedup_key)
-            betacodex_sources.append(
-                {
-                    "title": meta["title"],
-                    "authors": authors_list,
-                    "date": meta["date"] or None,
-                    "url": meta["url"] or None,
-                }
-            )
+            entry = {
+                "title": meta["title"],
+                "authors": authors_list,
+                "date": meta["date"] or None,
+                "url": meta["url"] or None,
+            }
+            betacodex_by_work[work_key] = entry
+            betacodex_sources.append(entry)
 
     creative_stream = llm.stream_creative_response(
         instruction, document, llm_chunks, lang=x_lang, section=payload.section

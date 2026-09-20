@@ -1482,6 +1482,28 @@ def test_creative_betacodex_sources_deduplicate_multiple_chunks_of_same_source(c
     assert sum(1 for s in betacodex if s["title"] == "Zellstrukturdesign") == 1
 
 
+def test_creative_betacodex_sources_merge_same_work_and_prefer_the_entry_with_url(client, monkeypatch):
+    # Reales Vorkommen: dasselbe Buch liegt als zwei Quellen-Datensätze vor
+    # (einer ohne URL) - die Liste zeigte es doppelt, einmal ohne Link.
+    for url in (None, "https://example.org/zellstrukturdesign"):
+        payload = {"title": "Zellstrukturdesign", "text": "Zentrumszellen tragen Wertschöpfung.", "authors": ["Autor X"]}
+        if url:
+            payload["url"] = url
+        client.post("/api/sources", json=payload)
+    monkeypatch.setattr(
+        llm,
+        "stream_creative_response",
+        lambda instruction, document, chunks, lang="de", section=None: _FakeCreativeStream(["Text."]),
+    )
+
+    response = client.post(
+        "/api/creative", json={"document": "", "instruction": "Schreibe über Zentrumszellen und Zellstrukturdesign."}
+    )
+
+    betacodex = creative_result(response)["sources"]["betacodex"]
+    assert [(s["title"], s["url"]) for s in betacodex] == [("Zellstrukturdesign", "https://example.org/zellstrukturdesign")]
+
+
 def test_creative_web_sources_are_filtered_to_real_search_results(client, monkeypatch):
     raw = (
         "Der Text.\n\n---SOURCES---\n"
