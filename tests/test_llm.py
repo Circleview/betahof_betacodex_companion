@@ -452,3 +452,10 @@ def test_parse_document_and_sources_ignores_malformed_lines():
 
     assert document == "Text."
     assert sources == []
+
+
+def test_creative_system_prompts_tell_model_to_start_writing_before_researching():
+    """Ohne diese Regel recherchierte das Modell erst (bis zu 3 Suchrunden,
+    gemessen ~18s) und schrieb dann - der erste Text kam entsprechend spät."""
+    assert "SOFORT" in llm.CREATIVE_SYSTEM_PROMPTS["de"]
+    assert "IMMEDIATELY" in llm.CREATIVE_SYSTEM_PROMPTS["en"]
