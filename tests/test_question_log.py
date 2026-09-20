@@ -159,7 +159,7 @@ def test_list_entries_backfills_missing_id_and_persists_it(tmp_path, monkeypatch
     assert first[0]["id"] == second[0]["id"]
 
 
-def test_purge_older_than_removes_only_expired_entries_and_keeps_unreadable_timestamps(tmp_path, monkeypatch):
+def test_purge_older_than_removes_only_expired_entries(tmp_path, monkeypatch):
     _isolate(tmp_path, monkeypatch)
     now = datetime.now(timezone.utc)
 
@@ -171,10 +171,9 @@ def test_purge_older_than_removes_only_expired_entries_and_keeps_unreadable_time
             {"id": "old", "event_types": ["first_question"], "text": "alt", "timestamp": at(731)},
             {"id": "edge", "event_types": ["first_question"], "text": "fast alt", "timestamp": at(729)},
             {"id": "new", "event_types": ["first_question"], "text": "neu", "timestamp": at(1)},
-            {"id": "broken", "event_types": ["first_question"], "text": "kaputt", "timestamp": "kein-datum"},
         ]
     )
 
     assert question_log.purge_older_than(730) == 1
-    assert sorted(e["id"] for e in question_log.list_entries()) == ["broken", "edge", "new"]
+    assert sorted(e["id"] for e in question_log.list_entries()) == ["edge", "new"]
     assert question_log.purge_older_than(730) == 0

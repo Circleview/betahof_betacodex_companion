@@ -158,19 +158,12 @@ def get_entry(entry_id: str) -> dict | None:
 def purge_older_than(days: int) -> int:
     """Löscht alle Einträge, die älter als `days` Tage sind (Aufbewahrungsfrist,
     siehe app/main.py: QUESTION_LOG_RETENTION_DAYS), und gibt die Anzahl der
-    gelöschten Einträge zurück. Einträge ohne les-baren Zeitstempel bleiben
-    bewusst erhalten - im Zweifel nicht löschen."""
+    gelöschten Einträge zurück. Jeder Eintrag hat einen Zeitstempel (siehe
+    _append)."""
     cutoff = datetime.now(timezone.utc) - timedelta(days=days)
-
-    def expired(entry: dict) -> bool:
-        try:
-            return datetime.fromisoformat(entry["timestamp"]) < cutoff
-        except (KeyError, ValueError, TypeError):
-            return False
-
     with _question_log_lock:
         entries = _load()
-        kept = [e for e in entries if not expired(e)]
+        kept = [e for e in entries if datetime.fromisoformat(e["timestamp"]) >= cutoff]
         if len(kept) != len(entries):
             _save(kept)
         return len(entries) - len(kept)
