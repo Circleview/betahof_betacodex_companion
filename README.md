@@ -137,6 +137,18 @@ Assistent das offen, statt zu spekulieren.
   Suchergebnisse geprüft, erfundene Quellen werden verworfen.
 - Eigenes, strengeres Rate-Limit als die Konversationsansicht (Sonnet +
   Websuche kosten pro Anfrage deutlich mehr als eine Haiku-Antwort).
+- Der erzeugte Text erscheint nach dem Erzeugen zuerst in der Vorschau;
+  "Bearbeiten" und die Abschnitts-Stifte blinken dabei einmal auf. Text und
+  Quellenliste bleiben wie die Konversation im Tab erhalten (sessionStorage,
+  überlebt Reload/Seitenwechsel); das Icon neben der Überschrift beginnt
+  bewusst neu (zweistufige Bestätigung statt Browser-Popup).
+- "Text kopieren" legt den Text samt Formatierung (HTML + Markdown-Klartext)
+  in die Zwischenablage, ein kurz eingezeichneter grüner Haken bestätigt es.
+- Der erste Text erscheint schnell, auch bei recherchelastigen Anfragen: das
+  Modell schreibt sofort los und recherchiert erst danach (vorher bis zu
+  ~18 s Wartezeit durch mehrere Suchrunden vor dem ersten Wort).
+- Dasselbe Werk (Titel + Autor:innen) erscheint in der Quellenliste nur
+  einmal, auch wenn es als mehrere Quellen-Datensätze vorliegt.
 
 ### Quellen pflegen (Quellen-Pfleger:innen)
 
@@ -441,6 +453,7 @@ Commit-/Tag-Nachrichten in Git.
 
 | Version | Wesentliche Änderungen |
 |---|---|
+| v0.64.0 | Kreativ-Modus: erster Text erscheint deutlich schneller (System-Prompt-Regel "sofort losschreiben, dann recherchieren" statt bis zu drei Suchrunden vor dem ersten Wort, gemessen ~18 s → ~2-5 s); erzeugter Text zuerst in der Vorschau, "Bearbeiten" und Abschnitts-Stifte blinken einmal auf; Text UND Quellenliste bleiben per sessionStorage über Reload/Seitenwechsel erhalten; neuer "Neu anfangen"-Button neben der Überschrift (zweistufige Bestätigung statt `confirm()`-Popup); neuer "Text kopieren"-Button (HTML + Markdown-Klartext) mit animiertem grünem Haken; dasselbe Werk (Titel+Autor:innen) erscheint nur einmal in der Quellenliste (Eintrag mit Link gewinnt). Feedback-Formular im Footer: nach dem Absenden ist nach 60 s Cooldown (kleiner Rückwärts-Timer) erneut Feedback möglich |
 | v0.63.7 | Drei Fixes aus derselben Nutzer-Review des Ackoff-Falls: (1) Zitat-Highlighting fand die vom Modell im ---QUOTES---Block wörtlich zitierte Textstelle nicht, wenn die Quelle (gecrawlt/PDF) typografische Anführungszeichen/Apostrophe (’‘“”) nutzte, das Modell aber gerade ('/"") - `_find_quote_span()` bildet beide Varianten jetzt auf dieselbe Zeichenklasse ab; bei mehrfach zitierter Quelle konnte das zuvor zum Highlight der JEWEILS ANDEREN Textstelle führen. (2) "Automatically switched to English"-Hinweis erschien fälschlich bei einer durchgehend deutschen Antwort, wenn diese ein langes wörtliches fremdsprachiges Zitat enthielt - `detectTextLanguage()` blendet Text in Anführungszeichen jetzt vor der Spracherkennung aus. (3) Eine Frage, die z. B. sowohl "erste Frage" als auch "keine Antwort gefunden" war, erschien im Fragen-Log als zwei separate, identisch aussehende Einträge - `event_type` ist jetzt `event_types` (Liste), passende Ereignisse werden in denselben Eintrag zusammengeführt (`question_log.add_event_type`/Text-Abgleich bei Feedback) statt dupliziert; Filter zeigen einen Eintrag, sobald mindestens eines seiner Labels aktiv ist |
 | v0.63.6 | Fix: `authors.find_mentioned()` erkannte eine Autor:in bisher nur, wenn der VOLLE registrierte Name wörtlich in der Frage vorkam - dadurch wurde der Autor:innen-Boost (gezielte Suche in den Quellen dieser Person, siehe `AUTHOR_MENTION_DISTANCE_FACTOR`) weder bei reiner Nachnamen-Nennung ("Texte von Ackoff") noch bei Tippfehlern im Vornamen ("Russel" statt "Russell") ausgelöst, obwohl die Quellen der Person real vorhanden waren. Erkennt jetzt zusätzlich den Nachnamen allein (Wortgrenze) sowie Tippfehler-nahe Schreibweisen des Nachnamens (`difflib.get_close_matches`, Cutoff 0.8, erst ab 4 Zeichen Nachnamenlänge) - reiner Vorname allein bleibt bewusst außen vor (zu mehrdeutig) |
 | v0.63.5 | Fix: fett gesetzte Zwischenüberschriften ohne "#"-Markdown-Syntax (nur eine eigene fett gesetzte Zeile, z. B. "**§1 Titel**" gefolgt von Fließtext) wurden fälschlich zu klickbaren, roten Schlagwort-Links - `makeTermsClickable()` erkennt jetzt strukturell, ob ein `<strong>` seine Zeile komplett für sich allein einnimmt (davor/danach nur Zeilenumbruch oder Absatzgrenze) und behandelt es dann wie eine echte Überschrift (schwarz, nicht klickbar); echte Inline-Fachbegriffe bleiben unverändert klickbar/rot |
