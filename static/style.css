@@ -4545,3 +4545,18 @@ details a {
     stroke-dashoffset: 0;
   }
 }
+
+/* Einmaliges Aufblinken nach dem Erzeugen (creative.js#flashEditAffordances) -
+   nur Farbe/Schatten, keine Bewegung. */
+.attention-flash {
+  animation: creative-attention-flash 1.2s ease-in-out 1;
+}
+
+@keyframes creative-attention-flash {
+  35% {
+    color: var(--color-accent);
+    border-color: var(--color-accent);
+    background: var(--color-accent-tint);
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--color-accent) 35%, transparent);
+  }
+}

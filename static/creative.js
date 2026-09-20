@@ -465,6 +465,15 @@ function buildSectionElement(section, index) {
 // erfolgreichen Abschnitts-Überarbeitung und bei Sprachwechsel (siehe
 // i18n:changed unten) neu aufgerufen - openSectionIndex/sectionDrafts
 // überleben das, weil sie NICHT im DOM, sondern in Modul-Variablen liegen.
+// Lässt "Bearbeiten" und die Abschnitts-Stifte einmal aufblinken, damit
+// sichtbar wird, dass der Text editierbar ist (CSS: .attention-flash).
+function flashEditAffordances() {
+  [previewToggleBtn, ...currentSectionEls.map((els) => els.reviseBtn)].forEach((btn) => {
+    btn.classList.add('attention-flash');
+    btn.addEventListener('animationend', () => btn.classList.remove('attention-flash'), { once: true });
+  });
+}
+
 function renderPreviewSections() {
   if (sectionIsListening) {
     sectionSpeechController.stopListening();
@@ -804,6 +813,7 @@ form.addEventListener('submit', async (event) => {
   relabelSubmitButton();
   const previousDocument = documentField.value;
   let liveText = '';
+  let generated = false;
   documentField.value = '';
 
   try {
@@ -859,6 +869,7 @@ form.addEventListener('submit', async (event) => {
     renderSourceList(webListEl, doneEvent.sources.web, 'creative.noWebSources');
     instructionField.value = '';
     autoGrowTextarea(instructionField);
+    generated = true;
   } catch (err) {
     // Ein fehlgeschlagener Versuch darf das bisherige Dokument nie
     // zerstören - Original wiederherstellen statt leer zu lassen.
@@ -869,5 +880,12 @@ form.addEventListener('submit', async (event) => {
     setBusy(false);
     creativeBusy = false;
     relabelSubmitButton();
+    // Nutzerwunsch: der fertige Text erscheint zuerst in der Vorschau - erst
+    // NACH setBusy(false), das die Toolbar-Buttons sonst wieder aktivieren
+    // würde. Gestreamt wird weiterhin im Textfeld (siehe setBusy).
+    if (generated) {
+      setPreviewMode(true);
+      flashEditAffordances();
+    }
   }
 });

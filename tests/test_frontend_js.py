@@ -3607,3 +3607,32 @@ def test_creative_page_has_new_text_and_copy_buttons_with_bilingual_titles():
         assert strings["creative.newTextTitle"] == new_title
         assert strings["creative.copyTitle"] == copy_title
         assert "creative.newTextConfirm" in strings
+
+
+def test_flash_edit_affordances_flashes_toggle_and_section_buttons_once():
+    """static/creative.js#flashEditAffordances: 'Bearbeiten' und jeder
+    Abschnitts-Stift bekommen .attention-flash, die Klasse verschwindet nach
+    animationend wieder (einmaliges Aufblinken)."""
+    js_source = (STATIC_DIR / "creative.js").read_text()
+    match = re.search(r"function flashEditAffordances.*?\n\}", js_source, re.S)
+    assert match, "flashEditAffordances wurde in creative.js nicht gefunden."
+    script = f"""
+function makeBtn() {{
+  const classes = new Set(); let onEnd = null;
+  return {{
+    classList: {{ add: (c) => classes.add(c), remove: (c) => classes.delete(c), has: (c) => classes.has(c) }},
+    addEventListener: (_, fn) => {{ onEnd = fn; }},
+    end: () => onEnd(),
+  }};
+}}
+const previewToggleBtn = makeBtn();
+const currentSectionEls = [{{ reviseBtn: makeBtn() }}, {{ reviseBtn: makeBtn() }}];
+{match.group(0)}
+flashEditAffordances();
+const all = [previewToggleBtn, ...currentSectionEls.map((e) => e.reviseBtn)];
+const during = all.map((b) => b.classList.has('attention-flash'));
+all.forEach((b) => b.end());
+const after = all.map((b) => b.classList.has('attention-flash'));
+console.log(JSON.stringify({{ during, after }}));
+"""
+    assert _run_node(script) == {"during": [True, True, True], "after": [False, False, False]}
