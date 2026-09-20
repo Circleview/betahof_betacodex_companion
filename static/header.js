@@ -87,14 +87,13 @@ const CREATIVE_ICON =
 const EXPLORE_ICON =
   '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" ' +
   'stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
-  '<g stroke-width="1.6">' +
-  '<line x1="9.8" y1="7" x2="14.2" y2="7" stroke-dasharray="0 2.2"></line>' +
-  '<line x1="7.95" y1="10.26" x2="10.05" y2="13.74" stroke-dasharray="0 2.03"></line>' +
-  '<line x1="16.05" y1="10.26" x2="13.95" y2="13.74" stroke-dasharray="0 2.03"></line>' +
-  '</g>' +
-  '<circle cx="6" cy="7" r="3" fill="var(--color-bg)"></circle>' +
-  '<circle cx="18" cy="7" r="3" fill="var(--color-bg)"></circle>' +
-  '<circle cx="12" cy="17" r="3" fill="var(--color-bg)"></circle>' +
+  // Verbindungen als je zwei Punkte (Nulllängen-Striche mit runden Enden),
+  // symmetrisch um die Linienmitte, mit Abstand zum Knotenrand.
+  '<path stroke-width="1.8" d="M10.9 7h.01M13.1 7h.01' +
+  'M8.43 11.06h.01M9.57 12.94h.01M15.57 11.06h.01M14.43 12.94h.01"></path>' +
+  '<circle cx="6" cy="7" r="2.5" fill="var(--color-bg)"></circle>' +
+  '<circle cx="18" cy="7" r="2.5" fill="var(--color-bg)"></circle>' +
+  '<circle cx="12" cy="17" r="2.5" fill="var(--color-bg)"></circle>' +
   '</svg>';
 
 // gated: nur für Quellen-Pfleger:innen/System-Admins sichtbar (siehe
