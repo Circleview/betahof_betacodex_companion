@@ -159,8 +159,8 @@ Assistent das offen, statt zu spekulieren.
   Aufklappen), gerendert werden seitenweise 30 Einträge (Nachladen beim
   Scrollen), die Filter wirken trotzdem immer auf den gesamten Bestand.
   Einträge werden nach zwei Jahren automatisch gelöscht (täglicher
-  Hintergrund-Job), das Feedback-API nimmt höchstens 2.000 Zeichen
-  Frage/Anweisung und 20.000 Zeichen Antwort/Text an.
+  Hintergrund-Job), das Feedback-API kürzt überlange Texte auf 2.000 Zeichen
+  Frage/Anweisung bzw. 20.000 Zeichen Antwort/Text.
 
 ### Quellen pflegen (Quellen-Pfleger:innen)
 

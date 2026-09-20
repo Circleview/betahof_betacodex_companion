@@ -1908,19 +1908,32 @@ def test_answer_feedback_rejects_unknown_mode(client, monkeypatch):
     assert question_log.list_entries() == []
 
 
-def test_answer_feedback_rejects_too_long_question_or_answer_but_accepts_the_maximum(client, monkeypatch):
+def test_answer_feedback_truncates_too_long_question_and_answer_instead_of_rejecting(client, monkeypatch):
     monkeypatch.setattr(main_module, "IS_DEV_ENVIRONMENT", False)
     max_q = main_module.ANSWER_FEEDBACK_MAX_QUESTION_CHARS
     max_a = main_module.ANSWER_FEEDBACK_MAX_ANSWER_CHARS
 
-    too_long_q = client.post("/api/answer-feedback", json={"question": "x" * (max_q + 1), "answer": "a", "feedback": "good"})
-    too_long_a = client.post("/api/answer-feedback", json={"question": "q", "answer": "x" * (max_a + 1), "feedback": "good"})
-    assert too_long_q.status_code == 400 and too_long_a.status_code == 400
-    assert question_log.list_entries() == []
+    response = client.post(
+        "/api/answer-feedback",
+        json={"question": "q" * (max_q + 500), "answer": "a" * (max_a + 500), "feedback": "good"},
+    )
 
-    at_limit = client.post("/api/answer-feedback", json={"question": "x" * max_q, "answer": "x" * max_a, "feedback": "good"})
-    assert at_limit.status_code == 200
-    assert len(question_log.list_entries()) == 1
+    assert response.status_code == 200
+    entry = question_log.list_entries()[0]
+    assert entry["feedback"] == "good"
+    assert entry["text"] == "q" * (max_q - 1) + "…" and len(entry["text"]) == max_q
+    assert entry["answer"] == "a" * (max_a - 1) + "…" and len(entry["answer"]) == max_a
+
+
+def test_answer_feedback_keeps_texts_exactly_at_the_limit_unchanged(client, monkeypatch):
+    monkeypatch.setattr(main_module, "IS_DEV_ENVIRONMENT", False)
+    max_q = main_module.ANSWER_FEEDBACK_MAX_QUESTION_CHARS
+    max_a = main_module.ANSWER_FEEDBACK_MAX_ANSWER_CHARS
+
+    client.post("/api/answer-feedback", json={"question": "x" * max_q, "answer": "y" * max_a, "feedback": "bad"})
+
+    entry = question_log.list_entries()[0]
+    assert (entry["text"], entry["answer"]) == ("x" * max_q, "y" * max_a)
 
 
 def test_answer_feedback_rejects_invalid_value(client, monkeypatch):

@@ -2560,11 +2560,16 @@ ANSWER_FEEDBACK_VALUES = {"good", "bad"}
 ANSWER_FEEDBACK_MODES = {"conversation", "creative"}
 # Der Endpunkt ist ohne Captcha erreichbar und schreibt Frage/Antwort ins
 # Fragen-Log - ohne Obergrenze könnte ein Skript das Log (und damit jeden
-# Schreibvorgang und die Log-Seite) mit Riesentexten aufblähen. Grenzen
-# entsprechen den Kreativ-Limits für Anweisung/Dokument (der Kreativ-Text ist
-# der längste legitime Inhalt).
+# Schreibvorgang und die Log-Seite) mit Riesentexten aufblähen. Überlange
+# Texte werden gekürzt (mit "…"), das Feedback selbst geht nie verloren.
+# Grenzen entsprechen den Kreativ-Limits für Anweisung/Dokument (der
+# Kreativ-Text ist der längste legitime Inhalt).
 ANSWER_FEEDBACK_MAX_QUESTION_CHARS = 2000
 ANSWER_FEEDBACK_MAX_ANSWER_CHARS = 20000
+
+
+def _truncate_for_log(text: str, limit: int) -> str:
+    return text if len(text) <= limit else text[: limit - 1] + "…"
 
 
 @app.post("/api/answer-feedback", response_model=MessageOut)
@@ -2584,14 +2589,14 @@ def submit_answer_feedback(
         raise HTTPException(429, i18n.get_message("rate_limited", x_lang))
     if payload.feedback not in ANSWER_FEEDBACK_VALUES or payload.mode not in ANSWER_FEEDBACK_MODES:
         raise HTTPException(400, i18n.get_message("invalid_feedback_value", x_lang))
-    if (
-        len(payload.question) > ANSWER_FEEDBACK_MAX_QUESTION_CHARS
-        or len(payload.answer) > ANSWER_FEEDBACK_MAX_ANSWER_CHARS
-    ):
-        raise HTTPException(400, i18n.get_message("feedback_too_long", x_lang))
 
     if _should_log_question_event(request):
-        question_log.log_feedback(payload.question, payload.answer, payload.feedback, payload.mode)
+        question_log.log_feedback(
+            _truncate_for_log(payload.question, ANSWER_FEEDBACK_MAX_QUESTION_CHARS),
+            _truncate_for_log(payload.answer, ANSWER_FEEDBACK_MAX_ANSWER_CHARS),
+            payload.feedback,
+            payload.mode,
+        )
 
     return MessageOut(detail=i18n.get_message("feedback_sent", x_lang))
 
