@@ -87,9 +87,11 @@ const CREATIVE_ICON =
 const EXPLORE_ICON =
   '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" ' +
   'stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
-  '<line x1="6" y1="7" x2="18" y2="7"></line>' +
-  '<line x1="6" y1="7" x2="12" y2="17"></line>' +
-  '<line x1="18" y1="7" x2="12" y2="17"></line>' +
+  '<g stroke-width="1.6">' +
+  '<line x1="9.8" y1="7" x2="14.2" y2="7" stroke-dasharray="0 2.2"></line>' +
+  '<line x1="7.95" y1="10.26" x2="10.05" y2="13.74" stroke-dasharray="0 2.03"></line>' +
+  '<line x1="16.05" y1="10.26" x2="13.95" y2="13.74" stroke-dasharray="0 2.03"></line>' +
+  '</g>' +
   '<circle cx="6" cy="7" r="3" fill="var(--color-bg)"></circle>' +
   '<circle cx="18" cy="7" r="3" fill="var(--color-bg)"></circle>' +
   '<circle cx="12" cy="17" r="3" fill="var(--color-bg)"></circle>' +
