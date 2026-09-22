@@ -163,6 +163,18 @@ const SOURCES_PAGE_SIZE = 20;
 let visibleSourceCount = SOURCES_PAGE_SIZE;
 let sourceListObserver = null;
 let activeEditId = null;
+// Fix (2026-09-22, gemeldeter Bug): im Autor:innen-Modus bekommt eine Quelle
+// mit mehreren Autor:innen pro Autor:in eine eigene Zeile (siehe
+// sortSources) - activeEditId allein (nur die Quellen-ID) matchte bisher
+// ALLE davon gleichzeitig, öffnete also mehrere Bearbeiten-Panels derselben
+// Quelle auf einmal (der zuvor behobene ID-Kollisions-Bug war nur ein
+// Symptom davon). __sortAuthor identifiziert zusätzlich, UNTER WELCHER
+// Autor:in-Überschrift die konkrete Zeile steht - außerhalb des Autor:innen-
+// Modus (dort immer null bei allen Zeilen) bleibt das wirkungslos.
+let activeEditAuthorKey = null;
+function isActiveEditRow(s) {
+  return activeEditId === s.id && activeEditAuthorKey === (s.__sortAuthor || null);
+}
 let pendingUploadId = null;
 let pendingUploadType = null; // 'pdf' | 'audio'
 let currentSortMode = 'author';
@@ -272,7 +284,7 @@ function updateSourceManagementVisibility() {
 // Grobe Stufen-zu-Füllstand-Zuordnung fürs Fortschritts-Icon - die OpenAI-
 // Transkriptions-API liefert kein echtes Fortschritts-Signal, daher kein
 // exakter Prozentsatz, nur eine Annäherung je Verarbeitungsschritt.
-const JOB_STAGE_FRACTIONS = { transcribe: 0.3, ocr: 0.3, chunking: 0.8, indexing: 0.95 };
+const JOB_STAGE_FRACTIONS = { transcribe: 0.3, ocr: 0.3, chunking: 0.8, indexing: 0.9, summarizing: 0.97 };
 const JOBS_RING_CIRCUMFERENCE = 56.5;
 let jobsPollTimer = null;
 
@@ -282,6 +294,7 @@ function jobStepLabel(job) {
     ocr: 'import.processingStepOcr',
     chunking: 'import.processingStepChunking',
     indexing: 'import.processingStepIndexing',
+    summarizing: 'import.processingStepSummarizing',
   }[job.processing_step];
   return t(key || 'import.processingStepPending');
 }
@@ -1218,6 +1231,18 @@ function buildAuthorFields(
 
 function buildEditPanel(s, options = {}) {
   const pendingDeletion = !!options.pendingDeletion;
+  // Fix (2026-09-22, gemeldeter Bug): im Autor:innen-Modus bekommt eine
+  // Quelle mit mehreren Autor:innen pro Autor:in einen eigenen Zeilen-
+  // Eintrag (siehe sortSources) - dieselbe Quelle kann also gleichzeitig
+  // ZWEI offene Bearbeiten-Panels haben (activeEditId prüft nur s.id, nicht
+  // die Zeile). Die Feld-IDs unten hingen bisher NUR an s.id, dadurch trugen
+  // beide Panels identische HTML-IDs (ungültiges HTML) - ein Klick auf ein
+  // <label> im ZWEITEN Panel fokussierte durch die id-Kollision das Feld im
+  // ERSTEN. rowIndex (bereits für die Alphabet-Leiste eindeutig, siehe
+  // Backlog #65/data-rowIndex) macht die ID pro Zeile statt pro Quelle
+  // eindeutig. Betrifft nur die Bearbeiten-Ansicht - das Speichern selbst
+  // las die Werte schon immer über die Feld-Referenzen, nie über die ID.
+  const domIdKey = options.rowIndex === undefined ? s.id : `${s.id}-r${options.rowIndex}`;
 
   const li = document.createElement('li');
   li.className = 'source-edit-panel';
@@ -1235,7 +1260,7 @@ function buildEditPanel(s, options = {}) {
     const input = document.createElement(type === 'textarea' ? 'textarea' : 'input');
     if (type !== 'textarea') input.type = type;
     else input.rows = 10;
-    input.id = `edit-${idSuffix}-${s.id}`;
+    input.id = `edit-${idSuffix}-${domIdKey}`;
     input.value = value || '';
     label.appendChild(input);
     // Explizit setzen statt auf die implizite "erstes labelfähiges Kind"-Regel
@@ -1282,7 +1307,7 @@ function buildEditPanel(s, options = {}) {
   relevanceInput.step = '1';
   relevanceInput.value = String(relevanceValue);
   relevanceInput.className = 'relevance-slider';
-  relevanceInput.id = `edit-relevance-${s.id}`;
+  relevanceInput.id = `edit-relevance-${domIdKey}`;
   const relevanceTitle = t('import.fieldRelevanceScore');
   relevanceInput.title = relevanceTitle;
   relevanceInput.setAttribute('aria-label', relevanceTitle);
@@ -1304,9 +1329,9 @@ function buildEditPanel(s, options = {}) {
     getAuthorValues,
     getNewAuthorProfiles,
   } = buildAuthorFields(
-    `edit-author-${s.id}`,
+    `edit-author-${domIdKey}`,
     s.authors,
-    `edit-date-${s.id}`,
+    `edit-date-${domIdKey}`,
     s.date,
     true,
     getSourceText
@@ -1455,6 +1480,7 @@ function buildEditPanel(s, options = {}) {
     magicButtons.push(
       addMagicButton(keyTermsInput, triggerExtractKeyTerms, 'import.generateKeyTermsFromSummaryTitle')
     );
+    attachTagSuggestions(keyTermsInput);
   }
 
   if (pendingDeletion) {
@@ -1521,6 +1547,7 @@ function buildEditPanel(s, options = {}) {
     cancelBtn.textContent = t('common.cancel');
     cancelBtn.addEventListener('click', () => {
       activeEditId = null;
+      activeEditAuthorKey = null;
       renderSourceList(currentSourceList);
     });
     primaryActions.appendChild(cancelBtn);
@@ -1583,6 +1610,7 @@ function buildEditPanel(s, options = {}) {
           }).catch(() => {});
         }
         activeEditId = null;
+        activeEditAuthorKey = null;
         loadSources();
         loadAuthors();
       } catch (err) {
@@ -1595,6 +1623,112 @@ function buildEditPanel(s, options = {}) {
 
   li.appendChild(form);
   return li;
+}
+
+// Nutzerwunsch (2026-09-22): Schlagworte werden sonst frei getippt - mit der
+// Zeit laufen Schreibweisen für dasselbe Thema auseinander ("Agilität" vs.
+// "agile"), was das Netzwerk-Diagramm zerreißt (das gruppiert exakt nach
+// String, siehe app/terms.py). Schlägt beim Tippen des gerade bearbeiteten,
+// noch nicht durch Komma abgeschlossenen Tags passende, bereits im Bestand
+// vorhandene Schlagworte vor. ponytail: bleibt bewusst EIN kommagetrenntes
+// Textfeld (kein Chip-Widget wie beim Autoren-Feld) - nur das aktuell
+// bearbeitete Segment wird ersetzt, add when: Nutzer will echte Chips.
+let knownTermsCache = null;
+async function getKnownTerms() {
+  if (!knownTermsCache) {
+    knownTermsCache = fetch('/api/terms')
+      .then((res) => res.json())
+      .catch(() => []);
+  }
+  return knownTermsCache;
+}
+
+// Nutzerwunsch (2026-09-22, Nachtrag): "aktuelles Segment" hing bisher fix
+// am LETZTEN Komma - beim nachträglichen Ändern eines Begriffs MITTEN in
+// der Liste tippte man also ins zweite Segment, die Vorschläge bezogen sich
+// aber weiterhin (wirkungslos) aufs letzte. Bestimmt das Segment stattdessen
+// über die Cursor-Position: alles zwischen dem Komma davor und dem Komma
+// danach (oder Textanfang/-ende, falls keins da ist).
+function currentTagSegmentBounds(value, cursorPos) {
+  const commaBefore = value.lastIndexOf(',', cursorPos - 1);
+  const start = commaBefore === -1 ? 0 : commaBefore + 1;
+  const commaAfterIndex = value.indexOf(',', cursorPos);
+  const end = commaAfterIndex === -1 ? value.length : commaAfterIndex;
+  return { start, end };
+}
+
+function attachTagSuggestions(input) {
+  const list = document.createElement('ul');
+  list.className = 'tag-suggestions hidden';
+  input.insertAdjacentElement('afterend', list);
+
+  function close() {
+    list.classList.add('hidden');
+    list.innerHTML = '';
+  }
+
+  function applySuggestion(term, start, end) {
+    const before = input.value.slice(0, start);
+    const after = input.value.slice(end);
+    const segment = start === 0 ? term : ` ${term}`;
+    let newValue = before + segment + after;
+    let cursorPos = (before + segment).length;
+    // Nur beim LETZTEN Segment (nichts folgt mehr) automatisch ", " anhängen,
+    // um direkt zum nächsten Tag weiterschreiben zu können - mitten in der
+    // Liste bleibt der Rest unangetastet, Cursor landet einfach dahinter.
+    if (end === input.value.length) {
+      newValue += ', ';
+      cursorPos = newValue.length;
+    }
+    input.value = newValue;
+    input.setSelectionRange(cursorPos, cursorPos);
+    close();
+    input.focus();
+  }
+
+  input.addEventListener('input', async () => {
+    const cursorPos = input.selectionStart;
+    const { start, end } = currentTagSegmentBounds(input.value, cursorPos);
+    const query = input.value.slice(start, end).trim();
+    if (!query) {
+      close();
+      return;
+    }
+    const otherSegments = (input.value.slice(0, start) + input.value.slice(end)).split(',');
+    const alreadyUsed = new Set(otherSegments.map((s) => normalizeTerm(s)).filter(Boolean));
+    const terms = await getKnownTerms();
+    const lang = getLang();
+    const matches = terms
+      .filter(
+        (te) =>
+          (te.langs || []).includes(lang) &&
+          normalizeTerm(te.term).includes(normalizeTerm(query)) &&
+          !alreadyUsed.has(normalizeTerm(te.term))
+      )
+      .slice(0, 8);
+    if (!matches.length) {
+      close();
+      return;
+    }
+    list.innerHTML = '';
+    matches.forEach((te) => {
+      const li = document.createElement('li');
+      li.textContent = te.term;
+      // mousedown statt click: feuert VOR dem blur-Handler unten, der die
+      // Liste sonst schon geschlossen hätte, bevor der Klick ankommt.
+      li.addEventListener('mousedown', (e) => {
+        e.preventDefault();
+        applySuggestion(te.term, start, end);
+      });
+      list.appendChild(li);
+    });
+    list.classList.remove('hidden');
+  });
+
+  input.addEventListener('blur', close);
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') close();
+  });
 }
 
 function addMagicButton(input, onClick, titleKey = 'import.generateSummaryTitle') {
@@ -1704,7 +1838,11 @@ function scheduleDeletion(s) {
   const timeoutId = setTimeout(async () => {
     pendingDeletions.delete(s.id);
     if (activeEditId === s.id) {
+      // Löschen betrifft die ganze Quelle, unabhängig davon, unter welcher
+      // Autor:in-Zeile gerade bearbeitet wurde - deshalb hier bewusst ohne
+      // isActiveEditRow()/__sortAuthor-Abgleich.
       activeEditId = null;
+      activeEditAuthorKey = null;
     }
     try {
       await fetch(`/api/sources/${s.id}`, { method: 'DELETE', headers: jsonHeaders() });
@@ -2094,8 +2232,8 @@ function renderSourceList(sources, options = {}) {
     }
 
     if (pendingDeletions.has(s.id)) {
-      if (activeEditId === s.id) {
-        appendTimelineRow(buildEditPanel(s, { pendingDeletion: true }));
+      if (isActiveEditRow(s)) {
+        appendTimelineRow(buildEditPanel(s, { pendingDeletion: true, rowIndex }));
       } else {
         appendTimelineRow(buildUndoRow(s));
       }
@@ -2201,7 +2339,13 @@ function renderSourceList(sources, options = {}) {
       warning.innerHTML = WARNING_ICON;
       if (hasPflegerRole()) {
         warning.addEventListener('click', () => {
-          activeEditId = activeEditId === s.id ? null : s.id;
+          if (isActiveEditRow(s)) {
+            activeEditId = null;
+            activeEditAuthorKey = null;
+          } else {
+            activeEditId = s.id;
+            activeEditAuthorKey = s.__sortAuthor || null;
+          }
           renderSourceList(currentSourceList, options);
         });
       }
@@ -2245,7 +2389,13 @@ function renderSourceList(sources, options = {}) {
         // kurz nach dem Seitenaufruf ein leeres Textfeld gezeigt - und ein
         // Speichern hätte den echten Volltext der Quelle gelöscht.
         if (fullTextReady) await fullTextReady;
-        activeEditId = activeEditId === s.id ? null : s.id;
+        if (isActiveEditRow(s)) {
+          activeEditId = null;
+          activeEditAuthorKey = null;
+        } else {
+          activeEditId = s.id;
+          activeEditAuthorKey = s.__sortAuthor || null;
+        }
         renderSourceList(currentSourceList, options);
       });
       actions.appendChild(editBtn);
@@ -2260,8 +2410,8 @@ function renderSourceList(sources, options = {}) {
 
     appendTimelineRow(li);
 
-    if (activeEditId === s.id) {
-      appendTimelineRow(buildEditPanel(s));
+    if (isActiveEditRow(s)) {
+      appendTimelineRow(buildEditPanel(s, { rowIndex }));
     }
   });
 
@@ -4031,6 +4181,13 @@ if (deepLinkEditId && hasPflegerRole() && allSources.some((s) => s.id === deepLi
   // Hintergrund nachgeladenen Volltext, sonst wäre das Textfeld leer.
   if (fullTextReady) await fullTextReady;
   activeEditId = deepLinkEditId;
+  // Fix (2026-09-22): im Autor:innen-Modus reicht die Quellen-ID allein
+  // nicht mehr (siehe isActiveEditRow) - welche der ggf. mehreren Zeilen
+  // (eine pro Autor:in) gemeint ist, wird hier über dieselbe Sortierung wie
+  // die eigentliche Liste bestimmt: die im aktuellen Sortiermodus ZUERST
+  // gerenderte Zeile dieser Quelle.
+  const deepLinkRow = sortSources(allSources).find((s) => s.id === deepLinkEditId);
+  activeEditAuthorKey = deepLinkRow ? deepLinkRow.__sortAuthor || null : null;
   ensureSourceVisible(deepLinkEditId);
   renderSourceList(currentSourceList);
   requestAnimationFrame(() => {

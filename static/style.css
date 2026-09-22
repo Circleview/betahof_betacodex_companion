@@ -709,6 +709,32 @@ input, textarea {
   cursor: not-allowed;
 }
 
+.tag-suggestions {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  z-index: 10;
+  margin: 0.25rem 0 0;
+  padding: 0.25rem 0;
+  list-style: none;
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.12);
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.tag-suggestions li {
+  padding: 0.4rem 0.8rem;
+  cursor: pointer;
+}
+
+.tag-suggestions li:hover {
+  background: var(--color-surface);
+}
+
 input:focus, textarea:focus {
   outline: none;
   border-color: var(--color-accent);

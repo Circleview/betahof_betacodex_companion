@@ -78,6 +78,7 @@
   "import.processingStepOcr": "Texterkennung läuft",
   "import.processingStepChunking": "Wird zerlegt",
   "import.processingStepIndexing": "Wird indiziert",
+  "import.processingStepSummarizing": "Zusammenfassung & Schlagworte werden erstellt",
   "import.reprocessButton": "Erneut versuchen",
   "import.cancelImportButton": "Abbrechen",
   "import.cancelImportConfirmButton": "Sicher? Quelle löschen",

@@ -616,7 +616,10 @@ def test_add_source_returns_pending_when_embedding_is_slow(client, monkeypatch):
 
     assert response.status_code == 200
     data = response.json()
-    assert data["processing_status"] == "pending"
+    # "pending" (noch nicht dran) oder "running" (Hintergrund-Thread hat
+    # gerade erst zu laufen begonnen) - beides zählt als "noch in Arbeit",
+    # welcher der beiden Werte es exakt ist, ist ein reiner Timing-Zufall.
+    assert data["processing_status"] in ("pending", "running")
     assert data["text"] == ""
     assert data["chunk_count"] == 0
 
@@ -665,7 +668,10 @@ def test_add_source_marks_error_when_slow_embedding_fails(client, monkeypatch):
 
     response = client.post("/api/sources", json={"title": "Quelle", "text": "Text."})
     source_id = response.json()["id"]
-    assert response.json()["processing_status"] == "pending"
+    # "pending" (noch nicht dran) oder "running" (Hintergrund-Thread hat
+    # gerade erst zu laufen begonnen) - beides zählt als "noch in Arbeit",
+    # welcher der beiden Werte es exakt ist, ist ein reiner Timing-Zufall.
+    assert response.json()["processing_status"] in ("pending", "running")
 
     def entry():
         return next(s for s in client.get("/api/sources").json() if s["id"] == source_id)
@@ -4879,6 +4885,42 @@ def test_add_source_generates_summary_in_background_and_registers_terms(client, 
     assert term_names == {"BetaCodex", "Dezentralisierung"}
 
 
+def test_add_source_stays_in_progress_until_summary_generated(client, monkeypatch):
+    # Nutzerwunsch (2026-09-22): processing_status durfte bisher schon vor
+    # Abschluss von Zusammenfassung/Schlagworten auf None springen - die
+    # Fortschrittsanzeige zeigte "fertig", während im Hintergrund noch die
+    # KI-Zusammenfassung lief.
+    summary_started = threading.Event()
+    release_summary = threading.Event()
+
+    def slow_summary(text):
+        summary_started.set()
+        release_summary.wait(timeout=5)
+        return {
+            "de": {"summary": "Fertige Zusammenfassung.", "key_terms": ["X"]},
+            "en": {"summary": "Finished summary.", "key_terms": ["X"]},
+        }
+
+    monkeypatch.setattr(summarization, "generate_bilingual_summary", slow_summary)
+
+    response = client.post("/api/sources", json={"title": "Quelle", "text": "Ein Text."})
+    data = response.json()
+    assert data["processing_status"] == "running"
+
+    source_id = data["id"]
+
+    def entry():
+        return next(s for s in client.get("/api/sources").json() if s["id"] == source_id)
+
+    wait_until(summary_started.is_set)
+    assert entry()["processing_status"] == "running"
+    assert source_id in {job["id"] for job in client.get("/api/import-jobs").json()}
+
+    release_summary.set()
+    wait_until(lambda: entry()["processing_status"] is None)
+    assert entry()["summary"] == "Fertige Zusammenfassung."
+
+
 def test_generate_summary_with_retries_retries_on_total_failure(monkeypatch):
     """Vorfall (2026-08-03): generate_bilingual_summary() liefert bei einem
     echten Fehlschlag (API-Fehler, Rate-Limit) bewusst ein leeres Ergebnis
@@ -6942,6 +6984,52 @@ def test_normalize_pflaeging_spelling_once_fixes_summary_and_key_terms(client):
     term_names = {t["term"] for t in terms.list_terms()}
     assert "Niels Pflaeging" in term_names
     assert "Niels Pfläging" not in term_names
+
+
+def test_backfill_term_languages_once_tags_existing_terms_by_language(client, monkeypatch):
+    # Nutzerwunsch (2026-09-22): terms.json unterschied bisher nicht nach
+    # Sprache - die Tag-Vorschläge (static/import.js) mischten deutsche und
+    # englische Begriffe. register_term() bekommt jetzt eine Sprache mit;
+    # bestehende, noch unmarkierte Einträge (simuliert hier durch direktes
+    # Schreiben ohne "langs", wie es vor diesem Fix in terms.json stand)
+    # müssen einmalig aus den Quellen neu aufgebaut werden.
+    source_id = client.post("/api/sources", json={"title": "Q", "text": "Text."}).json()["id"]
+    sources = main_module._load_sources()
+    sources[source_id]["key_terms_de"] = ["Selbstorganisation"]
+    sources[source_id]["key_terms_en"] = ["Self-organization"]
+    main_module._save_sources(sources)
+    main_module._register_all_terms(source_id, sources[source_id])
+
+    # terms.json auf den alten, sprach-losen Stand zurücksetzen.
+    raw_terms = terms._load()
+    for entry in raw_terms.values():
+        entry.pop("langs", None)
+    terms._save(raw_terms)
+
+    main_module._backfill_term_languages_once()
+
+    by_term = {t["term"]: t["langs"] for t in terms.list_terms()}
+    assert by_term["Selbstorganisation"] == ["de"]
+    assert by_term["Self-organization"] == ["en"]
+
+
+def test_backfill_term_languages_once_is_a_noop_once_migrated(client, monkeypatch):
+    source_id = client.post("/api/sources", json={"title": "Q", "text": "Text."}).json()["id"]
+    sources = main_module._load_sources()
+    sources[source_id]["key_terms_de"] = ["Selbstorganisation"]
+    main_module._save_sources(sources)
+    main_module._register_all_terms(source_id, sources[source_id])
+
+    calls = []
+    monkeypatch.setattr(
+        main_module,
+        "_register_all_terms",
+        lambda *args: calls.append(args),
+    )
+
+    main_module._backfill_term_languages_once()
+
+    assert calls == []
 
 
 def test_normalize_pflaeging_spelling_once_leaves_raw_text_and_title_untouched(client):

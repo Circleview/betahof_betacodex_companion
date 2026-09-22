@@ -578,8 +578,10 @@ def _to_source_out(
 
 def _register_all_terms(source_id: str, entry: dict) -> None:
     terms.unregister_source(source_id)
-    for term in (entry.get("key_terms_de") or []) + (entry.get("key_terms_en") or []):
-        terms.register_term(term, source_id)
+    for term in entry.get("key_terms_de") or []:
+        terms.register_term(term, source_id, "de")
+    for term in entry.get("key_terms_en") or []:
+        terms.register_term(term, source_id, "en")
 
 
 # Vorfall (2026-08-03): generate_bilingual_summary() gibt bei JEDEM Fehler
@@ -605,6 +607,18 @@ def _generate_summary_with_retries(text: str) -> dict:
 
 
 def _generate_summary_background(source_id: str, text: str) -> None:
+    # Nutzerwunsch (2026-09-22): eine Quelle galt bisher schon als "fertig"
+    # (processing_status=None), sobald Text+Chunks gespeichert waren - die
+    # anschliessende Zusammenfassung/Tag-Generierung lief zwar weiter, aber
+    # unsichtbar für die Fortschrittsanzeige. processing_status bleibt jetzt
+    # bis zum Ende dieser Funktion auf "running" (von den Aufrufern absichtlich
+    # nicht mehr zurückgesetzt), mit eigenem processing_step fürs Icon/Label.
+    with _sources_write_lock:
+        sources = _load_sources()
+        if source_id in sources:
+            sources[source_id]["processing_step"] = "summarizing"
+            _save_sources(sources)
+
     result = _generate_summary_with_retries(text)
     with _sources_write_lock:
         sources = _load_sources()
@@ -616,6 +630,8 @@ def _generate_summary_background(source_id: str, text: str) -> None:
         sources[source_id]["key_terms_en"] = result["en"]["key_terms"]
         sources[source_id]["summary_ai_generated_de"] = True
         sources[source_id]["summary_ai_generated_en"] = True
+        sources[source_id]["processing_status"] = None
+        sources[source_id]["processing_step"] = None
         _save_sources(sources)
         _register_all_terms(source_id, sources[source_id])
 
@@ -856,8 +872,8 @@ def _finalize_extracted_text(source_id: str, lang: str, text: str, failure_i18n_
                 return
             sources[source_id]["text"] = text
             sources[source_id]["chunk_count"] = chunk_count
-            sources[source_id]["processing_status"] = None
-            sources[source_id]["processing_step"] = None
+            # processing_status bleibt bewusst "running" - erst
+            # _generate_summary_background setzt ihn zurück, siehe dort.
             sources[source_id]["processing_error"] = None
             sources[source_id]["processing_segments"] = None
             _save_sources(sources)
@@ -1474,6 +1490,23 @@ def _normalize_pflaeging_spelling_once() -> None:
         _register_all_terms(source_id, sources[source_id])
 
 
+def _backfill_term_languages_once() -> None:
+    """Einmalige Datenkorrektur (Nutzerwunsch 2026-09-22): terms.json
+    unterschied bisher nicht nach Sprache - deutsche und englische
+    Schlagworte landeten im selben Topf, wodurch die Tag-Vorschläge (siehe
+    static/import.js) beim Bearbeiten einer deutschsprachigen Quelle auch
+    englische Begriffe vorschlugen (und umgekehrt). register_term() bekommt
+    die Sprache jetzt mit (siehe _register_all_terms) - bestehende, noch
+    unmarkierte Einträge werden hier einmalig aus den Quellen neu aufgebaut.
+    Läuft bei jedem Start, idempotent (kein unmarkierter Eintrag mehr -> No-op)."""
+    if not any(not entry["langs"] for entry in terms.list_terms()):
+        return
+    sources = _load_sources()
+    for source_id, entry in sources.items():
+        if not entry.get("deleted_at"):
+            _register_all_terms(source_id, entry)
+
+
 def _start_background_workers() -> None:
     """Bündelt die INTERVALL-basierten Hintergrund-Threads + Einmal-
     Aufräumarbeiten beim Start (siehe Kommentar bei lifespan() weiter oben) -
@@ -1486,6 +1519,7 @@ def _start_background_workers() -> None:
     dem zugehörigen Sweep-Thread."""
     users.ensure_bootstrap_admin(os.environ.get("SYSTEM_ADMIN_EMAIL", ""))
     _normalize_pflaeging_spelling_once()
+    _backfill_term_languages_once()
     threading.Thread(
         target=_run_periodic, args=(_run_url_health_check_once, URL_HEALTH_CHECK_INTERVAL_SECONDS), daemon=True
     ).start()
@@ -1618,6 +1652,7 @@ def _finish_synchronous_import(
             if source_id not in sources:
                 done_event.set()
                 return
+            sources[source_id]["processing_status"] = "running"
             sources[source_id]["processing_step"] = "indexing"
             _save_sources(sources)
 
@@ -1643,8 +1678,8 @@ def _finish_synchronous_import(
             if source_id in sources:
                 sources[source_id]["text"] = text
                 sources[source_id]["chunk_count"] = chunk_count
-                sources[source_id]["processing_status"] = None
-                sources[source_id]["processing_step"] = None
+                # processing_status bleibt bewusst "running" - erst
+                # _generate_summary_background setzt ihn zurück, siehe dort.
                 sources[source_id]["processing_error"] = None
                 _save_sources(sources)
         # Muss NACH dem Speichern des Ergebnisses, aber VOR der (potenziell
@@ -1781,8 +1816,11 @@ def add_source(
             "summary_en": "",
             "key_terms_de": [],
             "key_terms_en": [],
-            "processing_status": None,
-            "processing_step": None,
+            # Spiegelt den Stand, den _finish_synchronous_import im selben
+            # Moment auf der Platte hinterlässt: die Zusammenfassung läuft
+            # gerade erst an (siehe _generate_summary_background).
+            "processing_status": "running",
+            "processing_step": "summarizing",
             "processing_error": None,
         }
     else:

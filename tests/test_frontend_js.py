@@ -448,6 +448,150 @@ console.log(JSON.stringify(markers));
     return _run_node(script)
 
 
+def _run_citations_and_read_button_labels(paragraph_text, sources):
+    """Wie die anderen _run_citations_*-Helfer, liest aber den sichtbaren
+    Button-Text jedes Zitat-Vorkommens statt Kartenanzahl/Marker."""
+    js_source = (STATIC_DIR / "question.js").read_text()
+    match = re.search(r"function makeCitationsClickable.*?\n\}", js_source, re.S)
+    assert match, "makeCitationsClickable wurde in question.js nicht gefunden."
+    func_source = match.group(0)
+    script = f"""
+class FakeNode {{
+  constructor(nodeType, tag) {{
+    this.nodeType = nodeType;
+    this.tag = tag || null;
+    this.children = [];
+    this.parentNode = null;
+    this.className = '';
+    this.textContent = '';
+    this.listeners = {{}};
+  }}
+  appendChild(child) {{ child.parentNode = this; this.children.push(child); return child; }}
+  removeChildNode(child) {{
+    const i = this.children.indexOf(child);
+    if (i !== -1) this.children.splice(i, 1);
+  }}
+  remove() {{ if (this.parentNode) this.parentNode.removeChildNode(this); }}
+  closest(tag) {{
+    let n = this;
+    while (n) {{
+      if (n.tag === tag) return n;
+      n = n.parentNode;
+    }}
+    return null;
+  }}
+  insertAdjacentElement(where, el) {{
+    if (!this.parentNode) return;
+    const siblings = this.parentNode.children;
+    const i = siblings.indexOf(this);
+    el.parentNode = this.parentNode;
+    siblings.splice(where === 'afterend' ? i + 1 : i, 0, el);
+  }}
+  replaceChild(newNode, oldNode) {{
+    const i = this.children.indexOf(oldNode);
+    if (i === -1) return;
+    const replacement = newNode.nodeType === 'fragment' ? newNode.children : [newNode];
+    replacement.forEach((c) => {{ c.parentNode = this; }});
+    this.children.splice(i, 1, ...replacement);
+  }}
+  addEventListener(evt, fn) {{ this.listeners[evt] = fn; }}
+}}
+const document = {{
+  createElement: (tag) => new FakeNode('element', tag),
+  createTextNode: (text) => {{ const n = new FakeNode('text'); n.textContent = text; return n; }},
+  createDocumentFragment: () => new FakeNode('fragment'),
+  createTreeWalker: (root) => {{
+    const stack = [];
+    (function collect(node) {{
+      node.children.forEach((child) => {{
+        if (child.nodeType === 'text') stack.push(child);
+        else collect(child);
+      }});
+    }})(root);
+    let i = 0;
+    return {{ nextNode: () => (i < stack.length ? stack[i++] : null) }};
+  }},
+}};
+const NodeFilter = {{ SHOW_TEXT: 4 }};
+
+function buildSourceInfo(source, highlight) {{
+  const marker = document.createElement('div');
+  marker.textContent = 'CARD:' + source.chunk_id + '::' + (highlight || '');
+  return marker;
+}}
+
+{func_source}
+
+const container = new FakeNode('element', 'div');
+const p = document.createElement('p');
+container.appendChild(p);
+p.appendChild(document.createTextNode({json.dumps(paragraph_text)}));
+
+makeCitationsClickable(container, {json.dumps(sources)});
+
+function findButtons(node, acc) {{
+  if (node.tag === 'button') acc.push(node);
+  node.children.forEach((c) => findButtons(c, acc));
+  return acc;
+}}
+console.log(JSON.stringify(findButtons(container, []).map((b) => b.textContent)));
+"""
+    return _run_node(script)
+
+
+def _run_current_tag_segment_bounds(value: str, cursor_pos: int):
+    js_source = (STATIC_DIR / "import.js").read_text()
+    match = re.search(r"function currentTagSegmentBounds.*?\n\}", js_source, re.S)
+    assert match, "currentTagSegmentBounds wurde in import.js nicht gefunden."
+    script = f"""
+{match.group(0)}
+console.log(JSON.stringify(currentTagSegmentBounds({json.dumps(value)}, {cursor_pos})));
+"""
+    return _run_node(script)
+
+
+def test_current_tag_segment_bounds_finds_the_segment_under_the_cursor():
+    # Nutzerwunsch (2026-09-22, Nachtrag): das Segment fürs Tag-Vorschlagen
+    # (static/import.js#attachTagSuggestions) hing bisher fix am LETZTEN
+    # Komma - ein Begriff MITTEN in der Liste ließ sich dadurch nicht per
+    # Vorschlag ersetzen. Bestimmt das Segment jetzt über die Cursor-Position.
+    value = "Agilität, Selbstorganisation, Management"
+    # Cursor irgendwo im mittleren Begriff "Selbstorganisation".
+    cursor_in_middle = value.index("Selbst") + 3
+    # start liegt direkt HINTER dem Komma (inkl. des folgenden Leerzeichens,
+    # genau wie beim alten, rein letzten-Segment-basierten Split) - nur die
+    # Endpunkte grenzen das Segment ein, Trimmen passiert separat beim
+    # eigentlichen Query-Vergleich.
+    assert _run_current_tag_segment_bounds(value, cursor_in_middle) == {
+        "start": value.index(",") + 1,
+        "end": value.index(", Management"),
+    }
+    # Cursor im ersten Begriff.
+    assert _run_current_tag_segment_bounds(value, 3) == {"start": 0, "end": value.index(",")}
+    # Cursor im letzten (noch offenen) Begriff, kein Komma danach.
+    cursor_at_end = len(value)
+    assert _run_current_tag_segment_bounds(value, cursor_at_end) == {
+        "start": value.rindex(",") + 1,
+        "end": len(value),
+    }
+
+
+def test_citation_labels_are_sequential_even_when_the_same_source_is_cited_twice():
+    # Nutzerwunsch (2026-09-22): die ANGEZEIGTE Zitatnummer wiederholte sich
+    # bisher ("[1]" erschien zweimal im Text), sobald derselbe Chunk mehrfach
+    # zitiert wurde - verwirrend, auch wenn die Karten selbst schon korrekt
+    # unabhängig auf-/zuklappbar waren. Jedes Vorkommen bekommt jetzt eine
+    # eigene, im Antworttext fortlaufende Nummer.
+    sources = [
+        {"chunk_id": "chunk-1", "highlighted_texts": ["Zitat A", "Zitat B"]},
+        {"chunk_id": "chunk-2", "highlighted_texts": ["Einziges Zitat B"]},
+    ]
+    labels = _run_citations_and_read_button_labels(
+        "Aussage eins [1]. Aussage zwei [2]. Aussage drei [1].", sources
+    )
+    assert labels == ["[1]", "[2]", "[3]"]
+
+
 def test_citation_click_maps_each_occurrence_to_its_own_highlight_across_interleaved_numbers():
     """Stellt sicher, dass myOccurrence korrekt PRO ZITATNUMMER zählt, auch
     wenn zwischen zwei [1]-Vorkommen ein [2] eines anderen Chunks liegt -

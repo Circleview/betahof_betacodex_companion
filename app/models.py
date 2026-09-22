@@ -287,6 +287,7 @@ class TermOut(BaseModel):
     term: str
     source_count: int
     source_ids: list[str]
+    langs: list[str] = []
 
 
 class UrlIn(BaseModel):

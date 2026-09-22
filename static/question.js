@@ -431,6 +431,17 @@ function makeCitationsClickable(container, sources) {
   // Mehrfachzitaten derselben Quelle immer dasselbe erste Highlight zu
   // zeigen (siehe app/main.py: highlighted_texts ist pro Vorkommen sortiert).
   const occurrenceCounts = new Map();
+  // Nutzerwunsch (2026-09-22): die Original-Zitatnummer aus dem Antworttext
+  // (chunk-basiert, siehe app/main.py) wiederholt sich, sobald derselbe
+  // Chunk mehrfach zitiert wird ("[1]" taucht zweimal auf) - das wirkte
+  // verwirrend, auch wenn die Klick-Logik selbst (openCards/contentKey oben)
+  // bereits korrekt zwischen unterschiedlichen und identischen Highlights
+  // unterscheidet. Die ANGEZEIGTE Nummer zählt deshalb fortlaufend über den
+  // gesamten Antworttext, unabhängig von der internen Quellen-/Chunk-Nummer -
+  // jedes Zitat-Vorkommen bekommt so sein eigenes, eindeutiges [n]. Die
+  // Quellenliste in der Sidebar (buildSourcesList) bleibt davon unberührt,
+  // die dedupliziert ohnehin schon nach source_id, nicht nach Zitatnummer.
+  let displayNumber = 0;
   const textNodes = [];
   const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
   let node = walker.nextNode();
@@ -461,10 +472,11 @@ function makeCitationsClickable(container, sources) {
         const myOccurrence = occurrenceCounts.get(index) || 0;
         occurrenceCounts.set(index, myOccurrence + 1);
 
+        displayNumber += 1;
         const btn = document.createElement('button');
         btn.type = 'button';
         btn.className = 'citation-ref';
-        btn.textContent = part;
+        btn.textContent = `[${displayNumber}]`;
         // Bug (2026-08-03): source.highlighted_texts wurde bisher SCHON HIER
         // beim Bauen des Buttons gelesen und als "highlight" fest in den
         // Klick-Handler eingefroren. Seit source.highlighted_texts erst

@@ -18,7 +18,7 @@ def _save(terms: dict) -> None:
     jsonstore.save(TERMS_FILE, terms)
 
 
-def register_term(term: str, source_id: str) -> None:
+def register_term(term: str, source_id: str, lang: str) -> None:
     term = (term or "").strip()
     if not term:
         return
@@ -27,9 +27,14 @@ def register_term(term: str, source_id: str) -> None:
     terms = _load()
     entry = terms.get(key)
     if entry is None:
-        entry = {"term": term, "source_ids": []}
+        entry = {"term": term, "source_ids": [], "langs": []}
     if source_id not in entry["source_ids"]:
         entry["source_ids"].append(source_id)
+    # Nutzerwunsch (2026-09-22): Tag-Vorschläge (static/import.js) sollen nur
+    # Begriffe der gerade angezeigten Sprache zeigen - dafür muss jeder
+    # registrierte Begriff wissen, aus welcher(n) Sprache(n) er stammt.
+    if lang not in entry.setdefault("langs", []):
+        entry["langs"].append(lang)
     terms[key] = entry
     _save(terms)
 
@@ -55,6 +60,7 @@ def list_terms() -> list[dict]:
             "term": entry["term"],
             "source_count": len(entry["source_ids"]),
             "source_ids": entry["source_ids"],
+            "langs": entry.get("langs", []),
         }
         for entry in terms.values()
     ]

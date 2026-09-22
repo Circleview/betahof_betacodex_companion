@@ -78,6 +78,7 @@
   "import.processingStepOcr": "Recognizing text",
   "import.processingStepChunking": "Chunking",
   "import.processingStepIndexing": "Indexing",
+  "import.processingStepSummarizing": "Generating summary & tags",
   "import.reprocessButton": "Retry",
   "import.cancelImportButton": "Cancel",
   "import.cancelImportConfirmButton": "Sure? Delete source",
