@@ -4,7 +4,7 @@ Ein KI-Wissensassistent, der Fragen zum BetaCodex ausschließlich auf Basis
 kuratierter, geprüfter Quellen beantwortet – mit lückenloser Quellenangabe
 bis zur Originalstelle.
 
-Live unter **https://companion.betahof.com**.
+Live unter **https://chat.betacodex.org**.
 
 ---
 
@@ -384,23 +384,12 @@ Danach `http://127.0.0.1:8000/` im Browser öffnen. Ohne gültigen
 Ablage in Chroma), aber `/api/ask` schlägt beim eigentlichen LLM-Aufruf
 fehl.
 
-### Drei parallele Instanzen: Dev, Stabil, Produktion
+### Zwei Instanzen: Dev, Produktion
 
 - **Dev** (`Beta-Kodex - Wissenspartner/`, Port 8000): der aktive
   Arbeitsstand, kann jederzeit kurzzeitig instabil sein
   (Server-Neustarts während der Entwicklung).
-- **Stabil** (`Beta-Kodex - Wissenspartner (stabil)/`, Port 8001): ein
-  separates [Git Worktree](https://git-scm.com/docs/git-worktree), das auf
-  dem jeweils letzten getaggten Stand steht (siehe Versionshistorie unten
-  für den aktuellen Tag), mit eigenem venv und eigener `.env`-Kopie:
-  ```bash
-  cd "Beta-Kodex - Wissenspartner (stabil)"
-  git fetch origin --tags
-  git checkout v0.45.0       # jeweils aktueller Tag
-  ./venv/bin/pip install -r requirements.txt   # falls sich Abhängigkeiten geändert haben
-  # Server neu starten
-  ```
-- **Produktion** (https://companion.betahof.com, Hetzner Cloud, CX23,
+- **Produktion** (https://chat.betacodex.org, Hetzner Cloud, CX23,
   Falkenstein, DSGVO-konform): ein einzelner Server mit zwei kompletten
   App-Instanzen ("Blue"/"Green") unter einem eigenen Systembenutzer
   `betacodex`, dahinter Caddy als Reverse Proxy mit automatischem
@@ -408,13 +397,12 @@ fehl.
   Symlink auf ein gemeinsames `shared/`-Verzeichnis; nur der Code
   unterscheidet sich zwischen den beiden Slots. Deployment läuft
   vollautomatisch per GitHub Actions (`.github/workflows/deploy.yml`),
-  ausgelöst durch denselben Tag-Push, mit dem auch Stabil aktualisiert
-  wird: `pytest -q` + `node --check`, bei Erfolg SSH zum Server,
-  `deploy.sh <tag>` deployt auf die gerade inaktive Farbe, wartet auf
-  einen Health-Check (`/api/version`), schaltet Caddy erst danach um und
-  stoppt die alte Farbe – Zero-Downtime, mit automatischem Rollback (alte
-  Farbe bleibt live), falls die neue Version nicht startet. Unterschiede
-  zu Dev/Stabil: `ENVIRONMENT` bleibt hier ungesetzt (nicht
+  ausgelöst durch einen Tag-Push: `pytest -q` + `node --check`, bei Erfolg
+  SSH zum Server, `deploy.sh <tag>` deployt auf die gerade inaktive Farbe,
+  wartet auf einen Health-Check (`/api/version`), schaltet Caddy erst
+  danach um und stoppt die alte Farbe – Zero-Downtime, mit automatischem
+  Rollback (alte Farbe bleibt live), falls die neue Version nicht startet.
+  Unterschiede zu Dev: `ENVIRONMENT` bleibt hier ungesetzt (nicht
   `"development"`), dadurch sind Cookies `Secure` und der
   `X-Robots-Tag` (verhindert sonst die Suchmaschinen-Indexierung)
   entfällt; ein eigenes `EARLY_ACCESS_PASSWORD` sperrt die Seite vorerst
