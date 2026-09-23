@@ -4006,6 +4006,7 @@ async function postTermChange(url, body, status, failedKey) {
   } catch {
     status.textContent = t(failedKey);
     status.classList.remove('hidden');
+    status.closest('details').open = true;
     return false;
   }
 }
@@ -4027,17 +4028,21 @@ function buildTermRenameControls(entry, summary, name, status) {
 
   const wrap = document.createElement('span');
   wrap.className = 'term-merge-canonical-wrap';
-  wrap.append(name, editBtn, input, suggestions);
+  const deleteBtn = buildTermDeleteButton(entry, status);
+  wrap.append(name, editBtn, deleteBtn, input, suggestions);
 
   function setEditing(editing) {
     name.classList.toggle('hidden', editing);
     editBtn.classList.toggle('hidden', editing);
+    deleteBtn.classList.toggle('hidden', editing);
     input.classList.toggle('hidden', !editing);
   }
-  // Klicks/Leertaste im Stift oder Eingabefeld sollen das umgebende
+  // Klicks/Leertaste in Stift, Mülleimer oder Eingabefeld sollen das umgebende
   // <details> nicht auf-/zuklappen.
   summary.addEventListener('click', (e) => {
-    if (wrap.contains(e.target) && e.target !== name) e.preventDefault();
+    // composedPath statt contains: der Mülleimer tauscht sein Icon beim
+    // Klick aus, e.target hängt dann schon nicht mehr im DOM.
+    if (e.composedPath().includes(wrap) && e.target !== name) e.preventDefault();
   });
   input.addEventListener('keyup', (e) => e.key === ' ' && e.preventDefault());
   editBtn.addEventListener('click', () => {
@@ -4072,15 +4077,28 @@ function buildTermRenameControls(entry, summary, name, status) {
 }
 
 function buildTermDeleteButton(entry, status) {
+  // Erster Klick aufs Mülleimer-Icon macht daraus die Rückfrage als Text
+  // (wie "Alle Schlagworte löschen" im Zusammenführen-Panel), erst der
+  // zweite löscht.
   const deleteBtn = document.createElement('button');
   deleteBtn.type = 'button';
-  deleteBtn.className = 'link-button term-overview-filter';
-  deleteBtn.textContent = t('import.termDeleteButton');
+  const label = t('import.termDeleteButton');
+  function resetDeleteBtn() {
+    confirmPending = false;
+    deleteBtn.className = 'icon-button term-merge-edit-canonical';
+    deleteBtn.innerHTML = TRASH_ICON;
+    deleteBtn.title = label;
+    deleteBtn.setAttribute('aria-label', label);
+    deleteBtn.disabled = false;
+  }
   let confirmPending = false;
+  resetDeleteBtn();
   deleteBtn.addEventListener('click', async () => {
     if (!confirmPending) {
       confirmPending = true;
+      deleteBtn.className = 'link-button term-overview-delete-confirm';
       deleteBtn.textContent = t('import.termDeleteConfirmButton');
+      deleteBtn.removeAttribute('aria-label');
       return;
     }
     deleteBtn.disabled = true;
@@ -4090,11 +4108,7 @@ function buildTermDeleteButton(entry, status) {
       status,
       'import.termMergeDeleteFailed'
     );
-    if (!ok) {
-      confirmPending = false;
-      deleteBtn.textContent = t('import.termDeleteButton');
-      deleteBtn.disabled = false;
-    }
+    if (!ok) resetDeleteBtn();
   });
   return deleteBtn;
 }
@@ -4144,9 +4158,7 @@ function buildTermOverviewItem(entry, index, maxCount) {
   filterBtn.className = 'link-button term-overview-filter';
   filterBtn.textContent = t('import.termOverviewFilter');
   filterBtn.addEventListener('click', () => filterByTerm(entry.term));
-  details.append(sourceList, filterBtn);
-  if (hasPflegerRole()) details.append(' · ', buildTermDeleteButton(entry, status));
-  details.append(status);
+  details.append(sourceList, filterBtn, status);
 
   li.appendChild(details);
   return li;

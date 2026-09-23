@@ -4896,3 +4896,9 @@ details[open] > .term-overview-summary::before {
   margin-left: 1rem;
   font-size: 0.85rem;
 }
+
+.term-overview-delete-confirm {
+  margin-left: 0.4rem;
+  font-size: 0.85rem;
+  font-weight: 400;
+}
