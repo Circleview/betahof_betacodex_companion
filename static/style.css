@@ -69,10 +69,6 @@
    zu scrollen. */
 html {
   scroll-behavior: smooth;
-  /* clip statt hidden: schneidet horizontalen Überstand (z.B. #site-header::
-     after bei sichtbarer Scrollbar) ab, ohne einen Scroll-Container zu
-     bilden - position: sticky des Headers bleibt intakt. */
-  overflow-x: clip;
 }
 
 body {
@@ -279,26 +275,6 @@ header {
   background: var(--color-bg);
 }
 
-/* Hintergrund über die volle Fensterbreite statt nur über die Spalte -
-   sonst schiebt sich breiterer Inhalt (Explore-Netzwerk) links/rechts neben
-   dem Header sichtbar darunter durch. Pseudo-Element statt box-shadow+
-   clip-path: clip-path würde auch unter dem Header aufklappende Panels
-   (Login, Feedback) abschneiden. z-index -1 bleibt innerhalb des vom
-   sticky Header gebildeten Stapelkontexts, also hinter dessen Inhalt, aber
-   vor dem Seiteninhalt. */
-#site-header::after {
-  content: '';
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  /* Header sitzt zentriert in der Spalte - so reicht die Fläche genau bis
-     zu den Fensterrändern. 100vw zählt eine sichtbare Scrollbar mit, den
-     Überstand schneidet html { overflow-x: clip } weg. */
-  left: calc(50% - 50vw);
-  right: calc(50% - 50vw);
-  background: var(--color-bg);
-  z-index: -1;
-}
 
 #site-header::before {
   content: '';
@@ -4304,27 +4280,6 @@ details a {
   border-radius: var(--radius);
   overflow: hidden;
   margin-top: 1rem;
-  /* Nutzerwunsch (2026-09-23): das Diagramm soll über die volle
-     Bildschirmbreite gehen statt in der site-weiten 980px-Spalte
-     (body { max-width: min(980px, 92vw) }) zu stecken - #explore-graph
-     selbst sized sich bereits dynamisch nach der clientWidth dieses Wrappers
-     (siehe explore.js), das Ausbrechen betrifft deshalb nur dieses eine
-     Element, nicht Header/Suchfeld/Legende. Zentriert sich relativ zum
-     VIEWPORT (nicht zum schmaleren body), unabhängig von der tatsächlich
-     aufgelösten Breite - width:100vw mit einem festen negativen
-     margin-left hätte das bei einer zusätzlichen max-width (Ultrawide-
-     Deckelung) nicht mehr zuverlässig getan. 1600px als Obergrenze: deutlich
-     geräumiger als die 980-1280px-Spalten sonst in der App, aber auf sehr
-     breiten (Ultrawide-)Monitoren verteilt d3-force die Knoten sonst über so
-     viel Fläche, dass Linien zwischen verwandten Knoten unnötig lang und
-     schwerer zu verfolgen werden, ohne dass die Informationsdichte steigt. */
-  /* Nachtrag (2026-09-23, Nutzerfeedback): fast volle Breite ließ keinen
-     Platz mehr, an dem das Mausrad die Seite scrollt statt das Netzwerk zu
-     zoomen - jetzt mind. 4rem Rand je Seite und höchstens 1280px, aber nie
-     schmaler als die normale Spalte (100%, relevant auf Mobile). */
-  width: max(100%, min(100vw - 8rem, 1280px));
-  margin-left: 50%;
-  transform: translateX(-50%);
 }
 
 /* Nutzerwunsch (2026-08-27): unscheinbare Legende rechts unter dem Netzwerk,
