@@ -4886,12 +4886,14 @@ details a {
    Quellenanzahl (relativ zum häufigsten Begriff), Anzahl rechts. */
 .term-overview-summary {
   display: grid;
-  /* Feste Breite für die Anzahl (statt max-content), damit Balken und
-     Zahl über alle Zeilen hinweg ruhig übereinander stehen - reicht für
-     "999 Quellen"/"999 sources". */
-  grid-template-columns: minmax(0, 1fr) minmax(3rem, 8rem) 6rem;
+  /* Feste Breite für die Anzahl (statt max-content), damit Balken und Zahl
+     über alle Zeilen hinweg ruhig übereinander stehen - 5.5rem reicht für
+     "999 Quellen"/"999 sources". Balken relativ zur Zeilenbreite: ein fester
+     8rem-Balken ließ dem Begriff auf Mobile kaum Platz (Grid-Spalten mit
+     fester Obergrenze wachsen VOR der 1fr-Spalte bis zum Maximum). */
+  grid-template-columns: minmax(0, 1fr) clamp(3rem, 15%, 8rem) 5.5rem;
   align-items: center;
-  gap: 0.75rem;
+  gap: clamp(0.5rem, 2vw, 0.75rem);
 }
 
 .term-overview-toggle {
@@ -4906,7 +4908,11 @@ details a {
   font-weight: 600;
   text-align: left;
   cursor: pointer;
-  overflow-wrap: anywhere;
+  /* Silbentrennung statt Umbruch an beliebiger Stelle ("Transform|ation") -
+     break-word bleibt Rückfall für Wörter ohne Trennmöglichkeit. */
+  hyphens: auto;
+  overflow-wrap: break-word;
+  min-width: 0;
 }
 
 .term-overview-toggle::before {
