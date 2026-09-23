@@ -254,13 +254,27 @@ function initStickyHeaderCollapse() {
   function update() {
     const currentScrollY = window.scrollY;
     const scrollingDown = currentScrollY > lastScrollY;
+    // Fix (2026-09-23, per gemeldetem Flackern in der Konversationsansicht
+    // bei 641-899px Breite - seit v0.68.1 wächst #chat-column dort mit dem
+    // Antworttext und die SEITE SELBST scrollt statt eines intern
+    // scrollenden #chat-messages, wodurch window.scrollY sich dort
+    // überhaupt erst nennenswert ändert und dieser Pfad zum ersten Mal
+    // wirklich durchlaufen wird): "scrollingUp" prüfte bisher nur
+    // !scrollingDown, was auch einen Tick OHNE jede Bewegung (currentScrollY
+    // === lastScrollY, z.B. ein Scroll-Event mit Delta 0 am Ende einer
+    // Trackpad-Momentum-Geste) fälschlich als "nach oben gescrollt"
+    // einstufte und den Wiedereinblende-Timer startete - lief ein
+    // unmittelbar folgender ECHTER Abwärts-Tick dem knapp zuvor, wurde der
+    // Timer zwar wieder verworfen, aber der kurze Zwischenzustand konnte je
+    // nach Timing als sichtbares Aufflackern wahrgenommen werden.
+    const scrollingUp = currentScrollY < lastScrollY;
     const stickyTop = parseFloat(getComputedStyle(header).top) || 0;
     const isStuck = header.getBoundingClientRect().top <= stickyTop + STUCK_TOLERANCE_PX;
     if (scrollingDown && isStuck) {
       clearTimeout(expandTimer);
       expandTimer = null;
       header.classList.add('site-header--compact');
-    } else if (!scrollingDown) {
+    } else if (scrollingUp) {
       clearTimeout(expandTimer);
       expandTimer = setTimeout(() => {
         header.classList.remove('site-header--compact');

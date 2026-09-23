@@ -1513,6 +1513,40 @@ def test_creative_betacodex_sources_come_from_retrieved_curated_chunks(client, m
     assert any(s["title"] == "Zellstrukturdesign" for s in result["sources"]["betacodex"])
 
 
+def test_creative_betacodex_sources_include_url_reachable_flag(client, monkeypatch):
+    """Nutzerwunsch (2026-09-23): eine Quelle mit erkanntem defektem Link
+    soll auch im Kreativ-Modus nicht mehr verlinkt werden - das Frontend
+    braucht dafür url_reachable in den betacodex_sources."""
+    create_res = client.post(
+        "/api/sources",
+        json={
+            "title": "Zellstrukturdesign",
+            "url": "https://example.org/kaputt",
+            "text": "Ein Text über Zentrumszellen.",
+            "authors": ["Autor X"],
+        },
+    )
+    source_id = create_res.json()["id"]
+    raw = json.loads(main_module.SOURCES_FILE.read_text())
+    raw[source_id]["url_reachable"] = False
+    main_module.SOURCES_FILE.write_text(json.dumps(raw))
+    monkeypatch.setattr(
+        llm,
+        "stream_creative_response",
+        lambda instruction, document, chunks, lang="de", section=None: _FakeCreativeStream(
+            ["Ein völlig anderer Text, der die Quelle gar nicht erwähnt."]
+        ),
+    )
+
+    response = client.post(
+        "/api/creative", json={"document": "", "instruction": "Schreibe über Zellstrukturdesign."}
+    )
+
+    result = creative_result(response)
+    source = next(s for s in result["sources"]["betacodex"] if s["title"] == "Zellstrukturdesign")
+    assert source["url_reachable"] is False
+
+
 def test_creative_betacodex_sources_deduplicate_multiple_chunks_of_same_source(client, monkeypatch):
     # Lang genug (CHUNK_SIZE = 900 Tokens, siehe app/chunking.py), damit der
     # Import in mehrere Chunks zerlegt wird - bei CREATIVE_TOP_K=6 landen bei
@@ -2127,6 +2161,45 @@ def test_ask_returns_answer_with_sources(client):
     assert len(data["sources"]) == 1
     assert data["sources"][0]["title"] == "BetaCodex Quelle"
     assert data["sources"][0]["authors"] == ["Autor Y"]
+
+
+def test_ask_marks_source_url_reachable_false_when_link_check_failed(client):
+    """Nutzerwunsch (2026-09-23): eine Quelle mit erkanntem defektem Link
+    soll auch im Konversationsmodus nicht mehr verlinkt werden - das
+    Frontend braucht dafür url_reachable in den /api/ask-Quellen."""
+    create_res = client.post(
+        "/api/sources",
+        json={
+            "title": "Quelle mit defektem Link",
+            "url": "https://example.org/kaputt",
+            "text": "Der BetaCodex beschreibt Prinzipien dezentraler Organisation.",
+        },
+    )
+    source_id = create_res.json()["id"]
+    raw = json.loads(main_module.SOURCES_FILE.read_text())
+    raw[source_id]["url_reachable"] = False
+    main_module.SOURCES_FILE.write_text(json.dumps(raw))
+
+    response = client.post("/api/ask", json={"question": "Was beschreibt der BetaCodex?"})
+
+    data = ask_result(response)
+    assert data["sources"][0]["url_reachable"] is False
+
+
+def test_ask_marks_source_url_reachable_none_by_default(client):
+    client.post(
+        "/api/sources",
+        json={
+            "title": "BetaCodex Quelle",
+            "url": "https://example.org/quelle",
+            "text": "Der BetaCodex beschreibt Prinzipien dezentraler Organisation.",
+        },
+    )
+
+    response = client.post("/api/ask", json={"question": "Was beschreibt der BetaCodex?"})
+
+    data = ask_result(response)
+    assert data["sources"][0]["url_reachable"] is None
 
 
 def test_ask_reranks_by_relevance_score_among_similar_matches(client, monkeypatch):

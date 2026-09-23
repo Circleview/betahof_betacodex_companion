@@ -810,7 +810,10 @@ function renderSourceList(listEl, sources, emptyKey) {
   }
   sources.forEach((source) => {
     const li = document.createElement('li');
-    if (source.url) {
+    // Nutzerwunsch (2026-09-23): eine Quelle mit erkanntem defektem Link
+    // (url_reachable === false, siehe Quellenverwaltung) soll nirgendwo in
+    // der App mehr verlinkt werden - auch hier im Kreativ-Modus nicht.
+    if (source.url && source.url_reachable !== false) {
       const link = document.createElement('a');
       link.href = source.url;
       link.target = '_blank';

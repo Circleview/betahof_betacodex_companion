@@ -4117,6 +4117,7 @@ def ask(question: QuestionIn, request: Request, x_lang: str = Header(default=i18
                 summary=sources.get(meta["source_id"], {}).get(f"summary_{summary_lang}") or None,
                 is_web_fallback=is_web,
                 allowlist_entry_id=meta.get("allowlist_entry_id") if is_web else None,
+                url_reachable=sources.get(meta["source_id"], {}).get("url_reachable"),
             )
         )
         llm_chunks.append(
@@ -4298,6 +4299,7 @@ def creative(payload: CreativeRequestIn, request: Request, x_lang: str = Header(
                 "authors": authors_list,
                 "date": meta["date"] or None,
                 "url": meta["url"] or None,
+                "url_reachable": sources.get(meta["source_id"], {}).get("url_reachable"),
             }
             betacodex_by_work[work_key] = entry
             betacodex_sources.append(entry)

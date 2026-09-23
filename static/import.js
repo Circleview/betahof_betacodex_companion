@@ -2591,7 +2591,11 @@ function renderSourceList(sources, options = {}) {
     const header = document.createElement('div');
     header.className = 'source-row-header';
 
-    const citationUrl = s.listen_url || s.url;
+    // Nutzerwunsch (2026-09-23): eine Quelle mit erkanntem defektem Link
+    // (url_reachable === false, siehe source-row--unreachable oben) soll
+    // nirgendwo mehr verlinkt werden - auch nicht hier in der eigenen
+    // Quellenverwaltung.
+    const citationUrl = s.url_reachable === false ? null : s.listen_url || s.url;
     const hasDetails = !!s.summary;
     const isProcessing = !!s.processing_status;
     // Nutzerwunsch (2026-08-03): "error" zaehlt NICHT als aktiv - da laeuft
@@ -3736,32 +3740,63 @@ function setSortMode(mode) {
   renderSourceList(currentSourceList);
 }
 
-// Nutzerwunsch (2026-08-23): Reicht die Breite in der Werkzeugleiste
-// (Quelltyp-Icons + Sortierung + Suche) nicht mehr für alle Icons in einer
-// Zeile, soll NICHT die Suche in eine neue Zeile umbrechen - stattdessen
-// blendet sich die Sortierung nach Autor:in/Datum samt ihrer Trennlinie aus
-// (.sort-toolbar). Ein fester Media-Query-Breakpoint würde hier mal zu früh,
-// mal zu spät greifen, da die Zahl der sichtbaren Quelltyp-Icons laufend je
-// nach Rolle und Zustand wechselt (aktive Jobs, defekte Links) - stattdessen
-// wird die tatsächlich benötigte Breite aller sichtbaren Geschwister
-// gemessen und mit der verfügbaren Breite verglichen. ResizeObserver auf dem
-// Container selbst reicht als einziger Trigger: sowohl eine Fensterbreiten-
-// Änderung als auch ein ein-/ausblendendes Geschwister-Icon verändert bei
-// flex-wrap:wrap auch die (ggf. umbrochene) eigene Höhe des Containers.
+// Nutzerwunsch (2026-08-23, erweitert 2026-09-23): Reicht die Breite in der
+// Werkzeugleiste (Quelltyp-Icons + Sortierung + Suche) nicht mehr für alle
+// Icons in einer Zeile, wird nacheinander (günstigster Verlust zuerst) Platz
+// eingespart, statt Icons zu verkleinern oder unschön umbrechen zu lassen:
+// zuerst nur die rein dekorative Trennlinie vor den web-bezogenen Werkzeugen
+// (.quelltyp-web-tools), dann die Sortierung nach Autor:in/Datum samt ihrer
+// Trennlinie (.sort-toolbar), zuletzt - falls IMMER NOCH nicht genug Platz -
+// das Icon "Ähnliche Schlagworte" (#typ-term-merge, am seltensten gebraucht
+// von den verbleibenden Icons). Die Suche samt Link-Filter (.search-toolbar)
+// bleibt bewusst IMMER sichtbar (Nutzerwunsch 2026-09-23, revidiert die
+// vorherige Fassung, die stattdessen die Suche ausgeblendet hätte). Ein
+// fester Media-Query-Breakpoint würde hier mal zu früh, mal zu spät greifen,
+// da die Zahl der sichtbaren Quelltyp-Icons laufend je nach Rolle und
+// Zustand wechselt (aktive Jobs, defekte Links) - stattdessen wird die
+// tatsächlich benötigte Breite aller sichtbaren Geschwister gemessen und mit
+// der verfügbaren Breite verglichen. ResizeObserver auf dem Container selbst
+// reicht als einziger Trigger: sowohl eine Fensterbreiten-Änderung als auch
+// ein ein-/ausblendendes Geschwister-Icon verändert bei flex-wrap:wrap auch
+// die (ggf. umbrochene) eigene Höhe des Containers.
 function initSourceToolbarOverflow() {
   const row = document.querySelector('.section-heading-row');
   const actions = document.querySelector('.section-heading-actions');
   const sortToolbar = document.querySelector('.sort-toolbar');
+  const webTools = document.querySelector('.quelltyp-web-tools');
+  const termMergeBtn = document.getElementById('typ-term-merge');
   if (!row || !actions || !sortToolbar) return;
 
-  function update() {
-    sortToolbar.classList.remove('sort-toolbar--hidden-for-space');
+  function neededWidth() {
     const gap = parseFloat(getComputedStyle(actions).columnGap) || 0;
     const visibleChildren = [...actions.children].filter((el) => getComputedStyle(el).display !== 'none');
-    const neededWidth =
+    return (
       visibleChildren.reduce((sum, el) => sum + el.getBoundingClientRect().width, 0) +
-      gap * Math.max(0, visibleChildren.length - 1);
-    sortToolbar.classList.toggle('sort-toolbar--hidden-for-space', neededWidth > actions.clientWidth + 1);
+      gap * Math.max(0, visibleChildren.length - 1)
+    );
+  }
+
+  function fitsNow() {
+    return neededWidth() <= actions.clientWidth + 1;
+  }
+
+  // Reihenfolge ist bewusst gestaffelt (statt alles auf einmal zu prüfen):
+  // jeder Schritt misst NACH dem vorherigen neu, damit ein knapper
+  // Platzgewinn (z.B. nur die Trennlinie einsparen) nicht unnötig auch
+  // noch Funktionalität kostet, wenn er allein schon reicht.
+  function update() {
+    sortToolbar.classList.remove('sort-toolbar--hidden-for-space');
+    if (webTools) webTools.classList.remove('quelltyp-web-tools--no-divider');
+    if (termMergeBtn) termMergeBtn.classList.remove('hidden');
+
+    if (fitsNow()) return;
+    if (webTools) webTools.classList.add('quelltyp-web-tools--no-divider');
+
+    if (fitsNow()) return;
+    sortToolbar.classList.add('sort-toolbar--hidden-for-space');
+
+    if (fitsNow() || !termMergeBtn) return;
+    termMergeBtn.classList.add('hidden');
   }
 
   // Fix: NICHT .section-heading-actions selbst beobachten - sobald

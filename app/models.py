@@ -171,6 +171,13 @@ class ChunkRef(BaseModel):
     # web_allowlist-Eintrags-ID mitgegeben (nur bei Web-Fallback-Chunks
     # gesetzt, sonst None).
     allowlist_entry_id: Optional[str] = None
+    # Nutzerwunsch (2026-09-23): eine Quelle mit erkanntem defektem Link
+    # (siehe url_reachable in SourceOut/Quellenverwaltung) soll auch im
+    # Konversationsmodus nicht mehr verlinkt werden - dafür muss das
+    # Frontend hier wissen, ob der Link der zugrundeliegenden Quelle
+    # (aktuell) als erreichbar gilt. None (nie geprüft) und True (erreichbar)
+    # verhalten sich fürs Frontend gleich - nur False blendet den Link aus.
+    url_reachable: Optional[bool] = None
 
 
 class ConversationTurnIn(BaseModel):

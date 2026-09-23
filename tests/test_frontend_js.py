@@ -180,6 +180,18 @@ def test_append_title_text_renders_plain_text_without_url():
     assert children[0]["value"] == "Ein Buch ohne URL"
 
 
+def test_append_title_text_renders_plain_text_when_link_unreachable():
+    """Nutzerwunsch (2026-09-23): eine Quelle mit erkanntem defektem Link
+    soll auch im Konversationsmodus nicht mehr verlinkt werden, auch wenn
+    eine URL vorhanden ist."""
+    children = _run_append_title_text(
+        {"title": "Ein Artikel", "url": "https://beispiel.org/artikel", "url_reachable": False}
+    )
+    assert len(children) == 1
+    assert children[0]["type"] == "text"
+    assert children[0]["value"] == "Ein Artikel"
+
+
 def _run_append_exclude_web_page_button(*, is_pfleger, source_obj, fetch_ok=True):
     """Führt static/question.js#appendExcludeWebPageButton per Node real aus,
     inkl. simuliertem Klick (ruft den registrierten click-Listener direkt
@@ -1584,6 +1596,24 @@ def test_sticky_header_never_collapses_at_page_top():
     assert results == [False, False]
 
 
+def test_sticky_header_ignores_zero_delta_scroll_tick_while_collapsed():
+    """Fix (2026-09-23, gemeldetes Flackern in der Konversationsansicht bei
+    641-899px Breite): ein Scroll-Event OHNE tatsächliche Bewegung
+    (scrollY unverändert - z.B. ein Tick mit Delta 0 am Ende einer
+    Trackpad-Momentum-Geste) wurde bisher fälschlich wie "nach oben
+    gescrollt" behandelt (nur !scrollingDown statt echtem scrollingUp
+    geprüft) und startete den Wiedereinblende-Timer, obwohl der Header
+    weiterhin geklebt/ausgeblendet bleiben sollte."""
+    results = _run_sticky_header_collapse_with_fake_timer(
+        [
+            ("scroll", 300, 8),  # nach unten, geklebt -> ausgeblendet
+            ("scroll", 300, 8),  # Tick OHNE Bewegung -> darf NICHT wie "nach oben" zählen
+            ("fire_timer",),  # kein Timer sollte je geplant worden sein - bleibt ausgeblendet
+        ]
+    )
+    assert results == [True, True, True]
+
+
 def _run_source_suggestion_row_click(action: str, *, fetch_ok: bool = True) -> dict:
     """Führt static/import.js#renderSourceSuggestionRow per Node aus und
     simuliert einen Klick auf "Annehmen" oder "Ablehnen" - mit minimalen
@@ -2145,6 +2175,7 @@ const actions = new FakeNode(0);
 actions.children = [iconGroup, sortToolbar, searchToolbar];
 actions.clientWidth = 1000;
 const row = new FakeNode(0);
+const termMergeBtn = new FakeNode(0);
 
 global.document = {{
   querySelector: (sel) => {{
@@ -2153,6 +2184,7 @@ global.document = {{
     if (sel === '.sort-toolbar') return sortToolbar;
     return null;
   }},
+  getElementById: (id) => (id === 'typ-term-merge' ? termMergeBtn : null),
 }};
 global.getComputedStyle = (el) => ({{
   columnGap: '20px',
@@ -2201,6 +2233,97 @@ def test_source_toolbar_reshows_sort_toolbar_after_widening_again():
     .section-heading-actions."""
     results = _run_source_toolbar_overflow([{"clientWidth": 300}, {"clientWidth": 400}])
     assert results == [True, False]
+
+
+def _run_source_toolbar_overflow_last_resort(client_width: int) -> dict:
+    """Wie _run_source_toolbar_overflow, aber mit einer Icon-Gruppe, deren
+    gemessene Breite auf das Ausblenden von #typ-term-merge reagiert (40px
+    Anteil), damit sich die LETZTE Stufe der gestaffelten Platz-Einsparung
+    (Nutzerwunsch 2026-09-23: Ähnliche-Schlagworte-Icon statt der Suche)
+    isoliert testen lässt. Liefert den Zustand aller drei Stufen nach einem
+    einzelnen Schritt."""
+    js_source = (STATIC_DIR / "import.js").read_text()
+    match = re.search(r"function initSourceToolbarOverflow.*?\n\}", js_source, re.S)
+    assert match, "initSourceToolbarOverflow wurde in import.js nicht gefunden."
+    func_source = match.group(0)
+    script = f"""
+class FakeNode {{
+  constructor(width) {{
+    this._width = width;
+    this._classes = new Set(['sort-toolbar']);
+    this.children = [];
+    this.classList = {{
+      add: (c) => this._classes.add(c),
+      remove: (c) => this._classes.delete(c),
+      toggle: (c, force) => {{
+        const has = this._classes.has(c);
+        const next = force === undefined ? !has : force;
+        if (next) this._classes.add(c); else this._classes.delete(c);
+      }},
+      contains: (c) => this._classes.has(c),
+    }};
+  }}
+  getBoundingClientRect() {{
+    const shrink = this === iconGroup && termMergeBtn._classes.has('hidden') ? 40 : 0;
+    return {{ width: this._width - shrink }};
+  }}
+}}
+
+const iconGroup = new FakeNode(200);
+const sortToolbar = new FakeNode(93);
+const searchToolbar = new FakeNode(53);
+const actions = new FakeNode(0);
+actions.children = [iconGroup, sortToolbar, searchToolbar];
+actions.clientWidth = {client_width};
+const row = new FakeNode(0);
+const termMergeBtn = new FakeNode(0);
+
+global.document = {{
+  querySelector: (sel) => {{
+    if (sel === '.section-heading-row') return row;
+    if (sel === '.section-heading-actions') return actions;
+    if (sel === '.sort-toolbar') return sortToolbar;
+    return null;
+  }},
+  getElementById: (id) => (id === 'typ-term-merge' ? termMergeBtn : null),
+}};
+global.getComputedStyle = (el) => ({{
+  columnGap: '20px',
+  display: el === sortToolbar
+    ? (el._classes.has('sort-toolbar') && el._classes.has('sort-toolbar--hidden-for-space') ? 'none' : 'flex')
+    : 'flex',
+}});
+let resizeCallback = null;
+global.ResizeObserver = class {{
+  constructor(cb) {{ resizeCallback = cb; }}
+  observe() {{}}
+}};
+
+{func_source}
+
+initSourceToolbarOverflow();
+resizeCallback();
+console.log(JSON.stringify({{
+  sortHidden: sortToolbar._classes.has('sort-toolbar--hidden-for-space'),
+  termMergeHidden: termMergeBtn._classes.has('hidden'),
+}}));
+"""
+    return _run_node(script)
+
+
+def test_source_toolbar_hides_term_merge_icon_as_last_resort_before_search_would_wrap():
+    """Nutzerwunsch (2026-09-23): die Suche soll auf kleinen Screens NIE
+    verschwinden (revidiert eine frühere Fassung, die stattdessen die Suche
+    ausgeblendet hätte) - reicht der Platz selbst ohne Sortierung nicht,
+    wird stattdessen das seltener gebrauchte Icon "Ähnliche Schlagworte"
+    (#typ-term-merge) ausgeblendet."""
+    result = _run_source_toolbar_overflow_last_resort(250)
+    assert result == {"sortHidden": True, "termMergeHidden": True}
+
+
+def test_source_toolbar_keeps_term_merge_icon_when_hiding_sort_toolbar_is_enough():
+    result = _run_source_toolbar_overflow_last_resort(400)
+    assert result == {"sortHidden": False, "termMergeHidden": False}
 
 
 def _run_remove_source_suggestion_row(*, reserve_ids: list[str], visible_ids: list[str] = None) -> dict:

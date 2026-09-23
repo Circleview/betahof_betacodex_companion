@@ -2140,13 +2140,17 @@ button.send-button {
   border-left: 1px solid var(--color-border);
 }
 
-/* Nutzerwunsch (2026-08-23): reicht die Breite nicht für alle Icons in
-   einer Zeile, soll die Suche (.search-toolbar) NICHT in eine neue Zeile
-   umbrechen - stattdessen blendet initSourceToolbarOverflow() (import.js)
-   die Sortierung nach Autor:in/Datum samt ihrer eigenen Trennlinie aus.
-   Doppelte Klasse (statt nur .sort-toolbar--hidden-for-space) erhöht
-   bewusst die Spezifität über die spätere .sort-toolbar { display: flex }
-   -Regel hinaus, unabhängig von der Reihenfolge im Stylesheet. */
+/* Nutzerwunsch (2026-08-23, erweitert 2026-09-23): reicht die Breite nicht
+   für alle Icons in einer Zeile, soll die Suche (.search-toolbar) NICHT in
+   eine neue Zeile umbrechen UND selbst nie ausgeblendet werden - stattdessen
+   blendet initSourceToolbarOverflow() (import.js) gestaffelt zuerst die
+   Trennlinie vor den web-bezogenen Werkzeugen, dann die Sortierung nach
+   Autor:in/Datum samt ihrer eigenen Trennlinie aus, zuletzt (falls immer
+   noch zu wenig Platz) das Icon "Ähnliche Schlagworte" (#typ-term-merge, per
+   normaler .hidden-Klasse). Doppelte Klasse (statt nur
+   .sort-toolbar--hidden-for-space) erhöht bewusst die Spezifität über die
+   spätere .sort-toolbar { display: flex } -Regel hinaus, unabhängig von der
+   Reihenfolge im Stylesheet. */
 .sort-toolbar.sort-toolbar--hidden-for-space {
   display: none;
 }
@@ -2781,10 +2785,17 @@ button.send-button {
    Warn-Rahmen ist ein bekanntes KI-generiert-Klischee - die Zeile hat
    bereits ein eigenes Warn-Icon (.warning-icon, WARNING_ICON in import.js),
    das die Bedeutung trägt, die Tönung allein reicht als Verstärkung. */
+/* Nutzerwunsch (2026-09-23, per Screenshot gemeldet): der Warn-Hintergrund
+   bleedete bisher nur nach LINKS aus dem Innenabstand des umgebenden
+   Containers heraus - rechts fehlte das Gegenstück, wodurch der Hintergrund
+   mobil sichtbar vor dem rechten Rand abbrach statt über die volle Breite
+   zu gehen. */
 #source-list li.source-row--unreachable {
   background: var(--color-warning-tint);
   padding-left: 0.6rem;
+  padding-right: 0.6rem;
   margin-left: -0.85rem;
+  margin-right: -0.85rem;
 }
 
 /* In der Timeline-Ansicht hat li.source-row bereits eigene margin/padding,
@@ -2793,6 +2804,8 @@ button.send-button {
 #source-list.timeline-mode li.source-row--unreachable {
   margin-left: -1.375rem;
   padding-left: 1.375rem;
+  margin-right: -0.85rem;
+  padding-right: 0.6rem;
 }
 
 .warning-icon {
@@ -3821,6 +3834,29 @@ details a {
   scroll-margin-top: 8rem;
 }
 
+/* Nutzerwunsch (2026-09-23): Trennstrich vor den web-bezogenen Werkzeugen
+   (Web-Allowlist/Quellen-Vorschläge/Ähnliche Schlagworte) - gleiches Muster
+   wie .sort-toolbar/.search-toolbar weiter rechts in derselben Zeile
+   (border-left+padding-left statt eines Rahmens direkt auf den runden
+   Icon-Buttons, der deren Kreisform durchbrechen würde). */
+.quelltyp-web-tools {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding-left: 1rem;
+  border-left: 1px solid var(--color-border);
+}
+
+/* Nutzerwunsch (2026-09-23): reicht die Zeile trotz bereits ausgeblendeter
+   Sortierung (siehe .sort-toolbar--hidden-for-space) nicht für alle Icons,
+   spart initSourceToolbarOverflow() (import.js) zuerst die rein dekorative
+   Trennlinie samt ihrem Abstand ein, BEVOR echte Funktionalität (Suche)
+   in eine neue Zeile umbrechen müsste. */
+.quelltyp-web-tools.quelltyp-web-tools--no-divider {
+  padding-left: 0;
+  border-left: none;
+}
+
 .quelltyp-item--anchor {
   position: relative;
   display: flex;
@@ -4422,7 +4458,12 @@ details a {
   display: none;
 }
 
-@media (max-width: 800px) {
+/* Nutzerwunsch (2026-09-23): @container statt @media - trifft dadurch
+   exakt denselben Umbruchpunkt wie #creative-layout selbst (siehe Kommentar
+   dort), 792px = Summe der beiden flex-basis-Werte (480px + 280px) plus
+   2rem gap, unabhängig vom (viewport-relativen, nicht direkt vergleichbaren)
+   body-Padding. */
+@container (max-width: 792px) {
   .creative-disclaimer--mobile {
     display: block;
     /* Nutzerwunsch (2026-08-26, Folge-Iteration): rutscht mit sinnvollem
@@ -4452,11 +4493,25 @@ details a {
   color: var(--color-text);
 }
 
+/* Nutzerwunsch (2026-09-23, per Screenshot gemeldet): die Hinweisbox
+   (.creative-disclaimer--mobile/--desktop unten) schaltete bisher über
+   einen FEST codierten @media(max-width:800px) um - unabhängig vom
+   TATSÄCHLICHEN Umbruchpunkt dieses Flex-Layouts, der vom responsiven
+   body-Padding (clamp(1rem,4vw,2rem) je Seite) abhängt und deshalb nicht
+   mit einer einzelnen Viewport-Breite übereinstimmt. In der Lücke zwischen
+   beiden Schwellen war #creative-sources bereits einspaltig umgebrochen
+   (volle Breite verfügbar), die Hinweisbox zeigte aber noch ihre schmale
+   --desktop-Variante. container-type:inline-size macht #creative-layouts
+   EIGENE, tatsächlich gerenderte Breite abfragbar (siehe @container weiter
+   unten) - trifft dadurch immer exakt denselben Umbruchpunkt wie das
+   Flex-Layout selbst, unabhängig davon, wie sich das body-Padding künftig
+   berechnet. */
 #creative-layout {
   display: flex;
   flex-wrap: wrap;
   gap: 2rem;
   align-items: flex-start;
+  container-type: inline-size;
 }
 
 #creative-form {

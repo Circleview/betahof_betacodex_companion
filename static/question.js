@@ -211,7 +211,11 @@ function appendExcludeWebPageButton(container, s) {
 // Quellen, sofern eine URL vorhanden ist (listen_url hat Vorrang, siehe
 // citationUrl-Definitionen weiter unten).
 function appendTitleText(container, s) {
-  const citationUrl = s.listen_url || s.url;
+  // Nutzerwunsch (2026-09-23): eine Quelle mit erkanntem defektem Link
+  // (url_reachable === false, siehe Quellenverwaltung) soll auch hier
+  // nicht mehr verlinkt werden - fällt auf denselben Pfad wie eine Quelle
+  // ganz ohne URL zurück (reiner Titeltext, kein Link/Icon).
+  const citationUrl = s.url_reachable === false ? null : s.listen_url || s.url;
   if (!citationUrl) {
     container.appendChild(document.createTextNode(s.title));
     return;
@@ -357,7 +361,10 @@ function buildSourceInfo(s, highlight) {
   appendTextWithHighlight(excerpt, s.text, highlight);
   wrapper.appendChild(excerpt);
 
-  const citationUrl = s.listen_url || s.url;
+  // Nutzerwunsch (2026-09-23): eine Quelle mit erkanntem defektem Link soll
+  // nirgendwo mehr verlinkt werden, auch nicht hier am Ende des Chunk-
+  // Ausschnitts.
+  const citationUrl = s.url_reachable === false ? null : s.listen_url || s.url;
   if (citationUrl) {
     const a = document.createElement('a');
     a.href = citationUrl;
@@ -411,7 +418,10 @@ function buildSourcesList(sources) {
     } else {
       p.textContent = truncateWords(s.text, 100);
     }
-    const citationUrl = s.listen_url || s.url;
+    // Nutzerwunsch (2026-09-23): eine Quelle mit erkanntem defektem Link
+    // soll nirgendwo mehr verlinkt werden, auch nicht hier in der
+    // Sidebar-Quellenliste.
+    const citationUrl = s.url_reachable === false ? null : s.listen_url || s.url;
     if (citationUrl) {
       const a = document.createElement('a');
       a.href = citationUrl;
@@ -1217,7 +1227,16 @@ questionForm.addEventListener('submit', async (e) => {
           indicatorCleared = true;
           assistantBubble.removeAttribute('aria-label');
         }
-        assistantBubble.innerHTML = renderMarkdown(liveText);
+        // Nutzerwunsch (2026-09-23): [n]-Zitatverweise zeigen sich während
+        // des Streamings noch als reiner Text mit der ROHEN, vom Modell
+        // vergebenen Nummer - sobald die Antwort fertig ist, ersetzt
+        // makeCitationsClickable() sie durch fortlaufend NEU nummerierte
+        // Buttons (siehe dortiger Kommentar), die von der rohen Nummer
+        // abweichen können. Der kurze Zahlenwechsel wirkte verwirrend -
+        // während des Streamings werden die Zahlen deshalb gar nicht erst
+        // angezeigt (\s* frisst ein eventuelles Leerzeichen davor mit, damit
+        // keine Lücke vor dem folgenden Satzzeichen entsteht).
+        assistantBubble.innerHTML = renderMarkdown(liveText.replace(/\s*\[\d+\]/g, ''));
       },
       async (answer) => {
         // Backlog (2026-07-31, ergänzt 2026-08-03): Vorlesen-Button UND
