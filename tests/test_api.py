@@ -387,10 +387,56 @@ def client(tmp_path, monkeypatch):
 
     monkeypatch.setattr(threading.Thread, "start", tracking_start)
 
+    # Root-Cause der (bis hierhin nur teilweise behobenen) CI-Flakiness
+    # (2026-09-23): done_event.set() in _finish_synchronous_import feuert
+    # BEWUSST, BEVOR die (potenziell mehrere Sekunden dauernde)
+    # Zusammenfassung/Schlagwort-Registrierung läuft (siehe dortiger
+    # Kommentar - in Produktion soll die add_source-Antwort darauf nicht
+    # warten). add_source() kehrt also zurück, WÄHREND der Hintergrund-
+    # Thread noch bis zu _generate_summary_background()/_register_all_terms()
+    # weiterläuft. Tests, die direkt danach sources.json/terms.json lesen
+    # oder überschreiben, rasten dadurch mit genau diesem Thread - das
+    # Tracking+Join unten griff bisher nur beim TEARDOWN, also erst NACH dem
+    # eigentlichen Testkörper, und konnte diese Race INNERHALB eines
+    # einzelnen Tests nicht verhindern. Jeder HTTP-Aufruf über den
+    # Test-Client wartet deshalb jetzt zusätzlich direkt danach auf alle
+    # WÄHREND dieses einen Aufrufs neu gestarteten Threads, bevor die
+    # Kontrolle an den Testkörper zurückgeht - macht jeden Test
+    # deterministisch, ohne die Produktionslogik (die bewusst NICHT wartet)
+    # anzufassen.
+    def _wrap_client_with_thread_wait(test_client: TestClient) -> None:
+        original_request = test_client.request
+        # Opt-out für die wenigen Tests, die GENAU dieses asynchrone
+        # Verhalten selbst gezielt prüfen (z.B. "Antwort kommt zurück,
+        # während die Zusammenfassung noch läuft") - für die wäre das
+        # automatische Warten unten kontraproduktiv, es würde exakt den
+        # Zwischenzustand verstecken, den der Test sehen will. Per Test
+        # lokal auf False setzen (siehe test_add_source_stays_in_progress_
+        # until_summary_generated & Co.), sonst bleibt es aktiv.
+        test_client.wait_for_background_threads = True
+
+        def waiting_request(*args, **kwargs):
+            if not test_client.wait_for_background_threads:
+                return original_request(*args, **kwargs)
+            before = len(started_threads)
+            response = original_request(*args, **kwargs)
+            for t in started_threads[before:]:
+                t.join(timeout=15)
+                if t.is_alive():
+                    raise AssertionError(
+                        f"Hintergrund-Thread '{t.name}' (target={getattr(t, '_target', None)!r}) "
+                        "lief nach einem Test-Client-Aufruf noch - fehlt ein Mock für eine "
+                        "externe/langsame Operation?"
+                    )
+            return response
+
+        test_client.request = waiting_request
+
     # Standard-Testrolle: Quellen-Pfleger:in, damit bestehende Tests nicht jeden
     # Request einzeln einloggen müssen.
     test_client = TestClient(main_module.app)
     login(test_client, PFLEGER, users.QUELLEN_PFLEGER)
+    _wrap_client_with_thread_wait(test_client)
     yield test_client
 
     # Fix (2026-09-23, Root-Cause der CI-Flakiness bei terms.json/sources.json-
@@ -743,7 +789,12 @@ def test_add_source_slow_import_appears_in_import_jobs(client, monkeypatch):
         lambda chunks: (time.sleep(1), [[0.0, 0.0, 0.0] for _ in chunks])[1],
     )
 
+    # Dieser Test prüft GENAU den Zwischenzustand während des (hier absichtlich
+    # verlangsamten) Embeddings - siehe Kommentar bei wait_for_background_threads
+    # in der client-Fixture.
+    client.wait_for_background_threads = False
     response = client.post("/api/sources", json={"title": "Große Quelle", "text": "Text."})
+    client.wait_for_background_threads = True
     source_id = response.json()["id"]
 
     jobs = client.get("/api/import-jobs").json()
@@ -779,8 +830,17 @@ def test_concurrent_add_source_calls_do_not_lose_data(client):
     def create_one(i):
         return client.post("/api/sources", json={"title": f"Quelle {i}", "text": f"Text der Quelle {i}."})
 
+    # Das automatische Warten der client-Fixture (siehe wait_for_background_
+    # threads dort) geht davon aus, dass jeweils nur EIN Aufruf gleichzeitig
+    # läuft (before/after-Schnappschuss auf der geteilten started_threads-
+    # Liste) - bei echter Parallelität hier wäre das racy, und es würde
+    # zusätzlich versehentlich auch die eigenen ThreadPoolExecutor-Worker-
+    # Threads selbst einzusammeln versuchen (die als Pool bestehen bleiben,
+    # nie "fertig" im Sinne des Joins).
+    client.wait_for_background_threads = False
     with concurrent.futures.ThreadPoolExecutor(max_workers=count) as executor:
         responses = list(executor.map(create_one, range(count)))
+    client.wait_for_background_threads = True
 
     assert all(r.status_code == 200 for r in responses)
     titles = {s["title"] for s in client.get("/api/sources").json()}
@@ -5304,7 +5364,14 @@ def test_add_source_stays_in_progress_until_summary_generated(client, monkeypatc
 
     monkeypatch.setattr(summarization, "generate_bilingual_summary", slow_summary)
 
+    # Dieser Test prüft GENAU den Zwischenzustand, während die (hier
+    # absichtlich per release_summary pausierte) Zusammenfassung noch läuft -
+    # das automatische Warten der client-Fixture (siehe dort) auf neu
+    # gestartete Hintergrund-Threads würde genau diesen Zwischenzustand
+    # verdecken, deshalb hier lokal deaktiviert.
+    client.wait_for_background_threads = False
     response = client.post("/api/sources", json={"title": "Quelle", "text": "Ein Text."})
+    client.wait_for_background_threads = True
     data = response.json()
     assert data["processing_status"] == "running"
 
