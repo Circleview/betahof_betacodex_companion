@@ -2947,6 +2947,29 @@ button.send-button {
   font-size: 0.85rem;
 }
 
+/* Nutzerwunsch (2026-09-23): einzelne Variante aus einer Gruppe entfernen,
+   ohne die ganze Gruppe zu ignorieren - bewusst NICHT erst bei :hover
+   sichtbar (auf Touch-Geräten gäbe es dafür kein Äquivalent, das "×" wäre
+   dort nie erreichbar), sondern immer da, nur gedimmt, damit es den
+   Lesefluss nicht dominiert - kräftiger bei :hover/:focus-visible. */
+.term-merge-remove-variant {
+  background: none;
+  border: none;
+  padding: 0 0.15rem;
+  margin-left: 0.1rem;
+  color: var(--color-text-muted);
+  opacity: 0.55;
+  cursor: pointer;
+  font-size: 0.85rem;
+  line-height: 1;
+}
+
+.term-merge-remove-variant:hover,
+.term-merge-remove-variant:focus-visible {
+  opacity: 1;
+  color: var(--color-warning);
+}
+
 .web-allowlist-item {
   padding: 0.85rem 0;
   border-bottom: 1px solid var(--color-border);

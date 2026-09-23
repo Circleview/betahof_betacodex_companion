@@ -765,6 +765,16 @@ function renderTermMergeGroup(group) {
   text.className = 'jobs-list-title';
   li.appendChild(text);
 
+  // Nutzerwunsch (2026-09-23): DE- und EN-Begriffe können sich in der
+  // Schreibweise ähneln, ohne gleich zu sein - eigenes Sprach-Badge pro
+  // Gruppe, damit auf einen Blick klar ist, aus welcher Sprache sie stammt
+  // (gilt für Zielschlagwort UND alle Varianten gleichermaßen, eine Gruppe
+  // wird immer nur innerhalb EINER Sprache gebildet, siehe
+  // get_term_merge_suggestions in app/main.py).
+  const langBadge = document.createElement('span');
+  langBadge.className = 'restricted-badge';
+  langBadge.textContent = group.lang.toUpperCase();
+
   // Nutzerwunsch (2026-09-23): das vorgeschlagene Zielschlagwort ist nur
   // eine KI-Einschätzung - ein Klick auf eines der "schlechten" Schlagworte
   // tauscht dessen Platz mit dem aktuellen Zielschlagwort. Ändert group.
@@ -772,9 +782,12 @@ function renderTermMergeGroup(group) {
   // deleteBtn unten lesen bei jedem Klick den aktuellen Stand von group,
   // der Tausch wirkt sich also unmittelbar auf Zusammenführen/Löschen aus.
   function renderGroupText() {
-    text.replaceChildren(`${group.canonical} ← `);
+    text.replaceChildren(langBadge, ' ', `${group.canonical} ← `);
     group.variants.forEach((variant, index) => {
       if (index > 0) text.append(', ');
+      const variantWrap = document.createElement('span');
+      variantWrap.className = 'term-merge-variant';
+
       const variantBtn = document.createElement('button');
       variantBtn.type = 'button';
       variantBtn.className = 'link-button';
@@ -786,7 +799,34 @@ function renderTermMergeGroup(group) {
         group.variants = group.variants.map((v) => (v === variant ? oldCanonical : v));
         renderGroupText();
       });
-      text.appendChild(variantBtn);
+      variantWrap.appendChild(variantBtn);
+
+      // Nutzerwunsch (2026-09-23): eine Zusammenfassung passt oft
+      // grundsätzlich, nur ein einzelnes Schlagwort in der Gruppe nicht -
+      // eigenes "×" pro Variante entfernt NUR dieses eine, statt die ganze
+      // Gruppe ignorieren zu müssen. Bewusst NICHT erst bei :hover
+      // eingeblendet (auf Touch-Geräten gäbe es dafür kein Äquivalent) -
+      // immer sichtbar, nur dezent gedimmt, per CSS kräftiger bei Hover/
+      // Fokus (siehe .term-merge-remove-variant in style.css).
+      const removeBtn = document.createElement('button');
+      removeBtn.type = 'button';
+      removeBtn.className = 'term-merge-remove-variant';
+      removeBtn.textContent = '×';
+      removeBtn.title = t('import.termMergeRemoveVariantTitle');
+      removeBtn.setAttribute('aria-label', t('import.termMergeRemoveVariantTitle'));
+      removeBtn.addEventListener('click', () => {
+        group.variants = group.variants.filter((v) => v !== variant);
+        // Keine Varianten mehr übrig -> nichts mehr zum Zusammenführen da,
+        // die ganze Zeile verschwindet wie bei "Ignorieren".
+        if (!group.variants.length) {
+          li.remove();
+          return;
+        }
+        renderGroupText();
+      });
+      variantWrap.appendChild(removeBtn);
+
+      text.appendChild(variantWrap);
     });
   }
   renderGroupText();
