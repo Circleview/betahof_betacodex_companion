@@ -4107,12 +4107,16 @@ function buildTermRenameControls(entry, toggle, status) {
   const wrap = document.createElement('span');
   wrap.className = 'term-merge-canonical-wrap';
   const deleteBtn = buildTermDeleteButton(entry, status);
-  wrap.append(toggle, editBtn, deleteBtn, input, suggestions);
+  // Stift + Mülleimer als Einheit, damit sie beim Umbruch nie auseinander
+  // gerissen werden (mobil stehen sie immer unter dem Begriff, siehe CSS).
+  const actions = document.createElement('span');
+  actions.className = 'term-overview-actions';
+  actions.append(editBtn, deleteBtn);
+  wrap.append(toggle, actions, input, suggestions);
 
   function setEditing(editing) {
     toggle.classList.toggle('hidden', editing);
-    editBtn.classList.toggle('hidden', editing);
-    deleteBtn.classList.toggle('hidden', editing);
+    actions.classList.toggle('hidden', editing);
     input.classList.toggle('hidden', !editing);
   }
   editBtn.addEventListener('click', () => {

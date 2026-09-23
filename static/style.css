@@ -4885,6 +4885,7 @@ details a {
    (Aufklapp-Button, ggf. mit Stift/Mülleimer), Balken proportional zur
    Quellenanzahl (relativ zum häufigsten Begriff), Anzahl rechts. */
 .term-overview-summary {
+  --term-arrow-width: 0.7em;
   display: grid;
   /* Feste Breite für die Anzahl (statt max-content), damit Balken und Zahl
      über alle Zeilen hinweg ruhig übereinander stehen - 5.5rem reicht für
@@ -4915,8 +4916,29 @@ details a {
   min-width: 0;
 }
 
+.term-overview-actions {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  vertical-align: middle;
+}
+
+/* Mobil: Stift/Mülleimer immer in eigener Zeile unter dem Begriff, bündig
+   mit dessen Text (Pfeil + Abstand eingerückt) - statt je nach Wortlänge
+   mal daneben, mal darunter zu landen. */
+@media (max-width: 480px) {
+  .term-overview-actions {
+    display: flex;
+    /* Pfeil + 0.5rem Abstand, abzüglich Außenabstand/Innenabstand des
+       Stift-Buttons und des Leerraums im Icon (zusammen ~0.6rem) - so steht
+       das sichtbare Stift-Symbol bündig unter dem ersten Buchstaben. */
+    margin-left: calc(var(--term-arrow-width) - 0.1rem);
+  }
+}
+
 .term-overview-toggle::before {
   content: "▸";
+  width: var(--term-arrow-width);
   color: var(--color-text-muted);
   transition: transform 0.15s ease;
 }
