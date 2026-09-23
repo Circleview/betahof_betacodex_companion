@@ -42,7 +42,7 @@ def _mock_dns_resolution(monkeypatch):
     def fake_getaddrinfo(host, *args, **kwargs):
         return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("93.184.216.34", 0))]
 
-    monkeypatch.setattr(extraction.socket, "getaddrinfo", fake_getaddrinfo)
+    monkeypatch.setattr(extraction, "_getaddrinfo", fake_getaddrinfo)
 
 
 def test_split_authors_handles_common_separators():
@@ -1030,7 +1030,7 @@ def test_assert_safe_url_rejects_unresolvable_hostname(monkeypatch):
     def fake_getaddrinfo(host, *args, **kwargs):
         raise socket.gaierror("nicht auflösbar")
 
-    monkeypatch.setattr(extraction.socket, "getaddrinfo", fake_getaddrinfo)
+    monkeypatch.setattr(extraction, "_getaddrinfo", fake_getaddrinfo)
     with pytest.raises(UnsafeUrlError):
         _assert_safe_url("https://nirgendwo.invalid/artikel")
 
@@ -1050,7 +1050,7 @@ def test_assert_safe_url_rejects_private_and_internal_ips(monkeypatch, ip):
     def fake_getaddrinfo(host, *args, **kwargs):
         return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", (ip, 0))]
 
-    monkeypatch.setattr(extraction.socket, "getaddrinfo", fake_getaddrinfo)
+    monkeypatch.setattr(extraction, "_getaddrinfo", fake_getaddrinfo)
     with pytest.raises(UnsafeUrlError):
         _assert_safe_url(f"http://interne-adresse.example/{ip}")
 
@@ -1064,7 +1064,7 @@ def test_assert_safe_url_rejects_if_any_resolved_ip_is_private(monkeypatch):
             (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("10.0.0.5", 0)),
         ]
 
-    monkeypatch.setattr(extraction.socket, "getaddrinfo", fake_getaddrinfo)
+    monkeypatch.setattr(extraction, "_getaddrinfo", fake_getaddrinfo)
     with pytest.raises(UnsafeUrlError):
         _assert_safe_url("http://mehrfach-aufgeloest.example/artikel")
 
@@ -1077,7 +1077,7 @@ def test_safe_urlopen_blocks_before_reaching_real_urlopen(monkeypatch):
     def fake_getaddrinfo(host, *args, **kwargs):
         return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("127.0.0.1", 0))]
 
-    monkeypatch.setattr(extraction.socket, "getaddrinfo", fake_getaddrinfo)
+    monkeypatch.setattr(extraction, "_getaddrinfo", fake_getaddrinfo)
     with patch("app.extraction.urllib.request.urlopen") as fake_urlopen:
         req = extraction.urllib.request.Request("http://127.0.0.1:6379/")
         with pytest.raises(UnsafeUrlError):
@@ -1089,7 +1089,7 @@ def test_looks_like_pdf_returns_false_for_internal_address(monkeypatch):
     def fake_getaddrinfo(host, *args, **kwargs):
         return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("169.254.169.254", 0))]
 
-    monkeypatch.setattr(extraction.socket, "getaddrinfo", fake_getaddrinfo)
+    monkeypatch.setattr(extraction, "_getaddrinfo", fake_getaddrinfo)
     with patch("app.extraction.urllib.request.urlopen") as fake_urlopen:
         assert looks_like_pdf("http://169.254.169.254/latest/meta-data/") is False
         fake_urlopen.assert_not_called()
@@ -1099,7 +1099,7 @@ def test_download_pdf_bytes_returns_none_for_internal_address(monkeypatch):
     def fake_getaddrinfo(host, *args, **kwargs):
         return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("10.0.0.5", 0))]
 
-    monkeypatch.setattr(extraction.socket, "getaddrinfo", fake_getaddrinfo)
+    monkeypatch.setattr(extraction, "_getaddrinfo", fake_getaddrinfo)
     with patch("app.extraction.urllib.request.urlopen") as fake_urlopen:
         assert download_pdf_bytes("http://10.0.0.5/internes-dokument.pdf") is None
         fake_urlopen.assert_not_called()
@@ -1109,7 +1109,7 @@ def test_download_audio_bytes_returns_none_for_internal_address(monkeypatch):
     def fake_getaddrinfo(host, *args, **kwargs):
         return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("192.168.0.1", 0))]
 
-    monkeypatch.setattr(extraction.socket, "getaddrinfo", fake_getaddrinfo)
+    monkeypatch.setattr(extraction, "_getaddrinfo", fake_getaddrinfo)
     with patch("app.extraction.urllib.request.urlopen") as fake_urlopen:
         assert download_audio_bytes("http://192.168.0.1/internes-audio.mp3") is None
         fake_urlopen.assert_not_called()
@@ -1119,7 +1119,7 @@ def test_extract_from_url_reports_failure_for_internal_address(monkeypatch):
     def fake_getaddrinfo(host, *args, **kwargs):
         return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("169.254.169.254", 0))]
 
-    monkeypatch.setattr(extraction.socket, "getaddrinfo", fake_getaddrinfo)
+    monkeypatch.setattr(extraction, "_getaddrinfo", fake_getaddrinfo)
     with patch("app.extraction.trafilatura.fetch_url") as fake_fetch_url:
         result = extract_from_url("http://169.254.169.254/latest/meta-data/")
 

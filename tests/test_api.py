@@ -294,9 +294,17 @@ def client(tmp_path, monkeypatch):
     # Netzwerkanfrage auslösen. Liefert eine öffentliche Test-IP für JEDEN
     # Hostnamen; Tests, die das SSRF-Schutzverhalten selbst prüfen,
     # überschreiben dieses Mock lokal mit einer privaten/internen IP.
+    # WICHTIG: patcht extraction._getaddrinfo (eigene, separat mockbare
+    # Referenz), NICHT extraction.socket.getaddrinfo direkt - Letzteres wäre
+    # dasselbe geteilte socket-Modul, das auch urllib.request.urlopen()
+    # intern für die ECHTE Verbindung nutzt, und würde dadurch jede in
+    # diesen Tests verwendete (teils frei erfundene, real nicht existierende)
+    # Domain plötzlich auf eine echte IP auflösen und einen echten, an dieser
+    # IP scheiternden/hängenden Verbindungsversuch auslösen (siehe
+    # ausführlicher Kommentar bei _getaddrinfo in app/extraction.py).
     monkeypatch.setattr(
-        extraction.socket,
-        "getaddrinfo",
+        extraction,
+        "_getaddrinfo",
         lambda host, *args, **kwargs: [(2, 1, 6, "", ("93.184.216.34", 0))],
     )
     monkeypatch.setattr(users, "USERS_FILE", tmp_path / "users.json")

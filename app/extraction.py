@@ -60,7 +60,7 @@ def _assert_safe_url(url: str) -> None:
     if not hostname:
         raise UnsafeUrlError(f"Unsichere URL (kein Hostname): {url}")
     try:
-        infos = socket.getaddrinfo(hostname, None)
+        infos = _getaddrinfo(hostname, None)
     except socket.gaierror as exc:
         raise UnsafeUrlError(f"Hostname nicht auflösbar: {hostname}") from exc
     for info in infos:
@@ -79,6 +79,22 @@ def _assert_safe_url(url: str) -> None:
 def _safe_urlopen(req: urllib.request.Request, timeout: float):
     _assert_safe_url(req.full_url)
     return urllib.request.urlopen(req, timeout=timeout)
+
+
+# Eigene, separat mockbare Referenz statt socket.getaddrinfo direkt in
+# _assert_safe_url unten aufzurufen: `socket` ist EIN EINZIGES, geteiltes
+# Modul-Objekt im ganzen Prozess - ein Test, der `extraction.socket.
+# getaddrinfo` monkeypatcht, patcht damit versehentlich auch die INTERNE
+# DNS-Auflösung von urllib.request.urlopen() selbst (das ruft socket.
+# create_connection() -> socket.getaddrinfo() auf) für JEDEN Hostnamen im
+# ganzen Testprozess, nicht nur für diese eine Prüfung. Ein Test mit einer
+# frei erfundenen Domain (z.B. "cdn.example.org", die real gar nicht
+# existiert) würde durch ein solches globales Mock plötzlich eine ECHTE
+# TCP/TLS-Verbindung zu einer falschen, aber uber die gefälschte IP
+# erreichbaren Adresse versuchen (mit nicht passendem Host-Header/SNI) -
+# genau das hat einen CI-Lauf spürbar verlangsamt/zum Hängen gebracht
+# (2026-09-23). Tests patchen deshalb NUR `extraction._getaddrinfo`.
+_getaddrinfo = socket.getaddrinfo
 
 
 def _split_authors(raw: str) -> list[str]:
