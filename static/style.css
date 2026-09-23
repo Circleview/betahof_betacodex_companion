@@ -4851,34 +4851,39 @@ details a {
   grid-column: 1 / -1;
 }
 
-/* Schlagwort-Übersicht (import.html, #schlagworte-bereich): Begriff links,
-   Balken proportional zur Quellenanzahl (relativ zum häufigsten Begriff),
-   Anzahl rechts. */
+/* Schlagwort-Übersicht (import.html, #term-overview): Begriff links
+   (Aufklapp-Button, ggf. mit Stift/Mülleimer), Balken proportional zur
+   Quellenanzahl (relativ zum häufigsten Begriff), Anzahl rechts. */
 .term-overview-summary {
   display: grid;
-  grid-template-columns: max-content minmax(0, 1fr) minmax(3rem, 8rem) max-content;
+  grid-template-columns: minmax(0, 1fr) minmax(3rem, 8rem) max-content;
   align-items: center;
   gap: 0.75rem;
 }
 
-/* display:grid nimmt dem <summary> den nativen Aufklapp-Pfeil - eigener
-   Pfeil als erste Grid-Spalte. */
-.term-overview-summary::-webkit-details-marker {
-  display: none;
+.term-overview-toggle {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  padding: 0;
+  border: none;
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+  overflow-wrap: anywhere;
 }
 
-.term-overview-summary::before {
+.term-overview-toggle::before {
   content: "▸";
   color: var(--color-text-muted);
   transition: transform 0.15s ease;
 }
 
-details[open] > .term-overview-summary::before {
+.term-overview-toggle[aria-expanded="true"]::before {
   transform: rotate(90deg);
-}
-
-.term-overview-name {
-  overflow-wrap: anywhere;
 }
 
 .term-overview-bar {

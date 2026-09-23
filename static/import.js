@@ -2033,6 +2033,9 @@ function attachTagSuggestions(input, options = {}) {
     const otherSegments = multi ? (input.value.slice(0, start) + input.value.slice(end)).split(',') : [];
     const alreadyUsed = new Set(otherSegments.map((s) => normalizeTerm(s)).filter(Boolean));
     const terms = await getKnownTerms();
+    // Feld während des Ladens verlassen (Escape/Wegklicken) - Liste nicht
+    // nachträglich öffnen, der blur-Handler hat sie bereits geschlossen.
+    if (document.activeElement !== input) return;
     const matches = terms
       .filter(
         (te) =>
@@ -4014,12 +4017,12 @@ async function postTermChange(url, body, status, failedKey) {
   } catch {
     status.textContent = t(failedKey);
     status.classList.remove('hidden');
-    status.closest('details').open = true;
+    setTermExpanded(status.closest('li'), true);
     return false;
   }
 }
 
-function buildTermRenameControls(entry, summary, name, status) {
+function buildTermRenameControls(entry, toggle, status) {
   const editBtn = document.createElement('button');
   editBtn.type = 'button';
   editBtn.className = 'icon-button term-merge-edit-canonical';
@@ -4037,22 +4040,14 @@ function buildTermRenameControls(entry, summary, name, status) {
   const wrap = document.createElement('span');
   wrap.className = 'term-merge-canonical-wrap';
   const deleteBtn = buildTermDeleteButton(entry, status);
-  wrap.append(name, editBtn, deleteBtn, input, suggestions);
+  wrap.append(toggle, editBtn, deleteBtn, input, suggestions);
 
   function setEditing(editing) {
-    name.classList.toggle('hidden', editing);
+    toggle.classList.toggle('hidden', editing);
     editBtn.classList.toggle('hidden', editing);
     deleteBtn.classList.toggle('hidden', editing);
     input.classList.toggle('hidden', !editing);
   }
-  // Klicks/Leertaste in Stift, Mülleimer oder Eingabefeld sollen das umgebende
-  // <details> nicht auf-/zuklappen.
-  summary.addEventListener('click', (e) => {
-    // composedPath statt contains: der Mülleimer tauscht sein Icon beim
-    // Klick aus, e.target hängt dann schon nicht mehr im DOM.
-    if (e.composedPath().includes(wrap) && e.target !== name) e.preventDefault();
-  });
-  input.addEventListener('keyup', (e) => e.key === ' ' && e.preventDefault());
   editBtn.addEventListener('click', () => {
     input.value = entry.term;
     setEditing(true);
@@ -4121,16 +4116,33 @@ function buildTermDeleteButton(entry, status) {
   return deleteBtn;
 }
 
+function setTermExpanded(li, expanded) {
+  li.querySelector('.term-overview-toggle').setAttribute('aria-expanded', String(expanded));
+  li.querySelector('.term-overview-panel').hidden = !expanded;
+}
+
+// Bewusst kein <details>/<summary>: Stift und Mülleimer sind eigene Buttons,
+// und interaktive Elemente innerhalb eines <summary> sind per Tastatur/
+// Screenreader nicht verlässlich bedienbar (Chrome-Issue). Stattdessen das
+// Disclosure-Muster - nur der Begriff selbst ist der Aufklapp-Button.
 function buildTermOverviewItem(entry, index, maxCount) {
   const li = document.createElement('li');
   li.dataset.termIndex = String(index);
-  const details = document.createElement('details');
-  const summary = document.createElement('summary');
-  summary.className = 'term-overview-summary';
+  const row = document.createElement('div');
+  row.className = 'term-overview-summary';
 
-  const name = document.createElement('span');
-  name.className = 'term-overview-name';
-  name.textContent = entry.term;
+  const panel = document.createElement('div');
+  panel.className = 'term-overview-panel';
+  panel.id = `term-overview-panel-${index}`;
+  panel.hidden = true;
+
+  const toggle = document.createElement('button');
+  toggle.type = 'button';
+  toggle.className = 'term-overview-name term-overview-toggle';
+  toggle.textContent = entry.term;
+  toggle.setAttribute('aria-expanded', 'false');
+  toggle.setAttribute('aria-controls', panel.id);
+  toggle.addEventListener('click', () => setTermExpanded(li, panel.hidden));
 
   const bar = document.createElement('span');
   bar.className = 'term-overview-bar';
@@ -4146,10 +4158,9 @@ function buildTermOverviewItem(entry, index, maxCount) {
 
   const status = document.createElement('p');
   status.className = 'jobs-list-error hidden';
-  summary.append(name, bar, count);
-  // Der Stift-Wrapper übernimmt name (verschiebt es aus summary) und rückt an dessen Platz.
-  if (hasPflegerRole()) summary.prepend(buildTermRenameControls(entry, summary, name, status));
-  details.appendChild(summary);
+  row.append(toggle, bar, count);
+  // Der Stift-Wrapper übernimmt toggle (verschiebt es aus row) und rückt an dessen Platz.
+  if (hasPflegerRole()) row.prepend(buildTermRenameControls(entry, toggle, status));
 
   const sourceList = document.createElement('ul');
   sourceList.className = 'term-overview-sources';
@@ -4166,9 +4177,9 @@ function buildTermOverviewItem(entry, index, maxCount) {
   filterBtn.className = 'link-button term-overview-filter';
   filterBtn.textContent = t('import.termOverviewFilter');
   filterBtn.addEventListener('click', () => filterByTerm(entry.term));
-  details.append(sourceList, filterBtn, status);
+  panel.append(sourceList, filterBtn, status);
 
-  li.appendChild(details);
+  li.append(row, panel);
   return li;
 }
 
