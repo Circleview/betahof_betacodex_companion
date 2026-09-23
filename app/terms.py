@@ -65,3 +65,21 @@ def list_terms() -> list[dict]:
         for entry in terms.values()
     ]
     return sorted(entries, key=lambda t: t["term"].lower())
+
+
+# Nutzerwunsch (2026-09-22): die automatische KI-Generierung von Schlagworten
+# für neue Quellen soll bereits etablierte Begriffe der Sammlung kennen und
+# bevorzugt wiederverwenden, statt Schreibweisen für dasselbe Thema immer
+# weiter auseinanderlaufen zu lassen (siehe app/summarization.py). Dieselbe
+# Mindest-Vorkommen-Schwelle wie beim Netzwerk-Diagramm (_GRAPH_MIN_TERM_
+# OCCURRENCES in app/main.py) - nur Begriffe, die bereits mehrfach vergeben
+# wurden, sind ein verlässliches Signal für einen echten inhaltlichen
+# Zusammenhang; ein Einzelfund wäre selbst noch kein guter Wiederverwendungs-
+# Kandidat. Hält den Prompt zusätzlich klein (rund 250-300 Begriffe statt der
+# gesamten, viel größeren Rohliste).
+def list_established_terms(lang: str, min_sources: int = 2) -> list[str]:
+    return sorted(
+        entry["term"]
+        for entry in _load().values()
+        if lang in entry.get("langs", []) and len(entry["source_ids"]) >= min_sources
+    )

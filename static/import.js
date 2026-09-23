@@ -2,6 +2,7 @@ import { initI18n, t, getLang } from '/i18n.js';
 import { renderMarkdown } from '/markdown.js';
 import { initAuth, hasRole, onAuthChange } from '/auth.js';
 import { CONVERSATION_STORAGE_KEY, consumeConversationHandoffToken } from '/conversation-handoff.js';
+import { readNdjsonStream } from '/ndjson-stream.js';
 
 const importBereich = document.getElementById('import-bereich');
 const urlPopover = document.getElementById('url-popover');
@@ -729,6 +730,196 @@ document.getElementById('typ-source-suggestions').addEventListener('click', () =
 // als Öffnen/Schließen-Toggle funktionsfähig.
 document.getElementById('source-suggestions-close').addEventListener('click', () => {
   sourceSuggestionsBereich.classList.add('hidden');
+});
+
+// Nutzerwunsch (2026-09-22): bestehende Schlagworte auf inhaltliche Nähe
+// prüfen ("hierarchiefreie Organisationen" vs. "hierarchielose
+// Organisation") und zusammenführen - Analyse startet bewusst erst auf
+// Klick (kostenpflichtiger KI-Aufruf über beide Sprachen), keine Vorschläge
+// werden ohne explizite Bestätigung pro Gruppe angewendet.
+const termMergeBereich = document.getElementById('term-merge-bereich');
+const termMergeList = document.getElementById('term-merge-list');
+const termMergeStatus = document.getElementById('term-merge-status');
+const termMergeEmpty = document.getElementById('term-merge-empty');
+const termMergeAnalyzeBtn = document.getElementById('term-merge-analyze');
+
+document.getElementById('typ-term-merge').addEventListener('click', () => {
+  importBereich.classList.add('hidden');
+  urlPopover.classList.add('hidden');
+  filePopover.classList.add('hidden');
+  webAllowlistBereich.classList.add('hidden');
+  sourceSuggestionsBereich.classList.add('hidden');
+  document.getElementById('jobs-popover').classList.add('hidden');
+  document.getElementById('jobs-bar').classList.add('hidden');
+  closeSearchBar();
+  termMergeBereich.classList.toggle('hidden');
+});
+
+document.getElementById('term-merge-close').addEventListener('click', () => {
+  termMergeBereich.classList.add('hidden');
+});
+
+function renderTermMergeGroup(group) {
+  const li = document.createElement('li');
+  const text = document.createElement('p');
+  text.className = 'jobs-list-title';
+  li.appendChild(text);
+
+  // Nutzerwunsch (2026-09-23): das vorgeschlagene Zielschlagwort ist nur
+  // eine KI-Einschätzung - ein Klick auf eines der "schlechten" Schlagworte
+  // tauscht dessen Platz mit dem aktuellen Zielschlagwort. Ändert group.
+  // canonical/group.variants direkt (nicht nur die Anzeige) - applyBtn/
+  // deleteBtn unten lesen bei jedem Klick den aktuellen Stand von group,
+  // der Tausch wirkt sich also unmittelbar auf Zusammenführen/Löschen aus.
+  function renderGroupText() {
+    text.replaceChildren(`${group.canonical} ← `);
+    group.variants.forEach((variant, index) => {
+      if (index > 0) text.append(', ');
+      const variantBtn = document.createElement('button');
+      variantBtn.type = 'button';
+      variantBtn.className = 'link-button';
+      variantBtn.textContent = variant;
+      variantBtn.title = t('import.termMergeMakeCanonicalTitle');
+      variantBtn.addEventListener('click', () => {
+        const oldCanonical = group.canonical;
+        group.canonical = variant;
+        group.variants = group.variants.map((v) => (v === variant ? oldCanonical : v));
+        renderGroupText();
+      });
+      text.appendChild(variantBtn);
+    });
+  }
+  renderGroupText();
+
+  const status = document.createElement('p');
+  status.className = 'jobs-list-error hidden';
+
+  const actions = document.createElement('div');
+  actions.className = 'web-allowlist-candidate-actions';
+
+  function setRowButtonsDisabled(disabled) {
+    applyBtn.disabled = disabled;
+    ignoreBtn.disabled = disabled;
+    deleteBtn.disabled = disabled;
+  }
+
+  const applyBtn = document.createElement('button');
+  applyBtn.type = 'button';
+  applyBtn.className = 'link-button';
+  applyBtn.textContent = t('import.termMergeApplyButton');
+  applyBtn.addEventListener('click', async () => {
+    setRowButtonsDisabled(true);
+    status.classList.add('hidden');
+    try {
+      const res = await fetch('/api/terms/merge', {
+        method: 'POST',
+        headers: jsonHeaders(),
+        body: JSON.stringify({ lang: group.lang, canonical: group.canonical, variants: group.variants }),
+      });
+      if (!res.ok) throw new Error();
+      li.remove();
+      knownTermsCache = null; // Tag-Vorschläge (attachTagSuggestions) sollen die geänderte Liste sehen.
+    } catch {
+      status.textContent = t('import.termMergeApplyFailed');
+      status.classList.remove('hidden');
+      setRowButtonsDisabled(false);
+    }
+  });
+
+  const ignoreBtn = document.createElement('button');
+  ignoreBtn.type = 'button';
+  ignoreBtn.className = 'link-button';
+  ignoreBtn.textContent = t('import.termMergeIgnoreButton');
+  ignoreBtn.addEventListener('click', () => li.remove());
+
+  // Nutzerwunsch (2026-09-22): eine als Rauschen erkannte Gruppe (z.B.
+  // OCR-Artefakte) lässt sich statt eines Zusammenführens auch komplett
+  // entfernen. Zweistufige Sicherheitsabfrage direkt am Link statt eines
+  // nativen confirm()-Dialogs, analog zum Website-Löschen weiter unten in
+  // dieser Datei - erster Klick wandelt nur den Text um, erst der zweite
+  // Klick löst tatsächlich das Löschen aus. Änderung landet wie beim
+  // Zusammenführen im Änderungs-Log und ist darüber pro Quelle rückgängig
+  // machbar (siehe app/main.py: delete_terms).
+  const deleteBtn = document.createElement('button');
+  deleteBtn.type = 'button';
+  deleteBtn.className = 'link-button';
+  deleteBtn.textContent = t('import.termMergeDeleteButton');
+  let deleteConfirmPending = false;
+  deleteBtn.addEventListener('click', async () => {
+    if (!deleteConfirmPending) {
+      deleteConfirmPending = true;
+      deleteBtn.textContent = t('import.termMergeDeleteConfirmButton');
+      return;
+    }
+    setRowButtonsDisabled(true);
+    status.classList.add('hidden');
+    try {
+      const res = await fetch('/api/terms/delete', {
+        method: 'POST',
+        headers: jsonHeaders(),
+        body: JSON.stringify({ lang: group.lang, terms: [group.canonical, ...group.variants] }),
+      });
+      if (!res.ok) throw new Error();
+      li.remove();
+      knownTermsCache = null;
+    } catch {
+      status.textContent = t('import.termMergeDeleteFailed');
+      status.classList.remove('hidden');
+      deleteConfirmPending = false;
+      deleteBtn.textContent = t('import.termMergeDeleteButton');
+      setRowButtonsDisabled(false);
+    }
+  });
+
+  actions.append(applyBtn, ignoreBtn, deleteBtn);
+  li.append(status, actions);
+  return li;
+}
+
+// Nutzerwunsch (2026-09-22): bei ~1000+ Begriffen je Sprache dauerte ein
+// kompletter Analyse-Durchlauf spürbar - erste Treffer sollen deutlich
+// früher zur Bearbeitung erscheinen, statt bis zum Ende des gesamten
+// Durchlaufs zu warten. /api/terms/merge-suggestions liefert die Treffer
+// deshalb als NDJSON-Stream (Häppchen-weise, siehe app/main.py), gleiches
+// Muster wie /api/ask (static/ndjson-stream.js) - jede Gruppe erscheint
+// sofort, sobald sie ankommt. DE/EN laufen parallel, damit ein langsameres
+// Sprach-Ergebnis das schnellere nicht ausbremst.
+async function streamTermMergeSuggestions(lang, onGroup) {
+  const res = await fetch('/api/terms/merge-suggestions', {
+    method: 'POST',
+    headers: jsonHeaders(),
+    body: JSON.stringify({ lang }),
+  });
+  if (!res.ok) throw new Error();
+  await readNdjsonStream(res, { group: onGroup });
+}
+
+termMergeAnalyzeBtn.addEventListener('click', async () => {
+  // Nutzerwunsch (2026-09-23): "Wird analysiert..." steht im ausgegrauten
+  // Button selbst, wie bei den anderen Aktions-Buttons (z.B. submitBtn im
+  // Bearbeiten-Formular), statt in einem separaten Statustext daneben.
+  termMergeAnalyzeBtn.disabled = true;
+  termMergeAnalyzeBtn.textContent = t('import.termMergeAnalyzing');
+  termMergeStatus.textContent = '';
+  termMergeEmpty.classList.add('hidden');
+  termMergeList.innerHTML = '';
+  let anyGroup = false;
+  try {
+    await Promise.all(
+      ['de', 'en'].map((lang) =>
+        streamTermMergeSuggestions(lang, (group) => {
+          anyGroup = true;
+          termMergeList.appendChild(renderTermMergeGroup(group));
+        })
+      )
+    );
+    if (!anyGroup) termMergeEmpty.classList.remove('hidden');
+  } catch {
+    termMergeStatus.textContent = t('import.termMergeAnalyzeFailed');
+  } finally {
+    termMergeAnalyzeBtn.disabled = false;
+    termMergeAnalyzeBtn.textContent = t('import.termMergeAnalyzeButton');
+  }
 });
 
 // Rumpf des #popover-load-Klick-Handlers (Extraktion + Formular-Befüllung),

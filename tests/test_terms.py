@@ -87,3 +87,27 @@ def test_list_terms_sorted_alphabetically(tmp_path, monkeypatch):
 
     result = terms.list_terms()
     assert [t["term"] for t in result] == ["Anders Unternehmen", "Zelle"]
+
+
+def test_list_established_terms_excludes_single_source_terms(tmp_path, monkeypatch):
+    # Nutzerwunsch (2026-09-22): nur mehrfach vergebene Begriffe sind ein
+    # verlässliches Wiederverwendungs-Signal für die automatische
+    # Schlagwort-Generierung (app/summarization.py) - ein Einzelfund bleibt
+    # außen vor, dieselbe Schwelle wie beim Netzwerk-Diagramm.
+    _isolate(tmp_path, monkeypatch)
+
+    terms.register_term("Selbstorganisation", "s1", "de")
+    terms.register_term("Selbstorganisation", "s2", "de")
+    terms.register_term("Einzelfund", "s1", "de")
+
+    assert terms.list_established_terms("de") == ["Selbstorganisation"]
+
+
+def test_list_established_terms_filters_by_language(tmp_path, monkeypatch):
+    _isolate(tmp_path, monkeypatch)
+
+    terms.register_term("Agility", "s1", "en")
+    terms.register_term("Agility", "s2", "en")
+
+    assert terms.list_established_terms("de") == []
+    assert terms.list_established_terms("en") == ["Agility"]

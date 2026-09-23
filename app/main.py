@@ -88,7 +88,11 @@ from app.models import (
     SourceSuggestionOut,
     SpeechIn,
     SummaryOut,
+    TermMergeIn,
+    TermMergeOut,
+    TermMergeSuggestionsIn,
     TermOut,
+    TermsDeleteIn,
     TurnstileConfigOut,
     UpdateUserNameIn,
     UrlCheckOut,
@@ -597,12 +601,18 @@ SUMMARY_RETRY_DELAY_SECONDS = 5
 
 
 def _generate_summary_with_retries(text: str) -> dict:
-    result = summarization.generate_bilingual_summary(text)
+    # Nutzerwunsch (2026-09-22): bereits etablierte Schlagworte der Sammlung
+    # (mind. 2 Quellen, siehe terms.list_established_terms) fließen in die
+    # Generierung ein, damit das Modell einen passenden vorhandenen Begriff
+    # bevorzugt statt eine neue Formulierung fürs selbe Thema zu erfinden.
+    known_terms_de = terms.list_established_terms("de")
+    known_terms_en = terms.list_established_terms("en")
+    result = summarization.generate_bilingual_summary(text, known_terms_de, known_terms_en)
     for attempt in range(1, SUMMARY_RETRY_ATTEMPTS):
         if result["de"]["summary"] or result["en"]["summary"]:
             break
         time.sleep(SUMMARY_RETRY_DELAY_SECONDS)
-        result = summarization.generate_bilingual_summary(text)
+        result = summarization.generate_bilingual_summary(text, known_terms_de, known_terms_en)
     return result
 
 
@@ -2433,13 +2443,139 @@ def generate_key_terms_preview_endpoint(
     # NICHTS - Persistierung passiert wie gewohnt erst über den bestehenden
     # PUT-/api/sources/{id}-Weg. Analog zu /api/authors/generate-bio-preview.
     lang = x_lang if x_lang in ("de", "en") else i18n.DEFAULT_LANG
-    key_terms = summarization.extract_key_terms(payload.text, lang)
+    key_terms = summarization.extract_key_terms(payload.text, lang, terms.list_established_terms(lang))
     return KeyTermsOut(key_terms=key_terms)
 
 
 @app.get("/api/terms", response_model=list[TermOut])
 def list_terms():
     return terms.list_terms()
+
+
+# Nutzerwunsch (2026-09-22): ein einzelner Analyse-Durchlauf über die
+# komplette Begriffsliste einer Sprache (bei ~1000+ Begriffen) ließ die
+# Quellen-Pfleger:in lange auf JEDES Ergebnis warten, bevor überhaupt mit dem
+# Bearbeiten begonnen werden konnte. Läuft jetzt in alphabetisch sortierten
+# Häppchen (dieselbe Sortierung wie ohnehin in find_similar_term_groups) -
+# jeder Häppchen-Treffer wird sofort per NDJSON-Stream (gleiches Muster wie
+# /api/ask) an die Oberfläche geschickt, statt auf den gesamten Durchlauf zu
+# warten. ponytail: ein Varianten-Paar, das zufällig über eine Häppchen-
+# Grenze fällt (z.B. "Agility" ganz am Ende eines Häppchens, "Agilität" ganz
+# am Anfang des nächsten), wird dadurch nicht gefunden - bei ähnlich
+# geschriebenen Begriffen (der Regelfall: Tippfehler, Singular/Plural,
+# Wortbildung) liegen beide durch die alphabetische Sortierung fast immer im
+# selben oder einem benachbarten Häppchen. Add when: ein realer verpasster
+# Fall das zeigt, dann echtes Cross-Häppchen-Matching (z.B. mit Überlappung
+# an den Häppchen-Grenzen) nachrüsten.
+_TERM_MERGE_BATCH_SIZE = 150
+
+
+def _term_merge_suggestions_stream(lang: str, term_list: list[str]):
+    for i in range(0, len(term_list), _TERM_MERGE_BATCH_SIZE):
+        batch = term_list[i : i + _TERM_MERGE_BATCH_SIZE]
+        for group in summarization.find_similar_term_groups(batch, lang):
+            yield json.dumps(
+                {"type": "group", "lang": lang, "canonical": group["canonical"], "variants": group["variants"]}
+            ) + "\n"
+    yield json.dumps({"type": "done"}) + "\n"
+
+
+# Bewusst zweigeteilt (Vorschlag vs. Anwenden, siehe /api/terms/merge unten)
+# statt automatischem Sofort-Merge - ein fälschlich erkanntes "Synonym"
+# würde sonst unbemerkt zwei unterschiedliche Konzepte vermischen, eine
+# Quellen-Pfleger:in bestätigt deshalb jede Gruppe einzeln, bevor irgendetwas
+# an den Quellen geändert wird.
+@app.post("/api/terms/merge-suggestions")
+def get_term_merge_suggestions(
+    payload: TermMergeSuggestionsIn,
+    _user: str = Depends(require_role(users.QUELLEN_PFLEGER)),
+):
+    lang = payload.lang if payload.lang in ("de", "en") else "de"
+    term_strings = [entry["term"] for entry in terms.list_terms() if lang in entry["langs"]]
+    return StreamingResponse(
+        _term_merge_suggestions_stream(lang, term_strings), media_type="application/x-ndjson"
+    )
+
+
+@app.post("/api/terms/merge", response_model=TermMergeOut)
+def merge_terms(
+    payload: TermMergeIn,
+    _user: str = Depends(require_role(users.QUELLEN_PFLEGER)),
+    x_lang: str = Header(default=i18n.DEFAULT_LANG),
+):
+    lang = payload.lang if payload.lang in ("de", "en") else "de"
+    field = f"key_terms_{lang}"
+    canonical = payload.canonical.strip()
+    variant_set = {v.strip() for v in payload.variants if v and v.strip()} - {canonical}
+    if not canonical or not variant_set:
+        raise HTTPException(400, i18n.get_message("term_merge_invalid", x_lang))
+
+    with _sources_write_lock:
+        sources = _load_sources()
+        # Nutzerwunsch (2026-09-22): dieselbe Feld-Diff-Protokollierung wie
+        # bei jeder anderen Quellen-Änderung (siehe update_source/
+        # generate_source_summary) - jede betroffene Quelle bekommt einen
+        # eigenen Änderungs-Log-Eintrag, dadurch ist ein fälschlich
+        # zusammengeführtes Begriffspaar über den bestehenden
+        # POST /api/audit-log/{id}/revert-Weg gezielt pro Quelle rückgängig
+        # zu machen - keine eigene Undo-Logik nötig.
+        touched = []
+        for source_id, entry in sources.items():
+            current = entry.get(field) or []
+            if not any(t in variant_set for t in current):
+                continue
+            merged: list[str] = []
+            for term in current:
+                replacement = canonical if term in variant_set else term
+                if replacement not in merged:
+                    merged.append(replacement)
+            touched.append((source_id, entry.get("title", source_id), list(current), merged))
+            entry[field] = merged
+        if touched:
+            _save_sources(sources)
+
+    for source_id, title, before_terms, after_terms in touched:
+        _register_all_terms(source_id, sources[source_id])
+        audit.log_change(_user, "terms_merged", "source", source_id, title, {field: {"old": before_terms, "new": after_terms}})
+
+    return TermMergeOut(affected_sources=len(touched))
+
+
+@app.post("/api/terms/delete", response_model=TermMergeOut)
+def delete_terms(
+    payload: TermsDeleteIn,
+    _user: str = Depends(require_role(users.QUELLEN_PFLEGER)),
+    x_lang: str = Header(default=i18n.DEFAULT_LANG),
+):
+    # Nutzerwunsch (2026-09-22): eine als Rauschen erkannte Gruppe (z.B.
+    # OCR-Artefakte) soll sich statt eines Zusammenführens auch komplett
+    # entfernen lassen - entfernt jeden gegebenen Begriff ersatzlos aus
+    # key_terms_{lang} jeder betroffenen Quelle. Gleiches Protokoll-/Revert-
+    # Prinzip wie merge_terms oben.
+    lang = payload.lang if payload.lang in ("de", "en") else "de"
+    field = f"key_terms_{lang}"
+    to_delete = {t.strip() for t in payload.terms if t and t.strip()}
+    if not to_delete:
+        raise HTTPException(400, i18n.get_message("term_merge_invalid", x_lang))
+
+    with _sources_write_lock:
+        sources = _load_sources()
+        touched = []
+        for source_id, entry in sources.items():
+            current = entry.get(field) or []
+            if not any(t in to_delete for t in current):
+                continue
+            remaining = [t for t in current if t not in to_delete]
+            touched.append((source_id, entry.get("title", source_id), list(current), remaining))
+            entry[field] = remaining
+        if touched:
+            _save_sources(sources)
+
+    for source_id, title, before_terms, after_terms in touched:
+        _register_all_terms(source_id, sources[source_id])
+        audit.log_change(_user, "terms_deleted", "source", source_id, title, {field: {"old": before_terms, "new": after_terms}})
+
+    return TermMergeOut(affected_sources=len(touched))
 
 
 @app.post("/api/auth/request-link", response_model=MessageOut)
@@ -3229,7 +3365,9 @@ def generate_source_summary(
     # generate_bilingual_summary ist der langsame KI-Aufruf - die Momentaufnahme
     # von oben deshalb NICHT für den späteren Schreibvorgang wiederverwenden
     # (siehe _sources_write_lock-Kommentar), sondern direkt davor neu einlesen.
-    result = summarization.generate_bilingual_summary(text)
+    result = summarization.generate_bilingual_summary(
+        text, terms.list_established_terms("de"), terms.list_established_terms("en")
+    )
     with _sources_write_lock:
         sources = _load_sources()
         if _source_is_missing(sources, source_id):

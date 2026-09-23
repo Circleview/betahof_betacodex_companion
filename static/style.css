@@ -2911,6 +2911,18 @@ button.send-button {
   margin-bottom: 2rem;
 }
 
+/* Nutzerwunsch (2026-09-22): gleicher dünner grauer Rahmen wie bei den
+   anderen Zusatzfunktions-Bereichen oben (#web-allowlist-bereich/
+   #source-suggestions-bereich), gleiches Muster - eigenes Schließen-Kreuz
+   oben rechts wie beim Quellen-Vorschläge-Panel. */
+#term-merge-bereich {
+  position: relative;
+  padding: 1.5rem 2.5rem 1.5rem 1.5rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  margin-bottom: 2rem;
+}
+
 .web-allowlist-hint {
   color: var(--color-text-muted);
   font-size: 0.85rem;
@@ -2922,6 +2934,17 @@ button.send-button {
   margin: 1.5rem 0 0;
   padding: 1.5rem 0 0;
   border-top: 1px solid var(--color-border);
+}
+
+/* Nutzerwunsch (2026-09-22): Aktions-Links im Ähnliche-Schlagworte-Panel
+   (Zusammenführen/Ignorieren/Löschen) in derselben Sekundärtext-Größe wie
+   .jobs-list-error/.web-allowlist-hint direkt daneben - keine neue
+   "Zwischengröße" erfinden, 0.85rem ist bereits der etablierte Wert für
+   genau diese Art Begleittext. Bewusst auf #term-merge-list beschränkt,
+   .web-allowlist-candidate-actions/.link-button wird auch anderswo (Quellen-
+   Vorschläge) unverändert in normaler Textgröße verwendet. */
+#term-merge-list .link-button {
+  font-size: 0.85rem;
 }
 
 .web-allowlist-item {
@@ -3600,7 +3623,8 @@ button.send-button {
   .quellen-liste-body--author-filtered #search-bar,
   .quellen-liste-body--author-filtered #import-bereich,
   .quellen-liste-body--author-filtered #web-allowlist-bereich,
-  .quellen-liste-body--author-filtered #source-suggestions-bereich {
+  .quellen-liste-body--author-filtered #source-suggestions-bereich,
+  .quellen-liste-body--author-filtered #term-merge-bereich {
     order: -1;
     flex-basis: 100%;
   }

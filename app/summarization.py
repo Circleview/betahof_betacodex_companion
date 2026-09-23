@@ -2,6 +2,16 @@ import anthropic
 
 MODEL_NAME = "claude-haiku-4-5-20251001"
 
+# Nutzerwunsch (2026-09-22): einmalige, von Quellen-Pfleger:innen angestoßene
+# Analyse vorhandener Schlagworte auf inhaltliche Nähe (z.B. "hierarchiefreie
+# Organisationen" vs. "hierarchielose Organisation") - anders als die
+# häufigen, günstigen Zusammenfassungs-Aufrufe (Haiku) braucht dieser
+# seltene, aber folgenreiche Abwägungs-Schritt (ein falsch erkanntes
+# "Synonym" würde zwei unterschiedliche Konzepte vermischen) das bessere
+# Modell, wie schon beim ersten Kreativ-Entwurf (siehe app/llm.py,
+# CREATIVE_FIRST_DRAFT_MODEL).
+MERGE_SUGGESTIONS_MODEL = "claude-sonnet-5"
+
 SYSTEM_PROMPTS = {
     "de": """Du erstellst eine sachliche Zusammenfassung von ungefähr 120 Wörtern für den folgenden Text und rufst dafür das bereitgestellte Werkzeug auf.
 
@@ -75,6 +85,52 @@ _KEY_TERMS_TOOL = {
     },
 }
 
+_MERGE_SUGGESTIONS_TOOL = {
+    "name": "provide_merge_suggestions",
+    "description": "Liefert Gruppen von Schlagworten, die dasselbe Konzept bezeichnen.",
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "groups": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "canonical": {
+                            "type": "string",
+                            "description": "Einer der gegebenen Begriffe, unverändert übernommen - kein neu formulierter Begriff.",
+                        },
+                        "variants": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "Andere gegebene Begriffe, die durch 'canonical' ersetzt werden sollen.",
+                        },
+                    },
+                    "required": ["canonical", "variants"],
+                },
+            },
+        },
+        "required": ["groups"],
+    },
+}
+
+MERGE_SUGGESTIONS_SYSTEM_PROMPTS = {
+    "de": """Du bekommst eine Liste von Schlagworten aus einer kuratierten Quellensammlung, einen pro Zeile. Finde Gruppen von mindestens zwei Begriffen, die dasselbe inhaltliche Konzept bezeichnen, sich aber in Schreibweise oder Formulierung unterscheiden (z.B. Singular/Plural, unterschiedliche Wortbildung wie "hierarchiefrei" vs. "hierarchielos", Bindestrich-/Leerzeichen-Varianten, Abkürzung vs. ausgeschriebene Form).
+
+Rufe das bereitgestellte Werkzeug auf. Für jede Gruppe:
+- "canonical": EINER der gegebenen Begriffe unverändert (die klarste/gebräuchlichste Schreibweise) - erfinde keine neue Formulierung.
+- "variants": die ÜBRIGEN Begriffe derselben Gruppe (nicht den canonical-Begriff selbst).
+
+Nimm eine Gruppe nur auf, wenn du wirklich sicher bist, dass es dasselbe Konzept ist - im Zweifel lieber weglassen, als zwei unterschiedliche Themen fälschlich zusammenzulegen. Begriffe, für die es keine passende Gruppe gibt, einfach nicht erwähnen.""",
+    "en": """You receive a list of tags from a curated source collection, one per line. Find groups of two or more terms that refer to the same underlying concept but differ in spelling or phrasing (e.g. singular/plural, different word formation, hyphen/space variants, abbreviation vs. spelled-out form).
+
+Call the provided tool. For each group:
+- "canonical": ONE of the given terms, unchanged (the clearest/most common spelling) - do not invent new wording.
+- "variants": the OTHER terms in the same group (not the canonical term itself).
+
+Only include a group when you are genuinely confident it's the same concept - when in doubt, leave it out rather than wrongly merging two distinct topics. Terms with no matching group simply don't need to be mentioned.""",
+}
+
 _BILINGUAL_SUMMARY_TOOL = {
     "name": "provide_bilingual_summary",
     "description": "Liefert die zweisprachige Zusammenfassung und Schlagworte für den Text.",
@@ -96,6 +152,27 @@ def _get_client() -> anthropic.Anthropic:
     if _client is None:
         _client = anthropic.Anthropic()
     return _client
+
+
+# Nutzerwunsch (2026-09-22): vorhandene Schlagworte der Sammlung sollen bei
+# der automatischen Generierung neuer Schlagworte einfließen, damit sich
+# Schreibweisen für dasselbe Thema nicht immer weiter auseinanderentwickeln
+# und inhaltliche Zusammenhänge (die z.B. das Netzwerk-Diagramm zeigt) nicht
+# durch bloße Formulierungsunterschiede übersehen werden. Reine Textliste im
+# Prompt statt z.B. eines eigenen Tool-Parameters - das Modell soll die
+# Begriffe wie zusätzliches Wissen abwägen, nicht stur draus auswählen
+# müssen (ein wirklich neues Thema soll weiterhin einen neuen Begriff
+# bekommen dürfen).
+def _known_terms_instruction(known_terms_by_lang: dict[str, list[str]]) -> str:
+    parts = [f"{lang}: {', '.join(terms)}" for lang, terms in known_terms_by_lang.items() if terms]
+    if not parts:
+        return ""
+    return (
+        "\n\nBereits vorhandene Schlagworte, die schon an anderer Stelle in der Sammlung "
+        "verwendet werden (bevorzugt einen passenden davon wiederverwenden, statt eine neue "
+        "Formulierung für dasselbe Konzept zu erfinden - nur einen neuen Begriff prägen, wenn "
+        "wirklich keiner davon passt):\n" + "\n".join(parts)
+    )
 
 
 def _call_tool(system_prompt: str, tool: dict, content: str) -> dict | None:
@@ -138,9 +215,14 @@ def generate_summary(text: str, lang: str = DEFAULT_LANG) -> dict:
         return {"summary": "", "key_terms": []}
 
 
-def _call_bilingual_summary_tool(text: str) -> dict | None:
+def _call_bilingual_summary_tool(
+    text: str, known_terms_de: list[str] | None = None, known_terms_en: list[str] | None = None
+) -> dict | None:
+    system_prompt = BILINGUAL_SYSTEM_PROMPT + _known_terms_instruction(
+        {"Deutsch": known_terms_de or [], "Englisch": known_terms_en or []}
+    )
     try:
-        data = _call_tool(BILINGUAL_SYSTEM_PROMPT, _BILINGUAL_SUMMARY_TOOL, text[:MAX_INPUT_CHARS])
+        data = _call_tool(system_prompt, _BILINGUAL_SUMMARY_TOOL, text[:MAX_INPUT_CHARS])
         if not data:
             return None
         return {
@@ -157,13 +239,15 @@ def _call_bilingual_summary_tool(text: str) -> dict | None:
         return None
 
 
-def generate_bilingual_summary(text: str) -> dict:
+def generate_bilingual_summary(
+    text: str, known_terms_de: list[str] | None = None, known_terms_en: list[str] | None = None
+) -> dict:
     text = text.strip()
     empty = {"de": {"summary": "", "key_terms": []}, "en": {"summary": "", "key_terms": []}}
     if not text:
         return empty
 
-    result = _call_bilingual_summary_tool(text)
+    result = _call_bilingual_summary_tool(text, known_terms_de, known_terms_en)
     # Vereinzelt liefert das Modell in einem Aufruf zwar eine valide
     # Tool-Antwort, lässt darin aber eine der beiden (laut Schema
     # verpflichtenden) Sprachen leer, während die andere korrekt gefüllt ist
@@ -172,7 +256,7 @@ def generate_bilingual_summary(text: str) -> dict:
     # demselben Text sofort eine vollständige deutsche Zusammenfassung
     # lieferte. Ein einziger Retry behebt das in der Praxis zuverlässig.
     if result and (not result["de"]["summary"] or not result["en"]["summary"]):
-        retry = _call_bilingual_summary_tool(text)
+        retry = _call_bilingual_summary_tool(text, known_terms_de, known_terms_en)
         if retry:
             result = retry
     return result or empty
@@ -217,7 +301,7 @@ def translate_summary(text: str, target_lang: str = DEFAULT_LANG) -> str:
         return ""
 
 
-def extract_key_terms(text: str, lang: str = DEFAULT_LANG) -> list[str]:
+def extract_key_terms(text: str, lang: str = DEFAULT_LANG, known_terms: list[str] | None = None) -> list[str]:
     """Leitet NUR Schlagworte aus einem bereits vorhandenen (ggf. von Hand
     überarbeiteten) Zusammenfassungstext ab, ohne die Zusammenfassung selbst
     neu zu erzeugen - Backlog: die Begriffsliste soll auch dann mit einer
@@ -230,13 +314,61 @@ def extract_key_terms(text: str, lang: str = DEFAULT_LANG) -> list[str]:
     if not text:
         return []
 
+    system_prompt = KEY_TERMS_SYSTEM_PROMPTS[lang] + _known_terms_instruction({lang: known_terms or []})
     try:
-        data = _call_tool(KEY_TERMS_SYSTEM_PROMPTS[lang], _KEY_TERMS_TOOL, text[:MAX_INPUT_CHARS])
+        data = _call_tool(system_prompt, _KEY_TERMS_TOOL, text[:MAX_INPUT_CHARS])
         if not data:
             return []
         return [t.strip() for t in data.get("key_terms") or [] if t and t.strip()]
     except Exception:
         return []
+
+
+def find_similar_term_groups(term_list: list[str], lang: str = DEFAULT_LANG) -> list[dict]:
+    """Analysiert eine Liste bereits vorhandener Schlagworte auf inhaltliche
+    Nähe (Nutzerwunsch 2026-09-22, z.B. "hierarchiefreie Organisationen" vs.
+    "hierarchielose Organisation") und schlägt pro erkannter Gruppe einen
+    kanonischen Begriff vor, auf den die übrigen Varianten zusammengeführt
+    werden sollen. Reine Vorschlagsliste - wendet nichts an, das passiert
+    erst über einen expliziten, von einer Quellen-Pfleger:in bestätigten
+    zweiten Schritt (siehe /api/terms/merge in app/main.py)."""
+    lang = lang if lang in MERGE_SUGGESTIONS_SYSTEM_PROMPTS else DEFAULT_LANG
+    term_list = sorted({t.strip() for t in term_list if t and t.strip()})
+    if len(term_list) < 2:
+        return []
+
+    client = _get_client()
+    try:
+        message = client.messages.create(
+            model=MERGE_SUGGESTIONS_MODEL,
+            max_tokens=4000,
+            system=MERGE_SUGGESTIONS_SYSTEM_PROMPTS[lang],
+            tools=[_MERGE_SUGGESTIONS_TOOL],
+            tool_choice={"type": "tool", "name": _MERGE_SUGGESTIONS_TOOL["name"]},
+            messages=[{"role": "user", "content": "\n".join(term_list)}],
+        )
+    except Exception:
+        return []
+
+    known_terms = set(term_list)
+    groups = []
+    for block in message.content:
+        if block.type != "tool_use":
+            continue
+        for group in block.input.get("groups") or []:
+            canonical = (group.get("canonical") or "").strip()
+            # Nur Begriffe akzeptieren, die tatsächlich in der Eingabe standen
+            # - schützt gegen ein vom Modell trotz Anweisung neu formuliertes
+            # "canonical" sowie gegen halluzinierte Varianten.
+            if canonical not in known_terms:
+                continue
+            variants = sorted(
+                {v.strip() for v in group.get("variants") or [] if v and v.strip() in known_terms and v.strip() != canonical}
+            )
+            if variants:
+                groups.append({"canonical": canonical, "variants": variants})
+        break
+    return groups
 
 
 def generate_author_bio(name: str, texts: list[str], lang: str = DEFAULT_LANG) -> str:

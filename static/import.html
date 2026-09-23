@@ -166,6 +166,16 @@
             <path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-3.5 10.9c.6.4 1 .8 1 1.6h5c0-.8.4-1.2 1-1.6A6 6 0 0 0 12 3Z"></path>
           </svg>
         </button>
+        <!-- Nutzerwunsch (2026-09-22): bestehende Schlagworte auf inhaltliche
+             Nähe prüfen und zusammenführen lassen (z.B. "hierarchiefreie
+             Organisationen" vs. "hierarchielose Organisation"), damit
+             Schreibweisen nicht immer weiter auseinanderlaufen. -->
+        <button type="button" id="typ-term-merge" class="circle-button circle-button--sm" data-i18n-title="import.termMergeTitle">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="9" cy="12" r="6"></circle>
+            <circle cx="15" cy="12" r="6"></circle>
+          </svg>
+        </button>
       </div>
       <div class="sort-toolbar">
         <button type="button" id="sort-author" class="sort-button active" data-i18n-title="import.sortByAuthor">
@@ -320,6 +330,24 @@
       <h3 data-i18n="import.sourceSuggestionsHeading"></h3>
       <p id="source-suggestions-empty" class="web-allowlist-hint hidden" data-i18n="import.sourceSuggestionsEmpty"></p>
       <ul id="source-suggestions-list"></ul>
+    </div>
+    <!-- Nutzerwunsch (2026-09-22): siehe typ-term-merge oben. Analyse läuft
+         erst auf Klick (kostenpflichtiger KI-Aufruf), Vorschläge müssen
+         einzeln bestätigt werden, bevor irgendetwas an den Quellen geändert
+         wird. -->
+    <div id="term-merge-bereich" class="web-allowlist-panel hidden">
+      <button type="button" id="term-merge-close" class="jobs-bar-close" data-i18n-title="import.closeButtonTitle">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="18" y1="6" x2="6" y2="18"></line>
+          <line x1="6" y1="6" x2="18" y2="18"></line>
+        </svg>
+      </button>
+      <h3 data-i18n="import.termMergeHeading"></h3>
+      <p class="web-allowlist-hint" data-i18n="import.termMergeIntro"></p>
+      <button type="button" id="term-merge-analyze" class="send-button" data-i18n="import.termMergeAnalyzeButton"></button>
+      <p id="term-merge-status" class="edit-status"></p>
+      <p id="term-merge-empty" class="web-allowlist-hint hidden" data-i18n="import.termMergeEmpty"></p>
+      <ul id="term-merge-list"></ul>
     </div>
     <div id="alphabet-jump-bar" class="alphabet-jump-bar hidden"></div>
     <ul id="source-list"></ul>

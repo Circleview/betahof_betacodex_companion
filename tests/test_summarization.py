@@ -118,6 +118,35 @@ def test_generate_bilingual_summary_returns_tool_result():
     }
 
 
+def test_generate_bilingual_summary_includes_known_terms_in_prompt():
+    # Nutzerwunsch (2026-09-22): bereits etablierte Schlagworte der Sammlung
+    # sollen in die Generierung einfließen, damit das Modell einen
+    # passenden vorhandenen Begriff bevorzugt statt eine neue Formulierung
+    # fürs selbe Thema zu erfinden.
+    client = _fake_tool_client(
+        {"summary_de": "d", "summary_en": "e", "key_terms_de": ["x"], "key_terms_en": ["y"]}
+    )
+    with patch.object(summarization, "_get_client", return_value=client):
+        summarization.generate_bilingual_summary(
+            "Quelltext.", known_terms_de=["Selbstorganisation"], known_terms_en=["Self-organization"]
+        )
+
+    system_prompt = client.messages.create.call_args.kwargs["system"]
+    assert "Selbstorganisation" in system_prompt
+    assert "Self-organization" in system_prompt
+
+
+def test_generate_bilingual_summary_omits_known_terms_instruction_when_none_given():
+    client = _fake_tool_client(
+        {"summary_de": "d", "summary_en": "e", "key_terms_de": ["x"], "key_terms_en": ["y"]}
+    )
+    with patch.object(summarization, "_get_client", return_value=client):
+        summarization.generate_bilingual_summary("Quelltext.")
+
+    system_prompt = client.messages.create.call_args.kwargs["system"]
+    assert "vorhandene Schlagworte" not in system_prompt
+
+
 def test_generate_bilingual_summary_handles_quotes_in_summary_text():
     summary_with_quotes = 'Bezieht sich auf "Dynamic Administration" von Mary Parker Follett.'
     client = _fake_tool_client(
@@ -247,6 +276,16 @@ def test_extract_key_terms_returns_tool_result():
     assert result == ["BetaCodex", "Dezentralisierung"]
 
 
+def test_extract_key_terms_includes_known_terms_in_prompt():
+    client = _fake_tool_client({"key_terms": ["Selbstorganisation"]})
+    with patch.object(summarization, "_get_client", return_value=client):
+        summarization.extract_key_terms("Text.", known_terms=["Selbstorganisation", "Agilität"])
+
+    system_prompt = client.messages.create.call_args.kwargs["system"]
+    assert "Selbstorganisation" in system_prompt
+    assert "Agilität" in system_prompt
+
+
 def test_extract_key_terms_returns_empty_when_no_tool_use_block():
     block = MagicMock()
     block.type = "text"
@@ -368,3 +407,74 @@ def test_translate_summary_defaults_to_german_for_unknown_target_lang():
         summarization.translate_summary("Text.", target_lang="fr")
 
     assert client.messages.create.call_args.kwargs["system"] == summarization.TRANSLATE_SYSTEM_PROMPTS["de"]
+
+
+def _fake_merge_groups_client(groups):
+    block = MagicMock()
+    block.type = "tool_use"
+    block.input = {"groups": groups}
+    client = MagicMock()
+    client.messages.create.return_value.content = [block]
+    return client
+
+
+def test_find_similar_term_groups_returns_groups():
+    client = _fake_merge_groups_client(
+        [{"canonical": "Selbstorganisation", "variants": ["Selbstorganisierung"]}]
+    )
+    with patch.object(summarization, "_get_client", return_value=client):
+        result = summarization.find_similar_term_groups(
+            ["Selbstorganisation", "Selbstorganisierung", "Agilität"], "de"
+        )
+
+    assert result == [{"canonical": "Selbstorganisation", "variants": ["Selbstorganisierung"]}]
+
+
+def test_find_similar_term_groups_drops_hallucinated_canonical():
+    # Der Prompt weist das Modell an, "canonical" unverändert aus der
+    # Eingabe zu übernehmen - hält es sich nicht daran (neu formulierter
+    # Begriff, der gar nicht in der Liste stand), wird die Gruppe verworfen,
+    # statt einen Begriff einzuführen, der in keiner Quelle je vorkam.
+    client = _fake_merge_groups_client(
+        [{"canonical": "Erfundener Begriff", "variants": ["Agilität"]}]
+    )
+    with patch.object(summarization, "_get_client", return_value=client):
+        result = summarization.find_similar_term_groups(["Agilität", "Selbstorganisation"], "de")
+
+    assert result == []
+
+
+def test_find_similar_term_groups_drops_hallucinated_variants_and_empty_groups():
+    client = _fake_merge_groups_client(
+        [{"canonical": "Agilität", "variants": ["Nicht in der Liste"]}]
+    )
+    with patch.object(summarization, "_get_client", return_value=client):
+        result = summarization.find_similar_term_groups(["Agilität", "Selbstorganisation"], "de")
+
+    assert result == []
+
+
+def test_find_similar_term_groups_returns_empty_for_fewer_than_two_terms():
+    client = MagicMock()
+    with patch.object(summarization, "_get_client", return_value=client):
+        result = summarization.find_similar_term_groups(["Nur einer"], "de")
+
+    assert result == []
+    client.messages.create.assert_not_called()
+
+
+def test_find_similar_term_groups_returns_empty_on_api_error():
+    client = MagicMock()
+    client.messages.create.side_effect = RuntimeError("boom")
+    with patch.object(summarization, "_get_client", return_value=client):
+        result = summarization.find_similar_term_groups(["A", "B"], "de")
+
+    assert result == []
+
+
+def test_find_similar_term_groups_uses_sonnet_model():
+    client = _fake_merge_groups_client([])
+    with patch.object(summarization, "_get_client", return_value=client):
+        summarization.find_similar_term_groups(["A", "B"], "de")
+
+    assert client.messages.create.call_args.kwargs["model"] == summarization.MERGE_SUGGESTIONS_MODEL

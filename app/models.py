@@ -290,6 +290,25 @@ class TermOut(BaseModel):
     langs: list[str] = []
 
 
+class TermMergeSuggestionsIn(BaseModel):
+    lang: str
+
+
+class TermMergeIn(BaseModel):
+    lang: str
+    canonical: str
+    variants: list[str]
+
+
+class TermMergeOut(BaseModel):
+    affected_sources: int
+
+
+class TermsDeleteIn(BaseModel):
+    lang: str
+    terms: list[str]
+
+
 class UrlIn(BaseModel):
     url: str
 

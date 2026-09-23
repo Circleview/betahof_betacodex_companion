@@ -314,7 +314,7 @@ def client(tmp_path, monkeypatch):
     monkeypatch.setattr(
         summarization,
         "generate_bilingual_summary",
-        lambda text: {
+        lambda text, *_known_terms: {
             "de": {"summary": "", "key_terms": []},
             "en": {"summary": "", "key_terms": []},
         },
@@ -642,7 +642,7 @@ def test_add_source_slow_import_still_generates_summary(client, monkeypatch):
     monkeypatch.setattr(
         summarization,
         "generate_bilingual_summary",
-        lambda text: {
+        lambda text, *_known_terms: {
             "de": {"summary": "Zusammenfassung nach langsamem Import.", "key_terms": ["X"]},
             "en": {"summary": "Summary after slow import.", "key_terms": ["X"]},
         },
@@ -864,7 +864,7 @@ def test_process_audio_transcription_triggers_summary_generation(client, monkeyp
     monkeypatch.setattr(
         summarization,
         "generate_bilingual_summary",
-        lambda text: {
+        lambda text, *_known_terms: {
             "de": {"summary": "Zusammenfassung nach Transkription.", "key_terms": ["Podcast"]},
             "en": {"summary": "Summary after transcription.", "key_terms": ["Podcast"]},
         },
@@ -1189,7 +1189,7 @@ def test_process_pdf_ocr_triggers_summary_generation(client, monkeypatch):
     monkeypatch.setattr(
         summarization,
         "generate_bilingual_summary",
-        lambda text: {
+        lambda text, *_known_terms: {
             "de": {"summary": "Zusammenfassung nach Texterkennung.", "key_terms": ["Scan"]},
             "en": {"summary": "Summary after text recognition.", "key_terms": ["Scan"]},
         },
@@ -3713,7 +3713,7 @@ def test_generate_source_summary_returns_ai_result(client, monkeypatch):
     monkeypatch.setattr(
         summarization,
         "generate_bilingual_summary",
-        lambda text: {
+        lambda text, *_known_terms: {
             "de": {"summary": "KI-Zusammenfassung.", "key_terms": ["Begriff A", "Begriff B"]},
             "en": {"summary": "AI summary.", "key_terms": ["Term A", "Term B"]},
         },
@@ -3847,7 +3847,7 @@ def test_generate_source_summary_skips_manually_edited_language(client, monkeypa
     monkeypatch.setattr(
         summarization,
         "generate_bilingual_summary",
-        lambda text: {
+        lambda text, *_known_terms: {
             "de": {"summary": "Neue KI-Zusammenfassung.", "key_terms": ["Neu"]},
             "en": {"summary": "New AI summary.", "key_terms": ["New"]},
         },
@@ -4168,7 +4168,7 @@ def test_generate_key_terms_preview_derives_from_given_text(client, monkeypatch)
     monkeypatch.setattr(
         summarization,
         "extract_key_terms",
-        lambda text, lang="de": [f"Begriff aus: {text}"],
+        lambda text, lang="de", known_terms=None: [f"Begriff aus: {text}"],
     )
 
     response = client.post(
@@ -4187,7 +4187,7 @@ def test_generate_key_terms_preview_does_not_persist_anything(client, monkeypatc
         f"/api/sources/{source_id}",
         json={"title": "Quelle", "text": "Text.", "summary": "Alte Zusammenfassung.", "key_terms": ["Alt"]},
     )
-    monkeypatch.setattr(summarization, "extract_key_terms", lambda text, lang="de": ["Neu"])
+    monkeypatch.setattr(summarization, "extract_key_terms", lambda text, lang="de", known_terms=None: ["Neu"])
 
     client.post(
         "/api/sources/generate-key-terms-preview",
@@ -4857,7 +4857,7 @@ def test_add_source_generates_summary_in_background_and_registers_terms(client, 
     monkeypatch.setattr(
         summarization,
         "generate_bilingual_summary",
-        lambda text: {
+        lambda text, *_known_terms: {
             "de": {
                 "summary": "Eine Zusammenfassung.",
                 "key_terms": ["BetaCodex", "Dezentralisierung"],
@@ -4885,6 +4885,228 @@ def test_add_source_generates_summary_in_background_and_registers_terms(client, 
     assert term_names == {"BetaCodex", "Dezentralisierung"}
 
 
+def test_get_term_merge_suggestions_requires_pfleger_role(anon_client):
+    response = anon_client.post("/api/terms/merge-suggestions", json={"lang": "de"})
+    assert response.status_code == 403
+
+
+def test_get_term_merge_suggestions_passes_established_language_terms_to_summarization(client, monkeypatch):
+    # Nutzerwunsch (2026-09-22): bestehende Schlagworte auf Ähnlichkeiten
+    # prüfen lassen (z.B. "hierarchiefreie Organisationen" vs.
+    # "hierarchielose Organisation") - die Analyse bekommt ALLE Begriffe der
+    # angefragten Sprache (nicht nur bereits "etablierte", siehe
+    # terms.list_established_terms - gerade seltene/neue Varianten sind der
+    # Fall, den diese Funktion abdecken soll).
+    source_id = client.post("/api/sources", json={"title": "Q", "text": "T."}).json()["id"]
+    sources = main_module._load_sources()
+    sources[source_id]["key_terms_de"] = ["hierarchiefreie Organisationen", "hierarchielose Organisation"]
+    sources[source_id]["key_terms_en"] = ["hierarchy-free organizations"]
+    main_module._save_sources(sources)
+    main_module._register_all_terms(source_id, sources[source_id])
+
+    captured = {}
+
+    def fake_find_groups(term_list, lang):
+        captured["term_list"] = term_list
+        captured["lang"] = lang
+        return [{"canonical": "hierarchiefreie Organisationen", "variants": ["hierarchielose Organisation"]}]
+
+    monkeypatch.setattr(summarization, "find_similar_term_groups", fake_find_groups)
+
+    response = client.post("/api/terms/merge-suggestions", json={"lang": "de"})
+
+    # Nutzerwunsch (2026-09-23): die Antwort ist jetzt ein NDJSON-Stream
+    # (Häppchen-weise, siehe _term_merge_suggestions_stream) statt einer
+    # einzelnen JSON-Liste, damit erste Treffer nicht erst nach dem
+    # kompletten Durchlauf über alle Begriffe erscheinen.
+    assert response.status_code == 200
+    events = [json.loads(line) for line in response.text.split("\n") if line.strip()]
+    assert events == [
+        {
+            "type": "group",
+            "lang": "de",
+            "canonical": "hierarchiefreie Organisationen",
+            "variants": ["hierarchielose Organisation"],
+        },
+        {"type": "done"},
+    ]
+    assert captured["lang"] == "de"
+    assert set(captured["term_list"]) == {"hierarchiefreie Organisationen", "hierarchielose Organisation"}
+    assert "hierarchy-free organizations" not in captured["term_list"]
+
+
+def test_get_term_merge_suggestions_streams_results_batch_by_batch(client, monkeypatch):
+    # Nutzerwunsch (2026-09-23): erste Treffer sollen deutlich früher zur
+    # Bearbeitung erscheinen, statt auf den kompletten Analyse-Durchlauf zu
+    # warten - die Begriffsliste wird dafür in Häppchen aufgeteilt, jedes
+    # löst einen eigenen find_similar_term_groups-Aufruf aus.
+    monkeypatch.setattr(main_module, "_TERM_MERGE_BATCH_SIZE", 2)
+    source_id = client.post("/api/sources", json={"title": "Q", "text": "T."}).json()["id"]
+    sources = main_module._load_sources()
+    sources[source_id]["key_terms_de"] = ["A1", "A2", "B1", "B2"]
+    main_module._save_sources(sources)
+    main_module._register_all_terms(source_id, sources[source_id])
+
+    batches = []
+
+    def fake_find_groups(term_list, lang):
+        batches.append(list(term_list))
+        return [{"canonical": term_list[0], "variants": term_list[1:]}]
+
+    monkeypatch.setattr(summarization, "find_similar_term_groups", fake_find_groups)
+
+    response = client.post("/api/terms/merge-suggestions", json={"lang": "de"})
+
+    assert len(batches) == 2
+    assert all(len(b) == 2 for b in batches)
+    events = [json.loads(line) for line in response.text.split("\n") if line.strip()]
+    assert [e["type"] for e in events] == ["group", "group", "done"]
+
+
+def test_merge_terms_requires_pfleger_role(anon_client):
+    response = anon_client.post(
+        "/api/terms/merge", json={"lang": "de", "canonical": "A", "variants": ["B"]}
+    )
+    assert response.status_code == 403
+
+
+def test_merge_terms_rejects_missing_canonical_or_variants(client):
+    response = client.post("/api/terms/merge", json={"lang": "de", "canonical": "", "variants": ["B"]})
+    assert response.status_code == 400
+
+    response = client.post("/api/terms/merge", json={"lang": "de", "canonical": "A", "variants": []})
+    assert response.status_code == 400
+
+
+def test_merge_terms_replaces_variants_across_sources_and_updates_registry(client):
+    id_a = client.post("/api/sources", json={"title": "Q1", "text": "T."}).json()["id"]
+    id_b = client.post("/api/sources", json={"title": "Q2", "text": "T."}).json()["id"]
+    id_c = client.post("/api/sources", json={"title": "Q3", "text": "T."}).json()["id"]
+    sources = main_module._load_sources()
+    sources[id_a]["key_terms_de"] = ["hierarchiefreie Organisationen"]
+    # id_b hat schon BEIDES eingetragen - nach dem Merge darf der kanonische
+    # Begriff nicht doppelt in der Liste stehen.
+    sources[id_b]["key_terms_de"] = ["hierarchielose Organisation", "hierarchiefreie Organisationen"]
+    sources[id_c]["key_terms_de"] = ["Unbeteiligter Begriff"]
+    main_module._save_sources(sources)
+    for sid in (id_a, id_b, id_c):
+        main_module._register_all_terms(sid, sources[sid])
+
+    response = client.post(
+        "/api/terms/merge",
+        json={
+            "lang": "de",
+            "canonical": "hierarchiefreie Organisationen",
+            "variants": ["hierarchielose Organisation"],
+        },
+    )
+
+    # id_a hatte den Variantenbegriff nie im Bestand (nur den bereits
+    # kanonischen) - bleibt also unangetastet, nur id_b wird tatsächlich
+    # geändert.
+    assert response.status_code == 200
+    assert response.json() == {"affected_sources": 1}
+
+    updated = main_module._load_sources()
+    assert updated[id_a]["key_terms_de"] == ["hierarchiefreie Organisationen"]
+    assert updated[id_b]["key_terms_de"] == ["hierarchiefreie Organisationen"]
+    assert updated[id_c]["key_terms_de"] == ["Unbeteiligter Begriff"]
+
+    term_names = {t["term"]: t for t in client.get("/api/terms").json()}
+    assert "hierarchielose Organisation" not in term_names
+    assert term_names["hierarchiefreie Organisationen"]["source_count"] == 2
+
+
+def test_merge_terms_logs_a_revertible_audit_entry_per_affected_source(client):
+    # Nutzerwunsch (2026-09-22): "Es gibt für Tags ein Undo, da es ja das
+    # Change-Log gibt" - merge_terms muss also, wie jede andere Quellen-
+    # Änderung, über audit.log_change protokollieren, damit ein fälschlich
+    # zusammengeführtes Begriffspaar über den bestehenden
+    # POST /api/audit-log/{id}/revert-Weg pro Quelle rückgängig gemacht
+    # werden kann.
+    source_id = client.post("/api/sources", json={"title": "Q", "text": "T."}).json()["id"]
+    sources = main_module._load_sources()
+    sources[source_id]["key_terms_de"] = ["hierarchielose Organisation"]
+    main_module._save_sources(sources)
+    main_module._register_all_terms(source_id, sources[source_id])
+
+    client.post(
+        "/api/terms/merge",
+        json={
+            "lang": "de",
+            "canonical": "hierarchiefreie Organisationen",
+            "variants": ["hierarchielose Organisation"],
+        },
+    )
+
+    entry = next(e for e in audit.list_entries() if e["action"] == "terms_merged")
+    assert entry["entity_type"] == "source"
+    assert entry["entity_id"] == source_id
+    assert entry["revertible"] is True
+    assert entry["changes"]["key_terms_de"] == {
+        "old": ["hierarchielose Organisation"],
+        "new": ["hierarchiefreie Organisationen"],
+    }
+
+    revert_res = client.post(f"/api/audit-log/{entry['id']}/revert")
+    assert revert_res.status_code == 200
+    reverted = main_module._load_sources()[source_id]
+    assert reverted["key_terms_de"] == ["hierarchielose Organisation"]
+    term_names = {t["term"] for t in client.get("/api/terms").json()}
+    assert "hierarchielose Organisation" in term_names
+    assert "hierarchiefreie Organisationen" not in term_names
+
+
+def test_delete_terms_requires_pfleger_role(anon_client):
+    response = anon_client.post("/api/terms/delete", json={"lang": "de", "terms": ["A"]})
+    assert response.status_code == 403
+
+
+def test_delete_terms_rejects_empty_terms(client):
+    response = client.post("/api/terms/delete", json={"lang": "de", "terms": []})
+    assert response.status_code == 400
+
+
+def test_delete_terms_removes_terms_across_sources_and_updates_registry(client):
+    id_a = client.post("/api/sources", json={"title": "Q1", "text": "T."}).json()["id"]
+    id_b = client.post("/api/sources", json={"title": "Q2", "text": "T."}).json()["id"]
+    sources = main_module._load_sources()
+    sources[id_a]["key_terms_de"] = ["Rauschen A", "Echter Begriff"]
+    sources[id_b]["key_terms_de"] = ["Unbeteiligter Begriff"]
+    main_module._save_sources(sources)
+    for sid in (id_a, id_b):
+        main_module._register_all_terms(sid, sources[sid])
+
+    response = client.post("/api/terms/delete", json={"lang": "de", "terms": ["Rauschen A"]})
+
+    assert response.status_code == 200
+    assert response.json() == {"affected_sources": 1}
+    updated = main_module._load_sources()
+    assert updated[id_a]["key_terms_de"] == ["Echter Begriff"]
+    assert updated[id_b]["key_terms_de"] == ["Unbeteiligter Begriff"]
+    term_names = {t["term"] for t in client.get("/api/terms").json()}
+    assert "Rauschen A" not in term_names
+    assert "Echter Begriff" in term_names
+
+
+def test_delete_terms_logs_a_revertible_audit_entry(client):
+    source_id = client.post("/api/sources", json={"title": "Q", "text": "T."}).json()["id"]
+    sources = main_module._load_sources()
+    sources[source_id]["key_terms_de"] = ["Rauschen A"]
+    main_module._save_sources(sources)
+    main_module._register_all_terms(source_id, sources[source_id])
+
+    client.post("/api/terms/delete", json={"lang": "de", "terms": ["Rauschen A"]})
+
+    entry = next(e for e in audit.list_entries() if e["action"] == "terms_deleted")
+    assert entry["changes"]["key_terms_de"] == {"old": ["Rauschen A"], "new": []}
+
+    revert_res = client.post(f"/api/audit-log/{entry['id']}/revert")
+    assert revert_res.status_code == 200
+    reverted = main_module._load_sources()[source_id]
+    assert reverted["key_terms_de"] == ["Rauschen A"]
+
+
 def test_add_source_stays_in_progress_until_summary_generated(client, monkeypatch):
     # Nutzerwunsch (2026-09-22): processing_status durfte bisher schon vor
     # Abschluss von Zusammenfassung/Schlagworten auf None springen - die
@@ -4893,7 +5115,7 @@ def test_add_source_stays_in_progress_until_summary_generated(client, monkeypatc
     summary_started = threading.Event()
     release_summary = threading.Event()
 
-    def slow_summary(text):
+    def slow_summary(text, *_known_terms):
         summary_started.set()
         release_summary.wait(timeout=5)
         return {
@@ -4935,7 +5157,7 @@ def test_generate_summary_with_retries_retries_on_total_failure(monkeypatch):
         "en": {"summary": "Success.", "key_terms": ["X"]},
     }
 
-    def fake_generate(text):
+    def fake_generate(text, *_known_terms):
         calls.append(text)
         return empty if len(calls) < 3 else success
 
@@ -4952,7 +5174,7 @@ def test_generate_summary_with_retries_gives_up_after_max_attempts(monkeypatch):
     calls = []
     empty = {"de": {"summary": "", "key_terms": []}, "en": {"summary": "", "key_terms": []}}
 
-    def fake_generate(text):
+    def fake_generate(text, *_known_terms):
         calls.append(text)
         return empty
 
@@ -4979,7 +5201,7 @@ def test_backfill_missing_summaries_fills_in_gaps(client, monkeypatch):
     monkeypatch.setattr(
         summarization,
         "generate_bilingual_summary",
-        lambda text: {
+        lambda text, *_known_terms: {
             "de": {"summary": "Nachgezogen.", "key_terms": ["Y"]},
             "en": {"summary": "Backfilled.", "key_terms": ["Y"]},
         },
@@ -5006,7 +5228,7 @@ def test_backfill_missing_summaries_ignores_sources_without_text(client, monkeyp
     monkeypatch.setattr(
         summarization,
         "generate_bilingual_summary",
-        lambda text: calls.append(text) or {"de": {"summary": "X", "key_terms": []}, "en": {"summary": "X", "key_terms": []}},
+        lambda text, *_known_terms: calls.append(text) or {"de": {"summary": "X", "key_terms": []}, "en": {"summary": "X", "key_terms": []}},
     )
 
     main_module._backfill_missing_summaries_once()
@@ -5027,7 +5249,7 @@ def test_backfill_missing_summaries_ignores_deleted_sources(client, monkeypatch)
     monkeypatch.setattr(
         summarization,
         "generate_bilingual_summary",
-        lambda text: calls.append(text) or {"de": {"summary": "X", "key_terms": []}, "en": {"summary": "X", "key_terms": []}},
+        lambda text, *_known_terms: calls.append(text) or {"de": {"summary": "X", "key_terms": []}, "en": {"summary": "X", "key_terms": []}},
     )
 
     main_module._backfill_missing_summaries_once()
@@ -5039,7 +5261,7 @@ def test_summary_is_served_in_the_requested_language(client, monkeypatch):
     monkeypatch.setattr(
         summarization,
         "generate_bilingual_summary",
-        lambda text: {
+        lambda text, *_known_terms: {
             "de": {"summary": "Deutsche Zusammenfassung.", "key_terms": ["BetaCodex"]},
             "en": {"summary": "English summary.", "key_terms": ["BetaCodex EN"]},
         },
@@ -5065,7 +5287,7 @@ def test_update_source_can_edit_summary_and_key_terms(client, monkeypatch):
     monkeypatch.setattr(
         summarization,
         "generate_bilingual_summary",
-        lambda text: {
+        lambda text, *_known_terms: {
             "de": {"summary": "Alte Zusammenfassung.", "key_terms": ["Alt"]},
             "en": {"summary": "", "key_terms": []},
         },
@@ -5095,7 +5317,7 @@ def test_update_source_without_summary_field_keeps_existing_summary(client, monk
     monkeypatch.setattr(
         summarization,
         "generate_bilingual_summary",
-        lambda text: {
+        lambda text, *_known_terms: {
             "de": {"summary": "Ursprüngliche Zusammenfassung.", "key_terms": ["Alt"]},
             "en": {"summary": "", "key_terms": []},
         },
@@ -5116,7 +5338,7 @@ def test_delete_source_removes_terms(client, monkeypatch):
     monkeypatch.setattr(
         summarization,
         "generate_bilingual_summary",
-        lambda text: {
+        lambda text, *_known_terms: {
             "de": {"summary": "S.", "key_terms": ["EinzigerBegriff"]},
             "en": {"summary": "", "key_terms": []},
         },
