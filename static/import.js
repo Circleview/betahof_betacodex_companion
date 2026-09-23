@@ -3752,6 +3752,25 @@ function clearSourceFilter({ scroll = true } = {}) {
   if (scroll) scrollToFilteredResults();
 }
 
+// Zeigt eine einzelne Quelle in der ungefilterten Autor:innen-Ansicht:
+// scrollt hin und hebt sie kurz hervor. Genutzt vom ?source=-Deep-Link und
+// von den Quellen-Links der Schlagwort-Ansicht (Nutzerwunsch 2026-09-23:
+// dort soll ein Klick nicht in der Schlagwort-/Filter-Ansicht hängen
+// bleiben).
+function focusSource(sourceId) {
+  closeSearchBar();
+  if (isFilterActive()) clearSourceFilter({ scroll: false });
+  setSortMode('author');
+  ensureSourceVisible(sourceId);
+  renderSourceList(currentSourceList);
+  requestAnimationFrame(() => {
+    const row = document.querySelector(`#source-list [data-source-id="${sourceId}"]`);
+    row?.scrollIntoView({ block: 'center' });
+    row?.classList.add('source-highlight-flash');
+    row?.addEventListener('animationend', () => row.classList.remove('source-highlight-flash'), { once: true });
+  });
+}
+
 document.getElementById('search-input').addEventListener('input', (e) => {
   const query = e.target.value.trim();
   if (!query) {
@@ -4217,6 +4236,13 @@ function buildTermOverviewItem(entry, index, maxCount) {
     const link = document.createElement('a');
     link.href = `/import.html?source=${encodeURIComponent(s.id)}`;
     link.textContent = s.title;
+    // Direkt auf der Seite statt Neuladen - Modifier-Klicks (neuer Tab)
+    // behalten das normale Link-Verhalten.
+    link.addEventListener('click', (e) => {
+      if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+      e.preventDefault();
+      focusSource(s.id);
+    });
     item.appendChild(link);
     sourceList.appendChild(item);
   });
@@ -4926,14 +4952,7 @@ if (deepLinkEditId && hasPflegerRole() && allSources.some((s) => s.id === deepLi
 // nichts - es bleibt bei der normalen ungefilterten Übersicht.
 const deepLinkSourceId = new URLSearchParams(window.location.search).get('source');
 if (deepLinkSourceId && allSources.some((s) => s.id === deepLinkSourceId)) {
-  ensureSourceVisible(deepLinkSourceId);
-  renderSourceList(currentSourceList);
-  requestAnimationFrame(() => {
-    const row = document.querySelector(`#source-list [data-source-id="${deepLinkSourceId}"]`);
-    row?.scrollIntoView({ block: 'center' });
-    row?.classList.add('source-highlight-flash');
-    row?.addEventListener('animationend', () => row.classList.remove('source-highlight-flash'), { once: true });
-  });
+  focusSource(deepLinkSourceId);
 }
 
 // Deep-Link aus der Konversationsansicht (Autor:innen-Links an Zitaten):
