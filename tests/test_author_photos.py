@@ -37,7 +37,7 @@ def test_cache_photo_refuses_private_address(tmp_path, monkeypatch):
     _isolate(tmp_path, monkeypatch)
     for ip in ("169.254.169.254", "127.0.0.1", "10.0.0.5"):
         monkeypatch.setattr(extraction, "_getaddrinfo", _resolve_to(ip))
-        with patch("app.author_photos.urllib.request.urlopen", return_value=_mock_urlopen(_fake_image_bytes())) as urlopen:
+        with patch("app.extraction._safe_opener.open", return_value=_mock_urlopen(_fake_image_bytes())) as urlopen:
             result = author_photos.cache_photo("Test Autor", "http://metadata.example/foto.jpg")
         assert result is False
         urlopen.assert_not_called()
@@ -46,14 +46,14 @@ def test_cache_photo_refuses_private_address(tmp_path, monkeypatch):
 
 def test_cache_photo_refuses_non_http_scheme(tmp_path, monkeypatch):
     _isolate(tmp_path, monkeypatch)
-    with patch("app.author_photos.urllib.request.urlopen") as urlopen:
+    with patch("app.extraction._safe_opener.open") as urlopen:
         assert author_photos.cache_photo("Test Autor", "file:///etc/passwd") is False
     urlopen.assert_not_called()
 
 
 def test_cache_photo_creates_both_sizes(tmp_path, monkeypatch):
     _isolate(tmp_path, monkeypatch)
-    with patch("app.author_photos.urllib.request.urlopen", return_value=_mock_urlopen(_fake_image_bytes())):
+    with patch("app.extraction._safe_opener.open", return_value=_mock_urlopen(_fake_image_bytes())):
         result = author_photos.cache_photo("Test Autor", "https://example.org/foto.jpg")
 
     assert result is True
@@ -67,7 +67,7 @@ def test_cache_photo_creates_both_sizes(tmp_path, monkeypatch):
 
 def test_cache_photo_records_source_url_in_manifest(tmp_path, monkeypatch):
     _isolate(tmp_path, monkeypatch)
-    with patch("app.author_photos.urllib.request.urlopen", return_value=_mock_urlopen(_fake_image_bytes())):
+    with patch("app.extraction._safe_opener.open", return_value=_mock_urlopen(_fake_image_bytes())):
         author_photos.cache_photo("Test Autor", "https://example.org/foto.jpg")
 
     assert author_photos.cached_source_url("Test Autor") == "https://example.org/foto.jpg"
@@ -79,7 +79,7 @@ def test_cache_photo_returns_false_on_download_failure(tmp_path, monkeypatch):
     Absturz bringen, nur ein stilles False liefern (Fail-leise-Konvention
     wie app/source_discovery.py)."""
     _isolate(tmp_path, monkeypatch)
-    with patch("app.author_photos.urllib.request.urlopen", side_effect=RuntimeError("boom")):
+    with patch("app.extraction._safe_opener.open", side_effect=RuntimeError("boom")):
         result = author_photos.cache_photo("Test Autor", "https://example.org/tot.jpg")
 
     assert result is False
@@ -88,7 +88,7 @@ def test_cache_photo_returns_false_on_download_failure(tmp_path, monkeypatch):
 
 def test_cache_photo_returns_false_on_invalid_image_data(tmp_path, monkeypatch):
     _isolate(tmp_path, monkeypatch)
-    with patch("app.author_photos.urllib.request.urlopen", return_value=_mock_urlopen(b"not-an-image")):
+    with patch("app.extraction._safe_opener.open", return_value=_mock_urlopen(b"not-an-image")):
         result = author_photos.cache_photo("Test Autor", "https://example.org/kaputt.jpg")
 
     assert result is False
@@ -107,7 +107,7 @@ def test_cached_source_url_none_when_nothing_cached(tmp_path, monkeypatch):
 
 def test_rename_moves_cached_files_and_manifest_entry(tmp_path, monkeypatch):
     _isolate(tmp_path, monkeypatch)
-    with patch("app.author_photos.urllib.request.urlopen", return_value=_mock_urlopen(_fake_image_bytes())):
+    with patch("app.extraction._safe_opener.open", return_value=_mock_urlopen(_fake_image_bytes())):
         author_photos.cache_photo("Alter Name", "https://example.org/foto.jpg")
 
     author_photos.rename("Alter Name", "Neuer Name")
@@ -120,7 +120,7 @@ def test_rename_moves_cached_files_and_manifest_entry(tmp_path, monkeypatch):
 
 def test_rename_is_a_noop_when_only_case_or_whitespace_differs(tmp_path, monkeypatch):
     _isolate(tmp_path, monkeypatch)
-    with patch("app.author_photos.urllib.request.urlopen", return_value=_mock_urlopen(_fake_image_bytes())):
+    with patch("app.extraction._safe_opener.open", return_value=_mock_urlopen(_fake_image_bytes())):
         author_photos.cache_photo("Max Muster", "https://example.org/foto.jpg")
 
     author_photos.rename("Max Muster", "  max   muster  ")
@@ -139,7 +139,7 @@ def test_resize_and_crop_square_center_crops_non_square_images(tmp_path, monkeyp
     auf ein Quadrat vor dem Skalieren."""
     _isolate(tmp_path, monkeypatch)
     with patch(
-        "app.author_photos.urllib.request.urlopen",
+        "app.extraction._safe_opener.open",
         return_value=_mock_urlopen(_fake_image_bytes(size=(400, 100))),
     ):
         author_photos.cache_photo("Breitbild Autor", "https://example.org/breit.jpg")

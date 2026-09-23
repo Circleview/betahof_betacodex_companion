@@ -121,7 +121,7 @@ def test_extract_from_url_returns_fields_on_success():
         "Noch ein Absatz."
     )
     with (
-        patch("app.extraction.trafilatura.fetch_url", return_value="<html>...</html>"),
+        patch("app.extraction._fetch_html", return_value="<html>...</html>"),
         patch("app.extraction.trafilatura.extract", return_value=fake_markdown),
     ):
         result = extract_from_url("https://example.org/artikel")
@@ -141,7 +141,7 @@ def test_extract_from_url_returns_fields_on_success():
 
 
 def test_extract_from_url_handles_fetch_failure():
-    with patch("app.extraction.trafilatura.fetch_url", return_value=None):
+    with patch("app.extraction._fetch_html", return_value=None):
         result = extract_from_url("https://example.org/nicht-erreichbar")
 
     assert result["extracted"] is False
@@ -150,7 +150,7 @@ def test_extract_from_url_handles_fetch_failure():
 
 def test_extract_from_url_handles_empty_extraction():
     with (
-        patch("app.extraction.trafilatura.fetch_url", return_value="<html></html>"),
+        patch("app.extraction._fetch_html", return_value="<html></html>"),
         patch("app.extraction.trafilatura.extract", return_value=None),
     ):
         result = extract_from_url("https://example.org/leer")
@@ -160,7 +160,7 @@ def test_extract_from_url_handles_empty_extraction():
 
 def test_extract_from_url_handles_missing_metadata_fields():
     with (
-        patch("app.extraction.trafilatura.fetch_url", return_value="<html>...</html>"),
+        patch("app.extraction._fetch_html", return_value="<html>...</html>"),
         patch(
             "app.extraction.trafilatura.extract",
             return_value="Nur Text, keine Metadaten.",
@@ -177,10 +177,10 @@ def test_extract_from_url_handles_missing_metadata_fields():
 
 def test_extract_from_url_handles_fetch_exception():
     # Bewusst eine gültige (http/https, auflösbare) URL - sonst würde der
-    # SSRF-Schutz (_assert_safe_url) schon VOR trafilatura.fetch_url
-    # eingreifen und der hier eigentlich zu testende Exception-Pfad nie
+    # SSRF-Schutz (_assert_safe_url) schon VOR dem Abruf eingreifen und der
+    # hier eigentlich zu testende Exception-Pfad (in _fetch_html) nie
     # erreicht.
-    with patch("app.extraction.trafilatura.fetch_url", side_effect=RuntimeError("boom")):
+    with patch("app.extraction._safe_opener.open", side_effect=RuntimeError("boom")):
         result = extract_from_url("https://example.org/boom")
 
     assert result["extracted"] is False
@@ -274,7 +274,7 @@ def test_looks_like_pdf_checks_content_type_when_no_extension():
     resp = MagicMock()
     resp.headers = {"Content-Type": "application/pdf; charset=binary"}
     resp.__enter__.return_value = resp
-    with patch("app.extraction.urllib.request.urlopen", return_value=resp):
+    with patch("app.extraction._safe_opener.open", return_value=resp):
         assert looks_like_pdf("https://example.org/download?id=42") is True
 
 
@@ -282,12 +282,12 @@ def test_looks_like_pdf_false_for_html_content_type():
     resp = MagicMock()
     resp.headers = {"Content-Type": "text/html"}
     resp.__enter__.return_value = resp
-    with patch("app.extraction.urllib.request.urlopen", return_value=resp):
+    with patch("app.extraction._safe_opener.open", return_value=resp):
         assert looks_like_pdf("https://example.org/artikel") is False
 
 
 def test_looks_like_pdf_returns_false_on_network_error():
-    with patch("app.extraction.urllib.request.urlopen", side_effect=RuntimeError("boom")):
+    with patch("app.extraction._safe_opener.open", side_effect=RuntimeError("boom")):
         assert looks_like_pdf("https://example.org/nope") is False
 
 
@@ -295,12 +295,12 @@ def test_download_pdf_bytes_returns_content():
     resp = MagicMock()
     resp.read.return_value = b"%PDF-1.4..."
     resp.__enter__.return_value = resp
-    with patch("app.extraction.urllib.request.urlopen", return_value=resp):
+    with patch("app.extraction._safe_opener.open", return_value=resp):
         assert download_pdf_bytes("https://example.org/paper.pdf") == b"%PDF-1.4..."
 
 
 def test_download_pdf_bytes_returns_none_on_error():
-    with patch("app.extraction.urllib.request.urlopen", side_effect=RuntimeError("boom")):
+    with patch("app.extraction._safe_opener.open", side_effect=RuntimeError("boom")):
         assert download_pdf_bytes("https://example.org/paper.pdf") is None
 
 
@@ -408,7 +408,7 @@ def test_looks_like_audio_checks_content_type_when_no_extension():
     resp = MagicMock()
     resp.headers = {"Content-Type": "audio/mpeg"}
     resp.__enter__.return_value = resp
-    with patch("app.extraction.urllib.request.urlopen", return_value=resp):
+    with patch("app.extraction._safe_opener.open", return_value=resp):
         assert looks_like_audio("https://example.org/download?id=42") is True
 
 
@@ -416,7 +416,7 @@ def test_looks_like_audio_false_for_html_content_type():
     resp = MagicMock()
     resp.headers = {"Content-Type": "text/html"}
     resp.__enter__.return_value = resp
-    with patch("app.extraction.urllib.request.urlopen", return_value=resp):
+    with patch("app.extraction._safe_opener.open", return_value=resp):
         assert looks_like_audio("https://example.org/artikel") is False
 
 
@@ -424,12 +424,12 @@ def test_download_audio_bytes_returns_content():
     resp = MagicMock()
     resp.read.return_value = b"ID3-fake-mp3-data"
     resp.__enter__.return_value = resp
-    with patch("app.extraction.urllib.request.urlopen", return_value=resp):
+    with patch("app.extraction._safe_opener.open", return_value=resp):
         assert download_audio_bytes("https://example.org/episode.mp3") == b"ID3-fake-mp3-data"
 
 
 def test_download_audio_bytes_returns_none_on_error():
-    with patch("app.extraction.urllib.request.urlopen", side_effect=RuntimeError("boom")):
+    with patch("app.extraction._safe_opener.open", side_effect=RuntimeError("boom")):
         assert download_audio_bytes("https://example.org/episode.mp3") is None
 
 
@@ -1078,7 +1078,7 @@ def test_safe_urlopen_blocks_before_reaching_real_urlopen(monkeypatch):
         return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("127.0.0.1", 0))]
 
     monkeypatch.setattr(extraction, "_getaddrinfo", fake_getaddrinfo)
-    with patch("app.extraction.urllib.request.urlopen") as fake_urlopen:
+    with patch("app.extraction._safe_opener.open") as fake_urlopen:
         req = extraction.urllib.request.Request("http://127.0.0.1:6379/")
         with pytest.raises(UnsafeUrlError):
             extraction._safe_urlopen(req, timeout=5)
@@ -1090,7 +1090,7 @@ def test_looks_like_pdf_returns_false_for_internal_address(monkeypatch):
         return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("169.254.169.254", 0))]
 
     monkeypatch.setattr(extraction, "_getaddrinfo", fake_getaddrinfo)
-    with patch("app.extraction.urllib.request.urlopen") as fake_urlopen:
+    with patch("app.extraction._safe_opener.open") as fake_urlopen:
         assert looks_like_pdf("http://169.254.169.254/latest/meta-data/") is False
         fake_urlopen.assert_not_called()
 
@@ -1100,7 +1100,7 @@ def test_download_pdf_bytes_returns_none_for_internal_address(monkeypatch):
         return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("10.0.0.5", 0))]
 
     monkeypatch.setattr(extraction, "_getaddrinfo", fake_getaddrinfo)
-    with patch("app.extraction.urllib.request.urlopen") as fake_urlopen:
+    with patch("app.extraction._safe_opener.open") as fake_urlopen:
         assert download_pdf_bytes("http://10.0.0.5/internes-dokument.pdf") is None
         fake_urlopen.assert_not_called()
 
@@ -1110,7 +1110,7 @@ def test_download_audio_bytes_returns_none_for_internal_address(monkeypatch):
         return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("192.168.0.1", 0))]
 
     monkeypatch.setattr(extraction, "_getaddrinfo", fake_getaddrinfo)
-    with patch("app.extraction.urllib.request.urlopen") as fake_urlopen:
+    with patch("app.extraction._safe_opener.open") as fake_urlopen:
         assert download_audio_bytes("http://192.168.0.1/internes-audio.mp3") is None
         fake_urlopen.assert_not_called()
 
@@ -1120,8 +1120,106 @@ def test_extract_from_url_reports_failure_for_internal_address(monkeypatch):
         return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("169.254.169.254", 0))]
 
     monkeypatch.setattr(extraction, "_getaddrinfo", fake_getaddrinfo)
-    with patch("app.extraction.trafilatura.fetch_url") as fake_fetch_url:
+    with patch("app.extraction._fetch_html") as fake_fetch_html:
         result = extract_from_url("http://169.254.169.254/latest/meta-data/")
 
     assert result["extracted"] is False
-    fake_fetch_url.assert_not_called()
+    fake_fetch_html.assert_not_called()
+
+
+# Backlog (2026-09-23): SSRF über Weiterleitungen. Echter lokaler HTTP-Server
+# statt Mocks, damit der komplette Redirect-Mechanismus von urllib wirklich
+# durchläuft. Die Verbindung selbst geht an 127.0.0.1 (echte DNS-/Socket-
+# Auflösung); nur die SSRF-Prüfung (extraction._getaddrinfo) sieht die
+# Hostnamen so, wie der Test sie vorgibt.
+_ARTICLE_HTML = (
+    "<html><head><title>Interner Artikel</title></head><body><article><h1>Intern</h1><p>"
+    + "Vertraulicher Inhalt, der nie nach außen gelangen darf. " * 40
+    + "</p></article></body></html>"
+).encode()
+
+
+def _serve_redirect(location: str):
+    """location darf {port} enthalten (Port des Servers selbst)."""
+    import http.server
+    import threading
+
+    class Handler(http.server.BaseHTTPRequestHandler):
+        def do_GET(self):
+            if self.path == "/start":
+                self.send_response(302)
+                self.send_header("Location", location.format(port=self.server.server_address[1]))
+                self.end_headers()
+            else:
+                self.send_response(200)
+                self.send_header("Content-Type", "text/html; charset=utf-8")
+                self.end_headers()
+                self.wfile.write(_ARTICLE_HTML)
+
+        def log_message(self, *args):
+            pass
+
+    server = http.server.HTTPServer(("127.0.0.1", 0), Handler)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    return server
+
+
+def _resolve(mapping: dict):
+    def fake_getaddrinfo(host, *args, **kwargs):
+        return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", (mapping[host], 0))]
+
+    return fake_getaddrinfo
+
+
+def test_safe_urlopen_blocks_redirect_to_internal_address(monkeypatch):
+    server = _serve_redirect("http://metadata.internal/latest/meta-data/")
+    try:
+        monkeypatch.setattr(
+            extraction,
+            "_getaddrinfo",
+            _resolve({"127.0.0.1": "93.184.216.34", "metadata.internal": "169.254.169.254"}),
+        )
+        port = server.server_address[1]
+        req = extraction.urllib.request.Request(f"http://127.0.0.1:{port}/start")
+        with pytest.raises(extraction.UnsafeUrlError):
+            extraction._safe_urlopen(req, timeout=5)
+    finally:
+        server.shutdown()
+
+
+def test_safe_urlopen_follows_redirect_to_public_address(monkeypatch):
+    server = _serve_redirect("/ziel")
+    try:
+        monkeypatch.setattr(extraction, "_getaddrinfo", _resolve({"127.0.0.1": "93.184.216.34"}))
+        port = server.server_address[1]
+        req = extraction.urllib.request.Request(f"http://127.0.0.1:{port}/start")
+        with extraction._safe_urlopen(req, timeout=5) as resp:
+            assert resp.read() == _ARTICLE_HTML
+            assert resp.geturl().endswith("/ziel")
+    finally:
+        server.shutdown()
+
+
+def test_extract_from_url_fails_quietly_on_redirect_to_internal_address(monkeypatch):
+    # Ziel "localhost" ist real erreichbar (derselbe Server, voller Artikel) -
+    # ohne Redirect-Prüfung käme der Inhalt also tatsächlich zurück.
+    server = _serve_redirect("http://localhost:{port}/intern")
+    try:
+        monkeypatch.setattr(
+            extraction,
+            "_getaddrinfo",
+            _resolve({"127.0.0.1": "93.184.216.34", "localhost": "127.0.0.1"}),
+        )
+        port = server.server_address[1]
+        result = extract_from_url(f"http://127.0.0.1:{port}/start")
+        assert result["extracted"] is False
+    finally:
+        server.shutdown()
+
+
+def test_fetch_html_rejects_oversized_response():
+    resp = MagicMock()
+    resp.read.return_value = b"x" * (extraction._MAX_HTML_BYTES + 1)
+    resp.__enter__.return_value = resp
+    with patch("app.extraction._safe_opener.open", return_value=resp):
+        assert extraction._fetch_html("https://example.org/gross") is None

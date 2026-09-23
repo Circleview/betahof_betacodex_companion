@@ -42,13 +42,13 @@ class UnsafeUrlError(ValueError):
 # Cloud-Metadata-Endpunkt 169.254.169.254, localhost, internes Netz). Prüft
 # ALLE zur Hostname aufgelösten IPs (nicht nur die erste), da DNS mehrere
 # A-Records liefern kann. Eine EINZIGE Stelle statt einer Prüfung pro
-# Aufrufer, da urlopen/fetch_url unten von mehreren unabhängigen Stellen in
+# Aufrufer, da _safe_urlopen unten von mehreren unabhängigen Stellen in
 # app/main.py aus erreicht werden (Import per Link, PDF/Audio-Sync beim
 # Anlegen/Bearbeiten einer Quelle).
 # ponytail: prüft den Hostnamen einmal vor dem Verbindungsaufbau, pinnt die
 # aufgelöste IP aber nicht fest - ein DNS-Rebinding-Angriff (Hostname
 # ändert seine Auflösung zwischen dieser Prüfung und dem eigentlichen
-# Verbindungsaufbau von urllib/trafilatura) ist damit theoretisch weiter
+# Verbindungsaufbau von urllib) ist damit theoretisch weiter
 # möglich. Für den hier adressierten, deutlich wahrscheinlicheren Fall
 # (jemand trägt direkt eine interne Adresse ins URL-Feld ein) reicht das;
 # echtes IP-Pinning bräuchte einen eigenen, angepassten HTTP-Transport.
@@ -76,9 +76,41 @@ def _assert_safe_url(url: str) -> None:
             raise UnsafeUrlError(f"Unsichere URL (private/interne Adresse): {url}")
 
 
+# Backlog (2026-09-23): urlopen folgt 30x-Weiterleitungen sonst ungeprüft -
+# eine öffentliche URL könnte per Redirect auf 169.254.169.254/localhost
+# zeigen. Jedes Weiterleitungsziel durchläuft deshalb dieselbe Prüfung wie
+# die Start-URL; UnsafeUrlError bricht den Abruf ab wie jeder andere Fehler.
+class _SafeRedirectHandler(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        _assert_safe_url(newurl)
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
+_safe_opener = urllib.request.build_opener(_SafeRedirectHandler)
+
+
 def _safe_urlopen(req: urllib.request.Request, timeout: float):
     _assert_safe_url(req.full_url)
-    return urllib.request.urlopen(req, timeout=timeout)
+    return _safe_opener.open(req, timeout=timeout)
+
+
+# Gleiche Obergrenze wie trafilaturas eigenes fetch_url (MAX_FILE_SIZE).
+_MAX_HTML_BYTES = 20_000_000
+
+
+def _fetch_html(url: str) -> bytes | None:
+    """Ersetzt trafilatura.fetch_url(): das nutzt eigenes Networking (urllib3)
+    und folgt Weiterleitungen am SSRF-Schutz vorbei. trafilatura.extract()
+    erkennt die Zeichenkodierung der Bytes selbst."""
+    try:
+        req = urllib.request.Request(url, headers=_REQUEST_HEADERS)
+        with _safe_urlopen(req, timeout=30) as resp:
+            data = resp.read(_MAX_HTML_BYTES + 1)
+    except Exception:
+        return None
+    if len(data) > _MAX_HTML_BYTES:
+        return None
+    return data
 
 
 # Eigene, separat mockbare Referenz statt socket.getaddrinfo direkt in
@@ -779,11 +811,10 @@ def _parse_markdown_extraction(raw: str) -> dict:
 
 
 def extract_from_url(url: str) -> dict:
-    # SSRF-Schutz: die anderen Zweige unten (looks_like_audio/looks_like_pdf/
-    # download_*_bytes) sind über _safe_urlopen bereits geschützt, der
-    # generische Zweig weiter unten ruft aber trafilatura.fetch_url() auf,
-    # das SEIN EIGENES Networking nutzt (nicht urllib.request) - hier separat
-    # geprüft, bevor überhaupt einer der Zweige versucht wird. Wie überall
+    # SSRF-Schutz: alle Zweige unten laden über _safe_urlopen (inkl.
+    # Prüfung jedes Weiterleitungsziels), der YouTube-Zweig nutzt aber
+    # zusätzlich youtube_transcript_api mit eigenem Networking - deshalb
+    # hier einmal vorab geprüft, bevor überhaupt ein Zweig startet. Wie überall
     # sonst in dieser Funktion degradiert eine unsichere URL still zu
     # "nicht extrahierbar" statt einer Fehlermeldung, damit sich dieser Fall
     # nicht von jedem anderen Abruf-Fehlschlag unterscheidet.
@@ -804,11 +835,7 @@ def extract_from_url(url: str) -> dict:
             return {"title": "", "authors": [], "date": "", "text": "", "extracted": False}
         return extract_pdf(data)
 
-    try:
-        downloaded = trafilatura.fetch_url(url)
-    except Exception:
-        downloaded = None
-
+    downloaded = _fetch_html(url)
     if not downloaded:
         return {"title": "", "authors": [], "date": "", "text": "", "extracted": False}
 
