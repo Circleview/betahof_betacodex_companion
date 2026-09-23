@@ -58,6 +58,8 @@ Assistent das offen, statt zu spekulieren.
 - Fett hervorgehobene Fachbegriffe in einer Antwort sind anklickbar – ein
   Klick vertieft genau diesen Begriff als Folgefrage, im Kontext der
   laufenden Konversation.
+- Jede Antwort lässt sich per Icon in die Zwischenablage kopieren
+  (formatiert und als Klartext, ohne die `[n]`-Verweise).
 - Antwortet in der Sprache, in der gefragt wurde – Oberfläche und
   Antworten gibt es auf Deutsch und Englisch, unabhängig voneinander.
 - Spam-/Bot-Schutz (Rate-Limiting + Cloudflare Turnstile), ohne dass
@@ -461,6 +463,7 @@ Commit-/Tag-Nachrichten in Git.
 
 | Version | Wesentliche Änderungen |
 |---|---|
+| v0.73.0 | Konversation: Kopieren-Icon neben den Daumen je Antwort (gleicher Abstand wie zwischen Geschwindigkeit und Daumen) - legt die Antwort formatiert (HTML) und als Klartext (Markdown) in die Zwischenablage, ohne Zitat-Marker `[n]`, kurzer grüner Haken als Bestätigung |
 | v0.72.0 | Schlagwort-Ansicht: Quellen lassen sich direkt unter dem Schlagwort aufklappen (Kurzbeschreibung) und bearbeiten - dieselben Zeilen und dasselbe Bearbeiten-Formular wie in der Quellenliste, aufgeklappte Schlagworte bleiben beim Speichern offen. Sicherheit: der SSRF-Schutz prüft jetzt auch jedes Weiterleitungsziel (eigener Redirect-Handler); normale Webseiten laufen dafür nicht mehr über trafilaturas eigenes Networking, sondern über denselben geschützten Abruf - gilt für Quellen-Import und Autor:innen-Fotos |
 | v0.71.4 | Schlagwort-Ansicht mobil: nur die Quellenzahl statt "12 Quellen" (voller Text bleibt für Screenreader), Stift und Mülleimer immer nebeneinander rechts neben dem Begriff und vertikal mittig. Quellenliste: Text von Zeilen mit defektem Link steht wieder bündig mit den übrigen Zeilen, nur die Warn-Tönung ragt in den Rand |
 | v0.71.3 | Sicherheit: SSRF-Schutz auch beim Abruf von Autor:innen-Fotos (dieselbe Prüfung wie beim Quellen-Import - keine privaten/internen Adressen, nur http/https). Schlagwort-Ansicht: Klick auf eine Quelle springt direkt in die ungefilterte Autor:innen-Ansicht zur Quelle, Quellen-Links wieder in Akzentfarbe; mobil schmalerer Balken (relativ zur Zeile), Silbentrennung und Stift/Mülleimer als Gruppe unter dem Begriff. Explore-Netzwerk wieder in der Breite der Inhaltsspalte (nimmt die volle Bildschirmbreite aus v0.70.0 zurück, die das Scrollen neben dem Diagramm verhinderte) |
