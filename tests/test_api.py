@@ -369,8 +369,39 @@ def client(tmp_path, monkeypatch):
     login(test_client, PFLEGER, users.QUELLEN_PFLEGER)
     yield test_client
 
+    # Fix (2026-09-23, Root-Cause der CI-Flakiness bei terms.json/sources.json-
+    # Tests): ein join(timeout=10) OHNE Prüfung des Ergebnisses ließ einen zu
+    # langsamen Daemon-Thread einfach weiterlaufen - main_module.SOURCES_FILE/
+    # terms.TERMS_FILE werden aber dynamisch beim tatsächlichen Dateizugriff
+    # gelesen, nicht beim Thread-Start eingefroren. Ist ein Thread beim
+    # Timeout noch nicht fertig, hat pytest beim nächsten Test die Pfade
+    # längst per monkeypatch auf einen NEUEN tmp_path umgebogen - der stille
+    # Straggler schreibt dann in die Dateien eines völlig anderen,
+    # nachfolgenden Tests. Genau das erklärte die zufälligen, nur in CI
+    # auftretenden Fehlschläge rund um die geteilte Registry.
+    # Fix: statt zu hoffen, dass 10s reichen, wird hier hart geprüft - jeder
+    # Thread bekommt grosszügige 15s (mehr als genug für die in dieser
+    # Fixture durchgängig gemockten, eigentlich instantanen Operationen),
+    # danach schlägt der Test LAUT fehl statt den Straggler unbemerkt in
+    # künftige Tests durchsickern zu lassen. Bewusst kein Join ohne Timeout
+    # (t.join() ohne Argument) - das würde die Suite bei einem echten Bug
+    # (z.B. fehlender Mock, der eine Endlosschleife/einen hängenden
+    # Netzwerkaufruf auslöst) für immer blockieren, statt sichtbar zu
+    # scheitern.
+    straggler_names = []
     for t in started_threads:
-        t.join(timeout=10)
+        t.join(timeout=15)
+        if t.is_alive():
+            straggler_names.append(f"{t.name} (target={getattr(t, '_target', None)!r})")
+    if straggler_names:
+        raise AssertionError(
+            "Hintergrund-Thread(s) liefen nach Testende noch: "
+            + ", ".join(straggler_names)
+            + " - fehlt ein Mock für eine externe/langsame Operation? Ohne diesen "
+            "Fehlschlag würde der Daemon-Thread unbemerkt weiterlaufen und in einem "
+            "SPÄTEREN Test (nach dessen monkeypatch auf einen neuen tmp_path) dessen "
+            "Dateien überschreiben."
+        )
 
 
 @pytest.fixture
