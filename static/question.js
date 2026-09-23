@@ -874,6 +874,51 @@ function attachFeedbackButtons(bubble, question, answer) {
   bubble.appendChild(buildAnswerFeedback({ question, answer }));
 }
 
+// Nutzerwunsch (2026-09-24): Antwort in die Zwischenablage - formatiert
+// (HTML) und als Klartext, wie der Kopieren-Button im Kreativ-Modus.
+// Zitat-Marker [n] fallen weg (ohne Quellenliste bedeutungslos), gleiche
+// Regel wie beim Live-Streaming unten. Kurzer grüner Haken als Bestätigung.
+const COPY_ANSWER_ICONS =
+  '<svg class="copy-icon" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" ' +
+  'stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+  '<rect x="9" y="9" width="13" height="13" rx="2"></rect>' +
+  '<path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>' +
+  '<svg class="copy-check" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" ' +
+  'stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+  '<polyline points="4 12.5 9.5 18 20 6.5"></polyline></svg>';
+const COPIED_FEEDBACK_MS = 1600;
+
+function buildCopyAnswerButton(answer) {
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'copy-answer-btn';
+  btn.innerHTML = COPY_ANSWER_ICONS;
+  btn.title = t('index.copyAnswerTitle');
+  btn.setAttribute('aria-label', t('index.copyAnswerTitle'));
+  let copiedTimer = null;
+  btn.addEventListener('click', async () => {
+    const text = answer.replace(/\s*\[\d+\]/g, '');
+    try {
+      await navigator.clipboard.write([
+        new ClipboardItem({
+          'text/html': new Blob([renderMarkdown(text)], { type: 'text/html' }),
+          'text/plain': new Blob([text], { type: 'text/plain' }),
+        }),
+      ]);
+    } catch (err) {
+      try {
+        await navigator.clipboard.writeText(text); // Browser ohne ClipboardItem
+      } catch (err2) {
+        return; // Zwischenablage nicht erlaubt - kein Haken.
+      }
+    }
+    clearTimeout(copiedTimer);
+    btn.classList.add('copied');
+    copiedTimer = setTimeout(() => btn.classList.remove('copied'), COPIED_FEEDBACK_MS);
+  });
+  return btn;
+}
+
 function attachSpeakButton(bubble, question, answer) {
   const btn = document.createElement('button');
   btn.type = 'button';
@@ -891,6 +936,7 @@ function attachSpeakButton(bubble, question, answer) {
   bubble.appendChild(btn);
   bubble.appendChild(attachSpeedButton());
   attachFeedbackButtons(bubble, question, answer);
+  bubble.appendChild(buildCopyAnswerButton(answer));
   return btn;
 }
 

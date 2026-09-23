@@ -39,6 +39,7 @@
   "index.speedButtonTitle": "Vorlesegeschwindigkeit ändern",
   "index.feedbackGoodTitle": "Diese Antwort war hilfreich",
   "index.feedbackBadTitle": "Diese Antwort war nicht hilfreich",
+  "index.copyAnswerTitle": "Antwort kopieren",
   "index.searching": "Suche Antwort...",
   "index.askError": "Fehler bei der Anfrage",
   "index.termFollowUpQuestion": "Erzähl mir mehr über {term}.",

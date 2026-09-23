@@ -1426,6 +1426,38 @@ button.send-button {
   vertical-align: middle;
 }
 
+/* Kopieren-Icon rechts neben den Daumen - gleicher Abstand wie zwischen
+   Geschwindigkeit und Daumen (.answer-feedback margin-left). */
+.copy-answer-btn {
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  padding: 0.2rem;
+  margin-left: 0.9rem;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  vertical-align: middle;
+}
+
+.copy-answer-btn:hover {
+  color: var(--color-accent);
+}
+
+.copy-answer-btn.copied {
+  color: #2e7d32;
+}
+
+.copy-answer-btn .copy-check,
+.copy-answer-btn.copied .copy-icon {
+  display: none;
+}
+
+.copy-answer-btn.copied .copy-check {
+  display: inline;
+}
+
 .feedback-btn {
   flex-shrink: 0;
   background: none;

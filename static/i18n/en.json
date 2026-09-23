@@ -39,6 +39,7 @@
   "index.speedButtonTitle": "Change playback speed",
   "index.feedbackGoodTitle": "This answer was helpful",
   "index.feedbackBadTitle": "This answer was not helpful",
+  "index.copyAnswerTitle": "Copy answer",
   "index.searching": "Searching for an answer...",
   "index.askError": "Request failed",
   "index.termFollowUpQuestion": "Tell me more about {term}.",
