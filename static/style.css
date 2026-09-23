@@ -4919,6 +4919,17 @@ details a {
   padding: 0.2rem 0;
 }
 
+/* Quellen-Links wie .link-button, aber in normaler Schriftstärke - die
+   fette "Quellenliste filtern"-Aktion darunter bleibt so unterscheidbar. */
+.term-overview-sources a {
+  color: var(--color-accent);
+  text-underline-offset: 2px;
+}
+
+.term-overview-sources a:hover {
+  color: var(--color-accent-hover);
+}
+
 .term-overview-filter {
   margin-left: 1rem;
   font-size: 0.85rem;
