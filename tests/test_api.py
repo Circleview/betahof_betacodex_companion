@@ -283,6 +283,22 @@ def client(tmp_path, monkeypatch):
     # echte Anthropic-Anfrage auslösen. Tests, die die Übersetzung selbst
     # gezielt prüfen, überschreiben dieses Mock lokal.
     monkeypatch.setattr(summarization, "translate_summary", lambda text, target_lang="de": "")
+    # SSRF-Schutz (2026-09-23, app/extraction.py: _assert_safe_url) löst seit
+    # dem Security-Fix jeden Hostnamen per echtem DNS auf, bevor eine URL
+    # abgerufen wird (looks_like_pdf/download_pdf_bytes/looks_like_audio/
+    # download_audio_bytes, ausgelöst z.B. bei JEDEM add_source() mit einer
+    # url - siehe _sync_pdf_file_from_url/_sync_audio_file_from_url oben in
+    # app/main.py). Ohne dieses Mock würde ein Grossteil der Tests hier
+    # (die eine fiktive "https://example.org"-URL verwenden, ohne
+    # looks_like_pdf/looks_like_audio selbst zu mocken) eine echte
+    # Netzwerkanfrage auslösen. Liefert eine öffentliche Test-IP für JEDEN
+    # Hostnamen; Tests, die das SSRF-Schutzverhalten selbst prüfen,
+    # überschreiben dieses Mock lokal mit einer privaten/internen IP.
+    monkeypatch.setattr(
+        extraction.socket,
+        "getaddrinfo",
+        lambda host, *args, **kwargs: [(2, 1, 6, "", ("93.184.216.34", 0))],
+    )
     monkeypatch.setattr(users, "USERS_FILE", tmp_path / "users.json")
     monkeypatch.setattr(terms, "TERMS_FILE", tmp_path / "terms.json")
     monkeypatch.setattr(audit, "AUDIT_LOG_FILE", tmp_path / "audit_log.json")
