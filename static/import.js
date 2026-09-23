@@ -2531,6 +2531,12 @@ function renderSourceList(sources, options = {}) {
   updateAlphabetJumpBar(sorted);
   updateImportedSourcesCount();
   const list = document.getElementById('source-list');
+  // Schlagwort-Ansicht ersetzt die Quellenliste nur ungefiltert - ein
+  // Filter (z.B. "nach diesem Schlagwort filtern") oder die Suche zeigt
+  // wieder die passenden Quellen.
+  const showTerms = currentSortMode === 'term' && !isFilterActive() && !searchBarOpen;
+  list.classList.toggle('hidden', showTerms);
+  document.getElementById('term-overview').classList.toggle('hidden', !showTerms);
   list.innerHTML = '';
   let lastMonthYear = null;
   let lastAuthorKey = null;
@@ -3710,6 +3716,7 @@ brokenLinksBtn.addEventListener('click', () => filterByBrokenLinks());
 
 document.getElementById('sort-author').addEventListener('click', () => setSortMode('author'));
 document.getElementById('sort-date').addEventListener('click', () => setSortMode('date'));
+document.getElementById('sort-term').addEventListener('click', () => setSortMode('term'));
 
 document.getElementById('reindex-sources-btn').addEventListener('click', async (e) => {
   const btn = e.currentTarget;
@@ -3736,6 +3743,7 @@ function setSortMode(mode) {
   currentSortMode = mode;
   document.getElementById('sort-author').classList.toggle('active', mode === 'author');
   document.getElementById('sort-date').classList.toggle('active', mode === 'date');
+  document.getElementById('sort-term').classList.toggle('active', mode === 'term');
   document.getElementById('source-list').classList.toggle('timeline-mode', mode === 'date');
   renderSourceList(currentSourceList);
 }
