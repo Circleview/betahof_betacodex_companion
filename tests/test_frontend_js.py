@@ -2176,6 +2176,7 @@ actions.children = [iconGroup, sortToolbar, searchToolbar];
 actions.clientWidth = 1000;
 const row = new FakeNode(0);
 const termMergeBtn = new FakeNode(0);
+const sortDateBtn = new FakeNode(0);
 
 global.document = {{
   querySelector: (sel) => {{
@@ -2184,7 +2185,7 @@ global.document = {{
     if (sel === '.sort-toolbar') return sortToolbar;
     return null;
   }},
-  getElementById: (id) => (id === 'typ-term-merge' ? termMergeBtn : null),
+  getElementById: (id) => ({{ 'typ-term-merge': termMergeBtn, 'sort-date': sortDateBtn }})[id] || null,
 }};
 global.getComputedStyle = (el) => ({{
   columnGap: '20px',
@@ -2264,7 +2265,9 @@ class FakeNode {{
     }};
   }}
   getBoundingClientRect() {{
-    const shrink = this === iconGroup && termMergeBtn._classes.has('hidden') ? 40 : 0;
+    const shrink =
+      (this === iconGroup && termMergeBtn._classes.has('hidden') ? 40 : 0) +
+      (this === sortToolbar && sortDateBtn._classes.has('hidden') ? 31 : 0);
     return {{ width: this._width - shrink }};
   }}
 }}
@@ -2277,6 +2280,7 @@ actions.children = [iconGroup, sortToolbar, searchToolbar];
 actions.clientWidth = {client_width};
 const row = new FakeNode(0);
 const termMergeBtn = new FakeNode(0);
+const sortDateBtn = new FakeNode(0);
 
 global.document = {{
   querySelector: (sel) => {{
@@ -2285,7 +2289,7 @@ global.document = {{
     if (sel === '.sort-toolbar') return sortToolbar;
     return null;
   }},
-  getElementById: (id) => (id === 'typ-term-merge' ? termMergeBtn : null),
+  getElementById: (id) => ({{ 'typ-term-merge': termMergeBtn, 'sort-date': sortDateBtn }})[id] || null,
 }};
 global.getComputedStyle = (el) => ({{
   columnGap: '20px',
@@ -2305,25 +2309,35 @@ initSourceToolbarOverflow();
 resizeCallback();
 console.log(JSON.stringify({{
   sortHidden: sortToolbar._classes.has('sort-toolbar--hidden-for-space'),
+  sortDateHidden: sortDateBtn._classes.has('hidden'),
   termMergeHidden: termMergeBtn._classes.has('hidden'),
 }}));
 """
     return _run_node(script)
 
 
-def test_source_toolbar_hides_term_merge_icon_as_last_resort_before_search_would_wrap():
+def test_source_toolbar_hides_whole_sort_toolbar_only_as_last_resort():
     """Nutzerwunsch (2026-09-23): die Suche soll auf kleinen Screens NIE
-    verschwinden (revidiert eine frühere Fassung, die stattdessen die Suche
-    ausgeblendet hätte) - reicht der Platz selbst ohne Sortierung nicht,
-    wird stattdessen das seltener gebrauchte Icon "Ähnliche Schlagworte"
-    (#typ-term-merge) ausgeblendet."""
+    verschwinden, und die Sortierung nach Autor:in/Schlagwort soll mobil
+    möglichst sichtbar bleiben - erst fallen Datums-Button und "Ähnliche
+    Schlagworte" (#typ-term-merge) weg, die ganze Sortier-Leiste zuletzt."""
     result = _run_source_toolbar_overflow_last_resort(250)
-    assert result == {"sortHidden": True, "termMergeHidden": True}
+    assert result == {"sortHidden": True, "sortDateHidden": True, "termMergeHidden": True}
 
 
-def test_source_toolbar_keeps_term_merge_icon_when_hiding_sort_toolbar_is_enough():
+def test_source_toolbar_hides_date_button_before_term_merge():
+    result = _run_source_toolbar_overflow_last_resort(360)
+    assert result == {"sortHidden": False, "sortDateHidden": True, "termMergeHidden": False}
+
+
+def test_source_toolbar_hides_term_merge_before_author_and_term_sort():
+    result = _run_source_toolbar_overflow_last_resort(320)
+    assert result == {"sortHidden": False, "sortDateHidden": True, "termMergeHidden": True}
+
+
+def test_source_toolbar_keeps_everything_when_it_fits():
     result = _run_source_toolbar_overflow_last_resort(400)
-    assert result == {"sortHidden": False, "termMergeHidden": False}
+    assert result == {"sortHidden": False, "sortDateHidden": False, "termMergeHidden": False}
 
 
 def _run_remove_source_suggestion_row(*, reserve_ids: list[str], visible_ids: list[str] = None) -> dict:
