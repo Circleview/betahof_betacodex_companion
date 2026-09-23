@@ -1965,7 +1965,8 @@ button.send-button {
   border-bottom: 1px solid var(--color-border);
 }
 
-#source-list li.source-row {
+#source-list li.source-row,
+.term-overview-sources li.source-row {
   display: block;
 }
 
@@ -2764,7 +2765,9 @@ button.send-button {
   }
 
   #source-list li:hover .icon-button,
-  #source-list li:focus-within .icon-button {
+  #source-list li:focus-within .icon-button,
+  .term-overview-sources li:hover .icon-button,
+  .term-overview-sources li:focus-within .icon-button {
     opacity: 1;
   }
 
@@ -2801,7 +2804,8 @@ button.send-button {
    zu gehen. */
 /* Innenabstand = Überstand, damit der Text exakt an derselben Kante steht
    wie in den übrigen Zeilen - nur die Tönung ragt in den Rand hinaus. */
-#source-list li.source-row--unreachable {
+#source-list li.source-row--unreachable,
+.term-overview-sources li.source-row--unreachable {
   background: var(--color-warning-tint);
   padding-left: 0.85rem;
   padding-right: 0.85rem;
@@ -3344,7 +3348,8 @@ button.send-button {
   grid-column: 3;
 }
 
-#source-list li.source-edit-panel {
+#source-list li.source-edit-panel,
+.term-overview-sources li.source-edit-panel {
   display: block;
   background: var(--color-surface);
   border-radius: var(--radius);
@@ -3354,7 +3359,9 @@ button.send-button {
 }
 
 #source-list li.source-edit-panel--pending-deletion label,
-#source-list li.source-edit-panel--pending-deletion .checkbox-label {
+#source-list li.source-edit-panel--pending-deletion .checkbox-label,
+.term-overview-sources li.source-edit-panel--pending-deletion label,
+.term-overview-sources li.source-edit-panel--pending-deletion .checkbox-label {
   opacity: 0.6;
 }
 
@@ -4948,19 +4955,13 @@ details a {
   margin: 0.5rem 0 0.25rem 1rem;
 }
 
-.term-overview-sources li {
-  padding: 0.2rem 0;
+.term-overview-sources > li {
+  padding: 0.4rem 0;
+  border-bottom: 1px solid var(--color-border);
 }
 
-/* Quellen-Links wie .link-button, aber in normaler Schriftstärke - die
-   fette "Quellenliste filtern"-Aktion darunter bleibt so unterscheidbar. */
-.term-overview-sources a {
-  color: var(--color-accent);
-  text-underline-offset: 2px;
-}
-
-.term-overview-sources a:hover {
-  color: var(--color-accent-hover);
+.term-overview-sources > li:last-child {
+  border-bottom: none;
 }
 
 .term-overview-filter {

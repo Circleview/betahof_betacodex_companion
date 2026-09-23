@@ -732,10 +732,13 @@ def _find_orphaned_elements(function_body: str) -> list[str]:
             rf"(?:appendChild|append|insertBefore|prepend|replaceChild|replaceChildren|insertAdjacentElement|appendTimelineRow)\([^)]*\b{name}\b",
             function_body,
         )
-        # Direkte Rückgabe (`return label;`) ODER als Objekt-Property zurückgegeben
-        # (`return { label, input };`), z.B. bei buildFieldLabel().
-        returned = re.search(rf"\breturn\s+{name}\b", function_body) or re.search(
-            rf"\breturn\s*\{{[^}}]*\b{name}\b[^}}]*\}}", function_body
+        # Direkte Rückgabe (`return label;`), als Objekt-Property (`return
+        # { label, input };`, z.B. buildFieldLabel()) oder als Array-Element
+        # (`return [li, panel];`, z.B. buildSourceEntries()).
+        returned = (
+            re.search(rf"\breturn\s+{name}\b", function_body)
+            or re.search(rf"\breturn\s*\{{[^}}]*\b{name}\b[^}}]*\}}", function_body)
+            or re.search(rf"\breturn\s*\[[^\]]*\b{name}\b", function_body)
         )
         if not appended and not returned:
             orphaned.append(name)

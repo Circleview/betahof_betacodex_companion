@@ -173,8 +173,14 @@ let activeEditId = null;
 // Autor:in-Überschrift die konkrete Zeile steht - außerhalb des Autor:innen-
 // Modus (dort immer null bei allen Zeilen) bleibt das wirkungslos.
 let activeEditAuthorKey = null;
+// Schlagwort-Ansicht (2026-09-24): dieselbe Quelle kann dort unter mehreren
+// aufgeklappten Schlagworten stehen - __editRowKey unterscheidet diese Zeilen
+// wie __sortAuthor die Autor:innen-Zeilen.
+function editRowKey(s) {
+  return s.__editRowKey || s.__sortAuthor || null;
+}
 function isActiveEditRow(s) {
-  return activeEditId === s.id && activeEditAuthorKey === (s.__sortAuthor || null);
+  return activeEditId === s.id && activeEditAuthorKey === editRowKey(s);
 }
 let pendingUploadId = null;
 let pendingUploadType = null; // 'pdf' | 'audio'
@@ -2575,6 +2581,194 @@ function updateImportedSourcesCount() {
   countEl.textContent = `(${count})`;
 }
 
+// Eine Quelle als Listeneintrag(e): normale Zeile (Titel aufklappbar mit
+// Kurzbeschreibung, Autor:innen, Aktionen), ggf. gefolgt vom Bearbeiten-
+// Formular, bzw. die Rückgängig-Zeile nach dem Löschen. Genutzt von der
+// Quellenliste UND der Schlagwort-Ansicht (Nutzerwunsch 2026-09-24: Quellen
+// dort "vor Ort" aufklappen/bearbeiten). Alle Interaktionen zeichnen über
+// renderSourceList neu - das aktualisiert in der Schlagwort-Ansicht auch
+// diese mit (siehe Ende von renderSourceList).
+function buildSourceEntries(s, rowIndex, options = {}) {
+  if (pendingDeletions.has(s.id)) {
+    return [isActiveEditRow(s) ? buildEditPanel(s, { pendingDeletion: true, rowIndex }) : buildUndoRow(s)];
+  }
+
+  const li = document.createElement('li');
+  li.className = 'source-row';
+  if (s.url_reachable === false) {
+    li.classList.add('source-row--unreachable');
+  }
+  li.dataset.sourceId = s.id;
+  // Backlog #65: eindeutiges Sprungziel für die Alphabet-Leiste - anders
+  // als data-source-id (mehrdeutig, wenn eine Quelle im Autor:innen-Modus
+  // mehrfach expandiert erscheint) trifft der Index in der sortierten
+  // Liste immer genau DIESE eine Zeile.
+  if (typeof rowIndex === 'number') li.dataset.rowIndex = String(rowIndex);
+
+  const header = document.createElement('div');
+  header.className = 'source-row-header';
+
+  // Nutzerwunsch (2026-09-23): eine Quelle mit erkanntem defektem Link
+  // (url_reachable === false, siehe source-row--unreachable oben) soll
+  // nirgendwo mehr verlinkt werden - auch nicht hier in der eigenen
+  // Quellenverwaltung.
+  const citationUrl = s.url_reachable === false ? null : s.listen_url || s.url;
+  const hasDetails = !!s.summary;
+  const isProcessing = !!s.processing_status;
+  // Nutzerwunsch (2026-08-03): "error" zaehlt NICHT als aktiv - da laeuft
+  // nichts mehr, das ein manueller Edit ueberschreiben koennte (siehe
+  // Kommentar am editBtn unten). Nur pending/running sperren Bearbeiten.
+  const isActivelyProcessing = s.processing_status === 'pending' || s.processing_status === 'running';
+
+  const textSpan = document.createElement('span');
+  if (hasDetails) {
+    const titleBtn = document.createElement('button');
+    titleBtn.type = 'button';
+    titleBtn.className = 'link-button source-title-toggle';
+    titleBtn.textContent = s.title;
+    titleBtn.addEventListener('click', () => {
+      if (expandedSourceIds.has(s.id)) {
+        expandedSourceIds.delete(s.id);
+      } else {
+        expandedSourceIds.add(s.id);
+      }
+      renderSourceList(currentSourceList, options);
+    });
+    textSpan.appendChild(titleBtn);
+    textSpan.append(' – ');
+  } else {
+    textSpan.append(`${s.title} – `);
+  }
+  if (s.authors && s.authors.length) {
+    authorsForDisplay(s).forEach((name, index) => {
+      if (index > 0) textSpan.append(', ');
+      const authorBtn = document.createElement('button');
+      authorBtn.type = 'button';
+      authorBtn.className = 'link-button';
+      authorBtn.textContent = name;
+      authorBtn.addEventListener('click', () => filterByAuthor(name));
+      textSpan.appendChild(authorBtn);
+    });
+  } else {
+    textSpan.append(t('common.unknownAuthor'));
+  }
+  textSpan.append(` (${formatYear(s.date)})`);
+  if (s.restricted) {
+    const badge = document.createElement('span');
+    badge.className = 'restricted-badge';
+    badge.textContent = t('common.restrictedBadge');
+    textSpan.appendChild(document.createTextNode(' '));
+    textSpan.appendChild(badge);
+  }
+  if (isProcessing) {
+    const badge = document.createElement('span');
+    badge.className = 'restricted-badge';
+    badge.textContent = t('import.processingBadge');
+    textSpan.appendChild(document.createTextNode(' '));
+    textSpan.appendChild(badge);
+  }
+  if (options.mentionOnlyIds?.has(s.id)) {
+    const badge = document.createElement('span');
+    badge.className = 'restricted-badge';
+    badge.textContent = t('import.mentionOnlyBadge');
+    badge.title = t('import.mentionOnlyBadgeTitle', { name: options.mentionOnlyName || '' });
+    textSpan.appendChild(document.createTextNode(' '));
+    textSpan.appendChild(badge);
+  }
+  header.appendChild(textSpan);
+
+  const actions = document.createElement('span');
+  actions.className = 'source-row-actions';
+
+  if (s.url_reachable === false) {
+    const warning = document.createElement(hasPflegerRole() ? 'button' : 'span');
+    if (hasPflegerRole()) warning.type = 'button';
+    warning.className = 'icon-button warning-icon';
+    // Backlog #163: für Pfleger:innen/Admins den konkreten Fehlergrund
+    // direkt im Tooltip ergänzen (url_reason_code/url_status_code sind
+    // für alle anderen bereits serverseitig auf null gesetzt, siehe
+    // app/main.py: _to_source_out).
+    const warnLabel = hasPflegerRole()
+      ? `${t('common.urlUnreachable')} – ${urlErrorText(s)}`
+      : t('common.urlUnreachable');
+    warning.title = warnLabel;
+    warning.setAttribute('aria-label', warnLabel);
+    warning.innerHTML = WARNING_ICON;
+    if (hasPflegerRole()) {
+      warning.addEventListener('click', () => {
+        if (isActiveEditRow(s)) {
+          activeEditId = null;
+          activeEditAuthorKey = null;
+        } else {
+          activeEditId = s.id;
+          activeEditAuthorKey = editRowKey(s);
+        }
+        renderSourceList(currentSourceList, options);
+      });
+    }
+    actions.appendChild(warning);
+  }
+
+  if (citationUrl) {
+    const linkBtn = document.createElement('a');
+    linkBtn.href = citationUrl;
+    linkBtn.target = '_blank';
+    linkBtn.rel = 'noopener noreferrer';
+    linkBtn.className = 'icon-button';
+    const openLabel = t('common.openSource');
+    linkBtn.title = openLabel;
+    linkBtn.setAttribute('aria-label', openLabel);
+    linkBtn.innerHTML = EXTERNAL_LINK_ICON;
+    actions.appendChild(linkBtn);
+  }
+
+  if (hasPflegerRole()) {
+    const editBtn = document.createElement('button');
+    editBtn.type = 'button';
+    editBtn.className = 'icon-button';
+    // Solange die Quelle noch AKTIV verarbeitet wird (pending/running),
+    // würde ein manueller Edit vom später eintreffenden Transkript
+    // überschrieben - deshalb für GENAU diese eine Quelle deaktiviert,
+    // alle anderen bleiben normal bearbeitbar (das ist ja gerade der Zweck
+    // der Hintergrund-Verarbeitung). Bei "error" laeuft dagegen nichts
+    // mehr - Bearbeiten ist dort die Reparatur (siehe update_source, das
+    // den Fehlerzustand bei erfolgreichem Speichern zuruecksetzt).
+    editBtn.disabled = isActivelyProcessing;
+    const editLabel = isActivelyProcessing ? t('import.editDisabledWhileProcessing') : t('common.editSource');
+    editBtn.title = editLabel;
+    editBtn.setAttribute('aria-label', editLabel);
+    editBtn.innerHTML = EDIT_ICON;
+    editBtn.addEventListener('click', async () => {
+      // Fix (2026-08-31): das Bearbeiten-Formular zeigt den Volltext (s.text)
+      // - der wird seit der zweiphasigen Ladereihenfolge (siehe loadSources/
+      // loadFullSourceText) erst NACH der sichtbaren Liste im Hintergrund
+      // nachgeladen. Ohne dieses Warten hätte ein sehr schnelles Klicken
+      // kurz nach dem Seitenaufruf ein leeres Textfeld gezeigt - und ein
+      // Speichern hätte den echten Volltext der Quelle gelöscht.
+      if (fullTextReady) await fullTextReady;
+      if (isActiveEditRow(s)) {
+        activeEditId = null;
+        activeEditAuthorKey = null;
+      } else {
+        activeEditId = s.id;
+        activeEditAuthorKey = editRowKey(s);
+      }
+      renderSourceList(currentSourceList, options);
+    });
+    actions.appendChild(editBtn);
+  }
+
+  header.appendChild(actions);
+  li.appendChild(header);
+
+  if (hasDetails && expandedSourceIds.has(s.id)) {
+    li.appendChild(buildSourceDetails(s, citationUrl));
+  }
+
+  if (isActiveEditRow(s)) return [li, buildEditPanel(s, { rowIndex })];
+  return [li];
+}
+
 function renderSourceList(sources, options = {}) {
   currentSourceList = sources;
   const sorted = sortSources(sources);
@@ -2589,6 +2783,15 @@ function renderSourceList(sources, options = {}) {
   list.classList.toggle('hidden', showTerms);
   document.getElementById('term-overview').classList.toggle('hidden', !showTerms);
   list.innerHTML = '';
+  // Versteckte Quellenliste gar nicht erst aufbauen - ein offenes Bearbeiten-
+  // Formular stünde sonst doppelt im DOM (gleiche IDs, Labels träfen das
+  // versteckte Feld). Alle Neuzeichnen-Wege laufen über diese Funktion, so
+  // bleibt die Schlagwort-Ansicht (mit ihren Quellen-Zeilen) aktuell.
+  if (showTerms) {
+    sourceListObserver?.disconnect();
+    renderTermOverview();
+    return;
+  }
   let lastMonthYear = null;
   let lastAuthorKey = null;
   let gridRow = 0;
@@ -2624,192 +2827,7 @@ function renderSourceList(sources, options = {}) {
       lastAuthorKey = key;
     }
 
-    if (pendingDeletions.has(s.id)) {
-      if (isActiveEditRow(s)) {
-        appendTimelineRow(buildEditPanel(s, { pendingDeletion: true, rowIndex }));
-      } else {
-        appendTimelineRow(buildUndoRow(s));
-      }
-      return;
-    }
-
-    const li = document.createElement('li');
-    li.className = 'source-row';
-    if (s.url_reachable === false) {
-      li.classList.add('source-row--unreachable');
-    }
-    li.dataset.sourceId = s.id;
-    // Backlog #65: eindeutiges Sprungziel für die Alphabet-Leiste - anders
-    // als data-source-id (mehrdeutig, wenn eine Quelle im Autor:innen-Modus
-    // mehrfach expandiert erscheint) trifft der Index in der sortierten
-    // Liste immer genau DIESE eine Zeile.
-    li.dataset.rowIndex = String(rowIndex);
-
-    const header = document.createElement('div');
-    header.className = 'source-row-header';
-
-    // Nutzerwunsch (2026-09-23): eine Quelle mit erkanntem defektem Link
-    // (url_reachable === false, siehe source-row--unreachable oben) soll
-    // nirgendwo mehr verlinkt werden - auch nicht hier in der eigenen
-    // Quellenverwaltung.
-    const citationUrl = s.url_reachable === false ? null : s.listen_url || s.url;
-    const hasDetails = !!s.summary;
-    const isProcessing = !!s.processing_status;
-    // Nutzerwunsch (2026-08-03): "error" zaehlt NICHT als aktiv - da laeuft
-    // nichts mehr, das ein manueller Edit ueberschreiben koennte (siehe
-    // Kommentar am editBtn unten). Nur pending/running sperren Bearbeiten.
-    const isActivelyProcessing = s.processing_status === 'pending' || s.processing_status === 'running';
-
-    const textSpan = document.createElement('span');
-    if (hasDetails) {
-      const titleBtn = document.createElement('button');
-      titleBtn.type = 'button';
-      titleBtn.className = 'link-button source-title-toggle';
-      titleBtn.textContent = s.title;
-      titleBtn.addEventListener('click', () => {
-        if (expandedSourceIds.has(s.id)) {
-          expandedSourceIds.delete(s.id);
-        } else {
-          expandedSourceIds.add(s.id);
-        }
-        renderSourceList(currentSourceList, options);
-      });
-      textSpan.appendChild(titleBtn);
-      textSpan.append(' – ');
-    } else {
-      textSpan.append(`${s.title} – `);
-    }
-    if (s.authors && s.authors.length) {
-      authorsForDisplay(s).forEach((name, index) => {
-        if (index > 0) textSpan.append(', ');
-        const authorBtn = document.createElement('button');
-        authorBtn.type = 'button';
-        authorBtn.className = 'link-button';
-        authorBtn.textContent = name;
-        authorBtn.addEventListener('click', () => filterByAuthor(name));
-        textSpan.appendChild(authorBtn);
-      });
-    } else {
-      textSpan.append(t('common.unknownAuthor'));
-    }
-    textSpan.append(` (${formatYear(s.date)})`);
-    if (s.restricted) {
-      const badge = document.createElement('span');
-      badge.className = 'restricted-badge';
-      badge.textContent = t('common.restrictedBadge');
-      textSpan.appendChild(document.createTextNode(' '));
-      textSpan.appendChild(badge);
-    }
-    if (isProcessing) {
-      const badge = document.createElement('span');
-      badge.className = 'restricted-badge';
-      badge.textContent = t('import.processingBadge');
-      textSpan.appendChild(document.createTextNode(' '));
-      textSpan.appendChild(badge);
-    }
-    if (options.mentionOnlyIds?.has(s.id)) {
-      const badge = document.createElement('span');
-      badge.className = 'restricted-badge';
-      badge.textContent = t('import.mentionOnlyBadge');
-      badge.title = t('import.mentionOnlyBadgeTitle', { name: options.mentionOnlyName || '' });
-      textSpan.appendChild(document.createTextNode(' '));
-      textSpan.appendChild(badge);
-    }
-    header.appendChild(textSpan);
-
-    const actions = document.createElement('span');
-    actions.className = 'source-row-actions';
-
-    if (s.url_reachable === false) {
-      const warning = document.createElement(hasPflegerRole() ? 'button' : 'span');
-      if (hasPflegerRole()) warning.type = 'button';
-      warning.className = 'icon-button warning-icon';
-      // Backlog #163: für Pfleger:innen/Admins den konkreten Fehlergrund
-      // direkt im Tooltip ergänzen (url_reason_code/url_status_code sind
-      // für alle anderen bereits serverseitig auf null gesetzt, siehe
-      // app/main.py: _to_source_out).
-      const warnLabel = hasPflegerRole()
-        ? `${t('common.urlUnreachable')} – ${urlErrorText(s)}`
-        : t('common.urlUnreachable');
-      warning.title = warnLabel;
-      warning.setAttribute('aria-label', warnLabel);
-      warning.innerHTML = WARNING_ICON;
-      if (hasPflegerRole()) {
-        warning.addEventListener('click', () => {
-          if (isActiveEditRow(s)) {
-            activeEditId = null;
-            activeEditAuthorKey = null;
-          } else {
-            activeEditId = s.id;
-            activeEditAuthorKey = s.__sortAuthor || null;
-          }
-          renderSourceList(currentSourceList, options);
-        });
-      }
-      actions.appendChild(warning);
-    }
-
-    if (citationUrl) {
-      const linkBtn = document.createElement('a');
-      linkBtn.href = citationUrl;
-      linkBtn.target = '_blank';
-      linkBtn.rel = 'noopener noreferrer';
-      linkBtn.className = 'icon-button';
-      const openLabel = t('common.openSource');
-      linkBtn.title = openLabel;
-      linkBtn.setAttribute('aria-label', openLabel);
-      linkBtn.innerHTML = EXTERNAL_LINK_ICON;
-      actions.appendChild(linkBtn);
-    }
-
-    if (hasPflegerRole()) {
-      const editBtn = document.createElement('button');
-      editBtn.type = 'button';
-      editBtn.className = 'icon-button';
-      // Solange die Quelle noch AKTIV verarbeitet wird (pending/running),
-      // würde ein manueller Edit vom später eintreffenden Transkript
-      // überschrieben - deshalb für GENAU diese eine Quelle deaktiviert,
-      // alle anderen bleiben normal bearbeitbar (das ist ja gerade der Zweck
-      // der Hintergrund-Verarbeitung). Bei "error" laeuft dagegen nichts
-      // mehr - Bearbeiten ist dort die Reparatur (siehe update_source, das
-      // den Fehlerzustand bei erfolgreichem Speichern zuruecksetzt).
-      editBtn.disabled = isActivelyProcessing;
-      const editLabel = isActivelyProcessing ? t('import.editDisabledWhileProcessing') : t('common.editSource');
-      editBtn.title = editLabel;
-      editBtn.setAttribute('aria-label', editLabel);
-      editBtn.innerHTML = EDIT_ICON;
-      editBtn.addEventListener('click', async () => {
-        // Fix (2026-08-31): das Bearbeiten-Formular zeigt den Volltext (s.text)
-        // - der wird seit der zweiphasigen Ladereihenfolge (siehe loadSources/
-        // loadFullSourceText) erst NACH der sichtbaren Liste im Hintergrund
-        // nachgeladen. Ohne dieses Warten hätte ein sehr schnelles Klicken
-        // kurz nach dem Seitenaufruf ein leeres Textfeld gezeigt - und ein
-        // Speichern hätte den echten Volltext der Quelle gelöscht.
-        if (fullTextReady) await fullTextReady;
-        if (isActiveEditRow(s)) {
-          activeEditId = null;
-          activeEditAuthorKey = null;
-        } else {
-          activeEditId = s.id;
-          activeEditAuthorKey = s.__sortAuthor || null;
-        }
-        renderSourceList(currentSourceList, options);
-      });
-      actions.appendChild(editBtn);
-    }
-
-    header.appendChild(actions);
-    li.appendChild(header);
-
-    if (hasDetails && expandedSourceIds.has(s.id)) {
-      li.appendChild(buildSourceDetails(s, citationUrl));
-    }
-
-    appendTimelineRow(li);
-
-    if (isActiveEditRow(s)) {
-      appendTimelineRow(buildEditPanel(s, { rowIndex }));
-    }
+    buildSourceEntries(s, rowIndex, options).forEach(appendTimelineRow);
   });
 
   if (currentSortMode === 'date') {
@@ -4187,9 +4205,16 @@ function buildTermDeleteButton(entry, status) {
   return deleteBtn;
 }
 
+// Aufgeklappte Schlagworte überleben so jedes Neuzeichnen (z.B. nach dem
+// Speichern einer Quelle im Bearbeiten-Formular darunter).
+const expandedTermKeys = new Set();
+
 function setTermExpanded(li, expanded) {
+  if (expanded) li.fillSources();
   li.querySelector('.term-overview-toggle').setAttribute('aria-expanded', String(expanded));
   li.querySelector('.term-overview-panel').hidden = !expanded;
+  if (expanded) expandedTermKeys.add(li.dataset.termKey);
+  else expandedTermKeys.delete(li.dataset.termKey);
 }
 
 // Bewusst kein <details>/<summary>: Stift und Mülleimer sind eigene Buttons,
@@ -4199,19 +4224,22 @@ function setTermExpanded(li, expanded) {
 function buildTermOverviewItem(entry, index, maxCount) {
   const li = document.createElement('li');
   li.dataset.termIndex = String(index);
+  const termKey = normalizeTerm(entry.term);
+  li.dataset.termKey = termKey;
+  const expanded = expandedTermKeys.has(termKey);
   const row = document.createElement('div');
   row.className = 'term-overview-summary';
 
   const panel = document.createElement('div');
   panel.className = 'term-overview-panel';
   panel.id = `term-overview-panel-${index}`;
-  panel.hidden = true;
+  panel.hidden = !expanded;
 
   const toggle = document.createElement('button');
   toggle.type = 'button';
   toggle.className = 'term-overview-name term-overview-toggle';
   toggle.textContent = entry.term;
-  toggle.setAttribute('aria-expanded', 'false');
+  toggle.setAttribute('aria-expanded', String(expanded));
   toggle.setAttribute('aria-controls', panel.id);
   toggle.addEventListener('click', () => setTermExpanded(li, panel.hidden));
 
@@ -4242,23 +4270,20 @@ function buildTermOverviewItem(entry, index, maxCount) {
   // Der Stift-Wrapper übernimmt toggle (verschiebt es aus row) und rückt an dessen Platz.
   if (hasPflegerRole()) row.prepend(buildTermRenameControls(entry, toggle, status));
 
+  // Nutzerwunsch (2026-09-24): Quellen hier "vor Ort" aufklappen
+  // (Kurzbeschreibung) und bearbeiten - dieselben Zeilen wie in der
+  // Quellenliste. Nur für aufgeklappte Schlagworte gebaut.
+  // Erst beim (ersten) Aufklappen gebaut - bei Hunderten sichtbarer
+  // Schlagworte wären das sonst Tausende Zeilen samt Buttons vorab.
   const sourceList = document.createElement('ul');
   sourceList.className = 'term-overview-sources';
-  entry.sources.forEach((s) => {
-    const item = document.createElement('li');
-    const link = document.createElement('a');
-    link.href = `/import.html?source=${encodeURIComponent(s.id)}`;
-    link.textContent = s.title;
-    // Direkt auf der Seite statt Neuladen - Modifier-Klicks (neuer Tab)
-    // behalten das normale Link-Verhalten.
-    link.addEventListener('click', (e) => {
-      if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
-      e.preventDefault();
-      focusSource(s.id);
+  li.fillSources = () => {
+    if (sourceList.children.length) return;
+    entry.sources.forEach((s, i) => {
+      sourceList.append(...buildSourceEntries({ ...s, __editRowKey: `term:${termKey}` }, `t${index}-${i}`));
     });
-    item.appendChild(link);
-    sourceList.appendChild(item);
-  });
+  };
+  if (expanded) li.fillSources();
   const filterBtn = document.createElement('button');
   filterBtn.type = 'button';
   filterBtn.className = 'link-button term-overview-filter';
