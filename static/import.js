@@ -3917,7 +3917,6 @@ function buildOverviewTerms(entries, sources, lang) {
 async function loadTermOverview() {
   const res = await fetch('/api/terms');
   overviewTerms = buildOverviewTerms(await res.json(), allSources, getLang());
-  visibleTermCount = TERMS_PAGE_SIZE;
   renderTermJumpBar();
   renderTermOverview();
 }
@@ -3982,6 +3981,124 @@ function renderTermOverview() {
   }
 }
 
+// Nutzerwunsch (2026-09-23): Quellen-Pfleger:innen können Schlagworte
+// direkt in der Übersicht umbenennen (Stift wie beim Zielschlagwort im
+// Zusammenführen-Panel) oder löschen (zweistufig wie dort). Umbenennen ist
+// ein Zusammenführen auf den neuen Namen, beides über die bestehenden
+// Endpunkte - landet damit im Änderungs-Log und ist pro Quelle rückgängig
+// machbar. Übergeben werden alle Schreibweisen, die in den Quellen
+// tatsächlich stehen (z.B. "Agile"/"agile" teilen sich einen Eintrag).
+function termSpellings(entry) {
+  const key = normalizeTerm(entry.term);
+  const spellings = new Set([entry.term]);
+  entry.sources.forEach((s) => (s.key_terms || []).forEach((k) => normalizeTerm(k) === key && spellings.add(k)));
+  return [...spellings];
+}
+
+async function postTermChange(url, body, status, failedKey) {
+  status.classList.add('hidden');
+  try {
+    const res = await fetch(url, { method: 'POST', headers: jsonHeaders(), body: JSON.stringify(body) });
+    if (!res.ok) throw new Error();
+    knownTermsCache = null;
+    await loadSources();
+    return true;
+  } catch {
+    status.textContent = t(failedKey);
+    status.classList.remove('hidden');
+    return false;
+  }
+}
+
+function buildTermRenameControls(entry, summary, name, status) {
+  const editBtn = document.createElement('button');
+  editBtn.type = 'button';
+  editBtn.className = 'icon-button term-merge-edit-canonical';
+  editBtn.innerHTML = EDIT_ICON;
+  const editLabel = t('import.termRenameTitle');
+  editBtn.title = editLabel;
+  editBtn.setAttribute('aria-label', editLabel);
+
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.className = 'term-merge-canonical-input hidden';
+  input.title = t('import.termRenameInputTitle');
+  const suggestions = attachTagSuggestions(input, { multi: false, lang: getLang() });
+
+  const wrap = document.createElement('span');
+  wrap.className = 'term-merge-canonical-wrap';
+  wrap.append(name, editBtn, input, suggestions);
+
+  function setEditing(editing) {
+    name.classList.toggle('hidden', editing);
+    editBtn.classList.toggle('hidden', editing);
+    input.classList.toggle('hidden', !editing);
+  }
+  // Klicks/Leertaste im Stift oder Eingabefeld sollen das umgebende
+  // <details> nicht auf-/zuklappen.
+  summary.addEventListener('click', (e) => {
+    if (wrap.contains(e.target) && e.target !== name) e.preventDefault();
+  });
+  input.addEventListener('keyup', (e) => e.key === ' ' && e.preventDefault());
+  editBtn.addEventListener('click', () => {
+    input.value = entry.term;
+    setEditing(true);
+    input.focus();
+    input.select();
+  });
+  // Nur Enter speichert - Escape oder Wegklicken verwirft, damit nichts
+  // versehentlich über alle Quellen hinweg umbenannt wird.
+  input.addEventListener('blur', () => setEditing(false));
+  input.addEventListener('keydown', async (e) => {
+    if (e.key === 'Escape') input.blur();
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    const canonical = input.value.trim();
+    if (!canonical || canonical === entry.term) {
+      input.blur();
+      return;
+    }
+    input.disabled = true;
+    const ok = await postTermChange(
+      '/api/terms/merge',
+      { lang: getLang(), canonical, variants: termSpellings(entry) },
+      status,
+      'import.termRenameFailed'
+    );
+    input.disabled = false;
+    if (!ok) input.blur();
+  });
+  return wrap;
+}
+
+function buildTermDeleteButton(entry, status) {
+  const deleteBtn = document.createElement('button');
+  deleteBtn.type = 'button';
+  deleteBtn.className = 'link-button term-overview-filter';
+  deleteBtn.textContent = t('import.termDeleteButton');
+  let confirmPending = false;
+  deleteBtn.addEventListener('click', async () => {
+    if (!confirmPending) {
+      confirmPending = true;
+      deleteBtn.textContent = t('import.termDeleteConfirmButton');
+      return;
+    }
+    deleteBtn.disabled = true;
+    const ok = await postTermChange(
+      '/api/terms/delete',
+      { lang: getLang(), terms: termSpellings(entry) },
+      status,
+      'import.termMergeDeleteFailed'
+    );
+    if (!ok) {
+      confirmPending = false;
+      deleteBtn.textContent = t('import.termDeleteButton');
+      deleteBtn.disabled = false;
+    }
+  });
+  return deleteBtn;
+}
+
 function buildTermOverviewItem(entry, index, maxCount) {
   const li = document.createElement('li');
   li.dataset.termIndex = String(index);
@@ -4005,7 +4122,11 @@ function buildTermOverviewItem(entry, index, maxCount) {
   const countKey = entry.sources.length === 1 ? 'common.sourceCountOne' : 'common.sourceCountMany';
   count.textContent = t(countKey, { count: entry.sources.length });
 
+  const status = document.createElement('p');
+  status.className = 'jobs-list-error hidden';
   summary.append(name, bar, count);
+  // Der Stift-Wrapper übernimmt name (verschiebt es aus summary) und rückt an dessen Platz.
+  if (hasPflegerRole()) summary.prepend(buildTermRenameControls(entry, summary, name, status));
   details.appendChild(summary);
 
   const sourceList = document.createElement('ul');
@@ -4024,6 +4145,8 @@ function buildTermOverviewItem(entry, index, maxCount) {
   filterBtn.textContent = t('import.termOverviewFilter');
   filterBtn.addEventListener('click', () => filterByTerm(entry.term));
   details.append(sourceList, filterBtn);
+  if (hasPflegerRole()) details.append(' · ', buildTermDeleteButton(entry, status));
+  details.append(status);
 
   li.appendChild(details);
   return li;
