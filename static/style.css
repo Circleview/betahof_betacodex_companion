@@ -731,7 +731,8 @@ input, textarea {
   cursor: pointer;
 }
 
-.tag-suggestions li:hover {
+.tag-suggestions li:hover,
+.tag-suggestions li.active {
   background: var(--color-surface);
 }
 

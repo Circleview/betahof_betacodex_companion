@@ -1983,15 +1983,42 @@ function currentTagSegmentBounds(value, cursorPos) {
 // wenn attachTagSuggestions VOR dem ersten Einfügen ins DOM aufgerufen wird.
 // Aufrufer entscheiden selbst, wo die Liste im Baum landet (bei
 // buildEditPanel weiterhin direkt hinter dem Feld, siehe dortigen Aufruf).
+let tagSuggestionListCount = 0;
+
 function attachTagSuggestions(input, options = {}) {
   const multi = options.multi !== false;
   const lang = options.lang || getLang();
   const list = document.createElement('ul');
   list.className = 'tag-suggestions hidden';
+  list.id = `tag-suggestions-${++tagSuggestionListCount}`;
+  list.setAttribute('role', 'listbox');
+  input.setAttribute('aria-controls', list.id);
+  input.setAttribute('aria-autocomplete', 'list');
+  // Nutzerwunsch (2026-09-23): Pfeiltasten wählen einen Vorschlag, Enter
+  // übernimmt ihn - -1 = keiner markiert, Enter gehört dann dem Feld selbst.
+  let activeIndex = -1;
+  let current = null; // { matches, start, end } der gerade angezeigten Liste
+
+  function setActive(index) {
+    activeIndex = index;
+    [...list.children].forEach((li, i) => {
+      li.classList.toggle('active', i === index);
+      li.setAttribute('aria-selected', String(i === index));
+    });
+    const activeLi = list.children[index];
+    if (activeLi) {
+      input.setAttribute('aria-activedescendant', activeLi.id);
+      activeLi.scrollIntoView({ block: 'nearest' });
+    } else {
+      input.removeAttribute('aria-activedescendant');
+    }
+  }
 
   function close() {
     list.classList.add('hidden');
     list.innerHTML = '';
+    current = null;
+    setActive(-1);
   }
 
   function applySuggestion(term, start, end) {
@@ -2049,8 +2076,11 @@ function attachTagSuggestions(input, options = {}) {
       return;
     }
     list.innerHTML = '';
-    matches.forEach((te) => {
+    current = { matches, start, end };
+    matches.forEach((te, i) => {
       const li = document.createElement('li');
+      li.id = `${list.id}-${i}`;
+      li.setAttribute('role', 'option');
       li.textContent = te.term;
       // mousedown statt click: feuert VOR dem blur-Handler unten, der die
       // Liste sonst schon geschlossen hätte, bevor der Klick ankommt.
@@ -2061,11 +2091,29 @@ function attachTagSuggestions(input, options = {}) {
       list.appendChild(li);
     });
     list.classList.remove('hidden');
+    setActive(-1);
   });
 
   input.addEventListener('blur', close);
+  // Wird vor den keydown-Handlern der Aufrufer registriert (Enter speichert
+  // dort bzw. schickt das Formular ab, Escape bricht ab) - solange die Liste
+  // offen ist, gehören Pfeile/Enter/Escape ihr, stopImmediatePropagation
+  // hält sie von den Aufrufer-Handlern fern.
   input.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') close();
+    if (!current) return;
+    const count = current.matches.length;
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      const step = e.key === 'ArrowDown' ? 1 : -1;
+      setActive(activeIndex < 0 && step < 0 ? count - 1 : (activeIndex + step + count) % count);
+    } else if (e.key === 'Enter' && activeIndex >= 0) {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      applySuggestion(current.matches[activeIndex].term, current.start, current.end);
+    } else if (e.key === 'Escape') {
+      e.stopImmediatePropagation();
+      close();
+    }
   });
   return list;
 }
