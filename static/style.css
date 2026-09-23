@@ -1952,13 +1952,13 @@ button.send-button {
   padding: 0.05em 0.15em;
 }
 
-.chat-sources-list, #sidebar-sources-list, #source-list, #author-list {
+.chat-sources-list, #sidebar-sources-list, #source-list, #author-list, #term-overview-list, .term-overview-sources {
   list-style: none;
   padding: 0;
   margin: 0;
 }
 
-.chat-sources-list li, #sidebar-sources-list li, #source-list li, #author-list li {
+.chat-sources-list li, #sidebar-sources-list li, #source-list li, #author-list li, #term-overview-list > li {
   padding: 0.6rem 0;
   border-bottom: 1px solid var(--color-border);
 }
@@ -4833,4 +4833,66 @@ details a {
   border-bottom: none;
   height: 1px;
   grid-column: 1 / -1;
+}
+
+/* Schlagwort-Übersicht (import.html, #schlagworte-bereich): Begriff links,
+   Balken proportional zur Quellenanzahl (relativ zum häufigsten Begriff),
+   Anzahl rechts. */
+.term-overview-summary {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr) minmax(3rem, 8rem) max-content;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+/* display:grid nimmt dem <summary> den nativen Aufklapp-Pfeil - eigener
+   Pfeil als erste Grid-Spalte. */
+.term-overview-summary::-webkit-details-marker {
+  display: none;
+}
+
+.term-overview-summary::before {
+  content: "▸";
+  color: var(--color-text-muted);
+  transition: transform 0.15s ease;
+}
+
+details[open] > .term-overview-summary::before {
+  transform: rotate(90deg);
+}
+
+.term-overview-name {
+  overflow-wrap: anywhere;
+}
+
+.term-overview-bar {
+  height: 0.4rem;
+  border-radius: 999px;
+  background: var(--color-border);
+  overflow: hidden;
+}
+
+.term-overview-bar-fill {
+  display: block;
+  height: 100%;
+  background: var(--color-accent);
+}
+
+.term-overview-count {
+  font-weight: 400;
+  font-size: 0.85rem;
+  color: var(--color-text-muted);
+}
+
+.term-overview-sources {
+  margin: 0.5rem 0 0.25rem 1rem;
+}
+
+.term-overview-sources li {
+  padding: 0.2rem 0;
+}
+
+.term-overview-filter {
+  margin-left: 1rem;
+  font-size: 0.85rem;
 }

@@ -3842,6 +3842,7 @@ async function loadSources() {
     renderAuthorInfoPanel();
   }
   updateBrokenLinksButton();
+  loadTermOverview();
 
   fullTextReady = loadFullSourceText();
 }
@@ -3878,6 +3879,146 @@ async function loadAuthors() {
 function renderAuthorList() {
   const list = document.getElementById('author-list');
   list.replaceChildren(...allAuthors.map(buildAuthorListItem));
+}
+
+// Nutzerwunsch (2026-09-23): Schlagwort-Übersicht - alle Begriffe der
+// gerade gewählten Sprache, alphabetisch, mit eigener Alphabet-Sprungleiste
+// (analog updateAlphabetJumpBar) und seitenweisem Rendern per Sentinel
+// (analog renderSourceList). Pro Begriff aufklappbar die zugehörigen
+// Quellen, die Menge zusätzlich als Balken proportional zum Maximum.
+// Gezählt werden nur Quellen, die in allSources auch sichtbar sind.
+const TERMS_PAGE_SIZE = 50;
+let overviewTerms = [];
+let visibleTermCount = TERMS_PAGE_SIZE;
+let termListObserver = null;
+
+function termLetter(term) {
+  const letter = term.normalize('NFD')[0].toUpperCase();
+  return JUMP_ALPHABET.includes(letter) ? letter : '';
+}
+
+function buildOverviewTerms(entries, sources, lang) {
+  const sourceById = new Map(sources.map((s) => [s.id, s]));
+  return entries
+    .filter((e) => e.langs.includes(lang))
+    .map((e) => ({ term: e.term, sources: e.source_ids.map((id) => sourceById.get(id)).filter(Boolean) }))
+    .filter((e) => e.sources.length)
+    .sort((a, b) => a.term.localeCompare(b.term, lang));
+}
+
+async function loadTermOverview() {
+  const res = await fetch('/api/terms');
+  overviewTerms = buildOverviewTerms(await res.json(), allSources, getLang());
+  visibleTermCount = TERMS_PAGE_SIZE;
+  renderTermJumpBar();
+  renderTermOverview();
+}
+
+function renderTermJumpBar() {
+  const bar = document.getElementById('term-jump-bar');
+  const available = new Set(overviewTerms.map((e) => termLetter(e.term)));
+  bar.replaceChildren(
+    ...JUMP_ALPHABET.map((letter) => {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'alphabet-jump-btn';
+      btn.textContent = letter;
+      if (available.has(letter)) {
+        const label = t('import.termJumpToLetterTitle', { letter });
+        btn.title = label;
+        btn.setAttribute('aria-label', label);
+        btn.addEventListener('click', () => jumpToTermLetter(letter));
+      } else {
+        btn.disabled = true;
+      }
+      return btn;
+    })
+  );
+}
+
+function jumpToTermLetter(letter) {
+  const index = overviewTerms.findIndex((e) => termLetter(e.term) === letter);
+  if (index >= visibleTermCount) {
+    visibleTermCount = index + 1;
+    renderTermOverview();
+  }
+  document
+    .querySelector(`#term-overview-list [data-term-index="${index}"]`)
+    ?.scrollIntoView({ block: 'start', behavior: 'smooth' });
+}
+
+function renderTermOverview() {
+  const list = document.getElementById('term-overview-list');
+  document.getElementById('term-overview-empty').classList.toggle('hidden', overviewTerms.length > 0);
+  const maxCount = Math.max(1, ...overviewTerms.map((e) => e.sources.length));
+  list.replaceChildren(
+    ...overviewTerms.slice(0, visibleTermCount).map((e, index) => buildTermOverviewItem(e, index, maxCount))
+  );
+
+  termListObserver?.disconnect();
+  if (overviewTerms.length > visibleTermCount) {
+    const sentinel = document.createElement('li');
+    sentinel.className = 'term-overview-sentinel';
+    list.appendChild(sentinel);
+    termListObserver = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) {
+          termListObserver.disconnect();
+          visibleTermCount += TERMS_PAGE_SIZE;
+          renderTermOverview();
+        }
+      },
+      { rootMargin: '400px' }
+    );
+    termListObserver.observe(sentinel);
+  }
+}
+
+function buildTermOverviewItem(entry, index, maxCount) {
+  const li = document.createElement('li');
+  li.dataset.termIndex = String(index);
+  const details = document.createElement('details');
+  const summary = document.createElement('summary');
+  summary.className = 'term-overview-summary';
+
+  const name = document.createElement('span');
+  name.className = 'term-overview-name';
+  name.textContent = entry.term;
+
+  const bar = document.createElement('span');
+  bar.className = 'term-overview-bar';
+  const fill = document.createElement('span');
+  fill.className = 'term-overview-bar-fill';
+  fill.style.width = `${(entry.sources.length / maxCount) * 100}%`;
+  bar.appendChild(fill);
+
+  const count = document.createElement('span');
+  count.className = 'term-overview-count';
+  const countKey = entry.sources.length === 1 ? 'common.sourceCountOne' : 'common.sourceCountMany';
+  count.textContent = t(countKey, { count: entry.sources.length });
+
+  summary.append(name, bar, count);
+  details.appendChild(summary);
+
+  const sourceList = document.createElement('ul');
+  sourceList.className = 'term-overview-sources';
+  entry.sources.forEach((s) => {
+    const item = document.createElement('li');
+    const link = document.createElement('a');
+    link.href = `/import.html?source=${encodeURIComponent(s.id)}`;
+    link.textContent = s.title;
+    item.appendChild(link);
+    sourceList.appendChild(item);
+  });
+  const filterBtn = document.createElement('button');
+  filterBtn.type = 'button';
+  filterBtn.className = 'link-button term-overview-filter';
+  filterBtn.textContent = t('import.termOverviewFilter');
+  filterBtn.addEventListener('click', () => filterByTerm(entry.term));
+  details.append(sourceList, filterBtn);
+
+  li.appendChild(details);
+  return li;
 }
 
 function buildAuthorLink(url, label) {

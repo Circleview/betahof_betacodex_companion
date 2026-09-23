@@ -3970,3 +3970,39 @@ def test_question_log_filter_runs_over_all_entries_and_paging_only_limits_render
     assert "visibleCount += LOG_PAGE_SIZE" in render
     # Löschen darf den Scroll-Stand (bereits geladene Seiten) nicht zurücksetzen.
     assert js_source.count("applyFilter({ resetPaging: false })") == 2
+
+
+def _run_term_overview(entries, sources, lang):
+    """Führt static/import.js#buildOverviewTerms und #termLetter per Node
+    aus (Schlagwort-Übersicht, Nutzerwunsch 2026-09-23) - beide Funktionen
+    werden isoliert aus dem Quelltext extrahiert."""
+    js_source = (STATIC_DIR / "import.js").read_text()
+    build = re.search(r"function buildOverviewTerms.*?\n\}", js_source, re.S)
+    letter = re.search(r"function termLetter.*?\n\}", js_source, re.S)
+    assert build and letter, "buildOverviewTerms/termLetter wurden in import.js nicht gefunden."
+    script = f"""
+const JUMP_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
+{build.group(0)}
+{letter.group(0)}
+const result = buildOverviewTerms({json.dumps(entries)}, {json.dumps(sources)}, {json.dumps(lang)});
+console.log(JSON.stringify(result.map((e) => ({{
+  term: e.term, ids: e.sources.map((s) => s.id), letter: termLetter(e.term),
+}}))));
+"""
+    return _run_node(script)
+
+
+def test_term_overview_filters_by_lang_hides_unknown_sources_and_sorts():
+    entries = [
+        {"term": "Zeit", "source_ids": ["a"], "langs": ["de"]},
+        {"term": "Ärger", "source_ids": ["a", "gone"], "langs": ["de"]},
+        {"term": "time", "source_ids": ["a"], "langs": ["en"]},
+        {"term": "Nur gelöscht", "source_ids": ["gone"], "langs": ["de"]},
+        {"term": "3-Ebenen", "source_ids": ["b"], "langs": ["de", "en"]},
+        {"term": "beta", "source_ids": ["a", "b"], "langs": ["de"]},
+    ]
+    sources = [{"id": "a", "title": "A"}, {"id": "b", "title": "B"}]
+    result = _run_term_overview(entries, sources, "de")
+    assert [e["term"] for e in result] == ["3-Ebenen", "Ärger", "beta", "Zeit"]
+    assert result[1]["ids"] == ["a"]
+    assert [e["letter"] for e in result] == ["", "A", "B", "Z"]
