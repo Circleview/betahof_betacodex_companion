@@ -4105,10 +4105,10 @@ function buildTermRenameControls(entry, toggle, status) {
   const suggestions = attachTagSuggestions(input, { multi: false, lang: getLang() });
 
   const wrap = document.createElement('span');
-  wrap.className = 'term-merge-canonical-wrap';
+  wrap.className = 'term-merge-canonical-wrap term-overview-head';
   const deleteBtn = buildTermDeleteButton(entry, status);
-  // Stift + Mülleimer als Einheit, damit sie beim Umbruch nie auseinander
-  // gerissen werden (mobil stehen sie immer unter dem Begriff, siehe CSS).
+  // Stift + Mülleimer als Einheit rechts neben dem Begriff, vertikal mittig
+  // auch bei mehrzeiligen Begriffen (siehe .term-overview-head).
   const actions = document.createElement('span');
   actions.className = 'term-overview-actions';
   actions.append(editBtn, deleteBtn);
@@ -4222,10 +4222,19 @@ function buildTermOverviewItem(entry, index, maxCount) {
   fill.style.width = `${(entry.sources.length / maxCount) * 100}%`;
   bar.appendChild(fill);
 
+  // Mobil nur die Zahl (Nutzerwunsch 2026-09-23) - der volle Text bleibt
+  // dort für Screenreader erhalten (visuell ausgeblendet, siehe CSS).
   const count = document.createElement('span');
   count.className = 'term-overview-count';
   const countKey = entry.sources.length === 1 ? 'common.sourceCountOne' : 'common.sourceCountMany';
-  count.textContent = t(countKey, { count: entry.sources.length });
+  const countFull = document.createElement('span');
+  countFull.className = 'term-overview-count-full';
+  countFull.textContent = t(countKey, { count: entry.sources.length });
+  const countNum = document.createElement('span');
+  countNum.className = 'term-overview-count-num';
+  countNum.setAttribute('aria-hidden', 'true');
+  countNum.textContent = String(entry.sources.length);
+  count.append(countFull, countNum);
 
   const status = document.createElement('p');
   status.className = 'jobs-list-error hidden';
