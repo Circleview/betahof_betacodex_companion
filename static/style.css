@@ -4262,6 +4262,23 @@ details a {
   border-radius: var(--radius);
   overflow: hidden;
   margin-top: 1rem;
+  /* Nutzerwunsch (2026-09-23): das Diagramm soll über die volle
+     Bildschirmbreite gehen statt in der site-weiten 980px-Spalte
+     (body { max-width: min(980px, 92vw) }) zu stecken - #explore-graph
+     selbst sized sich bereits dynamisch nach der clientWidth dieses Wrappers
+     (siehe explore.js), das Ausbrechen betrifft deshalb nur dieses eine
+     Element, nicht Header/Suchfeld/Legende. Zentriert sich relativ zum
+     VIEWPORT (nicht zum schmaleren body), unabhängig von der tatsächlich
+     aufgelösten Breite - width:100vw mit einem festen negativen
+     margin-left hätte das bei einer zusätzlichen max-width (Ultrawide-
+     Deckelung) nicht mehr zuverlässig getan. 1600px als Obergrenze: deutlich
+     geräumiger als die 980-1280px-Spalten sonst in der App, aber auf sehr
+     breiten (Ultrawide-)Monitoren verteilt d3-force die Knoten sonst über so
+     viel Fläche, dass Linien zwischen verwandten Knoten unnötig lang und
+     schwerer zu verfolgen werden, ohne dass die Informationsdichte steigt. */
+  width: min(100vw - 2rem, 1600px);
+  margin-left: 50%;
+  transform: translateX(-50%);
 }
 
 /* Nutzerwunsch (2026-08-27): unscheinbare Legende rechts unter dem Netzwerk,

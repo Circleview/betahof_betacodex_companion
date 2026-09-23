@@ -121,13 +121,20 @@ function filterGraphForToggles(data, showAuthors, showTerms) {
 // bleibt (z.B. dass Autor-Autor-Kanten im Nur-Autor:innen-Modus über
 // ausgeblendete Schlagworte abgeleitet sind, siehe deriveAuthorOnlyEdges).
 function updateLegend() {
+  let text = '';
   if (showAuthors && showTerms) {
-    legendEl.textContent = t('explore.legendBoth');
+    text = t('explore.legendBoth');
   } else if (showAuthors) {
-    legendEl.textContent = t('explore.legendAuthorsOnly');
+    text = t('explore.legendAuthorsOnly');
   } else if (showTerms) {
-    legendEl.textContent = t('explore.legendTermsOnly');
+    text = t('explore.legendTermsOnly');
   }
+  // Nutzerwunsch (2026-09-23): die Legende erklärte bisher nur Punktgröße
+  // und Linienstärke, nicht die Knoten-FARBEN (Louvain-Cluster, siehe
+  // GraphNode.cluster in app/main.py: nx.community.louvain_communities) -
+  // gilt in allen drei Modi gleich, deshalb einheitlich angehängt statt
+  // dreifach dupliziert.
+  if (text) legendEl.textContent = `${text} ${t('explore.legendColorHint')}`;
 }
 
 function applyFiltersAndRender() {

@@ -273,6 +273,7 @@
   "explore.legendBoth": "Punkte = Autor:innen und Schlagworte (Größe = Anzahl Quellen). Linien = gemeinsames Vorkommen in Quellen (Dicke = in wie vielen gemeinsamen Quellen).",
   "explore.legendAuthorsOnly": "Punkte = Autor:innen (Größe = Anzahl Quellen). Linien verbinden Autor:innen mit mindestens einem gemeinsamen, ausgeblendeten Schlagwort (Dicke = wie viele Schlagworte geteilt werden).",
   "explore.legendTermsOnly": "Punkte = Schlagworte (Größe = Anzahl Quellen). Linien = gemeinsames Vorkommen in Quellen (Dicke = in wie vielen gemeinsamen Quellen).",
+  "explore.legendColorHint": "Farbe = automatisch erkannte Gruppe eng verwandter Punkte (basierend auf gemeinsamem Vorkommen in Quellen) - keine von Hand vergebenen Themen-Labels.",
   "creative.heading": "Kreativ-Modus",
   "creative.feedbackGoodTitle": "Dieser Text war hilfreich",
   "creative.feedbackBadTitle": "Dieser Text war nicht hilfreich",

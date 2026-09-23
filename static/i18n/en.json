@@ -273,6 +273,7 @@
   "explore.legendBoth": "Dots = authors and keywords (size = number of sources). Lines = co-occurrence in sources (thickness = in how many shared sources).",
   "explore.legendAuthorsOnly": "Dots = authors (size = number of sources). Lines connect authors who share at least one hidden keyword (thickness = how many keywords shared).",
   "explore.legendTermsOnly": "Dots = keywords (size = number of sources). Lines = co-occurrence in sources (thickness = in how many shared sources).",
+  "explore.legendColorHint": "Color = automatically detected group of closely related dots (based on co-occurrence in sources) - not hand-assigned topic labels.",
   "creative.heading": "Creative Mode",
   "creative.feedbackGoodTitle": "This text was helpful",
   "creative.feedbackBadTitle": "This text was not helpful",
