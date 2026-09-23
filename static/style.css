@@ -824,7 +824,7 @@ button {
    nutzt jetzt wieder var(--radius) (die selbst auf 2.5px angepasst wurde,
    siehe :root) statt eines eigenen Literals - eine einzige Quelle für den
    ganzen App-weit konsistenten Wert. */
-button[type="submit"], .send-button, #popover-load, #popover-upload {
+button[type="submit"], .send-button, #popover-load, #popover-upload, #term-merge-analyze {
   background: var(--color-accent);
   color: #fff;
   border: none;
@@ -836,7 +836,7 @@ button[type="submit"], .send-button, #popover-load, #popover-upload {
   transition: background 0.15s ease;
 }
 
-button[type="submit"]:hover, .send-button:hover, #popover-load:hover, #popover-upload:hover {
+button[type="submit"]:hover, .send-button:hover, #popover-load:hover, #popover-upload:hover, #term-merge-analyze:hover {
   background: var(--color-accent-hover);
 }
 
@@ -844,7 +844,7 @@ button[type="submit"]:hover, .send-button:hover, #popover-load:hover, #popover-u
    type="submit" - die :disabled-Regel griff deshalb nie, obwohl der Button
    während "Lade und extrahiere..."/"Lade hoch und extrahiere..." per JS
    korrekt deaktiviert wird (sah weiterhin voll aktiv/farbig aus). */
-button[type="submit"]:disabled, .send-button:disabled, #popover-load:disabled, #popover-upload:disabled {
+button[type="submit"]:disabled, .send-button:disabled, #popover-load:disabled, #popover-upload:disabled, #term-merge-analyze:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }
@@ -1798,11 +1798,33 @@ button.send-button {
   color: var(--color-accent-hover);
 }
 
+/* Nutzerwunsch (2026-09-23): vertical-align:middle auf dem inline-flex-
+   Anker selbst zentrierte das Icon inkonsistent (je nach Umgebung - z.B.
+   neben dem fett/größer gesetzten Quellen-Titel - wirkte es zu tief
+   gesetzt). Zuverlässiger: die Ausrichtung direkt am SVG selbst statt am
+   umgebenden <a>, das dadurch ein normales, textumbruchfähiges Inline-
+   Element bleibt (wichtig, da der Titel im Sidebar-<summary> mehrzeilig
+   umbricht - ein flex-Anker hätte das verhindert). */
 .external-link {
-  display: inline-flex;
-  vertical-align: middle;
   margin-left: 0.35rem;
   color: var(--color-accent);
+}
+
+/* "middle" (halbe x-Höhe über der Grundlinie) reicht bei einem 16px-Icon
+   neben fett/größer gesetztem Text (z.B. dem Quellen-Titel) nicht aus - das
+   Icon ist optisch deutlich größer als die x-Höhe und wirkt dadurch trotzdem
+   zu tief. Fixer negativer Offset statt des Schlüsselworts (gängiges Muster
+   bei Icon-Bibliotheken aus genau diesem Grund) hebt es zuverlässig auf
+   Zeilenmitte. Nutzerfeedback (2026-09-23): reichte trotzdem noch nicht -
+   zusätzlicher Feinschliff per position:relative/top statt einem noch
+   größeren vertical-align-Wert, da Letzteres ab einem gewissen Betrag die
+   Zeilenhöhe selbst mit aufbläht (der Offset zählt dann zur Zeilenbox dazu).
+   relative/top wirkt dagegen rein visuell NACH dem Layout, ohne die
+   Zeilenhöhe zu beeinflussen. */
+.external-link svg {
+  vertical-align: -0.2em;
+  position: relative;
+  top: -2px;
 }
 
 .external-link:hover {
@@ -1835,12 +1857,15 @@ button.send-button {
   opacity: 0.6;
 }
 
+/* Nutzerwunsch (2026-09-23, Impeccable-Review): dicker einseitiger
+   Akzent-Rahmen ist ein bekanntes KI-generiert-Klischee - dünner,
+   durchgehender Akzent-Rahmen statt neutralem Rahmen + 3px links. */
 .citation-card {
+  position: relative;
   background: var(--color-bg);
-  border: 1px solid var(--color-border);
-  border-left: 3px solid var(--color-accent);
+  border: 1px solid var(--color-accent);
   border-radius: var(--radius);
-  padding: 0.9rem 1rem;
+  padding: 0.9rem 2.5rem 0.9rem 1rem;
   margin: 0.6rem 0 1rem;
 }
 
@@ -1871,19 +1896,17 @@ button.send-button {
 
 /* Nutzerwunsch: der Titel soll wie bei den übrigen Quellen anklickbar sein
    (Absprung zur Original-URL) - nicht nur das kleine Icon am Ende des
-   Chunk-Ausschnitts (.external-link). Dezente Unterstreichung statt
-   Akzentfarbe wie bei .citation-author-link, da ein externer Sprung (nicht
-   internes Filtern) etwas anders signalisiert werden soll. */
+   Chunk-Ausschnitts (.external-link). Nutzerwunsch (2026-09-23): seit der
+   Titel direkt sein eigenes "öffnet extern"-Icon (.external-link) daneben
+   stehen hat (appendTitleText in question.js), trägt das Icon allein schon
+   das Link-Signal - die zusätzliche Unterstreichung wirkte doppelt. */
 .citation-title-link {
   color: inherit;
-  text-decoration: underline;
-  text-decoration-color: var(--color-border);
-  text-underline-offset: 2px;
+  text-decoration: none;
 }
 
 .citation-title-link:hover {
   color: var(--color-accent);
-  text-decoration-color: currentColor;
 }
 
 .citation-card-text {
@@ -2718,11 +2741,18 @@ button.send-button {
   .icon-button.author-info-edit-btn {
     opacity: 1;
   }
+
+  .icon-button.term-merge-edit-canonical {
+    opacity: 1;
+  }
 }
 
+/* Nutzerwunsch (2026-09-23, Impeccable-Review): dicker einseitiger
+   Warn-Rahmen ist ein bekanntes KI-generiert-Klischee - die Zeile hat
+   bereits ein eigenes Warn-Icon (.warning-icon, WARNING_ICON in import.js),
+   das die Bedeutung trägt, die Tönung allein reicht als Verstärkung. */
 #source-list li.source-row--unreachable {
   background: var(--color-warning-tint);
-  border-left: 3px solid var(--color-warning);
   padding-left: 0.6rem;
   margin-left: -0.85rem;
 }
@@ -2733,7 +2763,6 @@ button.send-button {
 #source-list.timeline-mode li.source-row--unreachable {
   margin-left: -1.375rem;
   padding-left: 1.375rem;
-  border-left: none;
 }
 
 .warning-icon {
@@ -2968,6 +2997,37 @@ button.send-button {
 .term-merge-remove-variant:focus-visible {
   opacity: 1;
   color: var(--color-warning);
+}
+
+/* Nutzerwunsch (2026-09-23): das Zielschlagwort lässt sich bearbeiten, ein
+   dauerhaft sichtbares Eingabefeld wirkte im Fließtext aber zu unruhig -
+   normal nur Text + kleines Stift-Icon (dasselbe wie beim Quellen-
+   Bearbeiten-Button), erst ein Klick blendet das Eingabefeld ein. Der
+   Wrapper braucht position:relative als Anker für die absolut positionierte
+   Vorschlagsliste (.tag-suggestions), die sonst am nächsten positionierten
+   Vorfahren (hier: #term-merge-bereich) statt direkt am Feld ausgerichtet
+   würde. */
+.term-merge-canonical-wrap {
+  position: relative;
+  display: inline-block;
+}
+
+.term-merge-edit-canonical {
+  vertical-align: middle;
+  margin-left: 0.15rem;
+}
+
+/* Die globale input/textarea-Regel (display:block, width:100%) würde die
+   ganze Zeile sprengen, deshalb hier gezielt überschrieben. font: inherit
+   übernimmt die Fettschrift von .jobs-list-title. */
+.term-merge-canonical-input {
+  display: inline-block;
+  width: 16em;
+  max-width: 60vw;
+  margin: 0;
+  padding: 0.1rem 0.4rem;
+  font: inherit;
+  vertical-align: baseline;
 }
 
 .web-allowlist-item {
@@ -3405,12 +3465,14 @@ button.send-button {
   margin-top: 0.5rem;
   padding: 0.5rem 0.8rem;
   font-size: 0.9rem;
-  /* Dünner Rahmen + farbliche Akzentuierung, damit sichtbar wird, wo dieses
-     Panel (und damit die Felder für die gerade aufgeklappte Person) endet -
-     ohne die Akzentuierung ging die Grenze zwischen Autorenfeld und
-     Formular-Rest visuell verloren. */
-  border: 1px solid var(--color-border);
-  border-left: 3px solid var(--color-accent);
+  /* Rahmen + Tönung, damit sichtbar wird, wo dieses Panel (und damit die
+     Felder für die gerade aufgeklappte Person) endet - ohne Akzentuierung
+     ging die Grenze zwischen Autorenfeld und Formular-Rest visuell
+     verloren. Nutzerwunsch (2026-09-23, Impeccable-Review): durchgehender
+     dünner Akzent-Rahmen statt neutralem Rahmen + 3px links (bekanntes
+     KI-generiert-Klischee) - die Tönung trägt die Abgrenzung mit, der
+     Rahmen muss sie nicht mehr allein einseitig betonen. */
+  border: 1px solid var(--color-accent);
   border-radius: 6px;
   background: var(--color-accent-tint);
 }
@@ -4280,10 +4342,14 @@ details a {
    die jeweils andere bleibt per Breakpoint ausgeblendet. Etwas kompakter als
    der ursprüngliche volle Banner, da die Desktop-Version in die schmale
    280px-Seitenspalte passen muss. */
+/* Nutzerwunsch (2026-09-23, Impeccable-Review): dicker einseitiger Warn-
+   Rahmen ist ein bekanntes KI-generiert-Klischee - Warndreieck-Icon (analog
+   #source-list li.source-row--unreachable) wurde ausprobiert, aber per
+   Nutzerfeedback wieder verworfen: die Tönung allein reicht hier als
+   Signal, kein zusätzliches Icon nötig. */
 .creative-disclaimer {
   margin: 0 0 1.25rem;
   padding: 0.6rem 0.85rem;
-  border-left: 3px solid var(--color-warning);
   background: var(--color-warning-tint);
   border-radius: var(--radius);
   font-size: 0.8rem;
@@ -4295,11 +4361,16 @@ details a {
    VOR den formal-juristischen Abschnitten - gleiches Kasten-Muster wie
    .creative-disclaimer oben, aber neutral statt warnend eingefärbt, da hier
    keine Vorsicht signalisiert werden soll, nur ein schneller Überblick. */
+/* Nutzerwunsch (2026-09-23, Impeccable-Review): dicker einseitiger
+   Akzent-Rahmen ist ein bekanntes KI-generiert-Klischee - dünner,
+   durchgehender Akzent-Rahmen statt 3px links, dieselbe Tönung wie beim
+   analogen Autorenfeld-Panel (.new-author-profile) statt der neutralen
+   Oberflächenfarbe, damit die Abgrenzung nicht allein am Rahmen hängt. */
 .legal-summary {
   margin: 0 0 1.5rem;
   padding: 0.9rem 1.1rem;
-  border-left: 3px solid var(--color-accent);
-  background: var(--color-surface);
+  border: 1px solid var(--color-accent);
+  background: var(--color-accent-tint);
   border-radius: var(--radius);
   font-size: 0.92rem;
   line-height: 1.55;

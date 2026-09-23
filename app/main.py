@@ -436,8 +436,26 @@ def _prepare_chunks(source: SourceIn, lang: str) -> tuple[list[str], list[list[f
     return chunks, chunk_embeddings
 
 
+def _normalize_upload_id(upload_id: str) -> str:
+    """Sicherheit (2026-09-23): upload_id kommt beim Anlegen der Quelle vom
+    Client (SourceIn.pdf_upload_id/audio_upload_id) - ungeprüft als
+    Dateiname/Glob-Muster verwendet, ließe sich damit z.B. via "../" eine
+    beliebige, auf ".pdf" endende Datei des Systembenutzers ansprechen
+    (siehe _pdf_upload_staging_path/_consume_audio_upload unten, die
+    staged_path.replace() aufrufen), oder bei der Audio-Variante sogar per
+    "*"-Glob eine FREMDE, gerade erst hochgeladene Datei treffen. Die
+    tatsächlich vergebene ID ist immer ein echtes UUID (siehe
+    extract_pdf_upload/extract_audio_upload) - jede andere Eingabe wird auf
+    einen garantiert nie existierenden Platzhalter abgebildet, statt
+    ungeprüft in Pfad/Glob-Muster eingesetzt zu werden."""
+    try:
+        return str(uuid.UUID(upload_id))
+    except (ValueError, AttributeError, TypeError):
+        return "invalid-upload-id"
+
+
 def _pdf_upload_staging_path(upload_id: str) -> Path:
-    return PDF_UPLOAD_STAGING_DIR / f"{upload_id}.pdf"
+    return PDF_UPLOAD_STAGING_DIR / f"{_normalize_upload_id(upload_id)}.pdf"
 
 
 def _consume_pdf_upload(source_id: str, upload_id: str) -> None:
@@ -508,7 +526,7 @@ def _guess_title_from_filename(filename: str) -> str:
 
 
 def _consume_audio_upload(source_id: str, upload_id: str) -> None:
-    matches = list(AUDIO_UPLOAD_STAGING_DIR.glob(f"{upload_id}.*"))
+    matches = list(AUDIO_UPLOAD_STAGING_DIR.glob(f"{_normalize_upload_id(upload_id)}.*"))
     if not matches:
         return
     staged_path = matches[0]

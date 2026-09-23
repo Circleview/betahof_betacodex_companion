@@ -142,6 +142,8 @@
   "import.termMergeAnalyzing": "Wird analysiert …",
   "import.termMergeEmpty": "Keine ähnlichen Schlagworte gefunden.",
   "import.termMergeMakeCanonicalTitle": "Als Zielschlagwort verwenden",
+  "import.termMergeCanonicalInputTitle": "Zielschlagwort - auch frei eintippbar, mit Vorschlägen aus vorhandenen Schlagworten",
+  "import.termMergeEditCanonicalTitle": "Eigenes Zielschlagwort eintragen",
   "import.termMergeRemoveVariantTitle": "Dieses Schlagwort aus der Gruppe entfernen",
   "import.termMergeApplyButton": "Zusammenführen",
   "import.termMergeIgnoreButton": "Ignorieren",

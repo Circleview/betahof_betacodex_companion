@@ -142,6 +142,8 @@
   "import.termMergeAnalyzing": "Analyzing …",
   "import.termMergeEmpty": "No similar tags found.",
   "import.termMergeMakeCanonicalTitle": "Use as target tag",
+  "import.termMergeCanonicalInputTitle": "Target tag - freely editable, with suggestions from existing tags",
+  "import.termMergeEditCanonicalTitle": "Enter a custom target tag",
   "import.termMergeRemoveVariantTitle": "Remove this tag from the group",
   "import.termMergeApplyButton": "Merge",
   "import.termMergeIgnoreButton": "Ignore",

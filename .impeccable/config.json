@@ -1,0 +1,35 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "bounce-easing",
+        "value": "chat-typing-bounce",
+        "files": [
+          "static/style.css"
+        ],
+        "createdAt": "2026-09-23T08:23:35.368Z",
+        "reason": "user confirmed: genuine live typing-indicator while LLM response is in flight, not decorative fake liveness"
+      },
+      {
+        "rule": "pulsing-dot",
+        "value": "*",
+        "files": [
+          "static/import.html"
+        ],
+        "createdAt": "2026-09-23T08:23:49.408Z",
+        "reason": "user confirmed: chat-typing-dot is a genuine live-activity indicator while an LLM response is in flight, not decorative fake liveness"
+      },
+      {
+        "rule": "layout-transition",
+        "value": "*",
+        "files": [
+          "static/style.css"
+        ],
+        "createdAt": "2026-09-23T08:23:49.428Z",
+        "reason": "user confirmed: both instances (header-collapse, auto-growing textarea) are rare small-element transitions, not hot-path animations, and the textarea case has no transform/opacity equivalent"
+      }
+    ]
+  }
+}

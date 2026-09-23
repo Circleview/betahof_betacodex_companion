@@ -4412,6 +4412,57 @@ def test_add_source_with_pdf_upload_id_and_manual_text_still_validates_upload(cl
     assert response.status_code == 400
 
 
+def test_add_source_rejects_path_traversal_pdf_upload_id(client, tmp_path):
+    # Sicherheit (2026-09-23): pdf_upload_id kommt ungeprüft vom Client -
+    # _pdf_upload_staging_path baute den Dateipfad bisher direkt daraus
+    # (f"{upload_id}.pdf"), ein "../"-präpariertes upload_id hätte damit auf
+    # eine beliebige, auf ".pdf" endende Datei des Systembenutzers zeigen
+    # können (siehe _consume_pdf_upload: staged_path.replace()). Legt
+    # gezielt eine Datei AUSSERHALB des Staging-Verzeichnisses an, die vom
+    # Namen her als Ziel eines Traversal-Versuchs passen würde.
+    outside_target = main_module.PDF_UPLOAD_STAGING_DIR.parent / "secret.pdf"
+    outside_target.write_bytes(b"geheime Datei, darf nicht bewegt werden")
+    traversal_id = f"../{outside_target.stem}"
+
+    response = client.post(
+        "/api/sources",
+        json={"title": "Angriff", "text": "", "pdf_upload_id": traversal_id},
+    )
+
+    assert response.status_code == 400
+    assert client.get("/api/sources").json() == []
+    assert outside_target.exists()
+    assert outside_target.read_bytes() == b"geheime Datei, darf nicht bewegt werden"
+
+
+def test_add_source_audio_upload_id_wildcard_cannot_steal_another_upload(client, monkeypatch):
+    # Sicherheit (2026-09-23): _consume_audio_upload nutzte upload_id
+    # ungeprüft als Glob-Muster (AUDIO_UPLOAD_STAGING_DIR.glob(f"{upload_id}.*"))
+    # - "*" als audio_upload_id hätte damit die zuerst gefundene, FREMDE
+    # gerade hochgeladene Audiodatei im selben Verzeichnis getroffen, egal
+    # unter welcher echten ID sie lag.
+    monkeypatch.setattr(extraction, "transcribe_audio", lambda path, **kw: ("Text.", None))
+    legit_upload = client.post(
+        "/api/extract-audio-upload",
+        files={"file": ("opfer.mp3", b"fremde-datei", "audio/mpeg")},
+    ).json()
+    legit_upload_id = legit_upload["upload_id"]
+
+    response = client.post(
+        "/api/sources",
+        json={"title": "Angriff", "text": "Beliebiger Text.", "audio_upload_id": "*"},
+    )
+
+    assert response.status_code == 200
+    source_id = response.json()["id"]
+    assert response.json()["has_audio"] is False
+    assert not list(main_module.AUDIO_DIR.glob(f"{source_id}.*"))
+    # Die fremde Datei liegt weiterhin unangetastet unter ihrer echten ID.
+    remaining = list(main_module.AUDIO_UPLOAD_STAGING_DIR.glob(f"{legit_upload_id}.*"))
+    assert len(remaining) == 1
+    assert remaining[0].read_bytes() == b"fremde-datei"
+
+
 def test_extract_audio_upload_returns_immediately_without_transcribing(client, monkeypatch):
     # Transkription kann Minuten dauern und läuft deshalb erst als
     # Hintergrund-Job nach dem Anlegen der Quelle - die Upload-Vorschau

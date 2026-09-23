@@ -775,6 +775,82 @@ function renderTermMergeGroup(group) {
   langBadge.className = 'restricted-badge';
   langBadge.textContent = group.lang.toUpperCase();
 
+  // Nutzerwunsch (2026-09-23): nicht immer passt der vorgeschlagene
+  // Zielbegriff ODER die vorgeschlagenen Varianten - das Zielschlagwort
+  // lässt sich deshalb frei eintippen, mit demselben Vorschlags-Widget wie
+  // beim manuellen Bearbeiten einer Quelle (siehe attachTagSuggestions),
+  // damit ein neuer Zielbegriff nicht versehentlich zu einer weiteren
+  // Schreibvariante eines längst vorhandenen Begriffs wird. Nutzerwunsch
+  // (Nachtrag): ein dauerhaft sichtbares Eingabefeld wirkte im Fließtext zu
+  // unruhig - normal nur Text, ein Klick aufs Stift-Icon (dasselbe wie beim
+  // Quellen-Bearbeiten-Button) blendet stattdessen das Eingabefeld ein.
+  // Alle Elemente EINMAL über die gesamte Lebensdauer der Zeile erzeugt
+  // (nicht bei jedem renderGroupText()-Aufruf neu) - sonst würde jeder
+  // Varianten-Tausch eine weitere Vorschlagsliste anhängen und eine gerade
+  // laufende Eingabe verwerfen.
+  const canonicalWrap = document.createElement('span');
+  canonicalWrap.className = 'term-merge-canonical-wrap';
+
+  const canonicalText = document.createElement('span');
+  canonicalText.className = 'term-merge-canonical-text';
+
+  const editCanonicalBtn = document.createElement('button');
+  editCanonicalBtn.type = 'button';
+  editCanonicalBtn.className = 'icon-button term-merge-edit-canonical';
+  editCanonicalBtn.innerHTML = EDIT_ICON;
+  const editCanonicalLabel = t('import.termMergeEditCanonicalTitle');
+  editCanonicalBtn.title = editCanonicalLabel;
+  editCanonicalBtn.setAttribute('aria-label', editCanonicalLabel);
+
+  const canonicalInput = document.createElement('input');
+  canonicalInput.type = 'text';
+  canonicalInput.className = 'term-merge-canonical-input hidden';
+  canonicalInput.title = t('import.termMergeCanonicalInputTitle');
+  const canonicalSuggestions = attachTagSuggestions(canonicalInput, { multi: false, lang: group.lang });
+
+  function enterCanonicalEditMode() {
+    canonicalInput.value = canonicalText.textContent;
+    canonicalText.classList.add('hidden');
+    editCanonicalBtn.classList.add('hidden');
+    canonicalInput.classList.remove('hidden');
+    canonicalInput.focus();
+    canonicalInput.select();
+  }
+  function exitCanonicalEditMode() {
+    canonicalText.textContent = canonicalInput.value.trim() || group.canonical;
+    canonicalInput.classList.add('hidden');
+    canonicalText.classList.remove('hidden');
+    editCanonicalBtn.classList.remove('hidden');
+  }
+  editCanonicalBtn.addEventListener('click', enterCanonicalEditMode);
+  canonicalInput.addEventListener('blur', exitCanonicalEditMode);
+  canonicalInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      canonicalInput.blur();
+    }
+  });
+  canonicalWrap.append(canonicalText, editCanonicalBtn, canonicalInput, canonicalSuggestions);
+
+  // "Zusammenführen" liest IMMER den aktuellen Feldinhalt statt group.
+  // canonical - tippt man einen neuen, bisher unbeteiligten Begriff ein,
+  // wandert der bisherige Zielbegriff automatisch mit in die zu
+  // ersetzenden Varianten. "Alle Schlagworte löschen" bleibt bewusst an
+  // group.canonical/group.variants (den ursprünglich erkannten Begriffen)
+  // hängen - eine noch nicht bestätigte, frei eingetippte Zieleingabe soll
+  // beim Löschen nicht versehentlich mitgelöscht werden.
+  function effectiveCanonical() {
+    return canonicalInput.value.trim() || group.canonical;
+  }
+  function effectiveVariants() {
+    const canonical = effectiveCanonical();
+    const variants = group.variants.filter((v) => v !== canonical);
+    if (canonical !== group.canonical && !variants.includes(group.canonical)) {
+      variants.push(group.canonical);
+    }
+    return variants;
+  }
+
   // Nutzerwunsch (2026-09-23): das vorgeschlagene Zielschlagwort ist nur
   // eine KI-Einschätzung - ein Klick auf eines der "schlechten" Schlagworte
   // tauscht dessen Platz mit dem aktuellen Zielschlagwort. Ändert group.
@@ -782,7 +858,12 @@ function renderTermMergeGroup(group) {
   // deleteBtn unten lesen bei jedem Klick den aktuellen Stand von group,
   // der Tausch wirkt sich also unmittelbar auf Zusammenführen/Löschen aus.
   function renderGroupText() {
-    text.replaceChildren(langBadge, ' ', `${group.canonical} ← `);
+    canonicalText.textContent = group.canonical;
+    canonicalInput.value = group.canonical;
+    canonicalInput.classList.add('hidden');
+    canonicalText.classList.remove('hidden');
+    editCanonicalBtn.classList.remove('hidden');
+    text.replaceChildren(langBadge, ' ', canonicalWrap, ' ← ');
     group.variants.forEach((variant, index) => {
       if (index > 0) text.append(', ');
       const variantWrap = document.createElement('span');
@@ -854,7 +935,7 @@ function renderTermMergeGroup(group) {
       const res = await fetch('/api/terms/merge', {
         method: 'POST',
         headers: jsonHeaders(),
-        body: JSON.stringify({ lang: group.lang, canonical: group.canonical, variants: group.variants }),
+        body: JSON.stringify({ lang: group.lang, canonical: effectiveCanonical(), variants: effectiveVariants() }),
       });
       if (!res.ok) throw new Error();
       li.remove();
@@ -1711,7 +1792,7 @@ function buildEditPanel(s, options = {}) {
     magicButtons.push(
       addMagicButton(keyTermsInput, triggerExtractKeyTerms, 'import.generateKeyTermsFromSummaryTitle')
     );
-    attachTagSuggestions(keyTermsInput);
+    keyTermsInput.insertAdjacentElement('afterend', attachTagSuggestions(keyTermsInput));
   }
 
   if (pendingDeletion) {
@@ -1888,10 +1969,25 @@ function currentTagSegmentBounds(value, cursorPos) {
   return { start, end };
 }
 
-function attachTagSuggestions(input) {
+// Nutzerwunsch (2026-09-23): dasselbe Vorschlags-Widget wird jetzt auch im
+// Ähnliche-Schlagworte-Panel für ein frei eintippbares Zielschlagwort
+// gebraucht (siehe renderTermMergeGroup) - dort gibt es aber kein
+// Komma-getrenntes Mehrfach-Feld, nur EIN Begriff, und die relevante
+// Sprache ist die der jeweiligen Gruppe, nicht zwingend die aktuelle
+// UI-Sprache. `multi: false` schaltet die Komma-Segment-Logik ab (der
+// gesamte Feldinhalt ist die Anfrage, ein Vorschlag ersetzt ihn komplett,
+// kein automatisches ", " danach), `lang` überschreibt getLang().
+// Gibt die Vorschlagsliste zurück, statt sie selbst per insertAdjacentElement
+// einzuhängen - das setzt voraus, dass input bereits einen Elternknoten hat,
+// was beim Ähnliche-Schlagworte-Panel (renderTermMergeGroup) nicht zutrifft,
+// wenn attachTagSuggestions VOR dem ersten Einfügen ins DOM aufgerufen wird.
+// Aufrufer entscheiden selbst, wo die Liste im Baum landet (bei
+// buildEditPanel weiterhin direkt hinter dem Feld, siehe dortigen Aufruf).
+function attachTagSuggestions(input, options = {}) {
+  const multi = options.multi !== false;
+  const lang = options.lang || getLang();
   const list = document.createElement('ul');
   list.className = 'tag-suggestions hidden';
-  input.insertAdjacentElement('afterend', list);
 
   function close() {
     list.classList.add('hidden');
@@ -1899,6 +1995,12 @@ function attachTagSuggestions(input) {
   }
 
   function applySuggestion(term, start, end) {
+    if (!multi) {
+      input.value = term;
+      close();
+      input.focus();
+      return;
+    }
     const before = input.value.slice(0, start);
     const after = input.value.slice(end);
     const segment = start === 0 ? term : ` ${term}`;
@@ -1918,17 +2020,19 @@ function attachTagSuggestions(input) {
   }
 
   input.addEventListener('input', async () => {
-    const cursorPos = input.selectionStart;
-    const { start, end } = currentTagSegmentBounds(input.value, cursorPos);
+    let start = 0;
+    let end = input.value.length;
+    if (multi) {
+      ({ start, end } = currentTagSegmentBounds(input.value, input.selectionStart));
+    }
     const query = input.value.slice(start, end).trim();
     if (!query) {
       close();
       return;
     }
-    const otherSegments = (input.value.slice(0, start) + input.value.slice(end)).split(',');
+    const otherSegments = multi ? (input.value.slice(0, start) + input.value.slice(end)).split(',') : [];
     const alreadyUsed = new Set(otherSegments.map((s) => normalizeTerm(s)).filter(Boolean));
     const terms = await getKnownTerms();
-    const lang = getLang();
     const matches = terms
       .filter(
         (te) =>
@@ -1960,6 +2064,7 @@ function attachTagSuggestions(input) {
   input.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') close();
   });
+  return list;
 }
 
 function addMagicButton(input, onClick, titleKey = 'import.generateSummaryTitle') {

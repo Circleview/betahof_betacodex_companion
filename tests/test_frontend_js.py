@@ -123,6 +123,7 @@ def _run_append_title_text(source_obj):
     func_source = match.group(0)
     script = f"""
 function t(key) {{ return key; }}
+const EXTERNAL_LINK_ICON = '<svg></svg>';
 class FakeNode {{
   constructor(type, value) {{
     this.type = type;
@@ -131,6 +132,7 @@ class FakeNode {{
   }}
   appendChild(child) {{ this.children.push(child); return child; }}
   addEventListener() {{}}
+  setAttribute() {{}}
 }}
 const document = {{
   createElement: (tag) => new FakeNode('element:' + tag, null),
@@ -154,11 +156,14 @@ console.log(JSON.stringify(container.children.map((c) => ({{
 
 def test_append_title_text_links_title_when_url_present():
     children = _run_append_title_text({"title": "Ein Artikel", "url": "https://beispiel.org/artikel"})
-    assert len(children) == 1
+    assert len(children) == 2
     assert children[0]["type"] == "element:a"
     assert children[0]["href"] == "https://beispiel.org/artikel"
     assert children[0]["textContent"] == "Ein Artikel"
     assert children[0]["className"] == "citation-title-link"
+    assert children[1]["type"] == "element:a"
+    assert children[1]["href"] == "https://beispiel.org/artikel"
+    assert children[1]["className"] == "external-link"
 
 
 def test_append_title_text_prefers_listen_url_over_url():
@@ -279,6 +284,7 @@ class FakeNode {{
     this.children.splice(i, 1, ...replacement);
   }}
   addEventListener(evt, fn) {{ this.listeners[evt] = fn; }}
+  setAttribute() {{}}
 }}
 const document = {{
   createElement: (tag) => new FakeNode('element', tag),
@@ -297,6 +303,8 @@ const document = {{
   }},
 }};
 const NodeFilter = {{ SHOW_TEXT: 4 }};
+function t(key) {{ return key; }}
+const CLOSE_ICON = '<svg></svg>';
 
 function buildSourceInfo(source, highlight) {{
   const marker = document.createElement('div');
@@ -386,6 +394,7 @@ class FakeNode {{
     this.children.splice(i, 1, ...replacement);
   }}
   addEventListener(evt, fn) {{ this.listeners[evt] = fn; }}
+  setAttribute() {{}}
 }}
 const document = {{
   createElement: (tag) => new FakeNode('element', tag),
@@ -404,6 +413,8 @@ const document = {{
   }},
 }};
 const NodeFilter = {{ SHOW_TEXT: 4 }};
+function t(key) {{ return key; }}
+const CLOSE_ICON = '<svg></svg>';
 
 function buildSourceInfo(source, highlight) {{
   const marker = document.createElement('div');
@@ -439,7 +450,7 @@ function findCard(node) {{
 const markers = buttons.map((btn) => {{
   btn.listeners.click();
   const card = findCard(container);
-  const marker = card ? card.children[0].textContent : null;
+  const marker = card ? card.children[1].textContent : null;
   btn.listeners.click(); // gleich wieder schliessen, damit sich Karten nicht ueberlappen
   return marker;
 }});
@@ -495,6 +506,7 @@ class FakeNode {{
     this.children.splice(i, 1, ...replacement);
   }}
   addEventListener(evt, fn) {{ this.listeners[evt] = fn; }}
+  setAttribute() {{}}
 }}
 const document = {{
   createElement: (tag) => new FakeNode('element', tag),
@@ -513,6 +525,8 @@ const document = {{
   }},
 }};
 const NodeFilter = {{ SHOW_TEXT: 4 }};
+function t(key) {{ return key; }}
+const CLOSE_ICON = '<svg></svg>';
 
 function buildSourceInfo(source, highlight) {{
   const marker = document.createElement('div');

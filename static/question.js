@@ -83,6 +83,15 @@ const VIEW_ICON =
   '<circle cx="12" cy="12" r="3"></circle>' +
   "</svg>";
 
+// Gleiches Muster wie .jobs-bar-close (import.js/style.css) und
+// .footer-feedback-panel-close (footer.js) - Schließen-Kreuz oben rechts.
+const CLOSE_ICON =
+  '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" ' +
+  'stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
+  '<line x1="18" y1="6" x2="6" y2="18"></line>' +
+  '<line x1="6" y1="6" x2="18" y2="18"></line>' +
+  '</svg>';
+
 function hasPflegerRole() {
   return hasRole('quellen_pfleger');
 }
@@ -220,6 +229,21 @@ function appendTitleText(container, s) {
   // auf-/zuklappt - analog appendAuthorLinks.
   a.addEventListener('click', (e) => e.stopPropagation());
   container.appendChild(a);
+
+  // Nutzerwunsch (2026-09-23): der Titel verlinkt bereits nach außen, das
+  // war bisher rein optisch (nur Unterstreichung) nicht als externer Link
+  // erkennbar - dasselbe Icon/dieselbe Klasse wie überall sonst im Code für
+  // "öffnet extern" (z.B. am Ende des Chunk-Ausschnitts in buildSourceInfo).
+  const icon = document.createElement('a');
+  icon.href = citationUrl;
+  icon.target = '_blank';
+  icon.rel = 'noopener noreferrer';
+  icon.className = 'external-link';
+  icon.title = label;
+  icon.setAttribute('aria-label', label);
+  icon.innerHTML = EXTERNAL_LINK_ICON;
+  icon.addEventListener('click', (e) => e.stopPropagation());
+  container.appendChild(icon);
 }
 
 function truncateWords(text, maxWords) {
@@ -518,6 +542,18 @@ function makeCitationsClickable(container, sources) {
           const paragraph = btn.closest('p') || container;
           const card = document.createElement('div');
           card.className = 'citation-card';
+          const closeBtn = document.createElement('button');
+          closeBtn.type = 'button';
+          closeBtn.className = 'jobs-bar-close';
+          const closeLabel = t('import.closeButtonTitle');
+          closeBtn.title = closeLabel;
+          closeBtn.setAttribute('aria-label', closeLabel);
+          closeBtn.innerHTML = CLOSE_ICON;
+          closeBtn.addEventListener('click', () => {
+            card.remove();
+            openCards.delete(contentKey);
+          });
+          card.appendChild(closeBtn);
           card.appendChild(buildSourceInfo(source, highlight));
           paragraph.insertAdjacentElement('afterend', card);
           openCards.set(contentKey, card);
