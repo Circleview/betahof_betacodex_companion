@@ -3753,10 +3753,10 @@ function setSortMode(mode) {
 // Icons in einer Zeile, wird nacheinander (günstigster Verlust zuerst) Platz
 // eingespart, statt Icons zu verkleinern oder unschön umbrechen zu lassen:
 // zuerst nur die rein dekorative Trennlinie vor den web-bezogenen Werkzeugen
-// (.quelltyp-web-tools), dann die Sortierung nach Autor:in/Datum samt ihrer
-// Trennlinie (.sort-toolbar), zuletzt - falls IMMER NOCH nicht genug Platz -
-// das Icon "Ähnliche Schlagworte" (#typ-term-merge, am seltensten gebraucht
-// von den verbleibenden Icons). Die Suche samt Link-Filter (.search-toolbar)
+// (.quelltyp-web-tools), dann der Datums-Sortier-Button (#sort-date), dann
+// das Icon "Ähnliche Schlagworte" (#typ-term-merge), zuletzt - falls IMMER
+// NOCH nicht genug Platz - die restliche Sortierung (Autor:in/Schlagwort)
+// samt Trennlinie (.sort-toolbar). Die Suche samt Link-Filter (.search-toolbar)
 // bleibt bewusst IMMER sichtbar (Nutzerwunsch 2026-09-23, revidiert die
 // vorherige Fassung, die stattdessen die Suche ausgeblendet hätte). Ein
 // fester Media-Query-Breakpoint würde hier mal zu früh, mal zu spät greifen,
@@ -3773,6 +3773,7 @@ function initSourceToolbarOverflow() {
   const sortToolbar = document.querySelector('.sort-toolbar');
   const webTools = document.querySelector('.quelltyp-web-tools');
   const termMergeBtn = document.getElementById('typ-term-merge');
+  const sortDateBtn = document.getElementById('sort-date');
   if (!row || !actions || !sortToolbar) return;
 
   function neededWidth() {
@@ -3794,17 +3795,24 @@ function initSourceToolbarOverflow() {
   // noch Funktionalität kostet, wenn er allein schon reicht.
   function update() {
     sortToolbar.classList.remove('sort-toolbar--hidden-for-space');
+    sortDateBtn.classList.remove('hidden');
     if (webTools) webTools.classList.remove('quelltyp-web-tools--no-divider');
     if (termMergeBtn) termMergeBtn.classList.remove('hidden');
 
     if (fitsNow()) return;
     if (webTools) webTools.classList.add('quelltyp-web-tools--no-divider');
 
+    // Nutzerwunsch (2026-09-23): Sortierung nach Autor:in und Schlagwort
+    // soll mobil sichtbar bleiben - vor der ganzen Sortier-Leiste fallen
+    // erst der Datums-Button und "Ähnliche Schlagworte" weg.
     if (fitsNow()) return;
-    sortToolbar.classList.add('sort-toolbar--hidden-for-space');
+    sortDateBtn.classList.add('hidden');
 
     if (fitsNow() || !termMergeBtn) return;
     termMergeBtn.classList.add('hidden');
+
+    if (fitsNow()) return;
+    sortToolbar.classList.add('sort-toolbar--hidden-for-space');
   }
 
   // Fix: NICHT .section-heading-actions selbst beobachten - sobald
