@@ -22,7 +22,7 @@ from pathlib import Path
 
 from PIL import Image
 
-from app import jsonstore
+from app import extraction, jsonstore
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 AUTHOR_PHOTOS_DIR = BASE_DIR / "data" / "author_photos"
@@ -94,7 +94,12 @@ def cache_photo(name: str, source_url: str) -> bool:
     Link darf das Setzen eines Profils nie verhindern oder crashen."""
     try:
         req = urllib.request.Request(source_url, headers=_REQUEST_HEADERS)
-        with urllib.request.urlopen(req, timeout=15) as resp:
+        # SSRF-Schutz (Backlog, 2026-09-23): die Foto-URL trägt eine
+        # Quellen-Pfleger:in frei ein - derselbe Schutz wie beim Quellen-
+        # Import per Link (app/extraction.py: _assert_safe_url). Eine
+        # private/interne Adresse endet hier als UnsafeUrlError und damit
+        # wie jeder andere Abruf-Fehler still in False.
+        with extraction._safe_urlopen(req, timeout=15) as resp:
             data = resp.read()
         image = Image.open(BytesIO(data))
         image = image.convert("RGB")

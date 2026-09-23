@@ -3,7 +3,7 @@ from unittest.mock import MagicMock, patch
 
 from PIL import Image
 
-from app import author_photos
+from app import author_photos, extraction
 
 
 def _fake_image_bytes(size=(300, 200)):
@@ -21,9 +21,34 @@ def _mock_urlopen(data: bytes):
     return response
 
 
+def _resolve_to(ip: str):
+    return lambda host, *args, **kwargs: [(2, 1, 6, "", (ip, 0))]
+
+
 def _isolate(tmp_path, monkeypatch):
     monkeypatch.setattr(author_photos, "AUTHOR_PHOTOS_DIR", tmp_path)
     monkeypatch.setattr(author_photos, "MANIFEST_FILE", tmp_path / "_manifest.json")
+    # SSRF-Prüfung ohne echte DNS-Anfrage (siehe _getaddrinfo in
+    # app/extraction.py) - öffentliche Test-IP für jeden Hostnamen.
+    monkeypatch.setattr(extraction, "_getaddrinfo", _resolve_to("93.184.216.34"))
+
+
+def test_cache_photo_refuses_private_address(tmp_path, monkeypatch):
+    _isolate(tmp_path, monkeypatch)
+    for ip in ("169.254.169.254", "127.0.0.1", "10.0.0.5"):
+        monkeypatch.setattr(extraction, "_getaddrinfo", _resolve_to(ip))
+        with patch("app.author_photos.urllib.request.urlopen", return_value=_mock_urlopen(_fake_image_bytes())) as urlopen:
+            result = author_photos.cache_photo("Test Autor", "http://metadata.example/foto.jpg")
+        assert result is False
+        urlopen.assert_not_called()
+    assert not author_photos.has_cached_photo("Test Autor", "small")
+
+
+def test_cache_photo_refuses_non_http_scheme(tmp_path, monkeypatch):
+    _isolate(tmp_path, monkeypatch)
+    with patch("app.author_photos.urllib.request.urlopen") as urlopen:
+        assert author_photos.cache_photo("Test Autor", "file:///etc/passwd") is False
+    urlopen.assert_not_called()
 
 
 def test_cache_photo_creates_both_sizes(tmp_path, monkeypatch):
