@@ -1,7 +1,9 @@
 import base64
 import io
+import ipaddress
 import re
 import shutil
+import socket
 import subprocess
 import sys
 import tempfile
@@ -27,6 +29,56 @@ _REQUEST_HEADERS = {
     ),
     "Accept": "*/*",
 }
+
+
+class UnsafeUrlError(ValueError):
+    """SSRF-Schutz: die angegebene URL zeigt auf eine private/interne Adresse."""
+
+
+# Sicherheit (Security-Review 2026-09-23): jede der Funktionen unten wird mit
+# einer von einer Nutzer:in (Quellen-Pfleger:in) frei angegebenen URL
+# aufgerufen (Quellen-Import per Link, PDF/Audio-URL) - ungeprüft ließe sich
+# der Server so als Proxy für interne Netzwerk-Anfragen missbrauchen (z.B.
+# Cloud-Metadata-Endpunkt 169.254.169.254, localhost, internes Netz). Prüft
+# ALLE zur Hostname aufgelösten IPs (nicht nur die erste), da DNS mehrere
+# A-Records liefern kann. Eine EINZIGE Stelle statt einer Prüfung pro
+# Aufrufer, da urlopen/fetch_url unten von mehreren unabhängigen Stellen in
+# app/main.py aus erreicht werden (Import per Link, PDF/Audio-Sync beim
+# Anlegen/Bearbeiten einer Quelle).
+# ponytail: prüft den Hostnamen einmal vor dem Verbindungsaufbau, pinnt die
+# aufgelöste IP aber nicht fest - ein DNS-Rebinding-Angriff (Hostname
+# ändert seine Auflösung zwischen dieser Prüfung und dem eigentlichen
+# Verbindungsaufbau von urllib/trafilatura) ist damit theoretisch weiter
+# möglich. Für den hier adressierten, deutlich wahrscheinlicheren Fall
+# (jemand trägt direkt eine interne Adresse ins URL-Feld ein) reicht das;
+# echtes IP-Pinning bräuchte einen eigenen, angepassten HTTP-Transport.
+def _assert_safe_url(url: str) -> None:
+    parsed = urlparse(url)
+    if parsed.scheme not in ("http", "https"):
+        raise UnsafeUrlError(f"Unsichere URL (Schema nicht erlaubt): {url}")
+    hostname = parsed.hostname
+    if not hostname:
+        raise UnsafeUrlError(f"Unsichere URL (kein Hostname): {url}")
+    try:
+        infos = socket.getaddrinfo(hostname, None)
+    except socket.gaierror as exc:
+        raise UnsafeUrlError(f"Hostname nicht auflösbar: {hostname}") from exc
+    for info in infos:
+        ip = ipaddress.ip_address(info[4][0])
+        if (
+            ip.is_private
+            or ip.is_loopback
+            or ip.is_link_local
+            or ip.is_reserved
+            or ip.is_multicast
+            or ip.is_unspecified
+        ):
+            raise UnsafeUrlError(f"Unsichere URL (private/interne Adresse): {url}")
+
+
+def _safe_urlopen(req: urllib.request.Request, timeout: float):
+    _assert_safe_url(req.full_url)
+    return urllib.request.urlopen(req, timeout=timeout)
 
 
 def _split_authors(raw: str) -> list[str]:
@@ -108,7 +160,7 @@ def extract_youtube_video_id(url: str) -> str | None:
 def _fetch_youtube_metadata(url: str) -> dict:
     try:
         req = urllib.request.Request(url, headers=_REQUEST_HEADERS)
-        with urllib.request.urlopen(req, timeout=10) as resp:
+        with _safe_urlopen(req, timeout=10) as resp:
             html = resp.read().decode("utf-8", errors="ignore")
     except Exception:
         return {"title": "", "date": ""}
@@ -178,7 +230,7 @@ def looks_like_audio(url: str) -> bool:
         return True
     try:
         req = urllib.request.Request(url, method="HEAD", headers=_REQUEST_HEADERS)
-        with urllib.request.urlopen(req, timeout=10) as resp:
+        with _safe_urlopen(req, timeout=10) as resp:
             return resp.headers.get("Content-Type", "").lower().startswith("audio/")
     except Exception:
         return False
@@ -187,7 +239,7 @@ def looks_like_audio(url: str) -> bool:
 def download_audio_bytes(url: str) -> bytes | None:
     try:
         req = urllib.request.Request(url, headers=_REQUEST_HEADERS)
-        with urllib.request.urlopen(req, timeout=60) as resp:
+        with _safe_urlopen(req, timeout=60) as resp:
             return resp.read()
     except Exception:
         return None
@@ -541,7 +593,7 @@ def looks_like_pdf(url: str) -> bool:
         return True
     try:
         req = urllib.request.Request(url, method="HEAD", headers=_REQUEST_HEADERS)
-        with urllib.request.urlopen(req, timeout=10) as resp:
+        with _safe_urlopen(req, timeout=10) as resp:
             return "application/pdf" in resp.headers.get("Content-Type", "").lower()
     except Exception:
         return False
@@ -550,7 +602,7 @@ def looks_like_pdf(url: str) -> bool:
 def download_pdf_bytes(url: str) -> bytes | None:
     try:
         req = urllib.request.Request(url, headers=_REQUEST_HEADERS)
-        with urllib.request.urlopen(req, timeout=30) as resp:
+        with _safe_urlopen(req, timeout=30) as resp:
             return resp.read()
     except Exception:
         return None
@@ -711,6 +763,19 @@ def _parse_markdown_extraction(raw: str) -> dict:
 
 
 def extract_from_url(url: str) -> dict:
+    # SSRF-Schutz: die anderen Zweige unten (looks_like_audio/looks_like_pdf/
+    # download_*_bytes) sind über _safe_urlopen bereits geschützt, der
+    # generische Zweig weiter unten ruft aber trafilatura.fetch_url() auf,
+    # das SEIN EIGENES Networking nutzt (nicht urllib.request) - hier separat
+    # geprüft, bevor überhaupt einer der Zweige versucht wird. Wie überall
+    # sonst in dieser Funktion degradiert eine unsichere URL still zu
+    # "nicht extrahierbar" statt einer Fehlermeldung, damit sich dieser Fall
+    # nicht von jedem anderen Abruf-Fehlschlag unterscheidet.
+    try:
+        _assert_safe_url(url)
+    except UnsafeUrlError:
+        return {"title": "", "authors": [], "date": "", "text": "", "extracted": False}
+
     if _is_youtube_url(url):
         return _extract_youtube(url)
 

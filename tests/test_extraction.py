@@ -1,3 +1,4 @@
+import socket
 import subprocess
 import sys
 from pathlib import Path
@@ -5,9 +6,12 @@ from unittest.mock import MagicMock, patch
 
 import httpx
 import openai
+import pytest
 
 from app import extraction
 from app.extraction import (
+    UnsafeUrlError,
+    _assert_safe_url,
     _extract_youtube,
     _parse_markdown_extraction,
     _split_authors,
@@ -22,6 +26,23 @@ from app.extraction import (
     split_audio_file,
     transcribe_audio,
 )
+
+
+# SSRF-Schutz (_assert_safe_url in app/extraction.py) löst seit dem
+# Security-Fix (2026-09-23) jeden Hostnamen per echtem DNS auf, bevor eine
+# URL abgerufen wird - ohne dieses Mock würde JEDER Test hier, der eine
+# (fiktive) example.org-URL verwendet, eine echte Netzwerkanfrage auslösen
+# (langsam/flaky, verstößt gegen das etablierte "kein echtes Netzwerk in
+# Tests"-Prinzip dieser Suite, siehe client-Fixture in test_api.py). Liefert
+# eine öffentliche Test-IP für JEDEN Hostnamen; die dedizierten Tests für
+# das Schutzverhalten selbst (test_assert_safe_url_*) überschreiben dieses
+# Mock lokal mit einer privaten/internen IP.
+@pytest.fixture(autouse=True)
+def _mock_dns_resolution(monkeypatch):
+    def fake_getaddrinfo(host, *args, **kwargs):
+        return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("93.184.216.34", 0))]
+
+    monkeypatch.setattr(extraction.socket, "getaddrinfo", fake_getaddrinfo)
 
 
 def test_split_authors_handles_common_separators():
@@ -155,8 +176,12 @@ def test_extract_from_url_handles_missing_metadata_fields():
 
 
 def test_extract_from_url_handles_fetch_exception():
+    # Bewusst eine gültige (http/https, auflösbare) URL - sonst würde der
+    # SSRF-Schutz (_assert_safe_url) schon VOR trafilatura.fetch_url
+    # eingreifen und der hier eigentlich zu testende Exception-Pfad nie
+    # erreicht.
     with patch("app.extraction.trafilatura.fetch_url", side_effect=RuntimeError("boom")):
-        result = extract_from_url("not-a-valid-url")
+        result = extract_from_url("https://example.org/boom")
 
     assert result["extracted"] is False
 
@@ -989,3 +1014,114 @@ def test_strip_tracking_params_returns_url_unchanged_without_query_string():
 
 def test_strip_tracking_params_returns_input_unchanged_for_empty_string():
     assert extraction.strip_tracking_params("") == ""
+
+
+def test_assert_safe_url_rejects_non_http_scheme():
+    with pytest.raises(UnsafeUrlError):
+        _assert_safe_url("file:///etc/passwd")
+
+
+def test_assert_safe_url_rejects_url_without_hostname():
+    with pytest.raises(UnsafeUrlError):
+        _assert_safe_url("https://")
+
+
+def test_assert_safe_url_rejects_unresolvable_hostname(monkeypatch):
+    def fake_getaddrinfo(host, *args, **kwargs):
+        raise socket.gaierror("nicht auflösbar")
+
+    monkeypatch.setattr(extraction.socket, "getaddrinfo", fake_getaddrinfo)
+    with pytest.raises(UnsafeUrlError):
+        _assert_safe_url("https://nirgendwo.invalid/artikel")
+
+
+@pytest.mark.parametrize(
+    "ip",
+    [
+        "169.254.169.254",  # Cloud-Metadata-Endpunkt
+        "127.0.0.1",  # Loopback
+        "10.0.0.5",  # Privates Netz
+        "192.168.1.1",  # Privates Netz
+        "172.16.0.1",  # Privates Netz
+        "0.0.0.0",  # Unspecified
+    ],
+)
+def test_assert_safe_url_rejects_private_and_internal_ips(monkeypatch, ip):
+    def fake_getaddrinfo(host, *args, **kwargs):
+        return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", (ip, 0))]
+
+    monkeypatch.setattr(extraction.socket, "getaddrinfo", fake_getaddrinfo)
+    with pytest.raises(UnsafeUrlError):
+        _assert_safe_url(f"http://interne-adresse.example/{ip}")
+
+
+def test_assert_safe_url_rejects_if_any_resolved_ip_is_private(monkeypatch):
+    # DNS kann mehrere A-Records liefern - reicht EINE private IP darunter,
+    # muss die URL trotzdem als unsicher gelten (nicht nur die erste prüfen).
+    def fake_getaddrinfo(host, *args, **kwargs):
+        return [
+            (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("93.184.216.34", 0)),
+            (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("10.0.0.5", 0)),
+        ]
+
+    monkeypatch.setattr(extraction.socket, "getaddrinfo", fake_getaddrinfo)
+    with pytest.raises(UnsafeUrlError):
+        _assert_safe_url("http://mehrfach-aufgeloest.example/artikel")
+
+
+def test_assert_safe_url_allows_public_ip():
+    _assert_safe_url("https://example.org/artikel")
+
+
+def test_safe_urlopen_blocks_before_reaching_real_urlopen(monkeypatch):
+    def fake_getaddrinfo(host, *args, **kwargs):
+        return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("127.0.0.1", 0))]
+
+    monkeypatch.setattr(extraction.socket, "getaddrinfo", fake_getaddrinfo)
+    with patch("app.extraction.urllib.request.urlopen") as fake_urlopen:
+        req = extraction.urllib.request.Request("http://127.0.0.1:6379/")
+        with pytest.raises(UnsafeUrlError):
+            extraction._safe_urlopen(req, timeout=5)
+        fake_urlopen.assert_not_called()
+
+
+def test_looks_like_pdf_returns_false_for_internal_address(monkeypatch):
+    def fake_getaddrinfo(host, *args, **kwargs):
+        return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("169.254.169.254", 0))]
+
+    monkeypatch.setattr(extraction.socket, "getaddrinfo", fake_getaddrinfo)
+    with patch("app.extraction.urllib.request.urlopen") as fake_urlopen:
+        assert looks_like_pdf("http://169.254.169.254/latest/meta-data/") is False
+        fake_urlopen.assert_not_called()
+
+
+def test_download_pdf_bytes_returns_none_for_internal_address(monkeypatch):
+    def fake_getaddrinfo(host, *args, **kwargs):
+        return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("10.0.0.5", 0))]
+
+    monkeypatch.setattr(extraction.socket, "getaddrinfo", fake_getaddrinfo)
+    with patch("app.extraction.urllib.request.urlopen") as fake_urlopen:
+        assert download_pdf_bytes("http://10.0.0.5/internes-dokument.pdf") is None
+        fake_urlopen.assert_not_called()
+
+
+def test_download_audio_bytes_returns_none_for_internal_address(monkeypatch):
+    def fake_getaddrinfo(host, *args, **kwargs):
+        return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("192.168.0.1", 0))]
+
+    monkeypatch.setattr(extraction.socket, "getaddrinfo", fake_getaddrinfo)
+    with patch("app.extraction.urllib.request.urlopen") as fake_urlopen:
+        assert download_audio_bytes("http://192.168.0.1/internes-audio.mp3") is None
+        fake_urlopen.assert_not_called()
+
+
+def test_extract_from_url_reports_failure_for_internal_address(monkeypatch):
+    def fake_getaddrinfo(host, *args, **kwargs):
+        return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("169.254.169.254", 0))]
+
+    monkeypatch.setattr(extraction.socket, "getaddrinfo", fake_getaddrinfo)
+    with patch("app.extraction.trafilatura.fetch_url") as fake_fetch_url:
+        result = extract_from_url("http://169.254.169.254/latest/meta-data/")
+
+    assert result["extracted"] is False
+    fake_fetch_url.assert_not_called()
