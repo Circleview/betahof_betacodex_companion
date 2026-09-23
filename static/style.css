@@ -1579,6 +1579,36 @@ button.send-button {
   }
 }
 
+/* Nutzerwunsch (2026-09-23, per Screenshot gemeldet): in der "Zwischengröße"
+   zwischen den beiden bestehenden Breakpoints (<640px Mobile, >=900px
+   Desktop-Grid) blieb #chat-column auf der ALTEN Basisregel (feste 70vh-Box,
+   #chat-messages scrollt intern) - dort funktionierte Scrollen im
+   Konversationsmodus nicht zuverlässig (verschachtelter Scroll-Container).
+   Gleiche Wachsen-mit-Antworttext-Mechanik wie oben (>=900px) bzw. unten
+   (<640px), hier für die Lücke dazwischen - der äußere Rahmen der Box
+   bleibt anders als bei <640px erhalten (Basisregel), deshalb behält auch
+   das sticky Eingabefeld hier denselben Rahmen/Schatten wie am Desktop. */
+@media (min-width: 641px) and (max-width: 899px) {
+  body.chat-started #chat-column {
+    height: auto;
+    max-height: none;
+    overflow: visible;
+  }
+
+  body.chat-started #chat-messages {
+    overflow-y: visible;
+  }
+
+  body.chat-started #question-form {
+    position: sticky;
+    bottom: max(1rem, env(safe-area-inset-bottom));
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+    z-index: 1;
+  }
+}
+
 /* Mobile: der Chat soll wie eine moderne Chat-App möglichst den ganzen
    sichtbaren Bildschirm ausfüllen (Vorbild: eigenes CRT-Tool, dort per
    `.app-layout { height: 100dvh }` gelöst). Eine feste vh-Höhe wie am
