@@ -9,7 +9,12 @@ USERS_FILE = BASE_DIR / "data" / "users.json"
 QUELLEN_PFLEGER = "quellen_pfleger"
 USER_ADMIN = "user_admin"
 SYSTEM_ADMIN = "system_admin"
-ALL_ROLES = [QUELLEN_PFLEGER, USER_ADMIN, SYSTEM_ADMIN]
+# 2026-09-24: Zugriff auf den Kreativ-Modus per MCP (app/mcp_keys.py) -
+# an dieser Rolle hängen die persönlichen MCP-Schlüssel.
+MCP_NUTZER = "mcp_nutzer"
+ALL_ROLES = [QUELLEN_PFLEGER, MCP_NUTZER, USER_ADMIN, SYSTEM_ADMIN]
+# Rollen, die nur System-Admins vergeben oder entziehen dürfen.
+ADMIN_ROLES = (USER_ADMIN, SYSTEM_ADMIN)
 
 
 def _normalize_email(email: str) -> str:
@@ -75,6 +80,26 @@ def invite_user(email: str, role: str, invited_by: str, name: str | None = None)
     users[email] = entry
     _save(users)
     return entry
+
+
+def set_roles(email: str, roles: list[str]) -> dict | None:
+    """Ersetzt die Rollen eines Kontos komplett (Nutzerwunsch 2026-09-24:
+    ein Konto, mehrere einzeln vergeb- und entziehbare Rollen). Reihenfolge
+    wie ALL_ROLES, Duplikate/Unbekanntes fallen weg - Berechtigungsprüfung
+    liegt beim Aufrufer (app/main.py)."""
+    email = _normalize_email(email)
+    users = _load()
+    entry = users.get(email)
+    if entry is None:
+        return None
+    entry["roles"] = [r for r in ALL_ROLES if r in roles]
+    users[email] = entry
+    _save(users)
+    return entry
+
+
+def count_with_role(role: str) -> int:
+    return sum(1 for u in _load().values() if role in u["roles"])
 
 
 def set_name(email: str, name: str) -> dict | None:

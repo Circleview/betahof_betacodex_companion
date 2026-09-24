@@ -33,9 +33,18 @@ const CLOSE_ICON =
 
 const ROLE_LABEL_KEYS = {
   quellen_pfleger: 'auth.roleQuellenPfleger',
+  mcp_nutzer: 'auth.roleMcpNutzer',
   user_admin: 'auth.roleUserAdmin',
   system_admin: 'auth.roleSystemAdmin',
 };
+const ALL_ROLES = Object.keys(ROLE_LABEL_KEYS);
+// Gleiche Regel wie im Backend (app/main.py: set_user_roles/invite_user) -
+// Admin-Rollen vergeben/entziehen nur System-Admins.
+const ADMIN_ROLES = ['user_admin', 'system_admin'];
+
+function manageableRoles() {
+  return hasRole('system_admin') ? ALL_ROLES : ALL_ROLES.filter((r) => !ADMIN_ROLES.includes(r));
+}
 
 let currentUser = { email: null, roles: [], name: null };
 const listeners = [];
@@ -97,8 +106,9 @@ function renderUserList(listEl, entries) {
 
       const info = document.createElement('span');
       const statusLabel = t(u.status === 'active' ? 'auth.statusActive' : 'auth.statusInvited');
-      info.textContent = `${u.email} – ${u.roles.map(roleLabel).join(', ')} (${statusLabel})`;
+      info.textContent = `${u.email} (${statusLabel})`;
       li.appendChild(info);
+      li.appendChild(buildRoleCheckboxes(u, listEl, entries));
 
       const nameRow = document.createElement('div');
       nameRow.className = 'auth-user-name-row';
@@ -172,6 +182,45 @@ function renderUserList(listEl, entries) {
   );
 }
 
+// Nutzerwunsch (2026-09-24): ein Konto, mehrere Rollen - je Rolle ein
+// Häkchen, das sofort speichert (PUT .../roles mit dem kompletten neuen
+// Rollen-Set). Nicht vergebbare Rollen bleiben sichtbar, aber gesperrt.
+function buildRoleCheckboxes(u, listEl, entries) {
+  const row = document.createElement('div');
+  row.className = 'auth-role-checkboxes';
+  const allowed = manageableRoles();
+  ALL_ROLES.forEach((role) => {
+    const label = document.createElement('label');
+    label.className = 'checkbox-label auth-role-checkbox';
+    const box = document.createElement('input');
+    box.type = 'checkbox';
+    box.checked = u.roles.includes(role);
+    box.disabled = !allowed.includes(role);
+    box.addEventListener('click', (e) => e.stopPropagation());
+    box.addEventListener('change', async () => {
+      const roles = box.checked ? [...u.roles, role] : u.roles.filter((r) => r !== role);
+      const res = await fetch(`/api/auth/users/${encodeURIComponent(u.email)}/roles`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', 'X-Lang': getLang() },
+        body: JSON.stringify({ roles }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        u.roles = data.roles;
+      } else {
+        box.checked = !box.checked;
+        status.textContent = t('common.errorPrefix') + (data.detail || t('index.askError'));
+      }
+    });
+    label.append(box, roleLabel(role));
+    row.appendChild(label);
+  });
+  const status = document.createElement('p');
+  status.className = 'auth-status';
+  row.appendChild(status);
+  return row;
+}
+
 async function refreshUserList(listEl) {
   const res = await fetch('/api/auth/users');
   if (!res.ok) return;
@@ -198,9 +247,7 @@ function buildAdminSection() {
   emailInput.required = true;
   emailInput.placeholder = t('auth.emailPlaceholder');
   const roleSelect = document.createElement('select');
-  const allowedRoles = hasRole('system_admin')
-    ? ['quellen_pfleger', 'user_admin', 'system_admin']
-    : ['quellen_pfleger'];
+  const allowedRoles = manageableRoles();
   allowedRoles.forEach((role) => {
     const option = document.createElement('option');
     option.value = role;

@@ -214,6 +214,10 @@ class UpdateUserNameIn(BaseModel):
     name: str
 
 
+class UpdateUserRolesIn(BaseModel):
+    roles: list[str]
+
+
 class WhoAmIOut(BaseModel):
     email: Optional[str] = None
     roles: list[str] = []

@@ -595,6 +595,24 @@ header h1 {
   flex: 0 0 auto;
 }
 
+/* Rollen je Konto als Häkchen (2026-09-24, static/auth.js). */
+.auth-role-checkboxes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.15rem 0.9rem;
+  margin-top: 0.25rem;
+  font-size: 0.85rem;
+}
+
+.auth-role-checkboxes .auth-status {
+  flex-basis: 100%;
+  margin: 0;
+}
+
+.auth-role-checkboxes .auth-status:empty {
+  display: none;
+}
+
 .auth-user-name-row {
   display: flex;
   align-items: center;

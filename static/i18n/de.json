@@ -63,6 +63,7 @@
   "auth.statusInvited": "eingeladen",
   "auth.statusActive": "aktiv",
   "auth.roleQuellenPfleger": "Quellen-Pfleger:in",
+  "auth.roleMcpNutzer": "MCP-Nutzung",
   "auth.roleUserAdmin": "User-Admin",
   "auth.roleSystemAdmin": "System-Admin",
 

@@ -95,6 +95,7 @@ from app.models import (
     TermsDeleteIn,
     TurnstileConfigOut,
     UpdateUserNameIn,
+    UpdateUserRolesIn,
     UrlCheckOut,
     UrlIn,
     VersionOut,
@@ -2680,6 +2681,34 @@ def invite_user(
     link_url = str(request.base_url) + f"api/auth/verify?token={token}"
     mail.send_invite_email(email, link_url, payload.role, x_lang)
     return entry
+
+
+# Nutzerwunsch (2026-09-24): Rollen eines bestehenden Kontos einzeln
+# vergeben/entziehen (Häkchen in der Nutzerverwaltung, static/auth.js).
+# Gleiche Rechteregel wie beim Einladen: Admin-Rollen ändern nur System-
+# Admins. Der letzte System-Admin kann sich nicht aussperren.
+@app.put("/api/auth/users/{email}/roles", response_model=AdminUserOut)
+def set_user_roles(
+    email: str,
+    payload: UpdateUserRolesIn,
+    current_user: str = Depends(require_role(users.USER_ADMIN)),
+    x_lang: str = Header(default=i18n.DEFAULT_LANG),
+):
+    if any(r not in users.ALL_ROLES for r in payload.roles):
+        raise HTTPException(400, i18n.get_message("invite_invalid_role", x_lang))
+    existing = users.get_user(email)
+    if existing is None:
+        raise HTTPException(404, i18n.get_message("user_not_found", x_lang))
+    changed = set(existing["roles"]) ^ set(payload.roles)
+    if changed & set(users.ADMIN_ROLES) and not users.has_role(current_user, users.SYSTEM_ADMIN):
+        raise HTTPException(403, i18n.get_message("invite_role_forbidden", x_lang))
+    if (
+        users.SYSTEM_ADMIN in existing["roles"]
+        and users.SYSTEM_ADMIN not in payload.roles
+        and users.count_with_role(users.SYSTEM_ADMIN) <= 1
+    ):
+        raise HTTPException(400, i18n.get_message("last_system_admin", x_lang))
+    return users.set_roles(email, payload.roles)
 
 
 @app.put("/api/auth/users/{email}/name", response_model=AdminUserOut)

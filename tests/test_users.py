@@ -146,3 +146,18 @@ def test_load_ignores_legacy_entries_without_valid_email_or_roles(tmp_path, monk
     # Absturz auszulösen.
     assert users.list_users() == []
     assert users.get_roles("lena.pflegerin") == []
+
+
+def test_set_roles_replaces_roles_in_canonical_order(tmp_path, monkeypatch):
+    _isolate(tmp_path, monkeypatch)
+    users.invite_user("a@test.local", users.QUELLEN_PFLEGER, invited_by="root")
+
+    entry = users.set_roles("a@test.local", [users.USER_ADMIN, users.MCP_NUTZER, "unbekannt", users.MCP_NUTZER])
+
+    assert entry["roles"] == [users.MCP_NUTZER, users.USER_ADMIN]
+    assert users.get_roles("a@test.local") == [users.MCP_NUTZER, users.USER_ADMIN]
+
+
+def test_set_roles_returns_none_for_unknown_user(tmp_path, monkeypatch):
+    _isolate(tmp_path, monkeypatch)
+    assert users.set_roles("nobody@test.local", [users.MCP_NUTZER]) is None

@@ -7726,3 +7726,55 @@ def test_knowledge_graph_falls_back_to_raw_photo_url_when_not_yet_cached(client)
     data = client.get("/api/knowledge-graph").json()
     node = next(n for n in data["nodes"] if n["id"] == "author:Foto Autor")
     assert node["photo_url"] == "https://example.org/foto.jpg"
+
+
+def test_set_roles_adds_and_removes_roles(anon_client):
+    login(anon_client, "admin@test.local", users.USER_ADMIN)
+    anon_client.post("/api/auth/invite", json={"email": "new@test.local", "role": users.QUELLEN_PFLEGER})
+
+    response = anon_client.put(
+        "/api/auth/users/new@test.local/roles", json={"roles": [users.MCP_NUTZER]}
+    )
+
+    assert response.status_code == 200
+    assert response.json()["roles"] == [users.MCP_NUTZER]
+
+
+def test_set_roles_forbids_user_admin_from_changing_admin_roles(anon_client):
+    login(anon_client, "admin@test.local", users.USER_ADMIN)
+    anon_client.post("/api/auth/invite", json={"email": "new@test.local", "role": users.QUELLEN_PFLEGER})
+
+    response = anon_client.put(
+        "/api/auth/users/new@test.local/roles", json={"roles": [users.QUELLEN_PFLEGER, users.USER_ADMIN]}
+    )
+
+    assert response.status_code == 403
+
+
+def test_set_roles_rejects_unknown_role_and_unknown_user(anon_client):
+    login(anon_client, "admin@test.local", users.USER_ADMIN)
+    anon_client.post("/api/auth/invite", json={"email": "new@test.local", "role": users.QUELLEN_PFLEGER})
+
+    assert anon_client.put("/api/auth/users/new@test.local/roles", json={"roles": ["x"]}).status_code == 400
+    assert anon_client.put("/api/auth/users/nobody@test.local/roles", json={"roles": []}).status_code == 404
+
+
+def test_set_roles_keeps_last_system_admin(anon_client):
+    login(anon_client, "root@test.local", users.SYSTEM_ADMIN)
+
+    response = anon_client.put("/api/auth/users/root@test.local/roles", json={"roles": [users.MCP_NUTZER]})
+
+    assert response.status_code == 400
+    assert users.SYSTEM_ADMIN in users.get_roles("root@test.local")
+
+
+def test_set_roles_allows_system_admin_to_grant_admin_roles(anon_client):
+    login(anon_client, "root@test.local", users.SYSTEM_ADMIN)
+    anon_client.post("/api/auth/invite", json={"email": "new@test.local", "role": users.QUELLEN_PFLEGER})
+
+    response = anon_client.put(
+        "/api/auth/users/new@test.local/roles", json={"roles": [users.USER_ADMIN, users.MCP_NUTZER]}
+    )
+
+    assert response.status_code == 200
+    assert response.json()["roles"] == [users.MCP_NUTZER, users.USER_ADMIN]
