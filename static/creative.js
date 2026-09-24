@@ -73,6 +73,83 @@ const previewEl = document.getElementById('creative-document-preview');
 const langSwitchNoticeEl = document.getElementById('creative-lang-switch-notice');
 const undoBtn = document.getElementById('creative-undo-btn');
 const redoBtn = document.getElementById('creative-redo-btn');
+// 2026-09-24: "Zu viele Anfragen" mit Countdown - der Server schickt bei 429
+// die Wartezeit als Retry-After (app/main.py: creative). Bis dahin sind die
+// Absende-Buttons (Hauptfeld und Abschnitte) gesperrt, danach verschwindet
+// die Meldung von selbst.
+class RateLimitError extends Error {
+  constructor(message, retryAfterSeconds) {
+    super(message);
+    this.retryAfterSeconds = retryAfterSeconds;
+  }
+}
+
+async function responseError(res) {
+  const err = await res.json().catch(() => ({}));
+  const message = err.detail || t('creative.error');
+  const retryAfter = Number(res.headers.get('Retry-After'));
+  return res.status === 429 && retryAfter > 0 ? new RateLimitError(message, retryAfter) : new Error(message);
+}
+
+export function formatCountdown(seconds) {
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return `${m}:${String(s).padStart(2, '0')}`;
+}
+
+let cooldownUntil = 0;
+let cooldownTimer = null;
+
+function cooldownActive() {
+  return cooldownUntil > Date.now();
+}
+
+function applyCooldown() {
+  const blocked = cooldownActive();
+  if (blocked) {
+    submitBtn.disabled = true;
+    currentSectionEls.forEach((els) => {
+      els.submitBtn.disabled = true;
+    });
+  } else {
+    // Ohne Cooldown gilt wieder der Busy-Zustand (setBusy sperrt dieselben
+    // Felder während einer laufenden Anfrage).
+    submitBtn.disabled = instructionField.disabled;
+    currentSectionEls.forEach((els) => {
+      els.submitBtn.disabled = els.textarea.disabled;
+    });
+  }
+}
+
+function tickCooldown() {
+  const left = Math.ceil((cooldownUntil - Date.now()) / 1000);
+  if (left <= 0) {
+    clearInterval(cooldownTimer);
+    cooldownUntil = 0;
+    errorEl.classList.add('hidden');
+  } else {
+    errorEl.textContent = t('creative.rateLimitedCountdown', { time: formatCountdown(left) });
+    errorEl.classList.remove('hidden');
+  }
+  applyCooldown();
+}
+
+function startCooldown(seconds) {
+  cooldownUntil = Date.now() + seconds * 1000;
+  clearInterval(cooldownTimer);
+  tickCooldown();
+  cooldownTimer = setInterval(tickCooldown, 1000);
+}
+
+function showError(err) {
+  if (err instanceof RateLimitError) {
+    startCooldown(err.retryAfterSeconds);
+    return;
+  }
+  errorEl.textContent = t('common.errorPrefix') + err.message;
+  errorEl.classList.remove('hidden');
+}
+
 
 // Nutzerwunsch (Livegang-Vorbereitung, 2026-09-10): schreibt jemand eine
 // Anweisung (Hauptformular oder Abschnitts-Überarbeitung, siehe beide
@@ -124,8 +201,13 @@ instructionField.addEventListener('input', () => autoGrowTextarea(instructionFie
 // Zeilenumbruch reserviert bleibt. isComposing schützt IME-Eingaben (z.B.
 // Japanisch/Chinesisch), bei denen Enter die Zeichenauswahl bestätigt statt
 // abzuschicken.
+// 2026-09-24: zusätzlich Cmd+Enter (Mac) bzw. Strg+Enter - Umschalt+Enter
+// bleibt, damit sich niemand umgewöhnen muss.
+function isSubmitShortcut(e) {
+  return e.key === 'Enter' && (e.shiftKey || e.metaKey || e.ctrlKey) && !e.isComposing;
+}
 instructionField.addEventListener('keydown', (e) => {
-  if (e.key === 'Enter' && e.shiftKey && !e.isComposing) {
+  if (isSubmitShortcut(e)) {
     e.preventDefault();
     form.requestSubmit();
   }
@@ -425,6 +507,11 @@ function buildSectionElement(section, index) {
     sectionDrafts.set(index, textarea.value);
     autoGrowTextarea(textarea);
   });
+  textarea.addEventListener('keydown', (e) => {
+    if (!isSubmitShortcut(e)) return;
+    e.preventDefault();
+    if (!textarea.disabled) submitSectionRevision(index);
+  });
   panel.appendChild(textarea);
 
   // Nutzerwunsch (2026-08-30): Mikrofon-Button links neben dem
@@ -495,6 +582,7 @@ function renderPreviewSections() {
   } else {
     openSectionIndex = null;
   }
+  applyCooldown();
 }
 
 // Akkordeon-Exklusivität (Nutzerwunsch 2026-08-30): Öffnen eines Bereichs
@@ -536,7 +624,7 @@ async function submitSectionRevision(index) {
   const els = currentSectionEls[index];
   const section = currentSections[index];
   const instruction = els.textarea.value.trim();
-  if (!instruction) return;
+  if (!instruction || cooldownActive()) return;
 
   errorEl.classList.add('hidden');
   setBusy(true, { forceEditMode: false });
@@ -555,10 +643,7 @@ async function submitSectionRevision(index) {
       }),
     });
     resetTurnstile();
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      throw new Error(err.detail || t('creative.error'));
-    }
+    if (!res.ok) throw await responseError(res);
 
     // Der überarbeitete Abschnittstext steckt im "document"-Event (siehe
     // app/main.py:_creative_event_stream), NICHT im "done"-Event (das trägt
@@ -587,8 +672,7 @@ async function submitSectionRevision(index) {
     // nochmal versuchen können (siehe Nutzervorgabe: Anweisung bleibt beim
     // Zuklappen erhalten - erst recht bei einem Fehler, wo gar nicht
     // zugeklappt wurde).
-    errorEl.textContent = t('common.errorPrefix') + err.message;
-    errorEl.classList.remove('hidden');
+    showError(err);
   } finally {
     setBusy(false, { forceEditMode: false });
     relabelSectionSubmitButton(els, false);
@@ -914,12 +998,13 @@ function setBusy(busy, { forceEditMode = true } = {}) {
     els.micBtn.disabled = busy;
     els.textarea.disabled = busy;
   });
+  if (!busy) applyCooldown();
 }
 
 form.addEventListener('submit', async (event) => {
   event.preventDefault();
   const instruction = instructionField.value.trim();
-  if (!instruction) return;
+  if (!instruction || cooldownActive()) return;
 
   errorEl.classList.add('hidden');
   setBusy(true);
@@ -948,10 +1033,7 @@ form.addEventListener('submit', async (event) => {
     // damit die nächste Anweisung ein frisches Token bekommt (siehe
     // question.js für dieselbe Konvention).
     resetTurnstile();
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      throw new Error(err.detail || t('creative.error'));
-    }
+    if (!res.ok) throw await responseError(res);
 
     const doneEvent = await readNdjsonStream(
       res,
@@ -994,8 +1076,7 @@ form.addEventListener('submit', async (event) => {
     documentField.value = previousDocument;
     setGeneration(previousGeneration);
     undoStack.pop();
-    errorEl.textContent = t('common.errorPrefix') + err.message;
-    errorEl.classList.remove('hidden');
+    showError(err);
   } finally {
     setBusy(false);
     creativeBusy = false;

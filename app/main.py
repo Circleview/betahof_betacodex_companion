@@ -4348,12 +4348,18 @@ def _creative_context(instruction: str, document: str, x_lang: str) -> tuple[lis
 @app.post("/api/creative")
 def creative(payload: CreativeRequestIn, request: Request, x_lang: str = Header(default=i18n.DEFAULT_LANG)):
     client_ip = request.client.host if request.client else "unknown"
+    rate_key = f"creative-ip:{client_ip}"
     if ratelimit.is_rate_limited(
-        f"creative-ip:{client_ip}",
+        rate_key,
         max_requests=CREATIVE_RATE_LIMIT_MAX_REQUESTS,
         window_seconds=CREATIVE_RATE_LIMIT_WINDOW_SECONDS,
     ):
-        raise HTTPException(429, i18n.get_message("rate_limited", x_lang))
+        # Retry-After: die Oberfläche zeigt daraus einen Countdown
+        # (static/creative.js: startCooldown).
+        retry_after = ratelimit.retry_after_seconds(rate_key, CREATIVE_RATE_LIMIT_WINDOW_SECONDS)
+        raise HTTPException(
+            429, i18n.get_message("rate_limited", x_lang), headers={"Retry-After": str(retry_after)}
+        )
     if not captcha.verify_turnstile_token(payload.turnstile_token, client_ip):
         raise HTTPException(400, i18n.get_message("captcha_failed", x_lang))
 

@@ -1474,6 +1474,9 @@ def test_creative_rejects_after_rate_limit_exceeded(client):
     response = client.post("/api/creative", json={"document": "", "instruction": "Schreibe etwas."})
 
     assert response.status_code == 429
+    # Countdown in der Oberfläche (static/creative.js) - knapp unter dem Fenster.
+    retry_after = int(response.headers["retry-after"])
+    assert 0 < retry_after <= main_module.CREATIVE_RATE_LIMIT_WINDOW_SECONDS
 
 
 def test_creative_rejects_empty_instruction(client):

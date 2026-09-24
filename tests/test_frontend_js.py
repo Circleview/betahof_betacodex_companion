@@ -4023,3 +4023,12 @@ def test_term_overview_filters_by_lang_hides_unknown_sources_and_sorts():
     assert [e["term"] for e in result] == ["3-Ebenen", "Ärger", "beta", "Zeit"]
     assert result[1]["ids"] == ["a"]
     assert [e["letter"] for e in result] == ["", "A", "B", "Z"]
+
+
+def test_format_countdown_shows_minutes_and_zero_padded_seconds():
+    js_source = (STATIC_DIR / "creative.js").read_text()
+    match = re.search(r"export function formatCountdown.*?\n\}", js_source, re.S)
+    assert match, "formatCountdown wurde in creative.js nicht gefunden."
+    func = match.group(0).replace("export function", "function")
+    result = _run_node(f"{func}\nconsole.log(JSON.stringify([599, 61, 9, 1].map(formatCountdown)));")
+    assert result == ["9:59", "1:01", "0:09", "0:01"]

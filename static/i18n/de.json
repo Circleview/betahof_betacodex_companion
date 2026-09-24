@@ -445,5 +445,6 @@
   "mcp.groupChannel": "Nach Kanal",
   "mcp.groupAccount": "Nach Konto (nur MCP)",
   "creative.undoTitle": "Rückgängig – letzte Änderung durch KI oder Formatierung zurücknehmen",
-  "creative.redoTitle": "Wiederholen – zurückgenommene Änderung wiederherstellen"
+  "creative.redoTitle": "Wiederholen – zurückgenommene Änderung wiederherstellen",
+  "creative.rateLimitedCountdown": "Zu viele Anfragen – nächster Versuch in {time} möglich."
 }

@@ -445,5 +445,6 @@
   "mcp.groupChannel": "By channel",
   "mcp.groupAccount": "By account (MCP only)",
   "creative.undoTitle": "Undo – revert the last AI or formatting change",
-  "creative.redoTitle": "Redo – restore the undone change"
+  "creative.redoTitle": "Redo – restore the undone change",
+  "creative.rateLimitedCountdown": "Too many requests – you can try again in {time}."
 }
