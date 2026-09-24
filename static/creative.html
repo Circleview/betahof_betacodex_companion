@@ -44,6 +44,15 @@
         <button type="button" data-md-action="italic" data-i18n-title="creative.toolbarItalic"><em>I</em></button>
         <button type="button" data-md-action="heading" data-i18n-title="creative.toolbarHeading">H</button>
         <button type="button" data-md-action="list" data-i18n-title="creative.toolbarList">&bull;</button>
+        <!-- 2026-09-24: Rückgängig/Wiederholen für KI-Änderungen und
+             Formatierungen (creative.js: rememberForUndo) - in Vorschau und
+             Bearbeiten-Ansicht. -->
+        <button type="button" id="creative-undo-btn" data-i18n-title="creative.undoTitle" disabled>
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 14 4 9 9 4"></polyline><path d="M20 20v-7a4 4 0 0 0-4-4H4"></path></svg>
+        </button>
+        <button type="button" id="creative-redo-btn" data-i18n-title="creative.redoTitle" disabled>
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 14 20 9 15 4"></polyline><path d="M4 20v-7a4 4 0 0 1 4-4h12"></path></svg>
+        </button>
         <button type="button" id="creative-copy-btn" data-i18n-title="creative.copyTitle">
           <svg class="copy-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
           <svg class="copy-check" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="4 12.5 9.5 18 20 6.5"></polyline></svg>

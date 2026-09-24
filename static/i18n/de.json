@@ -443,5 +443,7 @@
   "mcp.connectorValueIsKey": "dein Schlüssel oben (ohne „Bearer“)",
   "mcp.yourKey": "dein-schlüssel",
   "mcp.groupChannel": "Nach Kanal",
-  "mcp.groupAccount": "Nach Konto (nur MCP)"
+  "mcp.groupAccount": "Nach Konto (nur MCP)",
+  "creative.undoTitle": "Rückgängig – letzte Änderung durch KI oder Formatierung zurücknehmen",
+  "creative.redoTitle": "Wiederholen – zurückgenommene Änderung wiederherstellen"
 }

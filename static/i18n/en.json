@@ -443,5 +443,7 @@
   "mcp.connectorValueIsKey": "your key above (without “Bearer”)",
   "mcp.yourKey": "your-key",
   "mcp.groupChannel": "By channel",
-  "mcp.groupAccount": "By account (MCP only)"
+  "mcp.groupAccount": "By account (MCP only)",
+  "creative.undoTitle": "Undo – revert the last AI or formatting change",
+  "creative.redoTitle": "Redo – restore the undone change"
 }

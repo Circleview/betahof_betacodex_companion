@@ -71,6 +71,8 @@ const toolbarButtons = Array.from(document.querySelectorAll('#creative-toolbar b
 const previewToggleBtn = document.getElementById('creative-preview-toggle');
 const previewEl = document.getElementById('creative-document-preview');
 const langSwitchNoticeEl = document.getElementById('creative-lang-switch-notice');
+const undoBtn = document.getElementById('creative-undo-btn');
+const redoBtn = document.getElementById('creative-redo-btn');
 
 // Nutzerwunsch (Livegang-Vorbereitung, 2026-09-10): schreibt jemand eine
 // Anweisung (Hauptformular oder Abschnitts-Überarbeitung, siehe beide
@@ -572,6 +574,7 @@ async function submitSectionRevision(index) {
     // überarbeiteten Abschnittstext erkennen, siehe Kommentar bei der
     // Ganzdokument-Generierung oben.
     await maybeAutoSwitchLang(revisedSectionText);
+    rememberForUndo();
     documentField.value = spliceCreativeSection(documentField.value, section.start, section.end, revisedSectionText);
     sectionDrafts.delete(index);
     openSectionIndex = null;
@@ -650,7 +653,10 @@ try {
 // Die Quellen zum Text (rechte Spalte) werden mit ihm zusammen gehalten.
 const CREATIVE_SOURCES_STORAGE_KEY = 'creativeSources';
 
+let currentSources = { betacodex: [], web: [] };
+
 function showSources(sources) {
+  currentSources = sources;
   renderSourceList(betacodexListEl, sources.betacodex, 'creative.noBetacodexSources');
   renderSourceList(webListEl, sources.web, 'creative.noWebSources');
   try {
@@ -712,6 +718,55 @@ window.addEventListener('pagehide', saveCreativeDocument);
 // übernehmen Word/Mail/Docs Überschriften, Fett usw.) plus text/plain als
 // Markdown-Quelltext für Ziele ohne HTML-Unterstützung. Bei Erfolg zeigt
 // .copied (CSS) kurz einen grünen Haken statt des Kopieren-Icons.
+// Nutzerwunsch (2026-09-24): Rückgängig/Wiederholen - manche
+// Überarbeitungen machen den Text schlechter. Vor jeder programmatischen
+// Änderung (Erzeugen/Überarbeiten, Abschnitt, "Neu", Formatierungs-Buttons)
+// merkt sich rememberForUndo() Dokument, Quellen und Feedback-Stand. Tippen
+// deckt das native Cmd+Z des Textfelds ab; da ein Rückgängig-Schritt aber
+// auch danach Getipptes ersetzt, landet der aktuelle Stand vorher im
+// Wiederholen-Stapel. ponytail: nur im Speicher der Seite - nach einem
+// Reload ist der Verlauf weg (Dokument selbst bleibt erhalten); bei Bedarf
+// in sessionStorage spiegeln.
+const HISTORY_LIMIT = 30;
+const undoStack = [];
+const redoStack = [];
+
+function currentSnapshot() {
+  return { document: documentField.value, sources: currentSources, generation };
+}
+
+function updateHistoryButtons(busy = creativeBusy) {
+  undoBtn.disabled = busy || undoStack.length === 0;
+  redoBtn.disabled = busy || redoStack.length === 0;
+}
+
+function rememberForUndo() {
+  undoStack.push(currentSnapshot());
+  if (undoStack.length > HISTORY_LIMIT) undoStack.shift();
+  redoStack.length = 0;
+  updateHistoryButtons();
+}
+
+function restoreSnapshot(snapshot) {
+  documentField.value = snapshot.document;
+  showSources(snapshot.sources);
+  setGeneration(snapshot.generation);
+  sectionDrafts.clear();
+  openSectionIndex = null;
+  if (previewMode) renderPreviewSections();
+  saveCreativeDocument();
+}
+
+function stepHistory(from, to) {
+  if (!from.length || creativeBusy) return;
+  to.push(currentSnapshot());
+  restoreSnapshot(from.pop());
+  updateHistoryButtons();
+}
+
+undoBtn.addEventListener('click', () => stepHistory(undoStack, redoStack));
+redoBtn.addEventListener('click', () => stepHistory(redoStack, undoStack));
+
 const copyBtn = document.getElementById('creative-copy-btn');
 const COPIED_FEEDBACK_MS = 1600;
 let copiedTimer = null;
@@ -750,6 +805,7 @@ newBtn.addEventListener('click', () => {
     newConfirmTimer = setTimeout(() => newBtn.classList.remove('confirming'), 5000);
     return;
   }
+  rememberForUndo();
   documentField.value = '';
   instructionField.value = '';
   autoGrowTextarea(instructionField);
@@ -765,6 +821,7 @@ newBtn.addEventListener('click', () => {
 
 toolbarButtons.forEach((btn) => {
   btn.addEventListener('click', () => {
+    rememberForUndo();
     const result = applyMarkdownToSelection(
       documentField.value,
       documentField.selectionStart,
@@ -845,6 +902,7 @@ function setBusy(busy, { forceEditMode = true } = {}) {
   creativeMicButton.disabled = busy;
   documentField.readOnly = busy;
   previewToggleBtn.disabled = busy;
+  updateHistoryButtons(busy);
   toolbarButtons.forEach((btn) => {
     btn.disabled = busy;
   });
@@ -871,6 +929,7 @@ form.addEventListener('submit', async (event) => {
   let liveText = '';
   let generated = false;
   const previousGeneration = generation;
+  rememberForUndo();
   setGeneration(null);
   documentField.value = '';
 
@@ -930,9 +989,11 @@ form.addEventListener('submit', async (event) => {
     generated = true;
   } catch (err) {
     // Ein fehlgeschlagener Versuch darf das bisherige Dokument nie
-    // zerstören - Original wiederherstellen statt leer zu lassen.
+    // zerstören - Original wiederherstellen statt leer zu lassen. Der
+    // Rückgängig-Schritt entfällt dann, es hat sich ja nichts geändert.
     documentField.value = previousDocument;
     setGeneration(previousGeneration);
+    undoStack.pop();
     errorEl.textContent = t('common.errorPrefix') + err.message;
     errorEl.classList.remove('hidden');
   } finally {

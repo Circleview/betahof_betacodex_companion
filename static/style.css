@@ -4655,7 +4655,8 @@ details a {
   cursor: not-allowed;
 }
 
-#creative-copy-btn {
+/* Rückgängig/Wiederholen + Kopieren als rechte Gruppe der Werkzeugleiste. */
+#creative-undo-btn {
   margin-left: auto;
 }
 
