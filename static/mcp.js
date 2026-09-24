@@ -141,6 +141,9 @@ async function loadOwnKeys() {
 function buildSummaryTable(summary) {
   const table = document.createElement('table');
   table.className = 'mcp-summary-table';
+  const caption = document.createElement('caption');
+  caption.textContent = fxText(summary.fx);
+  table.appendChild(caption);
   const head = document.createElement('tr');
   [t('mcp.colScope'), t('mcp.colCalls'), t('mcp.colSearches'), t('mcp.colCost')].forEach((label) => {
     const th = document.createElement('th');
@@ -165,22 +168,14 @@ function buildSummaryTable(summary) {
   return table;
 }
 
-// Nutzerwunsch (2026-09-24): der zur Umrechnung genutzte Kurs ist Teil der
-// Übersicht - jüngster Kurs des Monats, jeder einzelne steht im CSV.
-function buildFxNote(fx) {
-  const p = document.createElement('p');
-  p.className = 'web-allowlist-hint';
-  if (!fx) {
-    p.textContent = t('mcp.fxNone');
-  } else if (fx.source === 'fallback') {
-    p.textContent = t('mcp.fxFallback', { rate: fx.rate.toLocaleString(getLang() === 'de' ? 'de-DE' : 'en-GB') });
-  } else {
-    p.textContent = t('mcp.fxNote', {
-      rate: fx.rate.toLocaleString(getLang() === 'de' ? 'de-DE' : 'en-GB', { maximumFractionDigits: 5 }),
-      date: new Date(`${fx.date}T00:00:00`).toLocaleDateString(getLang() === 'de' ? 'de-DE' : 'en-GB'),
-    });
-  }
-  return p;
+// Nutzerwunsch (2026-09-24): der Umrechnungskurs ist fester Teil der
+// Übersicht (Tabellenüberschrift) - jüngster Kurs des Monats bzw. ohne
+// Aufrufe der aktuelle Tageskurs; jeder einzelne Kurs steht im CSV.
+function fxText(fx) {
+  const locale = getLang() === 'de' ? 'de-DE' : 'en-GB';
+  const rate = fx.rate.toLocaleString(locale, { maximumFractionDigits: 5 });
+  if (fx.source === 'fallback') return t('mcp.fxFallback', { rate });
+  return t('mcp.fxNote', { rate, date: new Date(`${fx.date}T00:00:00`).toLocaleDateString(locale) });
 }
 
 async function loadAdmin() {
@@ -192,7 +187,7 @@ async function loadAdmin() {
   ]);
   if (!summaryRes.ok || !keysRes.ok) return;
   const summary = await summaryRes.json();
-  document.getElementById('mcp-summary').replaceChildren(buildSummaryTable(summary), buildFxNote(summary.fx));
+  document.getElementById('mcp-summary').replaceChildren(buildSummaryTable(summary));
   const keys = await keysRes.json();
   document
     .getElementById('mcp-admin-list')

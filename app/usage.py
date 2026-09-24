@@ -166,6 +166,10 @@ def monthly_summary(month: str) -> dict:
             add(summary["by_email"].setdefault(e["email"], empty()), e)
         if e["key_id"]:
             add(summary["by_key"].setdefault(e["key_id"], empty()), e)
+    # Ohne Aufrufe im Monat: aktueller Tageskurs, damit die Übersicht den
+    # Kurs immer zeigt (Nutzerwunsch 2026-09-24).
+    if summary["fx"] is None:
+        summary["fx"] = current_fx()
     return summary
 
 

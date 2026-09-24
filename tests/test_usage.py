@@ -136,3 +136,7 @@ def test_monthly_summary_and_csv_carry_the_rate():
     assert usage.monthly_summary(month)["fx"] == {"rate": 0.9, "date": "2026-09-23", "source": "ecb"}
     header, row = usage.export_csv(month).strip().splitlines()
     assert header.endswith("usd_to_eur,fx_date,fx_source") and row.endswith("0.9,2026-09-23,ecb")
+
+
+def test_monthly_summary_without_calls_shows_current_rate():
+    assert usage.monthly_summary("2020-01")["fx"] == {"rate": 0.9, "date": "2026-09-23", "source": "ecb"}

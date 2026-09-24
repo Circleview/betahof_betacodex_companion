@@ -423,7 +423,6 @@
   "mcp.channel.mcp": "MCP",
   "questionLog.eventType.mcp": "MCP",
   "questionLog.filter.mcp": "MCP",
-  "mcp.fxNote": "Umrechnung: 1 USD = {rate} EUR (EZB-Referenzkurs vom {date}, via frankfurter.dev). Jeder Eintrag speichert seinen eigenen Tageskurs – siehe CSV.",
-  "mcp.fxFallback": "Umrechnung: 1 USD = {rate} EUR (Notwert – der Tageskurs war nicht abrufbar).",
-  "mcp.fxNone": "Keine Aufrufe in diesem Monat."
+  "mcp.fxNote": "Umrechnungskurs: 1 USD = {rate} EUR (EZB-Referenzkurs vom {date}). Jeder Aufruf speichert seinen eigenen Tageskurs, siehe CSV.",
+  "mcp.fxFallback": "Umrechnung: 1 USD = {rate} EUR (Notwert – der Tageskurs war nicht abrufbar)."
 }

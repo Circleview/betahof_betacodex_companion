@@ -423,7 +423,6 @@
   "mcp.channel.mcp": "MCP",
   "questionLog.eventType.mcp": "MCP",
   "questionLog.filter.mcp": "MCP",
-  "mcp.fxNote": "Conversion: 1 USD = {rate} EUR (ECB reference rate of {date}, via frankfurter.dev). Each entry stores its own daily rate – see CSV.",
-  "mcp.fxFallback": "Conversion: 1 USD = {rate} EUR (fallback value – the daily rate was unavailable).",
-  "mcp.fxNone": "No calls in this month."
+  "mcp.fxNote": "Exchange rate: 1 USD = {rate} EUR (ECB reference rate of {date}). Each call stores its own daily rate, see CSV.",
+  "mcp.fxFallback": "Conversion: 1 USD = {rate} EUR (fallback value – the daily rate was unavailable)."
 }

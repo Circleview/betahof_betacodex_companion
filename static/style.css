@@ -5175,6 +5175,14 @@ details a {
   overflow-wrap: anywhere;
 }
 
+.mcp-summary-table caption {
+  caption-side: top;
+  text-align: left;
+  padding: 0 0 0.6rem;
+  font-size: 0.85rem;
+  color: var(--color-text-muted);
+}
+
 .mcp-summary-table th {
   font-weight: 600;
   color: var(--color-text-muted);
