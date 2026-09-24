@@ -198,9 +198,16 @@ claude mcp add --transport http betacodex https://chat.betacodex.org/mcp \
   --header "Authorization: Bearer <dein-schlüssel>"
 ```
 
-Andere MCP-Clients brauchen dieselben zwei Angaben: die Adresse
-`https://chat.betacodex.org/mcp` (Streamable HTTP) und den Header
-`Authorization: Bearer <dein-schlüssel>`.
+Als Konnektor in Claude (claude.ai oder Desktop-App): Einstellungen ›
+Konnektoren › „Benutzerdefinierten Konnektor hinzufügen“, Adresse
+`https://chat.betacodex.org/mcp`, Authentifizierung „Keine Anmeldung“ und
+unter „Request headers“ den Standard-Header `x-api-key` aus der Liste mit
+dem Schlüssel als Wert (ohne „Bearer“) – ein eigener Header-Name wäre nicht
+nötig und müsste erst von Anthropic freigegeben werden.
+
+Andere MCP-Clients brauchen die Adresse `https://chat.betacodex.org/mcp`
+(Streamable HTTP) und entweder `Authorization: Bearer <dein-schlüssel>` oder
+`x-api-key: <dein-schlüssel>`.
 
 ### Quellen pflegen (Quellen-Pfleger:innen)
 
@@ -504,6 +511,7 @@ Commit-/Tag-Nachrichten in Git.
 
 | Version | Wesentliche Änderungen |
 |---|---|
+| v0.74.1 | MCP-Zugang auch als Konnektor in Claude (claude.ai/Desktop-App): der Server akzeptiert den Schlüssel jetzt zusätzlich über den Standard-Header `x-api-key` sowie `Authorization` ohne „Bearer“ – gilt sofort für alle bestehenden Schlüssel. Die Seite „MCP-Zugänge“ zeigt eine Einrichtungsanleitung für Claude Code und für Claude-Konnektoren (inkl. Hinweisen zur Beta-Verfügbarkeit von Request-Headern und zu geteilten Schlüsseln in Team-Organisationen) |
 | v0.74.0 | MCP-Zugang zum Kreativ-Modus: Endpunkt `/mcp` (offizielles MCP-SDK, Streamable HTTP) mit den Werkzeugen `create_text` und `revise_text` (Deutsch/Englisch, Websuche abschaltbar), persönliche widerrufbare Schlüssel an der neuen Rolle MCP-Nutzung (nur als Hash gespeichert), Limits je Schlüssel (30 Aufrufe/Tag, 5 EUR/Monat, änderbar), Seite „MCP-Zugänge“ (Link im Login-Menü) mit Einrichtungsbefehl für Claude Code sowie Kostenübersicht, Limits und CSV-Export für User-Admins. Kostenmessung für jeden Kreativ-Aufruf (Tokens, Websuchen, USD + EUR zum EZB-Tageskurs via frankfurter.dev, Kurs je Eintrag gespeichert und in der Übersicht angezeigt; ein Fehler dort unterbricht den Kreativ-Modus nie). Rollen aufgebrochen: ein Konto, mehrere einzeln per Häkchen vergeb- und entziehbare Rollen. Fragen-Log mit neuem Ereignistyp „MCP“ (anonym). Datenschutzerklärung DE/EN um Abschnitt 10 ergänzt |
 | v0.73.0 | Konversation: Kopieren-Icon neben den Daumen je Antwort (gleicher Abstand wie zwischen Geschwindigkeit und Daumen) - legt die Antwort formatiert (HTML) und als Klartext (Markdown) in die Zwischenablage, ohne Zitat-Marker `[n]`, kurzer grüner Haken als Bestätigung |
 | v0.72.0 | Schlagwort-Ansicht: Quellen lassen sich direkt unter dem Schlagwort aufklappen (Kurzbeschreibung) und bearbeiten - dieselben Zeilen und dasselbe Bearbeiten-Formular wie in der Quellenliste, aufgeklappte Schlagworte bleiben beim Speichern offen. Sicherheit: der SSRF-Schutz prüft jetzt auch jedes Weiterleitungsziel (eigener Redirect-Handler); normale Webseiten laufen dafür nicht mehr über trafilaturas eigenes Networking, sondern über denselben geschützten Abruf - gilt für Quellen-Import und Autor:innen-Fotos |

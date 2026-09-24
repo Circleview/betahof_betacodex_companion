@@ -424,5 +424,22 @@
   "questionLog.eventType.mcp": "MCP",
   "questionLog.filter.mcp": "MCP",
   "mcp.fxNote": "Umrechnungskurs: 1 USD = {rate} EUR (EZB-Referenzkurs vom {date}). Jeder Aufruf speichert seinen eigenen Tageskurs, siehe CSV.",
-  "mcp.fxFallback": "Umrechnung: 1 USD = {rate} EUR (Notwert – der Tageskurs war nicht abrufbar)."
+  "mcp.fxFallback": "Umrechnung: 1 USD = {rate} EUR (Notwert – der Tageskurs war nicht abrufbar).",
+  "mcp.setupHeading": "So richtest du den Zugang ein",
+  "mcp.setupClaudeCodeHeading": "In Claude Code",
+  "mcp.setupConnectorHeading": "Als Konnektor in Claude (claude.ai oder Desktop-App)",
+  "mcp.connectorStep1": "Öffne Einstellungen › Konnektoren und wähle „Benutzerdefinierten Konnektor hinzufügen“.",
+  "mcp.connectorStep2": "Trage als Adresse des MCP-Servers ein:",
+  "mcp.connectorStep3": "Wähle bei Authentifizierung „Keine Anmeldung“ (No sign-in).",
+  "mcp.connectorStep4": "Füge unter „Request headers“ einen Header aus der Liste hinzu (kein eigener Header-Name nötig):",
+  "mcp.connectorStep5": "Als Wert trägst du nur deinen Schlüssel ein (beginnt mit bcx_), ohne „Bearer“ davor. Dann „Hinzufügen“.",
+  "mcp.connectorNoteBeta": "Hinweis: Request-Header sind bei Claude noch in der Beta und nicht in jeder Organisation freigeschaltet. Fehlt der Abschnitt „Request headers“, nutze vorerst Claude Code.",
+  "mcp.connectorNoteTeam": "In Team- und Enterprise-Organisationen legt der Owner den Konnektor an – der dort hinterlegte Schlüssel gilt dann für alle Mitglieder, und alle Kosten laufen auf diesen einen Schlüssel.",
+  "mcp.connectorNoteOther": "Andere MCP-Programme: Adresse wie oben (Transport „Streamable HTTP“) und entweder „Authorization: Bearer <Schlüssel>“ oder „x-api-key: <Schlüssel>“.",
+  "mcp.connectorFilledHint": "Als Konnektor in Claude (Einstellungen › Konnektoren, „Keine Anmeldung“):",
+  "mcp.connectorUrlLabel": "Adresse",
+  "mcp.connectorHeaderLabel": "Request-Header",
+  "mcp.connectorValueLabel": "Wert:",
+  "mcp.connectorValueIsKey": "dein Schlüssel oben (ohne „Bearer“)",
+  "mcp.yourKey": "dein-schlüssel"
 }

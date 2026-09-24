@@ -207,6 +207,10 @@ async function refresh() {
 }
 
 document.getElementById('mcp-endpoint-url').textContent = endpointUrl;
+document.getElementById('mcp-setup-url').textContent = endpointUrl;
+document.getElementById('mcp-connector-url').textContent = endpointUrl;
+document.getElementById('mcp-setup-claude-code').textContent =
+  `claude mcp add --transport http betacodex ${endpointUrl} --header "Authorization: Bearer <${t('mcp.yourKey')}>"`;
 monthInput.value = new Date().toISOString().slice(0, 7);
 monthInput.addEventListener('change', loadAdmin);
 

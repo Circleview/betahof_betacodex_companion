@@ -29,6 +29,26 @@
   <div id="mcp-own" class="hidden">
     <p class="web-allowlist-hint" data-i18n="mcp.intro"></p>
     <p class="mcp-endpoint"><span data-i18n="mcp.endpointLabel"></span> <code id="mcp-endpoint-url"></code></p>
+    <!-- 2026-09-24: Einrichtung für Claude Code UND als Claude-Konnektor
+         (claude.ai / Desktop-App: "Keine Anmeldung" + Standard-Header
+         x-api-key - eigene Header-Namen müsste Anthropic erst freigeben). -->
+    <details class="mcp-setup">
+      <summary data-i18n="mcp.setupHeading"></summary>
+      <h4 data-i18n="mcp.setupClaudeCodeHeading"></h4>
+      <p class="web-allowlist-hint" data-i18n="mcp.claudeCodeHint"></p>
+      <code class="mcp-setup-code" id="mcp-setup-claude-code"></code>
+      <h4 data-i18n="mcp.setupConnectorHeading"></h4>
+      <ol class="mcp-setup-steps">
+        <li data-i18n="mcp.connectorStep1"></li>
+        <li><span data-i18n="mcp.connectorStep2"></span> <code id="mcp-setup-url"></code></li>
+        <li data-i18n="mcp.connectorStep3"></li>
+        <li><span data-i18n="mcp.connectorStep4"></span> <code>x-api-key</code></li>
+        <li data-i18n="mcp.connectorStep5"></li>
+      </ol>
+      <p class="web-allowlist-hint" data-i18n="mcp.connectorNoteBeta"></p>
+      <p class="web-allowlist-hint" data-i18n="mcp.connectorNoteTeam"></p>
+      <p class="web-allowlist-hint" data-i18n="mcp.connectorNoteOther"></p>
+    </details>
     <form id="mcp-create-form" class="mcp-create-form">
       <input type="text" id="mcp-create-label" maxlength="60" data-i18n-placeholder="mcp.labelPlaceholder">
       <button type="submit" data-i18n="mcp.createButton"></button>
@@ -39,6 +59,8 @@
       <div class="mcp-copy-row"><code id="mcp-secret"></code><button type="button" class="link-button" data-copy="mcp-secret" data-i18n="mcp.copy"></button></div>
       <p class="web-allowlist-hint" data-i18n="mcp.claudeCodeHint"></p>
       <div class="mcp-copy-row"><code id="mcp-claude-code-cmd"></code><button type="button" class="link-button" data-copy="mcp-claude-code-cmd" data-i18n="mcp.copy"></button></div>
+      <p class="web-allowlist-hint" data-i18n="mcp.connectorFilledHint"></p>
+      <p class="mcp-connector-values"><span data-i18n="mcp.connectorUrlLabel"></span> <code id="mcp-connector-url"></code> · <span data-i18n="mcp.connectorHeaderLabel"></span> <code>x-api-key</code> · <span data-i18n="mcp.connectorValueLabel"></span> <span data-i18n="mcp.connectorValueIsKey"></span></p>
     </div>
     <h3 data-i18n="mcp.ownKeysHeading"></h3>
     <p id="mcp-own-empty" class="web-allowlist-hint hidden" data-i18n="mcp.noKeys"></p>

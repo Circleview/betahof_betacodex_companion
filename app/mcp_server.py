@@ -3,7 +3,8 @@ der bestehenden App (Streamable HTTP, zustandslos, JSON-Antworten), zwei
 Werkzeuge - Text erzeugen, Text überarbeiten -, jeweils mit abschaltbarer
 Websuche (Default an).
 
-Anmeldung: "Authorization: Bearer <Schlüssel>" (app/mcp_keys.py). Der
+Anmeldung: "Authorization: Bearer <Schlüssel>" oder "x-api-key: <Schlüssel>"
+(app/mcp_keys.py, siehe _extract_key). Der
 Schlüssel wird VOR dem MCP-SDK in _BearerKeyAuth geprüft, das Ergebnis liegt
 serverseitig im ASGI-Scope - die Werkzeuge lesen nur diesen geprüften Wert,
 nie den Header selbst.
@@ -147,6 +148,20 @@ _mcp_http_app = server.streamable_http_app(
 session_manager = server.session_manager
 
 
+def _extract_key(scope) -> str | None:
+    """Schlüssel aus "Authorization: Bearer <key>" (Claude Code u. a.),
+    "x-api-key: <key>" oder "Authorization: <key>" ohne Schema - die
+    Claude-Konnektoren (claude.ai) senden einen Request-Header exakt wie
+    eingegeben und bieten x-api-key als Standard-Header an."""
+    headers = dict(scope.get("headers") or [])
+    authorization = headers.get(b"authorization", b"").decode("latin-1").strip()
+    if authorization.lower().startswith("bearer "):
+        return authorization[7:].strip()
+    if authorization:
+        return authorization
+    return headers.get(b"x-api-key", b"").decode("latin-1").strip() or None
+
+
 class _BearerKeyAuth:
     """ASGI-Vorschaltung: ohne gültigen Schlüssel 401, sonst Schlüssel-
     Datensatz in den Scope und weiter ans MCP-SDK."""
@@ -158,9 +173,7 @@ class _BearerKeyAuth:
         if scope["type"] != "http":
             await self.app(scope, receive, send)
             return
-        header = dict(scope.get("headers") or []).get(b"authorization", b"").decode("latin-1")
-        token = header[7:].strip() if header.lower().startswith("bearer ") else None
-        key = await anyio.to_thread.run_sync(mcp_keys.authenticate, token)
+        key = await anyio.to_thread.run_sync(mcp_keys.authenticate, _extract_key(scope))
         if key is None:
             body = json.dumps({"error": "invalid_token", "error_description": "Missing, invalid or revoked MCP key."}).encode()
             await send(

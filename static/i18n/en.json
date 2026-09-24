@@ -424,5 +424,22 @@
   "questionLog.eventType.mcp": "MCP",
   "questionLog.filter.mcp": "MCP",
   "mcp.fxNote": "Exchange rate: 1 USD = {rate} EUR (ECB reference rate of {date}). Each call stores its own daily rate, see CSV.",
-  "mcp.fxFallback": "Conversion: 1 USD = {rate} EUR (fallback value – the daily rate was unavailable)."
+  "mcp.fxFallback": "Conversion: 1 USD = {rate} EUR (fallback value – the daily rate was unavailable).",
+  "mcp.setupHeading": "How to set up access",
+  "mcp.setupClaudeCodeHeading": "In Claude Code",
+  "mcp.setupConnectorHeading": "As a connector in Claude (claude.ai or desktop app)",
+  "mcp.connectorStep1": "Open Settings › Connectors and choose “Add custom connector”.",
+  "mcp.connectorStep2": "Enter as MCP server URL:",
+  "mcp.connectorStep3": "Under Authentication choose “No sign-in”.",
+  "mcp.connectorStep4": "Under “Request headers” add a header from the list (no custom header name needed):",
+  "mcp.connectorStep5": "As value enter only your key (starts with bcx_), without “Bearer”. Then click “Add”.",
+  "mcp.connectorNoteBeta": "Note: request headers are still in beta in Claude and not enabled for every organization. If the “Request headers” section is missing, use Claude Code for now.",
+  "mcp.connectorNoteTeam": "In Team and Enterprise organizations the owner adds the connector – the key stored there then applies to all members, and all costs are billed to that one key.",
+  "mcp.connectorNoteOther": "Other MCP clients: URL as above (transport “Streamable HTTP”) and either “Authorization: Bearer <key>” or “x-api-key: <key>”.",
+  "mcp.connectorFilledHint": "As a connector in Claude (Settings › Connectors, “No sign-in”):",
+  "mcp.connectorUrlLabel": "URL",
+  "mcp.connectorHeaderLabel": "Request header",
+  "mcp.connectorValueLabel": "Value:",
+  "mcp.connectorValueIsKey": "your key above (without “Bearer”)",
+  "mcp.yourKey": "your-key"
 }

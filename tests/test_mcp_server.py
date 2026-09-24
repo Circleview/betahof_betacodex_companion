@@ -178,3 +178,23 @@ def test_key_is_stored_only_as_hash():
     assert "key_hash" not in key
     assert mcp_keys.authenticate(secret)["id"] == key["id"]
     assert mcp_keys.authenticate(secret + "x") is None
+
+
+@pytest.mark.parametrize(
+    "header_name, template",
+    [("x-api-key", "{key}"), ("Authorization", "{key}"), ("Authorization", "Bearer {key}"), ("Authorization", "bearer {key}")],
+)
+def test_key_accepted_via_x_api_key_or_authorization_with_and_without_scheme(mcp_client, header_name, template):
+    # Claude-Konnektoren (claude.ai) senden Request-Header exakt wie eingegeben
+    # und bieten x-api-key als Standard-Header an.
+    _, secret = mcp_keys.create_key(OWNER, "Konnektor")
+    response = mcp_client.post(
+        mcp_server.MCP_PATH,
+        headers={
+            "Accept": "application/json, text/event-stream",
+            "Content-Type": "application/json",
+            header_name: template.format(key=secret),
+        },
+        json={"jsonrpc": "2.0", "id": 1, "method": "tools/list"},
+    )
+    assert response.status_code == 200
