@@ -21,6 +21,7 @@ from dotenv import load_dotenv
 from fastapi import BackgroundTasks, Depends, FastAPI, File, Header, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, RedirectResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.routing import Route
 
 load_dotenv()
 
@@ -39,6 +40,8 @@ from app import (
     jsonstore,
     llm,
     mail,
+    mcp_keys,
+    mcp_server,
     monitoring,
     question_log,
     ratelimit,
@@ -97,6 +100,10 @@ from app.models import (
     TurnstileConfigOut,
     UpdateUserNameIn,
     UpdateUserRolesIn,
+    McpKeyCreateIn,
+    McpKeyCreatedOut,
+    McpKeyLimitsIn,
+    McpKeyOut,
     UrlCheckOut,
     UrlIn,
     VersionOut,
@@ -188,7 +195,11 @@ APP_VERSION = _get_version()
 @contextlib.asynccontextmanager
 async def lifespan(app: FastAPI):
     _start_background_workers()
-    yield
+    # MCP-Endpunkt (app/mcp_server.py): der Sitzungs-Manager des SDK muss
+    # im Lebenszyklus der App laufen, eingehängte Unter-Apps bekommen
+    # keinen eigenen Lifespan.
+    async with mcp_server.session_manager.run():
+        yield
     _wait_for_background_jobs_on_shutdown()
 
 
@@ -4452,6 +4463,98 @@ def submit_feedback(
     mail.send_mail(os.environ.get("SYSTEM_ADMIN_EMAIL", ""), subject, body)
 
     return MessageOut(detail=i18n.get_message("feedback_sent", x_lang))
+
+
+# --- MCP-Zugang zum Kreativ-Modus (2026-09-24, app/mcp_server.py) ---
+# Eigene Route statt app.mount: ein Mount auf /mcp würde /mcp (ohne
+# Schrägstrich) nur per Redirect erreichen. Muss VOR dem StaticFiles-Mount
+# auf "/" stehen.
+app.router.routes.append(Route(mcp_server.MCP_PATH, endpoint=mcp_server.asgi_app))
+
+MCP_MAX_ACTIVE_KEYS_PER_USER = 10
+_MONTH_RE = re.compile(r"^\d{4}-\d{2}$")
+
+
+def _usage_month(month: str | None, x_lang: str) -> str:
+    if month is None:
+        return datetime.now(timezone.utc).strftime("%Y-%m")
+    if not _MONTH_RE.match(month):
+        raise HTTPException(400, i18n.get_message("mcp_limits_invalid", x_lang))
+    return month
+
+
+@app.get("/api/mcp/keys", response_model=list[McpKeyOut])
+def list_own_mcp_keys(current_user: str = Depends(require_role(users.MCP_NUTZER))):
+    return [mcp_keys.with_stats(k) for k in mcp_keys.list_keys(current_user)]
+
+
+@app.post("/api/mcp/keys", response_model=McpKeyCreatedOut, status_code=201)
+def create_mcp_key(
+    payload: McpKeyCreateIn,
+    current_user: str = Depends(require_role(users.MCP_NUTZER)),
+    x_lang: str = Header(default=i18n.DEFAULT_LANG),
+):
+    active = [k for k in mcp_keys.list_keys(current_user) if not k["revoked_at"]]
+    if len(active) >= MCP_MAX_ACTIVE_KEYS_PER_USER:
+        raise HTTPException(400, i18n.get_message("mcp_limits_invalid", x_lang))
+    key, secret = mcp_keys.create_key(current_user, payload.label)
+    return {"key": mcp_keys.with_stats(key), "secret": secret}
+
+
+@app.delete("/api/mcp/keys/{key_id}", response_model=McpKeyOut)
+def revoke_mcp_key(key_id: str, request: Request, x_lang: str = Header(default=i18n.DEFAULT_LANG)):
+    # Widerrufen dürfen die Inhaber:in selbst und User-Admins.
+    email = _get_current_user_email(request)
+    key = mcp_keys.get_key(key_id)
+    if key is None:
+        raise HTTPException(404, i18n.get_message("mcp_key_not_found", x_lang))
+    is_owner = email is not None and key["email"] == email and users.has_role(email, users.MCP_NUTZER)
+    if not is_owner and not users.has_role(email, users.USER_ADMIN):
+        raise HTTPException(403, i18n.get_message("role_required", x_lang, role=users.USER_ADMIN, user=email or "anon"))
+    return mcp_keys.with_stats(mcp_keys.revoke_key(key_id))
+
+
+@app.get("/api/mcp/admin/keys", response_model=list[McpKeyOut])
+def list_all_mcp_keys(_user: str = Depends(require_role(users.USER_ADMIN))):
+    return [mcp_keys.with_stats(k) for k in mcp_keys.list_keys()]
+
+
+@app.put("/api/mcp/keys/{key_id}/limits", response_model=McpKeyOut)
+def set_mcp_key_limits(
+    key_id: str,
+    payload: McpKeyLimitsIn,
+    _user: str = Depends(require_role(users.USER_ADMIN)),
+    x_lang: str = Header(default=i18n.DEFAULT_LANG),
+):
+    if payload.daily_call_limit < 0 or payload.monthly_eur_limit < 0:
+        raise HTTPException(400, i18n.get_message("mcp_limits_invalid", x_lang))
+    key = mcp_keys.set_limits(key_id, payload.daily_call_limit, payload.monthly_eur_limit)
+    if key is None:
+        raise HTTPException(404, i18n.get_message("mcp_key_not_found", x_lang))
+    return mcp_keys.with_stats(key)
+
+
+@app.get("/api/mcp/usage")
+def mcp_usage_summary(
+    month: str | None = None,
+    _user: str = Depends(require_role(users.USER_ADMIN)),
+    x_lang: str = Header(default=i18n.DEFAULT_LANG),
+):
+    return usage.monthly_summary(_usage_month(month, x_lang))
+
+
+@app.get("/api/mcp/usage.csv")
+def mcp_usage_csv(
+    month: str | None = None,
+    _user: str = Depends(require_role(users.USER_ADMIN)),
+    x_lang: str = Header(default=i18n.DEFAULT_LANG),
+):
+    month = _usage_month(month, x_lang)
+    return Response(
+        usage.export_csv(month),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="betacodex-kreativ-kosten-{month}.csv"'},
+    )
 
 
 class NoCacheStaticFiles(StaticFiles):

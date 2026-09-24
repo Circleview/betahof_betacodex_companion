@@ -126,6 +126,14 @@ def log_feedback(question: str, answer: str, feedback: str, mode: str = "convers
     _append({"event_types": ["feedback"], "text": question, "answer": answer, "feedback": feedback, **extra})
 
 
+def log_mcp(instruction: str, document: str) -> None:
+    """2026-09-24: Aufruf des Kreativ-Modus über MCP (app/mcp_server.py) -
+    wie Kreativ-Feedback Anweisung + erzeugter Text, aber bewusst OHNE Konto:
+    das Fragen-Log bleibt anonym, die Zuordnung zum Schlüssel steht nur im
+    Verbrauchsprotokoll (app/usage.py)."""
+    _append({"event_types": ["mcp"], "text": instruction[:2000], "answer": document[:20000], "mode": "mcp"})
+
+
 def list_entries() -> list[dict]:
     entries = _load()
     # Rückwärtskompatibel: vor der Einführung mehrerer Ereignistypen

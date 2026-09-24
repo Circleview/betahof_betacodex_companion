@@ -21,6 +21,7 @@ from app import (
     extraction,
     llm,
     mail,
+    mcp_keys,
     monitoring,
     question_log,
     ratelimit,
@@ -314,6 +315,7 @@ def client(tmp_path, monkeypatch):
     monkeypatch.setattr(audit, "AUDIT_LOG_FILE", tmp_path / "audit_log.json")
     monkeypatch.setattr(question_log, "QUESTION_LOG_FILE", tmp_path / "question_log.json")
     monkeypatch.setattr(usage, "USAGE_FILE", tmp_path / "usage_log.json")
+    monkeypatch.setattr(mcp_keys, "MCP_KEYS_FILE", tmp_path / "mcp_keys.json")
 
     monkeypatch.setattr(embeddings, "embed_passages", lambda texts: [[1.0, 0.0] for _ in texts])
     monkeypatch.setattr(embeddings, "embed_query", lambda text: [1.0, 0.0])
@@ -7807,3 +7809,67 @@ def test_creative_records_ui_usage_and_passes_web_search_flag(client, monkeypatc
     assert len(entries) == 1
     assert entries[0]["channel"] == "ui" and entries[0]["web_search_enabled"] is False
     assert entries[0]["key_id"] is None and entries[0]["email"] is None
+
+
+
+def test_mcp_route_is_wired_and_requires_key(anon_client):
+    response = anon_client.post("/mcp", json={"jsonrpc": "2.0", "id": 1, "method": "tools/list"})
+    assert response.status_code == 401
+
+
+def test_mcp_key_lifecycle_for_owner(anon_client):
+    login(anon_client, "mcp@test.local", users.MCP_NUTZER)
+
+    created = anon_client.post("/api/mcp/keys", json={"label": "Laptop"})
+    assert created.status_code == 201
+    secret = created.json()["secret"]
+    key = created.json()["key"]
+    assert secret.startswith("bcx_") and key["label"] == "Laptop"
+    assert key["daily_call_limit"] == 30 and key["monthly_eur_limit"] == 5.0
+
+    listed = anon_client.get("/api/mcp/keys").json()
+    assert [k["id"] for k in listed] == [key["id"]]
+    assert "secret" not in listed[0] and "key_hash" not in listed[0]
+
+    revoked = anon_client.delete(f"/api/mcp/keys/{key['id']}")
+    assert revoked.status_code == 200 and revoked.json()["revoked_at"]
+    assert mcp_keys.authenticate(secret) is None
+
+
+def test_mcp_keys_require_mcp_role(anon_client):
+    login(anon_client, "pfleger@test.local", users.QUELLEN_PFLEGER)
+    assert anon_client.post("/api/mcp/keys", json={"label": "x"}).status_code == 403
+    assert anon_client.get("/api/mcp/keys").status_code == 403
+
+
+def test_mcp_key_of_someone_else_cannot_be_revoked_by_other_mcp_user(anon_client):
+    users.invite_user("owner@test.local", users.MCP_NUTZER, invited_by="root@test.local")
+    key, _ = mcp_keys.create_key("owner@test.local", "Laptop")
+    login(anon_client, "other@test.local", users.MCP_NUTZER)
+
+    assert anon_client.delete(f"/api/mcp/keys/{key['id']}").status_code == 403
+
+
+def test_user_admin_sees_all_keys_sets_limits_and_exports_usage(anon_client):
+    users.invite_user("owner@test.local", users.MCP_NUTZER, invited_by="root@test.local")
+    key, _ = mcp_keys.create_key("owner@test.local", "Laptop")
+    usage.record(
+        {"model": "claude-sonnet-5", "input_tokens": 1000, "output_tokens": 100, "cache_creation_input_tokens": 0,
+         "cache_read_input_tokens": 0, "web_search_requests": 0},
+        channel="mcp", web_search=True, key_id=key["id"], email="owner@test.local",
+    )
+    login(anon_client, "admin@test.local", users.USER_ADMIN)
+
+    all_keys = anon_client.get("/api/mcp/admin/keys").json()
+    assert all_keys[0]["id"] == key["id"] and all_keys[0]["calls_today"] == 1
+
+    limits = anon_client.put(f"/api/mcp/keys/{key['id']}/limits", json={"daily_call_limit": 50, "monthly_eur_limit": 12.5})
+    assert limits.json()["daily_call_limit"] == 50 and limits.json()["monthly_eur_limit"] == 12.5
+    assert anon_client.put(f"/api/mcp/keys/{key['id']}/limits", json={"daily_call_limit": -1, "monthly_eur_limit": 1}).status_code == 400
+
+    summary = anon_client.get("/api/mcp/usage").json()
+    assert summary["by_email"]["owner@test.local"]["calls"] == 1
+    csv_response = anon_client.get("/api/mcp/usage.csv")
+    assert csv_response.headers["content-type"].startswith("text/csv")
+    assert "owner@test.local" in csv_response.text
+    assert anon_client.get("/api/mcp/usage?month=kaputt").status_code == 400

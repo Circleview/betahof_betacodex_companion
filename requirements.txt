@@ -1,4 +1,7 @@
 fastapi==0.140.0
+# MCP-Zugang zum Kreativ-Modus (app/mcp_server.py). SDK 2.x: FastMCP heißt
+# dort MCPServer - bei einem Update die Migrationshinweise des SDK prüfen.
+mcp==2.2.0
 uvicorn[standard]==0.51.0
 # Dependabot meldet mehrere kritische/hohe CVEs für chromadb - u.a.
 # CVE-2026-45829 ("ChromaToast", kritisch) sowie die GitHub-Alerts #1

@@ -220,6 +220,36 @@ class UpdateUserRolesIn(BaseModel):
     roles: list[str]
 
 
+class McpKeyCreateIn(BaseModel):
+    label: str = ""
+
+
+class McpKeyOut(BaseModel):
+    id: str
+    email: str
+    label: str
+    key_hint: str
+    created_at: str
+    revoked_at: Optional[str] = None
+    last_used_at: Optional[str] = None
+    daily_call_limit: int
+    monthly_eur_limit: float
+    calls_today: int = 0
+    month_eur: float = 0.0
+    month_usd: float = 0.0
+
+
+class McpKeyCreatedOut(BaseModel):
+    key: McpKeyOut
+    # Klartext-Schlüssel - wird NUR in dieser Antwort einmalig geliefert.
+    secret: str
+
+
+class McpKeyLimitsIn(BaseModel):
+    daily_call_limit: int
+    monthly_eur_limit: float
+
+
 class WhoAmIOut(BaseModel):
     email: Optional[str] = None
     roles: list[str] = []
