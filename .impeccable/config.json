@@ -35,6 +35,15 @@
         "value": "inter",
         "createdAt": "2026-09-23T17:47:59.544Z",
         "reason": "user decided 2026-09-23: font change moved to backlog, not now"
+      },
+      {
+        "rule": "pulsing-dot",
+        "value": "*",
+        "files": [
+          "static/mcp.html"
+        ],
+        "createdAt": "2026-09-24T12:40:38.257Z",
+        "reason": "Claude, 2026-09-24: Treffer stammt aus dem gemeinsamen Stylesheet (.chat-typing-dot, Chat-Tipp-Indikator = echter Live-Zustand); mcp.html selbst enthält keinen pulsierenden Punkt"
       }
     ]
   }
