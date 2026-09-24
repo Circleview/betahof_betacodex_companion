@@ -5160,11 +5160,12 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
 
         <!-- Connection paths (before components for correct z-order) -->
         <path data-edge-from="user" data-edge-to="caddy" data-edge-label="HTTPS" data-edge-key="0" data-composition-points="160,290;260,290" d="M 160 290 L 260 290" class="a-emphasis" data-animate="edge" style="--step:0" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
-        <path data-edge-from="caddy" data-edge-to="app" data-edge-label="aktive Farbe" data-edge-key="1" data-composition-points="386,290;480,290" d="M 386 290 L 480 290" class="a-emphasis" data-animate="edge" style="--step:1" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
-        <path data-edge-from="app" data-edge-to="shared_data" data-edge-label="liest/schreibt" data-edge-key="2" data-composition-points="555,324;555,430" d="M 555 324 L 555 430" class="a-default" data-animate="edge" style="--step:2" stroke-width="1.5" marker-end="url(#arrowhead)"/>
-        <path data-edge-from="app" data-edge-to="claude_api" data-edge-label="Antwort-Generierung" data-edge-key="3" data-composition-points="630,292;720,292" d="M 630 292 L 720 292" class="a-emphasis" data-animate="edge" style="--step:3" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
-        <path data-edge-from="github" data-edge-to="actions" data-edge-label="git tag Push" data-edge-key="4" data-composition-points="180,461;250,461" d="M 180 461 L 250 461" class="a-dashed" data-animate="edge" style="--step:4" stroke-width="1.5" marker-end="url(#arrowhead-dashed)"/>
-        <path data-edge-from="actions" data-edge-to="app" data-edge-label="SSH-Deploy (Farbwechsel)" data-edge-key="5" data-composition-points="390,461;390,376.5;480,376.5;480,292" d="M 390 461 L 390 384.5 Q 390 376.5 398 376.5 L 472 376.5 Q 480 376.5 480 368.5 L 480 292" class="a-security" data-animate="edge" style="--step:5" stroke-width="1.5" marker-end="url(#arrowhead-security)"/>
+        <path data-edge-from="mcp_client" data-edge-to="caddy" data-edge-label="MCP /mcp (Bearer-Schlüssel)" data-edge-key="1" data-composition-points="323,225;323,260" d="M 323 225 L 323 260" class="a-security" data-animate="edge" style="--step:1" stroke-width="1.5" marker-end="url(#arrowhead-security)"/>
+        <path data-edge-from="caddy" data-edge-to="app" data-edge-label="aktive Farbe" data-edge-key="2" data-composition-points="386,290;480,290" d="M 386 290 L 480 290" class="a-emphasis" data-animate="edge" style="--step:2" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
+        <path data-edge-from="app" data-edge-to="shared_data" data-edge-label="liest/schreibt" data-edge-key="3" data-composition-points="555,324;555,430" d="M 555 324 L 555 430" class="a-default" data-animate="edge" style="--step:3" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="app" data-edge-to="claude_api" data-edge-label="Antwort-Generierung" data-edge-key="4" data-composition-points="630,292;720,292" d="M 630 292 L 720 292" class="a-emphasis" data-animate="edge" style="--step:4" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
+        <path data-edge-from="github" data-edge-to="actions" data-edge-label="git tag Push" data-edge-key="5" data-composition-points="180,461;250,461" d="M 180 461 L 250 461" class="a-dashed" data-animate="edge" style="--step:5" stroke-width="1.5" marker-end="url(#arrowhead-dashed)"/>
+        <path data-edge-from="actions" data-edge-to="app" data-edge-label="SSH-Deploy (Farbwechsel)" data-edge-key="6" data-composition-points="390,461;390,376.5;480,376.5;480,292" d="M 390 461 L 390 384.5 Q 390 376.5 398 376.5 L 472 376.5 Q 480 376.5 480 368.5 L 480 292" class="a-security" data-animate="edge" style="--step:6" stroke-width="1.5" marker-end="url(#arrowhead-security)"/>
 
         <!-- Components -->
         <g id="node-user" data-node-id="user" data-node-label="Nutzer:in" tabindex="0" role="button" aria-label="Focus Nutzer:in, Browser, Architecture component" aria-pressed="false" data-node-kind="external" data-node-sublabel="Browser" data-node-context="Architecture component">
@@ -5179,10 +5180,22 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
         <text data-detail="context" x="100" y="304" class="t-muted" font-size="9" text-anchor="middle">Browser</text>
         </g>
 
+        <g id="node-mcp_client" data-node-id="mcp_client" data-node-label="MCP-Client" tabindex="0" role="button" aria-label="Focus MCP-Client, Claude Code u. a., Architecture component" aria-pressed="false" data-node-kind="external" data-node-sublabel="Claude Code u. a." data-node-context="Architecture component">
+          <title>MCP-Client · Claude Code u. a. · Architecture component</title>
+          <rect x="258" y="165" width="130" height="60" rx="6" class="c-mask"/>
+          <rect x="258" y="165" width="130" height="60" rx="6" class="c-external" data-animate="node" style="--step:1" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="external" class="semantic-sigil s-external" transform="translate(264 171) scale(0.6875)">
+            <rect x="2.5" y="5" width="8.5" height="8" rx="1.5"/>
+            <path d="M8 2.5h5.5V8M13.5 2.5 7.5 8.5"/>
+          </g>
+          <text data-node-label="" data-detail-anchor="" x="323" y="193" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">MCP-Client</text>
+        <text data-detail="context" x="323" y="209" class="t-muted" font-size="9" text-anchor="middle">Claude Code u. a.</text>
+        </g>
+
         <g id="node-github" data-node-id="github" data-node-label="GitHub Repo" tabindex="0" role="button" aria-label="Focus GitHub Repo, Quell-Code, Architecture component" aria-pressed="false" data-node-kind="external" data-node-sublabel="Quell-Code" data-node-context="Architecture component">
           <title>GitHub Repo · Quell-Code · Architecture component</title>
           <rect x="40" y="430" width="140" height="62" rx="6" class="c-mask"/>
-          <rect x="40" y="430" width="140" height="62" rx="6" class="c-external" data-animate="node" style="--step:4" stroke-width="1.5"/>
+          <rect x="40" y="430" width="140" height="62" rx="6" class="c-external" data-animate="node" style="--step:5" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="external" class="semantic-sigil s-external" transform="translate(46 436) scale(0.6875)">
             <rect x="2.5" y="5" width="8.5" height="8" rx="1.5"/>
             <path d="M8 2.5h5.5V8M13.5 2.5 7.5 8.5"/>
@@ -5194,7 +5207,7 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
         <g id="node-actions" data-node-id="actions" data-node-label="GitHub Actions" tabindex="0" role="button" aria-label="Focus GitHub Actions, Tests + SSH-Deploy, Architecture component" aria-pressed="false" data-node-kind="cloud" data-node-sublabel="Tests + SSH-Deploy" data-node-context="Architecture component">
           <title>GitHub Actions · Tests + SSH-Deploy · Architecture component</title>
           <rect x="250" y="430" width="140" height="62" rx="6" class="c-mask"/>
-          <rect x="250" y="430" width="140" height="62" rx="6" class="c-cloud" data-animate="node" style="--step:5" stroke-width="1.5"/>
+          <rect x="250" y="430" width="140" height="62" rx="6" class="c-cloud" data-animate="node" style="--step:6" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="cloud" class="semantic-sigil s-cloud" transform="translate(256 436) scale(0.6875)">
             <path d="M4.3 12.5h7.3a2.4 2.4 0 0 0 .2-4.8 4 4 0 0 0-7.5-1.3A3.1 3.1 0 0 0 4.3 12.5Z"/>
           </g>
@@ -5217,7 +5230,7 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
         <g id="node-app" data-node-id="app" data-node-label="FastAPI-Instanz" tabindex="0" role="button" aria-label="Focus FastAPI-Instanz, Blue/Green, Port 8000/8001, Hetzner Cloud CX23 (Falkenstein)" aria-pressed="false" data-node-kind="backend" data-node-sublabel="Blue/Green, Port 8000/8001" data-node-tag="Zero-Downtime-Deploy" data-node-context="Hetzner Cloud CX23 (Falkenstein)">
           <title>FastAPI-Instanz · Blue/Green, Port 8000/8001 · Hetzner Cloud CX23 (Falkenstein) · Zero-Downtime-Deploy</title>
           <rect x="480" y="260" width="150" height="64" rx="6" class="c-mask"/>
-          <rect x="480" y="260" width="150" height="64" rx="6" class="c-backend" data-animate="node" style="--step:2" stroke-width="1.5"/>
+          <rect x="480" y="260" width="150" height="64" rx="6" class="c-backend" data-animate="node" style="--step:3" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(486 266) scale(0.6875)">
             <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
           </g>
@@ -5226,28 +5239,28 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
         <text data-detail="fine" x="555" y="316" class="t-backend" font-size="7" text-anchor="middle">Zero-Downtime-Deploy</text>
         </g>
 
-        <g id="node-shared_data" data-node-id="shared_data" data-node-label="shared/data + .env" tabindex="0" role="button" aria-label="Focus shared/data + .env, JSON-Dateien + ChromaDB, Hetzner Cloud CX23 (Falkenstein)" aria-pressed="false" data-node-kind="database" data-node-sublabel="JSON-Dateien + ChromaDB" data-node-tag="Symlink" data-node-context="Hetzner Cloud CX23 (Falkenstein)">
-          <title>shared/data + .env · JSON-Dateien + ChromaDB · Hetzner Cloud CX23 (Falkenstein) · Symlink</title>
+        <g id="node-shared_data" data-node-id="shared_data" data-node-label="shared/data + .env" tabindex="0" role="button" aria-label="Focus shared/data + .env, JSON, ChromaDB, Verbrauch, Hetzner Cloud CX23 (Falkenstein)" aria-pressed="false" data-node-kind="database" data-node-sublabel="JSON, ChromaDB, Verbrauch" data-node-tag="Symlink" data-node-context="Hetzner Cloud CX23 (Falkenstein)">
+          <title>shared/data + .env · JSON, ChromaDB, Verbrauch · Hetzner Cloud CX23 (Falkenstein) · Symlink</title>
           <rect x="480" y="430" width="150" height="62" rx="6" class="c-mask"/>
-          <rect x="480" y="430" width="150" height="62" rx="6" class="c-database" data-animate="node" style="--step:3" stroke-width="1.5"/>
+          <rect x="480" y="430" width="150" height="62" rx="6" class="c-database" data-animate="node" style="--step:4" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="database" class="semantic-sigil s-database" transform="translate(486 436) scale(0.6875)">
             <ellipse cx="8" cy="4" rx="5" ry="2"/>
             <path d="M3 4v8c0 1.1 2.2 2 5 2s5-.9 5-2V4M3 8c0 1.1 2.2 2 5 2s5-.9 5-2"/>
           </g>
           <text data-node-label="" data-detail-anchor="" x="555" y="459" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">shared/data + .env</text>
-        <text data-detail="context" x="555" y="475" class="t-muted" font-size="9" text-anchor="middle">JSON-Dateien + ChromaDB</text>
+        <text data-detail="context" x="555" y="475" class="t-muted" font-size="9" text-anchor="middle">JSON, ChromaDB, Verbrauch</text>
         <text data-detail="fine" x="555" y="484" class="t-database" font-size="7" text-anchor="middle">Symlink</text>
         </g>
 
-        <g id="node-claude_api" data-node-id="claude_api" data-node-label="Claude API" tabindex="0" role="button" aria-label="Focus Claude API, Anthropic Haiku 4.5, Architecture component" aria-pressed="false" data-node-kind="cloud" data-node-sublabel="Anthropic Haiku 4.5" data-node-context="Architecture component">
-          <title>Claude API · Anthropic Haiku 4.5 · Architecture component</title>
+        <g id="node-claude_api" data-node-id="claude_api" data-node-label="Claude API" tabindex="0" role="button" aria-label="Focus Claude API, Haiku 4.5 + Sonnet 5, Architecture component" aria-pressed="false" data-node-kind="cloud" data-node-sublabel="Haiku 4.5 + Sonnet 5" data-node-context="Architecture component">
+          <title>Claude API · Haiku 4.5 + Sonnet 5 · Architecture component</title>
           <rect x="720" y="260" width="140" height="60" rx="6" class="c-mask"/>
-          <rect x="720" y="260" width="140" height="60" rx="6" class="c-cloud" data-animate="node" style="--step:4" stroke-width="1.5"/>
+          <rect x="720" y="260" width="140" height="60" rx="6" class="c-cloud" data-animate="node" style="--step:5" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="cloud" class="semantic-sigil s-cloud" transform="translate(726 266) scale(0.6875)">
             <path d="M4.3 12.5h7.3a2.4 2.4 0 0 0 .2-4.8 4 4 0 0 0-7.5-1.3A3.1 3.1 0 0 0 4.3 12.5Z"/>
           </g>
           <text data-node-label="" data-detail-anchor="" x="790" y="288" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Claude API</text>
-        <text data-detail="context" x="790" y="304" class="t-muted" font-size="9" text-anchor="middle">Anthropic Haiku 4.5</text>
+        <text data-detail="context" x="790" y="304" class="t-muted" font-size="9" text-anchor="middle">Haiku 4.5 + Sonnet 5</text>
         </g>
 
         <!-- Connection labels -->
@@ -5255,23 +5268,27 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
           <rect x="193" y="270" width="34" height="14" rx="3" class="c-mask"/>
           <text x="210" y="280" class="t-backend" font-size="8" text-anchor="middle">HTTPS</text>
         </g>
-        <g data-detail="context" data-edge-from="caddy" data-edge-to="app" data-edge-label="aktive Farbe" data-edge-key="1">
+        <g data-detail="context" data-edge-from="mcp_client" data-edge-to="caddy" data-edge-label="MCP /mcp (Bearer-Schlüssel)" data-edge-key="1">
+          <rect x="100.2" y="195" width="139.6" height="14" rx="3" class="c-mask"/>
+          <text x="170" y="205" class="t-security" font-size="8" text-anchor="middle">MCP /mcp (Bearer-Schlüssel)</text>
+        </g>
+        <g data-detail="context" data-edge-from="caddy" data-edge-to="app" data-edge-label="aktive Farbe" data-edge-key="2">
           <rect x="399.2" y="270" width="67.6" height="14" rx="3" class="c-mask"/>
           <text x="433" y="280" class="t-backend" font-size="8" text-anchor="middle">aktive Farbe</text>
         </g>
-        <g data-detail="context" data-edge-from="app" data-edge-to="shared_data" data-edge-label="liest/schreibt" data-edge-key="2">
+        <g data-detail="context" data-edge-from="app" data-edge-to="shared_data" data-edge-label="liest/schreibt" data-edge-key="3">
           <rect x="516.4" y="328" width="77.2" height="14" rx="3" class="c-mask"/>
           <text x="555" y="338" class="t-muted" font-size="8" text-anchor="middle">liest/schreibt</text>
         </g>
-        <g data-detail="context" data-edge-from="app" data-edge-to="claude_api" data-edge-label="Antwort-Generierung" data-edge-key="3">
+        <g data-detail="context" data-edge-from="app" data-edge-to="claude_api" data-edge-label="Antwort-Generierung" data-edge-key="4">
           <rect x="624.4" y="246" width="101.2" height="14" rx="3" class="c-mask"/>
           <text x="675" y="256" class="t-backend" font-size="8" text-anchor="middle">Antwort-Generierung</text>
         </g>
-        <g data-detail="context" data-edge-from="github" data-edge-to="actions" data-edge-label="git tag Push" data-edge-key="4">
+        <g data-detail="context" data-edge-from="github" data-edge-to="actions" data-edge-label="git tag Push" data-edge-key="5">
           <rect x="181.2" y="441" width="67.6" height="14" rx="3" class="c-mask"/>
           <text x="215" y="451" class="t-messagebus" font-size="8" text-anchor="middle">git tag Push</text>
         </g>
-        <g data-detail="context" data-edge-from="actions" data-edge-to="app" data-edge-label="SSH-Deploy (Farbwechsel)" data-edge-key="5">
+        <g data-detail="context" data-edge-from="actions" data-edge-to="app" data-edge-label="SSH-Deploy (Farbwechsel)" data-edge-key="6">
           <rect x="372.4" y="356.5" width="125.19999999999999" height="14" rx="3" class="c-mask"/>
           <text x="435" y="366.5" class="t-security" font-size="8" text-anchor="middle">SSH-Deploy (Farbwechsel)</text>
         </g>

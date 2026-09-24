@@ -164,6 +164,42 @@ Assistent das offen, statt zu spekulieren.
   Hintergrund-Job), das Feedback-API kürzt überlange Texte auf 2.000 Zeichen
   Frage/Anweisung bzw. 20.000 Zeichen Antwort/Text.
 
+### MCP-Zugang zum Kreativ-Modus
+
+Der Kreativ-Modus lässt sich auch aus MCP-fähigen Programmen wie Claude
+Code nutzen – für einen kleinen, eingeladenen Kreis mit der Rolle
+„MCP-Nutzung“.
+
+- Zwei Werkzeuge: `create_text` (neuen Text erzeugen) und `revise_text`
+  (bestehenden Text nach einer Anweisung überarbeiten), jeweils auf
+  Deutsch oder Englisch und mit abschaltbarer Websuche (Standard: an).
+  Ergebnis ist Markdown mit Quellenliste – dieselbe Logik wie in der
+  Oberfläche.
+- Persönliche Schlüssel auf der Seite „MCP-Zugänge“ (Link im
+  Login-Menü): beliebig viele je Konto (z. B. „Laptop“, „Claude Code“),
+  einzeln widerrufbar, nur einmal im Klartext sichtbar und nur als Hash
+  gespeichert. Wird einem Konto die Rolle entzogen, funktioniert keiner
+  seiner Schlüssel mehr.
+- Limits je Schlüssel: 30 Aufrufe pro Tag und 5 € pro Monat als
+  Voreinstellung, von User-Admins je Schlüssel änderbar.
+- Kostenmessung: jeder Kreativ-Aufruf (Oberfläche und MCP) wird mit
+  Tokens, Websuchen und Kosten in USD und EUR protokolliert. User-Admins
+  sehen die Monatsübersicht je Kanal und Konto und exportieren sie als
+  CSV – Grundlage für ein späteres Bezahlmodell (z. B. Monats-Kontingent).
+- MCP-Aufrufe erscheinen anonym (Badge „MCP“) im Fragen-Log.
+
+Einrichtung in Claude Code (Schlüssel auf der Seite „MCP-Zugänge“
+anlegen, der fertige Befehl wird dort angezeigt):
+
+```bash
+claude mcp add --transport http betacodex https://chat.betacodex.org/mcp \
+  --header "Authorization: Bearer <dein-schlüssel>"
+```
+
+Andere MCP-Clients brauchen dieselben zwei Angaben: die Adresse
+`https://chat.betacodex.org/mcp` (Streamable HTTP) und den Header
+`Authorization: Bearer <dein-schlüssel>`.
+
 ### Quellen pflegen (Quellen-Pfleger:innen)
 
 - Import per Copy/Paste, URL/Blogpost, PDF-Upload, YouTube-Link oder
@@ -217,8 +253,11 @@ Assistent das offen, statt zu spekulieren.
 
 - Echtes, einladungsbasiertes Login-System (Magic Link, kein Passwort)
   mit abgestuften Rollen: anonymes Fragenstellen bleibt für alle offen,
-  Quellenpflege ist `quellen_pfleger` vorbehalten, `user_admin` verwaltet
-  Einladungen, `system_admin` darf alles.
+  Quellenpflege ist `quellen_pfleger` vorbehalten, `mcp_nutzer` erlaubt den
+  MCP-Zugang zum Kreativ-Modus, `user_admin` verwaltet Einladungen,
+  `system_admin` darf alles. Ein Konto kann mehrere Rollen haben – sie
+  werden in der Nutzerverwaltung einzeln per Häkchen vergeben und
+  entzogen (Admin-Rollen nur durch System-Admins).
 - Jede Änderung an einer Quelle landet diff-basiert in einem
   Änderungs-Log (mit Rückgängig-Funktion) – sichtbar für alle
   Quellen-Pfleger:innen, nicht nur für die handelnde Person.

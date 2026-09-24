@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow, noarchive">
+<meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#1c1c1c" media="(prefers-color-scheme: dark)">
+<link rel="icon" type="image/png" href="/icons/favicon.png">
+<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+<title>MCP-Zugänge &ndash; BetaCodex Chat</title>
+<link rel="stylesheet" href="/style.css">
+<script src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit" async></script>
+</head>
+<body>
+<a href="#mcp-bereich" class="skip-link" data-i18n="common.skipToContent"></a>
+<header id="site-header">
+  <span id="lang-switcher" class="lang-switcher"></span>
+  <span id="auth-widget" class="auth-widget"></span>
+</header>
+
+<!-- 2026-09-24: MCP-Zugang zum Kreativ-Modus (app/mcp_server.py) - eigene
+     Schlüssel (Rolle MCP-Nutzung) und für User-Admins Kostenübersicht,
+     Limits und CSV-Export. Logik in mcp.js. -->
+<section id="mcp-bereich" tabindex="-1">
+  <h2 data-i18n="mcp.heading"></h2>
+  <p id="mcp-status" class="web-allowlist-hint" data-i18n="mcp.loading"></p>
+
+  <div id="mcp-own" class="hidden">
+    <p class="web-allowlist-hint" data-i18n="mcp.intro"></p>
+    <p class="mcp-endpoint"><span data-i18n="mcp.endpointLabel"></span> <code id="mcp-endpoint-url"></code></p>
+    <form id="mcp-create-form" class="mcp-create-form">
+      <input type="text" id="mcp-create-label" maxlength="60" data-i18n-placeholder="mcp.labelPlaceholder">
+      <button type="submit" data-i18n="mcp.createButton"></button>
+    </form>
+    <div id="mcp-secret-box" class="mcp-secret-box hidden" role="status">
+      <p><strong data-i18n="mcp.secretHeading"></strong></p>
+      <p class="web-allowlist-hint" data-i18n="mcp.secretHint"></p>
+      <div class="mcp-copy-row"><code id="mcp-secret"></code><button type="button" class="link-button" data-copy="mcp-secret" data-i18n="mcp.copy"></button></div>
+      <p class="web-allowlist-hint" data-i18n="mcp.claudeCodeHint"></p>
+      <div class="mcp-copy-row"><code id="mcp-claude-code-cmd"></code><button type="button" class="link-button" data-copy="mcp-claude-code-cmd" data-i18n="mcp.copy"></button></div>
+    </div>
+    <h3 data-i18n="mcp.ownKeysHeading"></h3>
+    <p id="mcp-own-empty" class="web-allowlist-hint hidden" data-i18n="mcp.noKeys"></p>
+    <ul id="mcp-own-list" class="mcp-key-list"></ul>
+  </div>
+
+  <div id="mcp-admin" class="hidden">
+    <div class="mcp-admin-header">
+      <h3 data-i18n="mcp.adminHeading"></h3>
+      <label class="mcp-month-label"><span data-i18n="mcp.month"></span>
+        <input type="month" id="mcp-month">
+      </label>
+      <a id="mcp-csv-link" class="link-button" data-i18n="mcp.csvExport"></a>
+    </div>
+    <div id="mcp-summary"></div>
+    <h3 data-i18n="mcp.allKeysHeading"></h3>
+    <p id="mcp-admin-empty" class="web-allowlist-hint hidden" data-i18n="mcp.noKeys"></p>
+    <ul id="mcp-admin-list" class="mcp-key-list"></ul>
+  </div>
+</section>
+
+<footer class="site-footer" id="site-footer"></footer>
+
+<script type="module" src="/init-header.js"></script>
+<script type="module" src="/mcp.js"></script>
+<script type="module" src="/init-footer.js"></script>
+</body>
+</html>

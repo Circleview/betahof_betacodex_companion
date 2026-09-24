@@ -82,6 +82,8 @@ const EVENT_TYPE_LABEL_KEYS = {
   first_question: 'questionLog.eventType.firstQuestion',
   no_answer: 'questionLog.eventType.noAnswer',
   feedback: 'questionLog.eventType.feedback',
+  // 2026-09-24: Kreativ-Modus über MCP (app/mcp_server.py) - anonym.
+  mcp: 'questionLog.eventType.mcp',
 };
 
 // Öffnet den Konversationsmodus in einem neuen Tab mit genau dieser Frage
@@ -90,7 +92,7 @@ const EVENT_TYPE_LABEL_KEYS = {
 // Einträgen aus dem Kreativ-Modus (mode 'creative', text = Anweisung) statt
 // dessen den Kreativ-Modus mit vorausgefüllter Anweisung (?instruction=).
 function buildQuestionLink(text, mode) {
-  const creative = mode === 'creative';
+  const creative = mode === 'creative' || mode === 'mcp';
   const titleKey = creative ? 'questionLog.openCreativeTitle' : 'questionLog.openConversationTitle';
   const a = document.createElement('a');
   a.className = 'question-log-question-link';

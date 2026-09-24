@@ -327,6 +327,16 @@ function buildLoggedInPanel() {
 
   wrapper.appendChild(statusRow);
 
+  // 2026-09-24: eigene Seite statt eines weiteren Header-Icons - Schlüssel
+  // (MCP-Nutzung) bzw. Kostenübersicht (User-Admins).
+  if (hasRole('mcp_nutzer') || hasRole('user_admin')) {
+    const mcpLink = document.createElement('a');
+    mcpLink.href = '/mcp.html';
+    mcpLink.className = 'link-button auth-mcp-link';
+    mcpLink.textContent = t('auth.mcpAccessLink');
+    wrapper.appendChild(mcpLink);
+  }
+
   if (hasRole('user_admin')) {
     wrapper.appendChild(buildAdminSection());
   }
