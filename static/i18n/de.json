@@ -441,5 +441,7 @@
   "mcp.connectorHeaderLabel": "Request-Header",
   "mcp.connectorValueLabel": "Wert:",
   "mcp.connectorValueIsKey": "dein Schlüssel oben (ohne „Bearer“)",
-  "mcp.yourKey": "dein-schlüssel"
+  "mcp.yourKey": "dein-schlüssel",
+  "mcp.groupChannel": "Nach Kanal",
+  "mcp.groupAccount": "Nach Konto (nur MCP)"
 }

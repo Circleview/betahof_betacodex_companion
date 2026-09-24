@@ -5188,6 +5188,21 @@ details a {
   color: var(--color-text-muted);
 }
 
+.mcp-summary-total td {
+  font-weight: 600;
+}
+
+.mcp-summary-group th {
+  padding-top: 1rem;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.mcp-summary-sub td:first-child {
+  padding-left: 1.5rem;
+}
+
 .mcp-setup {
   margin: 0.5rem 0 1rem;
 }

@@ -151,20 +151,34 @@ function buildSummaryTable(summary) {
     head.appendChild(th);
   });
   table.appendChild(head);
-  const rows = [
-    [t('mcp.total'), summary.total],
-    ...Object.entries(summary.by_channel).map(([ch, v]) => [t(`mcp.channel.${ch}`), v]),
-    ...Object.entries(summary.by_email).map(([email, v]) => [email, v]),
-  ];
-  rows.forEach(([name, v]) => {
+  // Nutzerwunsch (2026-09-24): Gesamt, darunter als eigene Gruppen "nach
+  // Kanal" und "nach Konto" - dieselben Aufrufe aus zwei Blickwinkeln, damit
+  // die Zeilen nicht wie Summanden gelesen werden.
+  function addRow(name, v, className) {
     const tr = document.createElement('tr');
+    tr.className = className;
     [name, String(v.calls), String(v.web_search_requests), formatMoney(v.cost_eur, v.cost_usd)].forEach((text) => {
       const td = document.createElement('td');
       td.textContent = text;
       tr.appendChild(td);
     });
     table.appendChild(tr);
-  });
+  }
+  function addGroup(labelKey, entries) {
+    if (!entries.length) return;
+    const tr = document.createElement('tr');
+    tr.className = 'mcp-summary-group';
+    const th = document.createElement('th');
+    th.colSpan = 4;
+    th.scope = 'rowgroup';
+    th.textContent = t(labelKey);
+    tr.appendChild(th);
+    table.appendChild(tr);
+    entries.forEach(([name, v]) => addRow(name, v, 'mcp-summary-sub'));
+  }
+  addRow(t('mcp.total'), summary.total, 'mcp-summary-total');
+  addGroup('mcp.groupChannel', Object.entries(summary.by_channel).map(([ch, v]) => [t(`mcp.channel.${ch}`), v]));
+  addGroup('mcp.groupAccount', Object.entries(summary.by_email));
   return table;
 }
 
