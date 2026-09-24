@@ -30,6 +30,7 @@ from app import (
     terms,
     transcription_hints,
     tts,
+    usage,
     users,
     vectorstore,
     web_allowlist,
@@ -119,10 +120,11 @@ class _FakeCreativeStream:
     Generator + .real_web_urls + .model), ohne einen echten Anthropic-Call
     auszuführen - Standard-Mock in der client-Fixture unten."""
 
-    def __init__(self, chunks, real_web_urls=frozenset(), model="claude-haiku-4-5-20251001"):
+    def __init__(self, chunks, real_web_urls=frozenset(), model="claude-haiku-4-5-20251001", usage=None):
         self._chunks = chunks
         self.real_web_urls = real_web_urls
         self.model = model
+        self.usage = usage
 
     def __iter__(self):
         return iter(self._chunks)
@@ -311,6 +313,7 @@ def client(tmp_path, monkeypatch):
     monkeypatch.setattr(terms, "TERMS_FILE", tmp_path / "terms.json")
     monkeypatch.setattr(audit, "AUDIT_LOG_FILE", tmp_path / "audit_log.json")
     monkeypatch.setattr(question_log, "QUESTION_LOG_FILE", tmp_path / "question_log.json")
+    monkeypatch.setattr(usage, "USAGE_FILE", tmp_path / "usage_log.json")
 
     monkeypatch.setattr(embeddings, "embed_passages", lambda texts: [[1.0, 0.0] for _ in texts])
     monkeypatch.setattr(embeddings, "embed_query", lambda text: [1.0, 0.0])
@@ -333,7 +336,7 @@ def client(tmp_path, monkeypatch):
     monkeypatch.setattr(
         llm,
         "stream_creative_response",
-        lambda instruction, document, chunks, lang="de", section=None: _FakeCreativeStream(["Testdokument."]),
+        lambda instruction, document, chunks, lang="de", section=None, **kwargs: _FakeCreativeStream(["Testdokument."]),
     )
     monkeypatch.setattr(
         summarization,
@@ -1513,7 +1516,7 @@ def test_creative_streams_delta_and_document_events_without_leaking_sources_mark
 def test_creative_uses_document_argument_correctly_for_first_draft_and_revision(client, monkeypatch):
     calls = []
 
-    def fake_stream(instruction, document, chunks, lang="de", section=None):
+    def fake_stream(instruction, document, chunks, lang="de", section=None, **kwargs):
         calls.append(document)
         return _FakeCreativeStream(["Text."])
 
@@ -1533,7 +1536,7 @@ def test_creative_passes_section_through_to_stream_creative_response(client, mon
     # bleibt es None (Rückwärtskompatibilität zum Ganzdokument-Pfad).
     calls = []
 
-    def fake_stream(instruction, document, chunks, lang="de", section=None):
+    def fake_stream(instruction, document, chunks, lang="de", section=None, **kwargs):
         calls.append(section)
         return _FakeCreativeStream(["Text."])
 
@@ -1560,7 +1563,7 @@ def test_creative_betacodex_sources_come_from_retrieved_curated_chunks(client, m
     monkeypatch.setattr(
         llm,
         "stream_creative_response",
-        lambda instruction, document, chunks, lang="de", section=None: _FakeCreativeStream(
+        lambda instruction, document, chunks, lang="de", section=None, **kwargs: _FakeCreativeStream(
             ["Ein völlig anderer Text, der die Quelle gar nicht erwähnt."]
         ),
     )
@@ -1593,7 +1596,7 @@ def test_creative_betacodex_sources_include_url_reachable_flag(client, monkeypat
     monkeypatch.setattr(
         llm,
         "stream_creative_response",
-        lambda instruction, document, chunks, lang="de", section=None: _FakeCreativeStream(
+        lambda instruction, document, chunks, lang="de", section=None, **kwargs: _FakeCreativeStream(
             ["Ein völlig anderer Text, der die Quelle gar nicht erwähnt."]
         ),
     )
@@ -1621,7 +1624,7 @@ def test_creative_betacodex_sources_deduplicate_multiple_chunks_of_same_source(c
     monkeypatch.setattr(
         llm,
         "stream_creative_response",
-        lambda instruction, document, chunks, lang="de", section=None: _FakeCreativeStream(
+        lambda instruction, document, chunks, lang="de", section=None, **kwargs: _FakeCreativeStream(
             ["Text ohne Erwähnung der Quelle."]
         ),
     )
@@ -1648,7 +1651,7 @@ def test_creative_betacodex_sources_merge_same_work_and_prefer_the_entry_with_ur
     monkeypatch.setattr(
         llm,
         "stream_creative_response",
-        lambda instruction, document, chunks, lang="de", section=None: _FakeCreativeStream(["Text."]),
+        lambda instruction, document, chunks, lang="de", section=None, **kwargs: _FakeCreativeStream(["Text."]),
     )
 
     response = client.post(
@@ -1668,7 +1671,7 @@ def test_creative_web_sources_are_filtered_to_real_search_results(client, monkey
     monkeypatch.setattr(
         llm,
         "stream_creative_response",
-        lambda instruction, document, chunks, lang="de", section=None: _FakeCreativeStream(
+        lambda instruction, document, chunks, lang="de", section=None, **kwargs: _FakeCreativeStream(
             [raw], real_web_urls={"https://real.example/gefunden"}
         ),
     )
@@ -7778,3 +7781,29 @@ def test_set_roles_allows_system_admin_to_grant_admin_roles(anon_client):
 
     assert response.status_code == 200
     assert response.json()["roles"] == [users.MCP_NUTZER, users.USER_ADMIN]
+
+
+def test_creative_records_ui_usage_and_passes_web_search_flag(client, monkeypatch):
+    calls = []
+    fake_usage = {
+        "model": "claude-haiku-4-5-20251001",
+        "input_tokens": 100,
+        "output_tokens": 50,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "web_search_requests": 0,
+    }
+
+    def fake_stream(instruction, document, chunks, lang="de", section=None, web_search=True):
+        calls.append(web_search)
+        return _FakeCreativeStream(["Text."], usage=fake_usage)
+
+    monkeypatch.setattr(llm, "stream_creative_response", fake_stream)
+
+    client.post("/api/creative", json={"document": "", "instruction": "Schreib was.", "web_search": False})
+
+    assert calls == [False]
+    entries = usage.list_entries()
+    assert len(entries) == 1
+    assert entries[0]["channel"] == "ui" and entries[0]["web_search_enabled"] is False
+    assert entries[0]["key_id"] is None and entries[0]["email"] is None

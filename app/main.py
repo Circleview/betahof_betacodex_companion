@@ -48,6 +48,7 @@ from app import (
     terms,
     transcription_hints,
     tts,
+    usage,
     users,
     vectorstore,
     web_allowlist,
@@ -4207,7 +4208,7 @@ def _creative_retrieval_query(instruction: str, document: str) -> str:
     return f"{instruction}\n\n{document[:2000]}"
 
 
-def _creative_event_stream(lang, betacodex_sources, creative_stream):
+def _creative_event_stream(lang, betacodex_sources, creative_stream, usage_meta=None):
     """NDJSON-Events für /api/creative: 'delta' pro Text-Fragment des neuen
     Dokuments, ein frühes 'document'-Event sobald der sichtbare
     Dokumenttext feststeht (Analogon zum frühen 'answer'-Event bei
@@ -4257,32 +4258,20 @@ def _creative_event_stream(lang, betacodex_sources, creative_stream):
         s for s in web_source_candidates if s["url"] in creative_stream.real_web_urls
     ]
 
+    # Kostenmessung (2026-09-24, app/usage.py) - usage_meta trägt Kanal
+    # ("ui"/"mcp"), Websuche-Schalter und bei MCP Schlüssel + Konto.
+    if creative_stream.usage is not None:
+        usage.record(creative_stream.usage, **(usage_meta or {"channel": "ui", "web_search": True}))
+
     yield json.dumps(
         {"type": "done", "sources": {"betacodex": betacodex_sources, "web": validated_web_sources}}
     ) + "\n"
 
 
-@app.post("/api/creative")
-def creative(payload: CreativeRequestIn, request: Request, x_lang: str = Header(default=i18n.DEFAULT_LANG)):
-    client_ip = request.client.host if request.client else "unknown"
-    if ratelimit.is_rate_limited(
-        f"creative-ip:{client_ip}",
-        max_requests=CREATIVE_RATE_LIMIT_MAX_REQUESTS,
-        window_seconds=CREATIVE_RATE_LIMIT_WINDOW_SECONDS,
-    ):
-        raise HTTPException(429, i18n.get_message("rate_limited", x_lang))
-    if not captcha.verify_turnstile_token(payload.turnstile_token, client_ip):
-        raise HTTPException(400, i18n.get_message("captcha_failed", x_lang))
-
-    instruction = payload.instruction.strip()
-    if not instruction:
-        raise HTTPException(400, i18n.get_message("creative_instruction_empty", x_lang))
-    if len(instruction) > CREATIVE_MAX_INSTRUCTION_CHARS:
-        raise HTTPException(400, i18n.get_message("creative_instruction_too_long", x_lang))
-    document = payload.document
-    if len(document) > CREATIVE_MAX_DOCUMENT_CHARS:
-        raise HTTPException(400, i18n.get_message("creative_document_too_long", x_lang))
-
+def _creative_context(instruction: str, document: str, x_lang: str) -> tuple[list[dict], list[dict]]:
+    """Kuratierter Kontext für den Kreativ-Modus - gemeinsam genutzt von
+    /api/creative (Oberfläche) und den MCP-Werkzeugen (app/mcp_server.py).
+    Liefert (llm_chunks, betacodex_sources)."""
     # Bewusst KEIN "if not sources: raise no_sources" wie bei /api/ask - der
     # Witz dieses Modus ist gerade, dass er auch Themen bedienen soll, die
     # die kuratierte Sammlung gar nicht abdeckt (z.B. Workshop-Methodik),
@@ -4333,12 +4322,39 @@ def creative(payload: CreativeRequestIn, request: Request, x_lang: str = Header(
             betacodex_by_work[work_key] = entry
             betacodex_sources.append(entry)
 
+    return llm_chunks, betacodex_sources
+
+
+@app.post("/api/creative")
+def creative(payload: CreativeRequestIn, request: Request, x_lang: str = Header(default=i18n.DEFAULT_LANG)):
+    client_ip = request.client.host if request.client else "unknown"
+    if ratelimit.is_rate_limited(
+        f"creative-ip:{client_ip}",
+        max_requests=CREATIVE_RATE_LIMIT_MAX_REQUESTS,
+        window_seconds=CREATIVE_RATE_LIMIT_WINDOW_SECONDS,
+    ):
+        raise HTTPException(429, i18n.get_message("rate_limited", x_lang))
+    if not captcha.verify_turnstile_token(payload.turnstile_token, client_ip):
+        raise HTTPException(400, i18n.get_message("captcha_failed", x_lang))
+
+    instruction = payload.instruction.strip()
+    if not instruction:
+        raise HTTPException(400, i18n.get_message("creative_instruction_empty", x_lang))
+    if len(instruction) > CREATIVE_MAX_INSTRUCTION_CHARS:
+        raise HTTPException(400, i18n.get_message("creative_instruction_too_long", x_lang))
+    document = payload.document
+    if len(document) > CREATIVE_MAX_DOCUMENT_CHARS:
+        raise HTTPException(400, i18n.get_message("creative_document_too_long", x_lang))
+
+    llm_chunks, betacodex_sources = _creative_context(instruction, document, x_lang)
     creative_stream = llm.stream_creative_response(
-        instruction, document, llm_chunks, lang=x_lang, section=payload.section
+        instruction, document, llm_chunks, lang=x_lang, section=payload.section, web_search=payload.web_search
     )
 
     return StreamingResponse(
-        _creative_event_stream(x_lang, betacodex_sources, creative_stream),
+        _creative_event_stream(
+            x_lang, betacodex_sources, creative_stream, {"channel": "ui", "web_search": payload.web_search}
+        ),
         media_type="application/x-ndjson",
     )
 

@@ -97,6 +97,8 @@ class CreativeRequestIn(BaseModel):
     # Modell NUR diesen Ausschnitt statt das gesamte Dokument neu zu
     # schreiben - document bleibt dabei als Kontext erhalten.
     section: str | None = None
+    # 2026-09-24: Websuche abschaltbar (Kostenvergleich, MCP-Werkzeuge).
+    web_search: bool = True
 
 
 class QuestionLogEntryOut(BaseModel):

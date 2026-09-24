@@ -524,6 +524,31 @@ class CreativeStream:
     def real_web_urls(self) -> set[str]:
         return self._urls_box["urls"]
 
+    @property
+    def usage(self) -> dict | None:
+        """Verbrauch dieses Calls (Tokens, Websuchen) für die Kosten-
+        messung (app/usage.py) - erst nach dem vollständigen Durchlaufen
+        des Streams gesetzt, bei einem Abbruch None."""
+        return self._urls_box.get("usage")
+
+
+_CREATIVE_NO_WEB_SEARCH_NOTE = {
+    "de": "Hinweis: Für diese Anfrage steht keine Websuche zur Verfügung - stütze dich auf den BetaCodex-Kontext und gesichertes Wissen, und lass den ---SOURCES---Block weg.",
+    "en": "Note: web search is not available for this request - rely on the BetaCodex context and well-established knowledge, and omit the ---SOURCES--- block.",
+}
+
+
+def _usage_dict(model: str, usage) -> dict:
+    server_tool_use = getattr(usage, "server_tool_use", None)
+    return {
+        "model": model,
+        "input_tokens": int(usage.input_tokens or 0),
+        "output_tokens": int(usage.output_tokens or 0),
+        "cache_creation_input_tokens": int(getattr(usage, "cache_creation_input_tokens", 0) or 0),
+        "cache_read_input_tokens": int(getattr(usage, "cache_read_input_tokens", 0) or 0),
+        "web_search_requests": int(getattr(server_tool_use, "web_search_requests", 0) or 0) if server_tool_use else 0,
+    }
+
 
 def stream_creative_response(
     instruction: str,
@@ -531,6 +556,7 @@ def stream_creative_response(
     curated_chunks: list[dict],
     lang: str = DEFAULT_LANG,
     section: str | None = None,
+    web_search: bool = True,
 ) -> CreativeStream:
     """Streamt die Kreativ-Modus-Antwort (siehe CREATIVE_SYSTEM_PROMPTS) -
     Modellwahl richtet sich danach, ob document bereits Inhalt hat (siehe
@@ -549,6 +575,17 @@ def stream_creative_response(
     else:
         system_prompt = CREATIVE_SYSTEM_PROMPTS[lang]
         user_content = _build_creative_user_content(instruction, document, context, lang)
+    # 2026-09-24: Websuche pro Aufruf abschaltbar (MCP-Werkzeuge, später
+    # Vergleichstests mit/ohne) - die System-Prompts erwähnen das Werkzeug,
+    # der Hinweis verhindert, dass das Modell danach zu greifen versucht.
+    tool_kwargs = {}
+    if web_search:
+        tool_kwargs = {
+            "tools": [web_search_tool.build_tool(CREATIVE_MAX_SEARCH_USES)],
+            "tool_choice": {"type": "auto"},
+        }
+    else:
+        user_content += "\n\n" + _CREATIVE_NO_WEB_SEARCH_NOTE[lang]
 
     urls_box: dict = {"urls": set()}
 
@@ -558,12 +595,12 @@ def stream_creative_response(
             model=model,
             max_tokens=CREATIVE_MAX_TOKENS,
             system=system_prompt,
-            tools=[web_search_tool.build_tool(CREATIVE_MAX_SEARCH_USES)],
-            tool_choice={"type": "auto"},
             messages=[{"role": "user", "content": user_content}],
+            **tool_kwargs,
         ) as stream:
             yield from stream.text_stream
             final_message = stream.get_final_message()
         urls_box["urls"] = web_search_tool.real_search_result_urls(final_message)
+        urls_box["usage"] = _usage_dict(model, final_message.usage)
 
     return CreativeStream(_generate(), urls_box, model)

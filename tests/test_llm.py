@@ -459,3 +459,38 @@ def test_creative_system_prompts_tell_model_to_start_writing_before_researching(
     gemessen ~18s) und schrieb dann - der erste Text kam entsprechend spät."""
     assert "SOFORT" in llm.CREATIVE_SYSTEM_PROMPTS["de"]
     assert "IMMEDIATELY" in llm.CREATIVE_SYSTEM_PROMPTS["en"]
+
+
+def test_stream_creative_response_without_web_search_sends_no_tools_and_a_note():
+    client = _fake_creative_client("Text.")
+    with patch.object(llm, "_get_client", return_value=client):
+        list(llm.stream_creative_response("Anweisung", "", [], web_search=False))
+
+    kwargs = client.messages.stream.call_args.kwargs
+    assert "tools" not in kwargs and "tool_choice" not in kwargs
+    assert llm._CREATIVE_NO_WEB_SEARCH_NOTE["de"] in kwargs["messages"][0]["content"]
+
+
+def test_stream_creative_response_exposes_usage_after_exhausting_stream():
+    client = _fake_creative_client("Text.")
+    final = client.messages.stream.return_value.__enter__.return_value.get_final_message.return_value
+    final.usage = MagicMock(
+        input_tokens=1000,
+        output_tokens=500,
+        cache_creation_input_tokens=0,
+        cache_read_input_tokens=200,
+        server_tool_use=MagicMock(web_search_requests=2),
+    )
+    with patch.object(llm, "_get_client", return_value=client):
+        stream = llm.stream_creative_response("Anweisung", "", [])
+        assert stream.usage is None
+        list(stream)
+
+    assert stream.usage == {
+        "model": llm.CREATIVE_FIRST_DRAFT_MODEL,
+        "input_tokens": 1000,
+        "output_tokens": 500,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 200,
+        "web_search_requests": 2,
+    }
