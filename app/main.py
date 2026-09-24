@@ -3,6 +3,7 @@ import hashlib
 import hmac
 import itertools
 import json
+import logging
 import os
 import queue
 import re
@@ -4271,8 +4272,16 @@ def _creative_event_stream(lang, betacodex_sources, creative_stream, usage_meta=
 
     # Kostenmessung (2026-09-24, app/usage.py) - usage_meta trägt Kanal
     # ("ui"/"mcp"), Websuche-Schalter und bei MCP Schlüssel + Konto.
+    # Abgesichert (2026-09-24): ein Fehler in der Kostenmessung darf den
+    # Kreativ-Modus nie unterbrechen - sonst fehlten Quellenliste und
+    # done-Event, obwohl der Text schon da ist. Sichtbar bleibt er im
+    # Server-Log. Limits (app/mcp_keys.py) zählen einen solchen Aufruf dann
+    # nicht mit - bewusst in Kauf genommen.
     if creative_stream.usage is not None:
-        usage.record(creative_stream.usage, **(usage_meta or {"channel": "ui", "web_search": True}))
+        try:
+            usage.record(creative_stream.usage, **(usage_meta or {"channel": "ui", "web_search": True}))
+        except Exception:
+            logging.getLogger(__name__).exception("Kostenmessung für Kreativ-Aufruf fehlgeschlagen")
 
     yield json.dumps(
         {"type": "done", "sources": {"betacodex": betacodex_sources, "web": validated_web_sources}}

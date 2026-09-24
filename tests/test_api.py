@@ -7892,3 +7892,28 @@ def test_admin_key_list_reports_costs_for_selected_month(anon_client):
 
     assert current["month_usd"] == pytest.approx(2.0) and current["month_eur"] == pytest.approx(1.8)
     assert older["month_usd"] == 0 and older["calls_today"] == 1
+
+
+def test_creative_still_finishes_when_usage_recording_fails(client, monkeypatch):
+    fake_usage = {
+        "model": "claude-haiku-4-5-20251001",
+        "input_tokens": 1,
+        "output_tokens": 1,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "web_search_requests": 0,
+    }
+    monkeypatch.setattr(
+        llm, "stream_creative_response", lambda *a, **k: _FakeCreativeStream(["Text."], usage=fake_usage)
+    )
+
+    def broken_record(*args, **kwargs):
+        raise OSError("Platte voll")
+
+    monkeypatch.setattr(usage, "record", broken_record)
+
+    response = client.post("/api/creative", json={"document": "", "instruction": "Schreib was."})
+
+    events = [json.loads(line) for line in response.text.splitlines() if line.strip()]
+    assert events[-1]["type"] == "done"
+    assert any(e["type"] == "document" and e["document"] == "Text." for e in events)
