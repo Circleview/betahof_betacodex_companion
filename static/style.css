@@ -5212,9 +5212,14 @@ details a {
   font-weight: 600;
 }
 
-.mcp-setup h4 {
+/* h3 für eine lückenlose Überschriften-Hierarchie (h2 -> h3), aber ohne die
+   globale Versalien-Optik der Abschnittsüberschriften. */
+.mcp-setup h3 {
   margin: 1rem 0 0.25rem;
   font-size: 0.95rem;
+  text-transform: none;
+  letter-spacing: normal;
+  color: var(--color-text);
 }
 
 .mcp-setup-code {
