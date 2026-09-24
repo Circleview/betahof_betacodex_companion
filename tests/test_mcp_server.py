@@ -54,6 +54,8 @@ def _isolate(tmp_path, monkeypatch):
     monkeypatch.setattr(users, "USERS_FILE", tmp_path / "users.json")
     monkeypatch.setattr(mcp_keys, "MCP_KEYS_FILE", tmp_path / "mcp_keys.json")
     monkeypatch.setattr(usage, "USAGE_FILE", tmp_path / "usage_log.json")
+    monkeypatch.setattr(usage, "FX_FILE", tmp_path / "fx_rate.json")
+    monkeypatch.setattr(usage, "_fetch_ecb_rate", lambda: (0.9, "2026-09-23"))
     monkeypatch.setattr(question_log, "QUESTION_LOG_FILE", tmp_path / "question_log.json")
     monkeypatch.setattr(main_module, "IS_DEV_ENVIRONMENT", False)
     monkeypatch.setattr(

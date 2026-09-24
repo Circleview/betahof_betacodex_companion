@@ -118,5 +118,5 @@ def limit_exceeded(key: dict) -> str | None:
     return None
 
 
-def with_stats(key: dict) -> dict:
-    return {**key, **usage.key_stats(key["id"])}
+def with_stats(key: dict, month: str | None = None) -> dict:
+    return {**key, **usage.key_stats(key["id"], month=month)}

@@ -315,6 +315,8 @@ def client(tmp_path, monkeypatch):
     monkeypatch.setattr(audit, "AUDIT_LOG_FILE", tmp_path / "audit_log.json")
     monkeypatch.setattr(question_log, "QUESTION_LOG_FILE", tmp_path / "question_log.json")
     monkeypatch.setattr(usage, "USAGE_FILE", tmp_path / "usage_log.json")
+    monkeypatch.setattr(usage, "FX_FILE", tmp_path / "fx_rate.json")
+    monkeypatch.setattr(usage, "_fetch_ecb_rate", lambda: (0.9, "2026-09-23"))
     monkeypatch.setattr(mcp_keys, "MCP_KEYS_FILE", tmp_path / "mcp_keys.json")
 
     monkeypatch.setattr(embeddings, "embed_passages", lambda texts: [[1.0, 0.0] for _ in texts])
@@ -7873,3 +7875,20 @@ def test_user_admin_sees_all_keys_sets_limits_and_exports_usage(anon_client):
     assert csv_response.headers["content-type"].startswith("text/csv")
     assert "owner@test.local" in csv_response.text
     assert anon_client.get("/api/mcp/usage?month=kaputt").status_code == 400
+
+
+def test_admin_key_list_reports_costs_for_selected_month(anon_client):
+    users.invite_user("owner@test.local", users.MCP_NUTZER, invited_by="root@test.local")
+    key, _ = mcp_keys.create_key("owner@test.local", "Laptop")
+    usage.record(
+        {"model": "claude-sonnet-5", "input_tokens": 1_000_000, "output_tokens": 0, "cache_creation_input_tokens": 0,
+         "cache_read_input_tokens": 0, "web_search_requests": 0},
+        channel="mcp", web_search=True, key_id=key["id"], email="owner@test.local",
+    )
+    login(anon_client, "admin@test.local", users.USER_ADMIN)
+
+    current = anon_client.get("/api/mcp/admin/keys").json()[0]
+    older = anon_client.get("/api/mcp/admin/keys?month=2020-01").json()[0]
+
+    assert current["month_usd"] == pytest.approx(2.0) and current["month_eur"] == pytest.approx(1.8)
+    assert older["month_usd"] == 0 and older["calls_today"] == 1

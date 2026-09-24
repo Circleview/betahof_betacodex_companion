@@ -5,9 +5,20 @@ import pytest
 from app import jsonstore, usage
 
 
+FX_CALLS = []
+
+
 @pytest.fixture(autouse=True)
 def _isolate(tmp_path, monkeypatch):
     monkeypatch.setattr(usage, "USAGE_FILE", tmp_path / "usage_log.json")
+    monkeypatch.setattr(usage, "FX_FILE", tmp_path / "fx_rate.json")
+    FX_CALLS.clear()
+
+    def fake_fetch():
+        FX_CALLS.append(1)
+        return 0.9, "2026-09-23"
+
+    monkeypatch.setattr(usage, "_fetch_ecb_rate", fake_fetch)
 
 
 def _usage(model="claude-sonnet-5", **overrides):
@@ -36,7 +47,8 @@ def test_record_stores_usd_and_eur():
     entry = usage.record(_usage(), channel="mcp", web_search=True, key_id="k1", email="a@test.local")
 
     assert entry["cost_usd"] == pytest.approx(3.0)
-    assert entry["cost_eur"] == pytest.approx(3.0 * usage.USD_TO_EUR)
+    assert entry["cost_eur"] == pytest.approx(3.0 * 0.9)
+    assert (entry["usd_to_eur"], entry["fx_date"], entry["fx_source"]) == (0.9, "2026-09-23", "ecb")
     assert usage.list_entries()[0]["key_id"] == "k1"
 
 
@@ -79,3 +91,48 @@ def test_monthly_summary_and_csv_group_by_channel_email_and_key():
     csv_text = usage.export_csv(month)
     assert csv_text.splitlines()[0].startswith("ts,channel,email,key_id")
     assert len(csv_text.strip().splitlines()) == 4
+
+
+def test_current_fx_fetches_at_most_once_per_day():
+    assert usage.current_fx() == {"rate": 0.9, "date": "2026-09-23", "source": "ecb"}
+    usage.current_fx()
+    assert len(FX_CALLS) == 1
+
+
+def test_current_fx_keeps_last_known_rate_when_service_fails(monkeypatch):
+    yesterday = (datetime.now(timezone.utc) - timedelta(days=1)).isoformat()
+    jsonstore.save(usage.FX_FILE, {"rate": 0.88, "date": "2026-09-22", "source": "ecb", "fetched_at": yesterday})
+
+    def boom():
+        FX_CALLS.append(1)
+        raise OSError("offline")
+
+    monkeypatch.setattr(usage, "_fetch_ecb_rate", boom)
+
+    assert usage.current_fx() == {"rate": 0.88, "date": "2026-09-22", "source": "ecb"}
+    usage.current_fx()  # innerhalb einer Stunde kein zweiter Versuch
+    assert len(FX_CALLS) == 1
+
+
+def test_current_fx_retries_after_an_hour_and_falls_back_if_never_fetched(monkeypatch):
+    def boom():
+        FX_CALLS.append(1)
+        raise OSError("offline")
+
+    monkeypatch.setattr(usage, "_fetch_ecb_rate", boom)
+    assert usage.current_fx() == {"rate": usage.FALLBACK_USD_TO_EUR, "date": None, "source": "fallback"}
+
+    cache = jsonstore.load(usage.FX_FILE, {})
+    cache["last_attempt_at"] = (datetime.now(timezone.utc) - timedelta(hours=2)).isoformat()
+    jsonstore.save(usage.FX_FILE, cache)
+    usage.current_fx()
+    assert len(FX_CALLS) == 2
+
+
+def test_monthly_summary_and_csv_carry_the_rate():
+    usage.record(_usage(), channel="ui", web_search=True)
+    month = datetime.now(timezone.utc).strftime("%Y-%m")
+
+    assert usage.monthly_summary(month)["fx"] == {"rate": 0.9, "date": "2026-09-23", "source": "ecb"}
+    header, row = usage.export_csv(month).strip().splitlines()
+    assert header.endswith("usd_to_eur,fx_date,fx_source") and row.endswith("0.9,2026-09-23,ecb")

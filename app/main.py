@@ -4515,8 +4515,14 @@ def revoke_mcp_key(key_id: str, request: Request, x_lang: str = Header(default=i
 
 
 @app.get("/api/mcp/admin/keys", response_model=list[McpKeyOut])
-def list_all_mcp_keys(_user: str = Depends(require_role(users.USER_ADMIN))):
-    return [mcp_keys.with_stats(k) for k in mcp_keys.list_keys()]
+def list_all_mcp_keys(
+    month: str | None = None,
+    _user: str = Depends(require_role(users.USER_ADMIN)),
+    x_lang: str = Header(default=i18n.DEFAULT_LANG),
+):
+    # Kosten je Schlüssel im gewählten Monat (wie die Übersichtstabelle).
+    month = _usage_month(month, x_lang)
+    return [mcp_keys.with_stats(k, month) for k in mcp_keys.list_keys()]
 
 
 @app.put("/api/mcp/keys/{key_id}/limits", response_model=McpKeyOut)

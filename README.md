@@ -183,7 +183,9 @@ Code nutzen – für einen kleinen, eingeladenen Kreis mit der Rolle
 - Limits je Schlüssel: 30 Aufrufe pro Tag und 5 € pro Monat als
   Voreinstellung, von User-Admins je Schlüssel änderbar.
 - Kostenmessung: jeder Kreativ-Aufruf (Oberfläche und MCP) wird mit
-  Tokens, Websuchen und Kosten in USD und EUR protokolliert. User-Admins
+  Tokens, Websuchen und Kosten in USD und EUR protokolliert – umgerechnet
+  zum tagesaktuellen EZB-Referenzkurs (via frankfurter.dev, einmal täglich
+  abgerufen; der verwendete Kurs samt Datum steht in jedem Eintrag). User-Admins
   sehen die Monatsübersicht je Kanal und Konto und exportieren sie als
   CSV – Grundlage für ein späteres Bezahlmodell (z. B. Monats-Kontingent).
 - MCP-Aufrufe erscheinen anonym (Badge „MCP“) im Fragen-Log.
