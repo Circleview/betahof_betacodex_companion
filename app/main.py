@@ -3827,13 +3827,35 @@ def _should_log_question_event(request: Request) -> bool:
 # Nutzerwunsch (2026-09-01): Grundlage für das "no_answer"-Ereignis im
 # Fragen-Log - die Systemanweisung (siehe app/llm.py: SYSTEM_PROMPTS) gibt
 # dem Modell diesen Satz WÖRTLICH vor, wenn die bereitgestellten
-# Textausschnitte die Frage nicht oder nur teilweise beantworten. Ein reiner
+# Textausschnitte GAR NICHTS zur Frage hergeben (seit 2026-09-24 nicht mehr
+# bei Teilantworten - dort kam der Satz als enttäuschender Einstieg vor
+# einer echten Antwort, Nutzerwunsch). Ein reiner
 # Substring-Check reicht deshalb aus (kein separates Konfidenz-Signal
 # nötig) - siehe _ask_event_stream unten.
 NO_ANSWER_PHRASES = {
     "de": "Die vorliegende Quellenlage gibt darauf keine Antwort.",
     "en": "The available sources do not answer this.",
 }
+
+
+# Nutzerwunsch (2026-09-24): Das Modell stellt den Absage-Satz trotz
+# Anweisung manchmal einer echten (Teil-)Antwort voran ("Die vorliegende
+# Quellenlage gibt darauf keine Antwort." + Inhalt) - eine enttäuschende
+# Einleitung. Folgt dem Satz noch Text, fällt er in der Anzeige weg; steht er
+# allein, bleibt er. Solange das noch offen ist, wird er im Stream
+# zurückgehalten (pending=True). Das no_answer-Ereignis im Fragen-Log prüft
+# weiterhin den Rohtext - für die Lückenanalyse zählt auch die Teilantwort.
+def _drop_no_answer_lead(text: str, final: bool) -> tuple[str, bool]:
+    stripped = text.lstrip()
+    for phrase in NO_ANSWER_PHRASES.values():
+        if stripped.startswith(phrase):
+            rest = stripped[len(phrase):].lstrip()
+            if rest:
+                return rest, False
+            return (text, False) if final else ("", True)
+        if stripped and phrase.startswith(stripped) and not final:
+            return "", True
+    return text, False
 
 
 def _ask_event_stream(
@@ -3905,7 +3927,11 @@ def _ask_event_stream(
                     continue
                 label_resolved = True
 
-            visible_final = llm._strip_answer_label(visible_raw)
+            visible_final, pending = _drop_no_answer_lead(
+                llm._strip_answer_label(visible_raw), final=marker_index != -1
+            )
+            if pending:
+                continue
             new_text = visible_final[sent_len:]
             if new_text:
                 yield json.dumps({"type": "delta", "text": new_text}) + "\n"
@@ -3921,6 +3947,7 @@ def _ask_event_stream(
             # "delta"-Events (visible_final wächst ab hier nicht mehr).
             if marker_index != -1 and not answer_sent:
                 early_answer_text, _ = llm.parse_answer_and_quotes(buffer)
+                early_answer_text, _ = _drop_no_answer_lead(early_answer_text, final=True)
                 early_answer_text = early_answer_text.replace(llm.CREATIVE_LINK_PLACEHOLDER, creative_link_url)
                 yield json.dumps({"type": "answer", "answer": early_answer_text}) + "\n"
                 answer_sent = True
@@ -3928,7 +3955,8 @@ def _ask_event_stream(
         yield json.dumps({"type": "error", "message": i18n.get_message("ask_llm_failed", lang)}) + "\n"
         return
 
-    answer_text, quotes_by_citation = llm.parse_answer_and_quotes(buffer)
+    raw_answer_text, quotes_by_citation = llm.parse_answer_and_quotes(buffer)
+    answer_text, _ = _drop_no_answer_lead(raw_answer_text, final=True)
     answer_text = answer_text.replace(llm.CREATIVE_LINK_PLACEHOLDER, creative_link_url)
     remaining = answer_text[sent_len:]
     if remaining:
@@ -3943,7 +3971,7 @@ def _ask_event_stream(
     # first_question geloggt (first_question_log_id bekannt), wird
     # "no_answer" dort ERGÄNZT statt einen zweiten, doppelten Eintrag mit
     # identischem Text anzulegen (siehe question_log.add_event_type).
-    if should_log_question_events and NO_ANSWER_PHRASES.get(lang, NO_ANSWER_PHRASES["de"]) in answer_text:
+    if should_log_question_events and NO_ANSWER_PHRASES.get(lang, NO_ANSWER_PHRASES["de"]) in raw_answer_text:
         if first_question_log_id:
             question_log.add_event_type(first_question_log_id, "no_answer")
         else:

@@ -1974,6 +1974,30 @@ def test_ask_logs_no_answer_event_when_model_says_it_cannot_answer(client, monke
     assert no_answer_entries[0]["answer"] == "Die vorliegende Quellenlage gibt darauf keine Antwort."
 
 
+def test_ask_drops_no_answer_lead_when_content_follows(client, monkeypatch):
+    """Nutzerwunsch (2026-09-24): der Absage-Satz vor einer echten
+    Teilantwort fällt weg - auch im Stream (in kleinen Stücken geliefert)
+    taucht er nie auf. Für die Lückenanalyse bleibt das no_answer-Ereignis."""
+    monkeypatch.setattr(main_module, "IS_DEV_ENVIRONMENT", False)
+    raw = (
+        "Die vorliegende Quellenlage gibt darauf keine Antwort.\n\n"
+        "Handelsbanken hat knapp 12.000 Mitarbeitende weltweit [1]. Eine Zahl für Deutschland nennen die Quellen nicht."
+    )
+    monkeypatch.setattr(llm, "stream_answer_question", lambda *a, **k: iter(raw[i : i + 7] for i in range(0, len(raw), 7)))
+    client.post("/api/sources", json={"title": "Q", "text": "Handelsbanken hat knapp 12.000 Mitarbeitende weltweit."})
+
+    res = client.post("/api/ask", json={"question": "Mitarbeitende Handelsbanken Deutschland?"})
+
+    events = [json.loads(line) for line in res.text.splitlines()]
+    streamed = "".join(e["text"] for e in events if e["type"] == "delta")
+    answer = [e["answer"] for e in events if e["type"] == "answer"][-1]
+    assert streamed == answer
+    assert answer.startswith("Handelsbanken hat knapp 12.000")
+    assert "Quellenlage" not in streamed
+    no_answer_entries = [e for e in question_log.list_entries() if "no_answer" in e["event_types"]]
+    assert [e["answer"] for e in no_answer_entries] == [answer]
+
+
 def test_ask_merges_no_answer_into_existing_first_question_entry(client, monkeypatch):
     """Regressionstest (Bug 2026-09-14, per Screenshot gemeldet): eine
     Frage, die sowohl die erste Frage einer Konversation ist als auch keine
