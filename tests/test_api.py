@@ -7920,3 +7920,24 @@ def test_creative_still_finishes_when_usage_recording_fails(client, monkeypatch)
     events = [json.loads(line) for line in response.text.splitlines() if line.strip()]
     assert events[-1]["type"] == "done"
     assert any(e["type"] == "document" and e["document"] == "Text." for e in events)
+
+
+def test_creative_requests_land_in_question_log_with_section_flag(client, monkeypatch):
+    monkeypatch.setattr(main_module, "IS_DEV_ENVIRONMENT", False)
+    monkeypatch.setattr(llm, "stream_creative_response", lambda *a, **k: _FakeCreativeStream(["Neuer Text."]))
+
+    client.post("/api/creative", json={"document": "", "instruction": "Schreib was."})
+    client.post("/api/creative", json={"document": "# A\n\nAlt.", "instruction": "Kürzer.", "section": "# A\n\nAlt."})
+
+    entries = question_log.list_entries()
+    assert [(e["text"], e["answer"], e.get("section")) for e in entries] == [
+        ("Kürzer.", "Neuer Text.", True),
+        ("Schreib was.", "Neuer Text.", None),
+    ]
+    assert all(e["event_types"] == ["creative"] and e["mode"] == "creative" for e in entries)
+
+
+def test_creative_requests_not_logged_in_dev_environment(client, monkeypatch):
+    monkeypatch.setattr(main_module, "IS_DEV_ENVIRONMENT", True)
+    client.post("/api/creative", json={"document": "", "instruction": "Schreib was."})
+    assert question_log.list_entries() == []

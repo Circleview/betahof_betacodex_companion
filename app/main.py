@@ -4220,7 +4220,7 @@ def _creative_retrieval_query(instruction: str, document: str) -> str:
     return f"{instruction}\n\n{document[:2000]}"
 
 
-def _creative_event_stream(lang, betacodex_sources, creative_stream, usage_meta=None):
+def _creative_event_stream(lang, betacodex_sources, creative_stream, usage_meta=None, log_request=None):
     """NDJSON-Events für /api/creative: 'delta' pro Text-Fragment des neuen
     Dokuments, ein frühes 'document'-Event sobald der sichtbare
     Dokumenttext feststeht (Analogon zum frühen 'answer'-Event bei
@@ -4282,6 +4282,15 @@ def _creative_event_stream(lang, betacodex_sources, creative_stream, usage_meta=
             usage.record(creative_stream.usage, **(usage_meta or {"channel": "ui", "web_search": True}))
         except Exception:
             logging.getLogger(__name__).exception("Kostenmessung für Kreativ-Aufruf fehlgeschlagen")
+
+    # 2026-09-24: Anfrage anonym ins Fragen-Log (log_request = {"instruction",
+    # "section"}, nur wenn _should_log_question_event zutrifft) - ebenfalls
+    # abgesichert, darf den Kreativ-Modus nie unterbrechen.
+    if log_request is not None:
+        try:
+            question_log.log_creative(log_request["instruction"], document_text, log_request["section"])
+        except Exception:
+            logging.getLogger(__name__).exception("Fragen-Log für Kreativ-Aufruf fehlgeschlagen")
 
     yield json.dumps(
         {"type": "done", "sources": {"betacodex": betacodex_sources, "web": validated_web_sources}}
@@ -4379,7 +4388,13 @@ def creative(payload: CreativeRequestIn, request: Request, x_lang: str = Header(
 
     return StreamingResponse(
         _creative_event_stream(
-            x_lang, betacodex_sources, creative_stream, {"channel": "ui", "web_search": payload.web_search}
+            x_lang,
+            betacodex_sources,
+            creative_stream,
+            {"channel": "ui", "web_search": payload.web_search},
+            {"instruction": instruction, "section": payload.section is not None}
+            if _should_log_question_event(request)
+            else None,
         ),
         media_type="application/x-ndjson",
     )

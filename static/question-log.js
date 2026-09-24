@@ -82,7 +82,9 @@ const EVENT_TYPE_LABEL_KEYS = {
   first_question: 'questionLog.eventType.firstQuestion',
   no_answer: 'questionLog.eventType.noAnswer',
   feedback: 'questionLog.eventType.feedback',
-  // 2026-09-24: Kreativ-Modus über MCP (app/mcp_server.py) - anonym.
+  // 2026-09-24: jede Anfrage im Kreativ-Modus (Oberfläche) bzw. über MCP
+  // (app/mcp_server.py) - beides anonym.
+  creative: 'questionLog.eventType.creative',
   mcp: 'questionLog.eventType.mcp',
 };
 
@@ -146,7 +148,10 @@ function buildEntryElement(entry) {
   li.appendChild(time);
 
   const badgeKeys = entry.event_types.map((et) => EVENT_TYPE_LABEL_KEYS[et] || EVENT_TYPE_LABEL_KEYS.first_question);
-  if (entry.mode === 'creative') badgeKeys.push('questionLog.eventType.creative');
+  if (entry.mode === 'creative' && !entry.event_types.includes('creative')) {
+    badgeKeys.push('questionLog.eventType.creative');
+  }
+  if (entry.section) badgeKeys.push('questionLog.eventType.section');
   badgeKeys.forEach((key) => {
     const badge = document.createElement('span');
     badge.className = 'question-log-type-badge';

@@ -177,3 +177,19 @@ def test_purge_older_than_removes_only_expired_entries(tmp_path, monkeypatch):
     assert question_log.purge_older_than(730) == 1
     assert sorted(e["id"] for e in question_log.list_entries()) == ["edge", "new"]
     assert question_log.purge_older_than(730) == 0
+
+
+def test_log_creative_is_anonymous_marks_sections_and_merges_later_feedback(tmp_path, monkeypatch):
+    monkeypatch.setattr(question_log, "QUESTION_LOG_FILE", tmp_path / "question_log.json")
+
+    question_log.log_creative("Schreib über Beta.", "Text über Beta.", section=False)
+    question_log.log_creative("Kürze den Abschnitt.", "## B\n\nKurz.", section=True)
+    question_log.log_feedback("Schreib über Beta.", "Text über Beta.", "good", mode="creative")
+
+    entries = question_log.list_entries()
+    assert len(entries) == 2
+    section_entry, draft_entry = entries  # neueste zuerst
+    assert section_entry["event_types"] == ["creative"] and section_entry["section"] is True
+    assert draft_entry["event_types"] == ["creative", "feedback"] and "section" not in draft_entry
+    assert draft_entry["feedback"] == "good" and draft_entry["mode"] == "creative"
+    assert not any(k in e for e in entries for k in ("email", "ip"))

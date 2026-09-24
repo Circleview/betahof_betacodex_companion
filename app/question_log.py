@@ -1,4 +1,4 @@
-"""Speichert anonymisiert drei Arten von Ereignissen aus der Konversation
+"""Speichert anonymisiert Ereignisse aus Konversation und Kreativ-Modus
 (kein Bezug zu Nutzerkonto oder IP, nur Text + Zeitstempel):
 - "first_question" (Backlog #97): die erste Frage jeder Konversation -
   Grundlage für eine Trend-/Lücken-Analyse.
@@ -124,6 +124,18 @@ def log_feedback(question: str, answer: str, feedback: str, mode: str = "convers
                 _save(entries)
                 return
     _append({"event_types": ["feedback"], "text": question, "answer": answer, "feedback": feedback, **extra})
+
+
+def log_creative(instruction: str, document: str, section: bool) -> None:
+    """2026-09-24: jede Anfrage im Kreativ-Modus der Oberfläche - Anweisung
+    + erzeugter Text (bei section=True nur der überarbeitete Abschnitt),
+    anonym. Gleiche Kürzung wie beim Feedback (app/main.py:
+    ANSWER_FEEDBACK_MAX_*), damit späteres Daumen-Feedback per exaktem
+    Text-Abgleich (log_feedback) in DIESEN Eintrag wandert."""
+    entry = {"event_types": ["creative"], "text": instruction[:2000], "answer": document[:20000], "mode": "creative"}
+    if section:
+        entry["section"] = True
+    _append(entry)
 
 
 def log_mcp(instruction: str, document: str) -> None:
