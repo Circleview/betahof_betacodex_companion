@@ -336,6 +336,12 @@ Fragen stellen (den Chat nutzen).
 3. ChromaDB durchsucht alle gespeicherten Chunk-Embeddings und findet die,
    die dem Frage-Embedding am ähnlichsten sind – das ist die eigentliche
    Suche (Retrieval).
+   **Hybrid-Suche:** Enthält die Frage einen Begriff in Anführungszeichen
+   oder ein bekanntes Schlagwort der Sammlung (z. B. "Doppelmanagement",
+   "NUMMI"), bekommt ein Chunk, der diesen Begriff wörtlich enthält,
+   garantiert einen Platz – die reine Vektorsuche übersah solche Begriffe
+   in rund der Hälfte der Fälle. Messbar mit
+   `PYTHONPATH=. python tools/retrieval_eval.py`.
 4. Die relevantesten Chunks (roher Text, keine Zusammenfassung) werden
    zusammen mit der Frage an das Sprachmodell geschickt, mit der
    Anweisung: Nur auf Basis dieser Textstellen antworten und sie zitieren.
@@ -511,6 +517,7 @@ Commit-/Tag-Nachrichten in Git.
 
 | Version | Wesentliche Änderungen |
 |---|---|
+| v0.76.0 | Konversationsmodus findet deutlich öfter eine Antwort: **Hybrid-Suche** – Begriffe in Anführungszeichen und bekannte Schlagworte aus der Frage bekommen garantiert einen Ausschnitt, der sie wörtlich enthält (vorher übersah die reine Vektorsuche das in ~50 % der Fälle, u. a. Doppelmanagement, NUMMI, John Seddon, Intrinsify, „Democratic Taylorism“). Teilantworten beginnen jetzt direkt mit dem Inhalt statt mit einer Absage oder „Die Textausschnitte nennen zwar …“ (Erinnerung direkt nach der Frage + Richtig/Falsch-Beispiel im Prompt). Neues Messskript `tools/retrieval_eval.py` (Trefferquote ohne LLM-Kosten) |
 | v0.75.2 | Konversationsmodus: kein enttäuschender Einstieg „Die vorliegende Quellenlage gibt darauf keine Antwort.“ mehr vor Teilantworten – Systemanweisung trennt „gar nichts“ von „nur teilweise“ (Teilantwort beginnt direkt mit dem Inhalt, Lücke knapp am Ende); Sicherheitsnetz entfernt den Satz, wenn danach noch Text folgt (auch im Stream). Im Fragen-Log zählen solche Teilantworten weiter als „keine Antwort“ |
 | v0.75.1 | Fragen-Log: jede Anfrage aus dem Kreativ-Modus (Anweisung + erzeugter Text) landet anonym im Fragen-Log, eigener Filter „Kreativ-Modus“, Badge „Abschnitt“ für Abschnitts-Überarbeitungen; späteres Daumen-Feedback wird dem Eintrag zugeordnet. Datenschutzerklärung (DE/EN) ergänzt |
 | v0.75.0 | Kreativ-Modus: Rückgängig/Wiederholen für KI-Änderungen (Erzeugen, Überarbeiten, Abschnitt), „Neu“ und Formatierungen – stellt Text, Quellenliste und Feedback-Stand wieder her, in Vorschau und Bearbeiten-Ansicht; Cmd/Strg+Enter sendet im Anweisungs- und im Abschnittsfeld ab (Umschalt+Enter bleibt); „Zu viele Anfragen“ mit Countdown (Server liefert `Retry-After`, Absende-Buttons bis Ablauf gesperrt). MCP-Zugänge: Kostentabelle gruppiert (Gesamt, nach Kanal, nach Konto), lückenlose Überschriften-Hierarchie in der Einrichtungsanleitung |

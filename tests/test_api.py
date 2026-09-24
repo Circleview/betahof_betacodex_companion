@@ -7965,3 +7965,41 @@ def test_creative_requests_not_logged_in_dev_environment(client, monkeypatch):
     monkeypatch.setattr(main_module, "IS_DEV_ENVIRONMENT", True)
     client.post("/api/creative", json={"document": "", "instruction": "Schreib was."})
     assert question_log.list_entries() == []
+
+
+def test_question_terms_prefers_longest_known_term_and_quotes(monkeypatch):
+    """Hybrid-Suche (2026-09-25): Begriffe aus Anführungszeichen und bekannte
+    Schlagworte, längster zuerst, ohne Teilbegriffe doppelt."""
+    known = ["OpenSpace Agility", "OpenSpace", "Agility", "Intrinsify", "Zel", "Taylor"]
+    monkeypatch.setattr(terms, "list_terms", lambda: [{"term": t} for t in known])
+
+    assert main_module._question_terms("Wie hängen Intrinsify und OpenSpace Agility zusammen?") == [
+        "OpenSpace Agility",
+        "Intrinsify",
+    ]
+    assert main_module._question_terms('Was ist der „Democratic Taylorism“?') == ["Democratic Taylorism"]
+    # "Zel" ist zu kurz, "Taylor" steckt nur als Wortteil in "Taylorism"
+    assert main_module._question_terms("Was ist Zel und Taylorism?") == []
+
+
+def test_ensure_term_hits_forces_literal_chunk_only_when_missing(monkeypatch):
+    monkeypatch.setattr(terms, "list_terms", lambda: [{"term": "NUMMI"}, {"term": "Peripherie"}])
+    calls = []
+
+    def fake_query(embedding, top_k=5, where=None, where_document=None):
+        calls.append(where_document)
+        return {"ids": [["n1"]], "documents": [["Bei NUMMI ..."]], "metadatas": [[{"source_id": "s"}]]}
+
+    monkeypatch.setattr(vectorstore, "query", fake_query)
+    ids = ["a", "b", "c"]
+    docs = ["Die Peripherie ...", "x", "y"]
+    metas = [{}, {}, {}]
+
+    out_ids, out_docs, _ = main_module._ensure_term_hits(
+        ids, docs, metas, [0.1], "Was hat NUMMI mit der Peripherie zu tun?", top_k=3
+    )
+
+    # Peripherie steckt schon in einem Ausschnitt -> nur NUMMI wird nachgeholt
+    assert calls == [{"$contains": "NUMMI"}]
+    assert out_ids == ["a", "b", "n1"]
+    assert out_docs[-1] == "Bei NUMMI ..."

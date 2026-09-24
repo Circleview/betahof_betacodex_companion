@@ -3786,6 +3786,52 @@ def _source_matches_question_keywords(source: dict, question_text: str) -> bool:
     return False
 
 
+# Nutzerwunsch (2026-09-25, Backlog "zu oft keine Quellen"): die reine
+# Vektorsuche gab bei "Was ist {Schlagwort}?" nur in 56 % der Fälle einen
+# Ausschnitt weiter, der den Begriff überhaupt enthält (Messung über 82
+# Schlagworte, tools/retrieval_eval.py) - u.a. Doppelmanagement, NUMMI,
+# John Seddon, Intrinsify fielen durch. Hybrid-Suche: Begriffe aus der Frage
+# (Anführungszeichen oder bekannte Schlagworte aus terms.json) bekommen
+# garantiert einen Platz, sofern noch kein Ausschnitt sie enthält - jeweils
+# der vektor-nächste Chunk, der den Begriff wörtlich enthält.
+LEXICAL_MAX_TERMS = 3
+LEXICAL_MIN_TERM_LEN = 4
+_QUOTED_TERM_RE = re.compile(r'["„“”«»]([^"„“”«»]{3,80})["„“”«»]')
+
+
+def _question_terms(text: str) -> list[str]:
+    candidates = [q.strip() for q in _QUOTED_TERM_RE.findall(text)] + [
+        entry["term"]
+        for entry in terms.list_terms()
+        if len(entry["term"]) >= LEXICAL_MIN_TERM_LEN
+        and re.search(r"(?<!\w)" + re.escape(entry["term"]) + r"(?!\w)", text, re.IGNORECASE)
+    ]
+    chosen: list[str] = []
+    # Längster zuerst: "OpenSpace Agility" verdrängt "OpenSpace"/"Agility".
+    for term in sorted(dict.fromkeys(candidates), key=len, reverse=True):
+        if not any(term.lower() in c.lower() for c in chosen):
+            chosen.append(term)
+    return chosen[:LEXICAL_MAX_TERMS]
+
+
+def _ensure_term_hits(ids, documents, metadatas, embedding, text, top_k):
+    forced = []
+    for term in _question_terms(text):
+        if any(term.lower() in doc.lower() for doc in documents + [f[1] for f in forced]):
+            continue
+        hits = vectorstore.query(embedding, top_k=1, where_document={"$contains": term})
+        if hits["ids"][0]:
+            forced.append((hits["ids"][0][0], hits["documents"][0][0], hits["metadatas"][0][0]))
+    if not forced:
+        return ids, documents, metadatas
+    keep = min(len(ids), top_k - len(forced))
+    return (
+        ids[:keep] + [f[0] for f in forced],
+        documents[:keep] + [f[1] for f in forced],
+        metadatas[:keep] + [f[2] for f in forced],
+    )
+
+
 def _rerank_by_relevance(
     ids: list[str],
     documents: list[str],
@@ -4154,6 +4200,9 @@ def ask(question: QuestionIn, request: Request, x_lang: str = Header(default=i18
 
     ids, documents, metadatas = _rerank_by_relevance(
         ids, documents, metadatas, distances, sources, question.top_k
+    )
+    ids, documents, metadatas = _ensure_term_hits(
+        ids, documents, metadatas, query_embedding, query_text, question.top_k
     )
 
     unknown_label = "unbekannt" if x_lang == "de" else "unknown"

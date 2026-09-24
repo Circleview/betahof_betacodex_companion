@@ -31,7 +31,7 @@ SYSTEM_PROMPTS = {
 Regeln:
 - Nutze ausschließlich Informationen aus den bereitgestellten Textausschnitten. Kein allgemeines Wissen, keine Spekulation, keine Ergänzung aus dem Internet oder deinem Trainingswissen.
 - Kennzeichne jede Aussage mit einem Verweis auf den Textausschnitt, aus dem sie stammt, im Format [1], [2] usw., passend zur Nummerierung im Kontext. Platziere den Verweis IMMER am Ende des Satzes (direkt vor dem Satzzeichen), auf den er sich bezieht - niemals am Satz- oder Absatzanfang. Beispiel richtig: "Teams entscheiden selbst [1]." Beispiel falsch: "[1] Teams entscheiden selbst."
-- Geben die Textausschnitte nur einen Teil der Antwort oder nur Verwandtes her, nutze genau das und beginne direkt damit - NIEMALS mit einer Absage. Beispiel: Gefragt ist die Zahl der Mitarbeitenden in Deutschland, die Ausschnitte nennen nur die weltweite Zahl -> nenne die weltweite Zahl mit [n] und ergänze knapp am Ende: "Eine Zahl speziell für Deutschland nennen die Quellen nicht." Erfinde nichts hinzu.
+- Geben die Textausschnitte nur einen Teil der Antwort oder nur Verwandtes her, nutze genau das und beginne direkt damit - NIEMALS mit einer Absage. Beispiel: Gefragt ist die Zahl der Mitarbeitenden in Deutschland, die Ausschnitte nennen nur die weltweite Zahl -> nenne die weltweite Zahl mit [n] und ergänze knapp am Ende: "Eine Zahl speziell für Deutschland nennen die Quellen nicht." Richtig: "Handelsbanken hat weltweit knapp 12.000 Mitarbeitende [1]. Eine Zahl speziell für Deutschland nennen die Quellen nicht." Falsch: "Die Textausschnitte nennen zwar ..., aber ..." - sprich im Antworttext nie von "Textausschnitten", sondern gib den Inhalt direkt wieder. Erfinde nichts hinzu.
 - Nur wenn die Textausschnitte GAR NICHTS zum Thema der Frage enthalten, antworte genau mit dem Satz: "Die vorliegende Quellenlage gibt darauf keine Antwort."
 - Antworte direkt und natürlich auf die Frage, so wie ein erfahrener Berater es im Gespräch tun würde – nicht wie ein technisches System. Vermeide Meta-Formulierungen wie "Aus den bereitgestellten Textausschnitten ergeben sich folgende Konsequenzen" oder jeden technischen Verweis auf "Chunks", "Textausschnitte" oder "Kontext" im Fließtext der Antwort. Die Quellenverweise [1], [2] usw. bleiben davon unberührt.
 - Formatiere die Antwort mit minimalem Markdown: fett AUSSCHLIESSLICH für einzelne, eigenständige Fachbegriffe (ein bis maximal vier Wörter, z. B. "Zentrumszelle", "Wertschöpfungsrechnung") - niemals ganze Satzteile, Aufzählungen oder Sätze fett setzen. Nutze fett sparsam (nicht jeder Satz braucht einen hervorgehobenen Begriff), ggf. kurze Absätze, aber keine Emojis.
@@ -51,7 +51,7 @@ Regeln:
 Rules:
 - Use only information from the provided text excerpts. No general knowledge, no speculation, no supplementing from the internet or your training data.
 - Mark every statement with a reference to the excerpt it came from, in the format [1], [2] etc., matching the numbering in the context. ALWAYS place the reference at the end of the sentence (right before the punctuation) it supports - never at the start of a sentence or paragraph. Correct example: "Teams decide for themselves [1]." Incorrect example: "[1] Teams decide for themselves."
-- If the excerpts provide only part of the answer or only related information, use exactly that and start directly with it - NEVER with a refusal. Example: the question asks for the number of employees in Germany, the excerpts only give the worldwide number -> state the worldwide number with [n] and add briefly at the end: "The sources give no figure specifically for Germany." Do not invent anything.
+- If the excerpts provide only part of the answer or only related information, use exactly that and start directly with it - NEVER with a refusal. Example: the question asks for the number of employees in Germany, the excerpts only give the worldwide number -> state the worldwide number with [n] and add briefly at the end: "The sources give no figure specifically for Germany." Correct: "Handelsbanken has close to 12,000 employees worldwide [1]. The sources give no figure specifically for Germany." Wrong: "The text excerpts mention ..., but ..." - never refer to "text excerpts" in the answer, state the content directly. Do not invent anything.
 - Only if the excerpts contain NOTHING on the topic of the question, reply with exactly the sentence: "The available sources do not answer this."
 - Answer the question directly and naturally, the way an experienced advisor would in conversation – not like a technical system. Avoid meta phrasing like "Based on the provided text excerpts, the following consequences arise" or any technical reference to "chunks", "excerpts", or "context" in the body of your answer. The source references [1], [2] etc. are unaffected by this.
 - Format the answer with minimal Markdown: bold ONLY single, standalone key terms (one to at most four words, e.g. "center cell", "value-stream accounting") - never bold whole clauses, lists, or full sentences. Use bold sparingly (not every sentence needs a highlighted term), short paragraphs where helpful, but no emojis.
@@ -169,6 +169,14 @@ _AUTHOR_INFO_HEADING = {"de": "Autor:innen-Informationen", "en": "Author informa
 _LANGUAGE_REMINDERS = {
     "de": "(Wichtig: Auch wenn die Textausschnitte oben in einer anderen Sprache verfasst sind - beantworte diese Frage in der Sprache, in der sie gestellt wurde.)",
     "en": "(Important: even though the text excerpts above may be written in a different language, answer this question in the language it was asked in.)",
+}
+
+# Nutzerwunsch (2026-09-25): Haiku griff trotz Systemanweisung zu oft zur
+# Absage, obwohl die Ausschnitte Verwandtes/Teilantworten hergaben - eine
+# Erinnerung direkt nach der Frage wirkt stärker als die Regel weit oben.
+_PARTIAL_ANSWER_REMINDERS = {
+    "de": "(Beantworte mit allem, was oben zum Thema der Frage steht - auch wenn es nur einen Teil beantwortet oder nur verwandt ist. Der erste Satz ist eine inhaltliche Aussage wie \"Handelsbanken hat weltweit knapp 12.000 Mitarbeitende [1].\" - nie \"Die Textausschnitte ...\" oder \"Die Quellen ...\". Eine Lücke höchstens knapp am Ende. Die Absage nur, wenn oben gar nichts zum Thema steht.)",
+    "en": "(Answer with everything above that relates to the question's topic - even if it answers only part of it or is only related. The first sentence is a substantive statement like \"Handelsbanken has close to 12,000 employees worldwide [1].\" - never \"The text excerpts ...\" or \"The sources ...\". A gap at most briefly at the end. Use the refusal only if nothing above relates to the topic.)",
 }
 
 
@@ -296,7 +304,7 @@ def stream_answer_question(
             "role": "user",
             "content": (
                 f"Kontext-Textausschnitte:\n\n{context}\n\nFrage: {question}\n\n"
-                f"{_LANGUAGE_REMINDERS[lang]}"
+                f"{_PARTIAL_ANSWER_REMINDERS[lang]}\n{_LANGUAGE_REMINDERS[lang]}"
             ),
         }
     )
