@@ -8053,6 +8053,17 @@ def test_question_terms_prefers_longest_known_term_and_quotes(monkeypatch):
     assert main_module._question_terms("Was ist Zel und Taylorism?") == []
 
 
+def test_question_terms_matches_inflected_forms(monkeypatch):
+    """Backlog (2026-09-25): gebeugte Formen in der Frage treffen das
+    Schlagwort in Grundform - der Chunk-Abgleich läuft dann mit der Grundform."""
+    known = ["Leistungsbeurteilung", "Zellstruktur", "Team"]
+    monkeypatch.setattr(terms, "list_terms", lambda: [{"term": t} for t in known])
+
+    assert main_module._question_terms("Was taugen Leistungsbeurteilungen?") == ["Leistungsbeurteilung"]
+    assert main_module._question_terms("Wie entstehen Zellstrukturen in Teams?") == ["Zellstruktur", "Team"]
+    assert main_module._question_terms("Was macht ein Teamleiter?") == []
+
+
 def test_ensure_term_hits_forces_literal_chunk_only_when_missing(monkeypatch):
     monkeypatch.setattr(terms, "list_terms", lambda: [{"term": "NUMMI"}, {"term": "Peripherie"}])
     calls = []

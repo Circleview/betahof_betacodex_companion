@@ -3814,6 +3814,11 @@ def _source_matches_question_keywords(source: dict, question_text: str) -> bool:
 # der vektor-nächste Chunk, der den Begriff wörtlich enthält.
 LEXICAL_MAX_TERMS = 3
 LEXICAL_MIN_TERM_LEN = 4
+# Backlog (2026-09-25): gebeugte Formen in der Frage ("Leistungsbeurteilungen",
+# "Zellstrukturen") treffen das Schlagwort in Grundform. ponytail: nur
+# typische deutsche/englische Endungen, kein Stemmer - add when: Umlaut-
+# Plurale o. Ä. auffallen.
+_INFLECTION_SUFFIX = r"(?:e|n|s|en|er|es|ern|ns)?"
 _QUOTED_TERM_RE = re.compile(r'["„“”«»]([^"„“”«»]{3,80})["„“”«»]')
 
 
@@ -3822,7 +3827,7 @@ def _question_terms(text: str) -> list[str]:
         entry["term"]
         for entry in terms.list_terms()
         if len(entry["term"]) >= LEXICAL_MIN_TERM_LEN
-        and re.search(r"(?<!\w)" + re.escape(entry["term"]) + r"(?!\w)", text, re.IGNORECASE)
+        and re.search(r"(?<!\w)" + re.escape(entry["term"]) + _INFLECTION_SUFFIX + r"(?!\w)", text, re.IGNORECASE)
     ]
     chosen: list[str] = []
     # Längster zuerst: "OpenSpace Agility" verdrängt "OpenSpace"/"Agility".
