@@ -10,11 +10,13 @@
 <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
 <title>404 – BetaCodex Chat</title>
 <link rel="stylesheet" href="/style.css">
+<script src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit" async></script>
 </head>
 <body>
 <a href="#error-content" class="skip-link" data-i18n="common.skipToContent"></a>
-<header>
-  <h1><span class="brand-dot" aria-hidden="true"></span><span data-i18n="index.brandName"></span></h1>
+<header id="site-header">
+  <span id="lang-switcher" class="lang-switcher"></span>
+  <span id="auth-widget" class="auth-widget"></span>
 </header>
 
 <section id="error-content" class="error-page" tabindex="-1">
@@ -25,6 +27,7 @@
 
 <footer class="site-footer" id="site-footer"></footer>
 
+<script type="module" src="/init-header.js"></script>
 <script type="module" src="/init-footer.js"></script>
 </body>
 </html>

@@ -4099,3 +4099,11 @@ def test_view_source_link_opens_reader_dialog_instead_of_new_tab():
     # Geschützte Quellen: Server liefert den Text leer, der Dialog erklärt das.
     assert "common.readerRestrictedNote" in reader
     assert "renderMarkdown(s.text)" in reader
+
+
+def test_404_page_uses_shared_site_header():
+    """Nutzer-Meldung (2026-09-25): auf der 404-Seite fehlte die
+    Navigationsleiste - sie muss denselben Header wie alle Seiten nutzen."""
+    html = (STATIC_DIR / "404.html").read_text()
+    assert '<header id="site-header">' in html
+    assert '<script type="module" src="/init-header.js"></script>' in html
