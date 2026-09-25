@@ -1974,6 +1974,38 @@ def test_ask_logs_no_answer_event_when_model_says_it_cannot_answer(client, monke
     assert no_answer_entries[0]["answer"] == "Die vorliegende Quellenlage gibt darauf keine Antwort."
 
 
+def test_ask_shows_friendly_explanation_instead_of_bare_no_answer_phrase(client, monkeypatch):
+    """Nutzerwunsch (2026-09-25): statt des knappen Absage-Satzes sehen
+    Nutzer:innen eine freundliche, erklärende Antwort - auch im Stream. Das
+    Fragen-Log bekommt weiter den kurzen Satz (Lückenanalyse)."""
+    monkeypatch.setattr(main_module, "IS_DEV_ENVIRONMENT", False)
+    raw = "Die vorliegende Quellenlage gibt darauf keine Antwort."
+    monkeypatch.setattr(llm, "stream_answer_question", lambda *a, **k: iter(raw[i : i + 5] for i in range(0, len(raw), 5)))
+    client.post("/api/sources", json={"title": "Q", "text": "Text zu einem anderen Thema."})
+
+    res = client.post("/api/ask", json={"question": "Frage ohne Antwort?", "is_first_message": True})
+
+    events = [json.loads(line) for line in res.text.splitlines()]
+    streamed = "".join(e["text"] for e in events if e["type"] == "delta")
+    answer = [e["answer"] for e in events if e["type"] == "answer"][-1]
+    assert answer == main_module.NO_ANSWER_EXPLANATIONS["de"]
+    assert streamed == answer
+    assert "Quellenlage" not in streamed
+    entries = question_log.list_entries()
+    assert entries[0]["answer"] == raw
+    assert "no_answer" in entries[0]["event_types"]
+
+
+def test_ask_shows_english_explanation_for_english_no_answer_phrase(client, monkeypatch):
+    monkeypatch.setattr(llm, "stream_answer_question", lambda *a, **k: iter(["The available sources do not answer this."]))
+    client.post("/api/sources", json={"title": "Q", "text": "Text."})
+
+    res = client.post("/api/ask", json={"question": "Unanswerable?"}, headers={"X-Lang": "en"})
+
+    answer = [json.loads(line)["answer"] for line in res.text.splitlines() if json.loads(line)["type"] == "answer"][-1]
+    assert answer == main_module.NO_ANSWER_EXPLANATIONS["en"]
+
+
 def test_ask_drops_no_answer_lead_when_content_follows(client, monkeypatch):
     """Nutzerwunsch (2026-09-24): der Absage-Satz vor einer echten
     Teilantwort fällt weg - auch im Stream (in kleinen Stücken geliefert)

@@ -3899,6 +3899,36 @@ NO_ANSWER_PHRASES = {
     "en": "The available sources do not answer this.",
 }
 
+# Nutzerwunsch (2026-09-25): steht der Absage-Satz ALLEIN, sehen Nutzer:innen
+# statt des knappen Satzes diese freundliche Erklärung. Der Satz selbst bleibt
+# der Marker (Prompt, Fragen-Log) - ins Fragen-Log geht weiter der kurze Satz.
+NO_ANSWER_EXPLANATIONS = {
+    "de": (
+        "Dazu habe ich in den kuratierten Quellen leider nichts gefunden.\n\n"
+        "Ich antworte bewusst nur auf Basis der hinterlegten Texte zum BetaCodex, "
+        "damit jede Aussage belegt ist – steht dort nichts Passendes, rate ich lieber nicht.\n\n"
+        "Was helfen kann:\n"
+        "- **Anders formulieren** – mit Begriffen, die im BetaCodex üblich sind, "
+        "z. B. „Gesetze“ statt „Prinzipien“ oder „Zellstruktur“ statt „Teamorganisation“.\n"
+        "- **Konkreter fragen** – ein bestimmtes Konzept, eine Autorin oder einen Autor nennen.\n"
+        "- **Quellen erkunden** – in der [Quellenübersicht](/import.html) oder im "
+        "[Explore-Modus](/explore.html) sehen, welche Themen abgedeckt sind.\n\n"
+        "Fragen ohne Antwort werten wir anonym aus, um gezielt passende Quellen zu ergänzen."
+    ),
+    "en": (
+        "Unfortunately, I couldn't find anything on this in the curated sources.\n\n"
+        "I deliberately answer only based on the stored BetaCodex texts so that every "
+        "statement is backed up – if nothing there fits, I'd rather not guess.\n\n"
+        "What can help:\n"
+        "- **Rephrase** – use terms common in the BetaCodex, "
+        "e.g. “laws” instead of “principles” or “cell structure” instead of “team organization”.\n"
+        "- **Be more specific** – name a particular concept or author.\n"
+        "- **Explore the sources** – see which topics are covered in the "
+        "[source overview](/import.html) or the [Explore mode](/explore.html).\n\n"
+        "We evaluate unanswered questions anonymously to add fitting sources."
+    ),
+}
+
 
 # Nutzerwunsch (2026-09-24): Das Modell stellt den Absage-Satz trotz
 # Anweisung manchmal einer echten (Teil-)Antwort voran ("Die vorliegende
@@ -3909,12 +3939,12 @@ NO_ANSWER_PHRASES = {
 # weiterhin den Rohtext - für die Lückenanalyse zählt auch die Teilantwort.
 def _drop_no_answer_lead(text: str, final: bool) -> tuple[str, bool]:
     stripped = text.lstrip()
-    for phrase in NO_ANSWER_PHRASES.values():
+    for lang, phrase in NO_ANSWER_PHRASES.items():
         if stripped.startswith(phrase):
             rest = stripped[len(phrase):].lstrip()
             if rest:
                 return rest, False
-            return (text, False) if final else ("", True)
+            return (NO_ANSWER_EXPLANATIONS[lang], False) if final else ("", True)
         if stripped and phrase.startswith(stripped) and not final:
             return "", True
     return text, False
@@ -4033,18 +4063,20 @@ def _ask_event_stream(
     # first_question geloggt (first_question_log_id bekannt), wird
     # "no_answer" dort ERGÄNZT statt einen zweiten, doppelten Eintrag mit
     # identischem Text anzulegen (siehe question_log.add_event_type).
+    # Reine Absage: ins Fragen-Log der kurze Satz statt der langen Erklärung.
+    log_answer = raw_answer_text.strip() if answer_text in NO_ANSWER_EXPLANATIONS.values() else answer_text
     if should_log_question_events and NO_ANSWER_PHRASES.get(lang, NO_ANSWER_PHRASES["de"]) in raw_answer_text:
         if first_question_log_id:
             question_log.add_event_type(first_question_log_id, "no_answer")
         else:
-            question_log.log_no_answer(question_text, answer_text)
+            question_log.log_no_answer(question_text, log_answer)
 
     # Nutzerwunsch (Livegang-Vorbereitung, 2026-09-10): die Antwort zur
     # ersten Frage soll ebenfalls im Fragen-Log stehen - log_question() oben
     # in ask() konnte sie noch nicht kennen (lief bewusst VOR der Suche,
     # siehe dortiger Kommentar), wird hier nachgetragen.
     if first_question_log_id:
-        question_log.set_answer(first_question_log_id, answer_text)
+        question_log.set_answer(first_question_log_id, log_answer)
 
     # Backlog (2026-07-31, ergaenzt 2026-08-03): der fertige Antworttext
     # steht hier bereits fest - die folgende Highlight-Berechnung (lokales
