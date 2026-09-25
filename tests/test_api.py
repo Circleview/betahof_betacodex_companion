@@ -8114,3 +8114,25 @@ def test_ask_logs_no_answer_when_phrase_comes_in_question_language_not_ui_langua
     answer = [json.loads(line)["answer"] for line in res.text.splitlines() if json.loads(line)["type"] == "answer"][-1]
     assert answer == main_module.NO_ANSWER_EXPLANATIONS["en"]
     assert [e for e in question_log.list_entries() if "no_answer" in e["event_types"]]
+
+
+def test_creative_context_uses_hybrid_search_for_instruction_terms(client, monkeypatch):
+    """Backlog (2026-09-25): auch Kreativ-Modus/MCP bekommen für Begriffe aus
+    der Anweisung einen garantierten Ausschnitt, der sie wörtlich enthält."""
+    client.post("/api/sources", json={"title": "Q", "text": "Irgendein Text."})
+    monkeypatch.setattr(terms, "list_terms", lambda: [{"term": "NUMMI"}])
+    calls = []
+
+    def fake_query(embedding, top_k=5, where=None, where_document=None):
+        calls.append(where_document)
+        if where_document:
+            return {"ids": [["n1"]], "documents": [["Bei NUMMI ..."]], "metadatas": [[{"source_id": "s", "title": "NUMMI-Studie", "url": "", "date": ""}]]}
+        return {"ids": [["a"]], "documents": [["Anderes Thema."]], "metadatas": [[{"source_id": "s2", "title": "Anderes", "url": "", "date": ""}]]}
+
+    monkeypatch.setattr(vectorstore, "query", fake_query)
+
+    llm_chunks, sources = main_module._creative_context("Schreib über NUMMI", "", "de")
+
+    assert {"$contains": "NUMMI"} in calls
+    assert any(c["text"] == "Bei NUMMI ..." for c in llm_chunks)
+    assert "NUMMI-Studie" in [s["title"] for s in sources]

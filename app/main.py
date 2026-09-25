@@ -4455,7 +4455,18 @@ def _creative_context(instruction: str, document: str, x_lang: str) -> tuple[lis
         query_text = _creative_retrieval_query(instruction, document)
         query_embedding = embeddings.embed_query(query_text)
         curated_hits = vectorstore.query(query_embedding, top_k=CREATIVE_TOP_K)
-        for doc, meta in zip(curated_hits["documents"][0], curated_hits["metadatas"][0]):
+        # Backlog (2026-09-25): Hybrid-Suche wie bei /api/ask - Begriffe aus
+        # der Anweisung (nicht aus dem ggf. langen Dokument) bekommen einen
+        # garantierten Ausschnitt, der sie wörtlich enthält.
+        _, hit_docs, hit_metas = _ensure_term_hits(
+            curated_hits["ids"][0],
+            curated_hits["documents"][0],
+            curated_hits["metadatas"][0],
+            query_embedding,
+            instruction,
+            CREATIVE_TOP_K,
+        )
+        for doc, meta in zip(hit_docs, hit_metas):
             authors_list = meta.get("authors") or ([meta["author"]] if meta.get("author") else [])
             llm_chunks.append(
                 {
