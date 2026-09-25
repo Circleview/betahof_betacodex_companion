@@ -4099,6 +4099,8 @@ def test_view_source_link_opens_reader_dialog_instead_of_new_tab():
     # Geschützte Quellen: Server liefert den Text leer, der Dialog erklärt das.
     assert "common.readerRestrictedNote" in reader
     assert "renderMarkdown(s.text)" in reader
+    # Volltext nur ohne Web-Quelle (2026-09-26) - sonst führt der Link zum Original.
+    assert reader.index("if (s.url || s.listen_url) return article;") < reader.index("renderMarkdown(s.text)")
 
 
 def test_404_page_uses_shared_site_header():

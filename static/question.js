@@ -239,6 +239,9 @@ function buildSourceReader(s) {
     article.appendChild(sectionHeading('common.readerKeyTerms'));
     article.appendChild(p);
   }
+  // Nutzerwunsch (2026-09-26): Volltext nur, wenn es gar keine Web-Quelle
+  // gibt - sonst führt der Link oben zum Original.
+  if (s.url || s.listen_url) return article;
   const text = document.createElement('div');
   text.className = 'source-reader-text';
   if (s.text) {
