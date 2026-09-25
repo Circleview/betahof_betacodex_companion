@@ -3905,15 +3905,14 @@ NO_ANSWER_PHRASES = {
 NO_ANSWER_EXPLANATIONS = {
     "de": (
         "Dazu habe ich in den kuratierten Quellen leider nichts gefunden.\n\n"
-        "Ich antworte bewusst nur auf Basis der hinterlegten Texte zum BetaCodex, "
+        "Ich antworte bewusst nur auf Basis der hinterlegten Texte zum Beta-Kodex, "
         "damit jede Aussage belegt ist – steht dort nichts Passendes, rate ich lieber nicht.\n\n"
         "Was helfen kann:\n"
-        "- **Anders formulieren** – mit Begriffen, die im BetaCodex üblich sind, "
+        "- **Anders formulieren** – mit Begriffen, die im Beta-Kodex üblich sind, "
         "z. B. „Gesetze“ statt „Prinzipien“ oder „Zellstruktur“ statt „Teamorganisation“.\n"
         "- **Konkreter fragen** – ein bestimmtes Konzept, eine Autorin oder einen Autor nennen.\n"
         "- **Quellen erkunden** – in der [Quellenübersicht](/import.html) oder im "
-        "[Explore-Modus](/explore.html) sehen, welche Themen abgedeckt sind.\n\n"
-        "Fragen ohne Antwort werten wir anonym aus, um gezielt passende Quellen zu ergänzen."
+        "[Explore-Modus](/explore.html) sehen, welche Themen abgedeckt sind."
     ),
     "en": (
         "Unfortunately, I couldn't find anything on this in the curated sources.\n\n"
@@ -3924,8 +3923,7 @@ NO_ANSWER_EXPLANATIONS = {
         "e.g. “laws” instead of “principles” or “cell structure” instead of “team organization”.\n"
         "- **Be more specific** – name a particular concept or author.\n"
         "- **Explore the sources** – see which topics are covered in the "
-        "[source overview](/import.html) or the [Explore mode](/explore.html).\n\n"
-        "We evaluate unanswered questions anonymously to add fitting sources."
+        "[source overview](/import.html) or the [Explore mode](/explore.html)."
     ),
 }
 
