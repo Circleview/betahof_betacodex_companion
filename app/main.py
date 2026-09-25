@@ -1532,6 +1532,41 @@ def _normalize_pflaeging_spelling_once() -> None:
         _register_all_terms(source_id, sources[source_id])
 
 
+# Nutzerwunsch (2026-09-25): im Deutschen "Beta-Kodex", im Englischen
+# "BetaCodex". Eigennamen ("BetaCodex Chat", "BetaCodex Network") bleiben.
+_BETACODEX_IN_GERMAN_RE = re.compile(r"BetaCodex(?! (?:Chat|Network))")
+
+
+def _normalize_beta_kodex_spelling_once() -> None:
+    """Einmalige Datenkorrektur (wie _normalize_pflaeging_spelling_once):
+    KI-Zusammenfassungen/Schlagworte in der jeweils richtigen Schreibweise.
+    Titel und Volltext bleiben unangetastet (Originalinhalt). Idempotent."""
+    fixers = {
+        "de": lambda value: _BETACODEX_IN_GERMAN_RE.sub("Beta-Kodex", value),
+        "en": lambda value: value.replace("Beta-Kodex", "BetaCodex"),
+    }
+    sources = _load_sources()
+    changed_source_ids = []
+    for source_id, entry in sources.items():
+        touched = False
+        for lang, fix in fixers.items():
+            value = entry.get(f"summary_{lang}")
+            if value and fix(value) != value:
+                entry[f"summary_{lang}"] = fix(value)
+                touched = True
+            value = entry.get(f"key_terms_{lang}")
+            if value and [fix(term) for term in value] != value:
+                entry[f"key_terms_{lang}"] = [fix(term) for term in value]
+                touched = True
+        if touched:
+            changed_source_ids.append(source_id)
+    if not changed_source_ids:
+        return
+    _save_sources(sources)
+    for source_id in changed_source_ids:
+        _register_all_terms(source_id, sources[source_id])
+
+
 def _backfill_term_languages_once() -> None:
     """Einmalige Datenkorrektur (Nutzerwunsch 2026-09-22): terms.json
     unterschied bisher nicht nach Sprache - deutsche und englische
@@ -1561,6 +1596,7 @@ def _start_background_workers() -> None:
     dem zugehörigen Sweep-Thread."""
     users.ensure_bootstrap_admin(os.environ.get("SYSTEM_ADMIN_EMAIL", ""))
     _normalize_pflaeging_spelling_once()
+    _normalize_beta_kodex_spelling_once()
     _backfill_term_languages_once()
     threading.Thread(
         target=_run_periodic, args=(_run_url_health_check_once, URL_HEALTH_CHECK_INTERVAL_SECONDS), daemon=True

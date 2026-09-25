@@ -8136,3 +8136,26 @@ def test_creative_context_uses_hybrid_search_for_instruction_terms(client, monke
     assert {"$contains": "NUMMI"} in calls
     assert any(c["text"] == "Bei NUMMI ..." for c in llm_chunks)
     assert "NUMMI-Studie" in [s["title"] for s in sources]
+
+
+def test_normalize_beta_kodex_spelling_once_per_language_and_idempotent(client):
+    """Nutzerwunsch (2026-09-25): im Deutschen "Beta-Kodex", im Englischen
+    "BetaCodex" - Eigennamen, Titel und Volltext bleiben unverändert."""
+    source_id = client.post(
+        "/api/sources", json={"title": "Presenting the BetaCodex", "text": "Im Englischen BetaCodex."}
+    ).json()["id"]
+    sources = main_module._load_sources()
+    sources[source_id]["summary_de"] = "Der BetaCodex und das BetaCodex-Modell; Gründer des BetaCodex Networks."
+    sources[source_id]["summary_en"] = "The Beta-Kodex explained."
+    sources[source_id]["key_terms_de"] = ["BetaCodex", "Selbstorganisation"]
+    main_module._save_sources(sources)
+
+    main_module._normalize_beta_kodex_spelling_once()
+    main_module._normalize_beta_kodex_spelling_once()
+
+    fixed = main_module._load_sources()[source_id]
+    assert fixed["summary_de"] == "Der Beta-Kodex und das Beta-Kodex-Modell; Gründer des BetaCodex Networks."
+    assert fixed["summary_en"] == "The BetaCodex explained."
+    assert fixed["key_terms_de"] == ["Beta-Kodex", "Selbstorganisation"]
+    assert fixed["title"] == "Presenting the BetaCodex"
+    assert fixed["text"] == "Im Englischen BetaCodex."

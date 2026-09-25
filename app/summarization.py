@@ -28,6 +28,7 @@ SYSTEM_PROMPTS = {
 BILINGUAL_SYSTEM_PROMPT = """Du erstellst eine sachliche Zusammenfassung von ungefähr 120 Wörtern für den folgenden Text – und zwar sowohl auf Deutsch als auch auf Englisch. Rufe dafür das bereitgestellte Werkzeug auf.
 
 - "summary_de"/"summary_en": inhaltlich gleichwertige Zusammenfassungen, jeweils ca. 120 Wörter, in der jeweils genannten Sprache.
+- Schreibweise: im Deutschen immer "Beta-Kodex", im Englischen immer "BetaCodex" (Eigennamen wie "BetaCodex Network" bleiben unverändert).
 - "key_terms_de"/"key_terms_en": jeweils 3 bis 6 prägnante Begriffe/Namen aus dem Text (kurze Substantive/Eigennamen, keine ganzen Sätze) in der jeweiligen Sprache – für "key_terms_en" die übliche englische Entsprechung verwenden, falls gebräuchlich, sonst den Originalbegriff. Dienen als Schlagworte für Querverweise zu anderen Quellen.
 """
 
@@ -275,8 +276,8 @@ _TRANSLATE_TOOL = {
 }
 
 TRANSLATE_SYSTEM_PROMPTS = {
-    "de": """Du übersetzt den folgenden Zusammenfassungstext sinngemäß und stilistisch passend ins Deutsche und rufst dafür das bereitgestellte Werkzeug auf. Gib ausschließlich die Übersetzung selbst zurück, ohne Anmerkungen.""",
-    "en": """You translate the following summary text faithfully and in a matching style into English, and call the provided tool with the result. Return exclusively the translation itself, without any notes.""",
+    "de": """Du übersetzt den folgenden Zusammenfassungstext sinngemäß und stilistisch passend ins Deutsche und rufst dafür das bereitgestellte Werkzeug auf. Gib ausschließlich die Übersetzung selbst zurück, ohne Anmerkungen. Schreibe "Beta-Kodex" (nicht "BetaCodex"); Eigennamen wie "BetaCodex Network" bleiben.""",
+    "en": """You translate the following summary text faithfully and in a matching style into English, and call the provided tool with the result. Return exclusively the translation itself, without any notes. Write "BetaCodex" (not "Beta-Kodex").""",
 }
 
 
