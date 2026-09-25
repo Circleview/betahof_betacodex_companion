@@ -454,6 +454,7 @@
   "creative.undoTitle": "Rückgängig – letzte Änderung durch KI oder Formatierung zurücknehmen",
   "creative.redoTitle": "Wiederholen – zurückgenommene Änderung wiederherstellen",
   "creative.rateLimitedCountdown": "Zu viele Anfragen – nächster Versuch in {time} möglich.",
+  "creative.cooldownButtonTitle": "Zu viele Anfragen – wieder möglich in {time}",
   "questionLog.filter.creative": "Kreativ-Modus",
   "questionLog.eventType.section": "Abschnitt"
 }

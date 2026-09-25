@@ -4634,6 +4634,14 @@ details a {
   cursor: not-allowed;
 }
 
+/* Nutzerwunsch (2026-09-25): gesperrt (Cooldown/laufende Anfrage) sieht das
+   Anweisungsfeld wie Absenden-Button und Mikrofon ausgegraut aus. */
+#creative-instruction:disabled,
+.creative-section-instruction:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .creative-toolbar {
   display: flex;
   flex-wrap: wrap;

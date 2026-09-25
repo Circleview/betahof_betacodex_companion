@@ -99,26 +99,43 @@ export function formatCountdown(seconds) {
 
 let cooldownUntil = 0;
 let cooldownTimer = null;
+// Von setBusy gepflegt - nach Ablauf des Cooldowns gilt wieder dieser Zustand.
+let uiBusy = false;
+let submitShowsCountdown = false;
 
 function cooldownActive() {
   return cooldownUntil > Date.now();
 }
 
+// Nutzerwunsch (2026-09-25): der Countdown stand nur unter dem Text - bei
+// langen Dokumenten unsichtbar. Er erscheint jetzt auch in den Absenden-
+// Buttons (mit Tooltip), und Eingabefeld + Mikrofon sind wie der Button
+// ausgegraut, solange nichts abgeschickt werden kann.
 function applyCooldown() {
-  const blocked = cooldownActive();
+  const left = Math.ceil((cooldownUntil - Date.now()) / 1000);
+  const blocked = left > 0;
+  const disabled = blocked || uiBusy;
+  const time = blocked ? formatCountdown(left) : '';
+  const tooltip = blocked ? t('creative.cooldownButtonTitle', { time }) : '';
+  submitBtn.disabled = disabled;
+  instructionField.disabled = disabled;
+  creativeMicButton.disabled = disabled;
   if (blocked) {
-    submitBtn.disabled = true;
-    currentSectionEls.forEach((els) => {
-      els.submitBtn.disabled = true;
-    });
-  } else {
-    // Ohne Cooldown gilt wieder der Busy-Zustand (setBusy sperrt dieselben
-    // Felder während einer laufenden Anfrage).
-    submitBtn.disabled = instructionField.disabled;
-    currentSectionEls.forEach((els) => {
-      els.submitBtn.disabled = els.textarea.disabled;
-    });
+    submitBtn.textContent = `${t('creative.submitButton')} (${time})`;
+    submitShowsCountdown = true;
+  } else if (submitShowsCountdown) {
+    submitBtn.textContent = t('creative.submitButton');
+    submitShowsCountdown = false;
   }
+  submitBtn.title = tooltip;
+  const sectionLabel = t('creative.sectionSubmitButton');
+  currentSectionEls.forEach((els) => {
+    els.submitBtn.disabled = disabled;
+    els.micBtn.disabled = disabled;
+    els.textarea.disabled = disabled;
+    els.submitBtn.querySelector('.send-label').textContent = blocked ? `${sectionLabel} (${time})` : sectionLabel;
+    els.submitBtn.title = tooltip || sectionLabel;
+  });
 }
 
 function tickCooldown() {
@@ -912,9 +929,16 @@ toolbarButtons.forEach((btn) => {
       documentField.selectionEnd,
       btn.dataset.mdAction
     );
+    // Nutzerwunsch (2026-09-25): das Neusetzen von .value springt ans
+    // Textende - Scroll-Position merken und danach wiederherstellen, damit
+    // die Ansicht an der formatierten Stelle stehen bleibt.
+    const { scrollTop } = documentField;
+    const pageScroll = window.scrollY;
     documentField.value = result.value;
-    documentField.focus();
+    documentField.focus({ preventScroll: true });
     documentField.setSelectionRange(result.selectionStart, result.selectionEnd);
+    documentField.scrollTop = scrollTop;
+    window.scrollTo({ top: pageScroll });
   });
 });
 
@@ -981,6 +1005,7 @@ function setBusy(busy, { forceEditMode = true } = {}) {
   if (busy && previewMode && forceEditMode) {
     setPreviewMode(false);
   }
+  uiBusy = busy;
   submitBtn.disabled = busy;
   instructionField.disabled = busy;
   creativeMicButton.disabled = busy;

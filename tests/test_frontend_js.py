@@ -4107,3 +4107,28 @@ def test_404_page_uses_shared_site_header():
     html = (STATIC_DIR / "404.html").read_text()
     assert '<header id="site-header">' in html
     assert '<script type="module" src="/init-header.js"></script>' in html
+
+
+def test_creative_cooldown_shows_on_buttons_and_greys_out_inputs():
+    """Nutzerwunsch (2026-09-25): Countdown auch im Absenden-Button, und
+    Anweisungsfeld + Mikrofon gesperrt, solange nichts abgeschickt werden kann."""
+    js_source = (STATIC_DIR / "creative.js").read_text()
+    match = re.search(r"function applyCooldown\(\) \{.*?\n\}", js_source, re.S)
+    assert match, "applyCooldown wurde nicht gefunden."
+    body = match.group(0)
+    assert "instructionField.disabled = disabled" in body
+    assert "creativeMicButton.disabled = disabled" in body
+    assert "els.micBtn.disabled = disabled" in body
+    assert "creative.cooldownButtonTitle" in body
+    css = (STATIC_DIR / "style.css").read_text()
+    assert "#creative-instruction:disabled" in css
+
+
+def test_creative_format_buttons_keep_scroll_position():
+    """Nutzerwunsch (2026-09-25): Formatieren springt nicht mehr ans Textende."""
+    js_source = (STATIC_DIR / "creative.js").read_text()
+    match = re.search(r"btn\.addEventListener\('click', \(\) => \{\s*rememberForUndo\(\);.*?\n  \}\);", js_source, re.S)
+    assert match
+    body = match.group(0)
+    assert "documentField.focus({ preventScroll: true })" in body
+    assert "documentField.scrollTop = scrollTop" in body

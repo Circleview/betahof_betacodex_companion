@@ -454,6 +454,7 @@
   "creative.undoTitle": "Undo – revert the last AI or formatting change",
   "creative.redoTitle": "Redo – restore the undone change",
   "creative.rateLimitedCountdown": "Too many requests – you can try again in {time}.",
+  "creative.cooldownButtonTitle": "Too many requests – possible again in {time}",
   "questionLog.filter.creative": "Creative mode",
   "questionLog.eventType.section": "Section"
 }
