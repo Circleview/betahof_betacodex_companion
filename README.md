@@ -242,8 +242,11 @@ Andere MCP-Clients brauchen die Adresse `https://chat.betacodex.org/mcp`
   protokolliert im Änderungs-Log und pro Quelle rückgängig machbar. Die
   Quellen eines Schlagworts lassen sich dort direkt aufklappen und
   bearbeiten.
-- Bearbeiten inline in der Quellenliste; Löschen ist ein Papierkorb mit
-  Rückholfrist statt eines endgültigen Vorgangs.
+- Bearbeiten inline in der Quellenliste – oder direkt aus der Konversation:
+  Der Stift an einem Zitat bzw. in der Seitenleiste öffnet dasselbe
+  Formular als Dialog, Änderungen erscheinen sofort in der laufenden
+  Konversation. Löschen ist ein Papierkorb mit Rückholfrist statt eines
+  endgültigen Vorgangs.
 - Relevanz-Score pro Quelle (1–10) für die spätere Sortierung/Gewichtung.
 - Wöchentliche Hintergrund-Prüfung aller Quellen-Links; ein Warn-Badge am
   "Quellen"-Menüpunkt macht auf defekte Links aufmerksam (von jeder Seite
@@ -517,6 +520,7 @@ Commit-/Tag-Nachrichten in Git.
 
 | Version | Wesentliche Änderungen |
 |---|---|
+| v0.77.0 | Quellen direkt aus der Konversation bearbeiten: Der Stift an Zitat und Seitenleiste öffnet das Bearbeiten-Formular als Dialog, die Konversation bleibt stehen (Mittel-/Strg-Klick öffnet weiter die Quellenübersicht). Löschen dort mit derselben 30-Sekunden-Rückgängig-Leiste; geänderte Titel/Autor:innen/Links erscheinen sofort in Seitenleiste und Zitat-Karten, gelöschte Quellen durchgestrichen mit Hinweis. Technisch: Bearbeiten-Formular als eigene Komponente `static/source-edit.js` (von Quellenübersicht und Konversation genutzt), neuer Endpunkt `GET /api/sources/{id}` (eine Quelle inkl. Volltext, nur Quellen-Pfleger:innen) |
 | v0.76.0 | Konversationsmodus findet deutlich öfter eine Antwort: **Hybrid-Suche** – Begriffe in Anführungszeichen und bekannte Schlagworte aus der Frage bekommen garantiert einen Ausschnitt, der sie wörtlich enthält (vorher übersah die reine Vektorsuche das in ~50 % der Fälle, u. a. Doppelmanagement, NUMMI, John Seddon, Intrinsify, „Democratic Taylorism“). Teilantworten beginnen jetzt direkt mit dem Inhalt statt mit einer Absage oder „Die Textausschnitte nennen zwar …“ (Erinnerung direkt nach der Frage + Richtig/Falsch-Beispiel im Prompt). Neues Messskript `tools/retrieval_eval.py` (Trefferquote ohne LLM-Kosten) |
 | v0.75.2 | Konversationsmodus: kein enttäuschender Einstieg „Die vorliegende Quellenlage gibt darauf keine Antwort.“ mehr vor Teilantworten – Systemanweisung trennt „gar nichts“ von „nur teilweise“ (Teilantwort beginnt direkt mit dem Inhalt, Lücke knapp am Ende); Sicherheitsnetz entfernt den Satz, wenn danach noch Text folgt (auch im Stream). Im Fragen-Log zählen solche Teilantworten weiter als „keine Antwort“ |
 | v0.75.1 | Fragen-Log: jede Anfrage aus dem Kreativ-Modus (Anweisung + erzeugter Text) landet anonym im Fragen-Log, eigener Filter „Kreativ-Modus“, Badge „Abschnitt“ für Abschnitts-Überarbeitungen; späteres Daumen-Feedback wird dem Eintrag zugeordnet. Datenschutzerklärung (DE/EN) ergänzt |
