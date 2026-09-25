@@ -3863,10 +3863,19 @@ def _rerank_by_relevance(
         score = score if score is not None else 5
         return 1 - RELEVANCE_MAX_ADJUSTMENT * (score - 5) / 5
 
-    order = sorted(
-        range(len(ids)),
-        key=lambda i: distances[i] * relevance_factor(metadatas[i]["source_id"]),
-    )[:top_k]
+    # Backlog (2026-09-25): derselbe Text kann mehrfach im Pool stehen
+    # (doppelt importierte Quelle, kuratiert + Web-Index) und belegte dann
+    # mehrere der wenigen Plätze - nur das erste (beste) Vorkommen zählt.
+    order = []
+    seen_texts = set()
+    for i in sorted(range(len(ids)), key=lambda i: distances[i] * relevance_factor(metadatas[i]["source_id"])):
+        text_key = " ".join(documents[i].split())
+        if text_key in seen_texts:
+            continue
+        seen_texts.add(text_key)
+        order.append(i)
+        if len(order) == top_k:
+            break
     return (
         [ids[i] for i in order],
         [documents[i] for i in order],

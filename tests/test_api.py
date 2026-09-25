@@ -8074,3 +8074,17 @@ def test_ensure_term_hits_forces_literal_chunk_only_when_missing(monkeypatch):
     assert calls == [{"$contains": "NUMMI"}]
     assert out_ids == ["a", "b", "n1"]
     assert out_docs[-1] == "Bei NUMMI ..."
+
+
+def test_rerank_drops_duplicate_texts_and_fills_up_to_top_k():
+    """Backlog (2026-09-25): identischer Text (z. B. doppelt importierte
+    Quelle) darf nur EINEN der wenigen Plätze belegen - der nächstbeste
+    andere Ausschnitt rückt nach."""
+    ids = ["a", "b", "c", "d"]
+    docs = ["Gleicher  Text.", "Gleicher Text.", "Anderer Text.", "Dritter Text."]
+    metas = [{"source_id": s} for s in ("s1", "s2", "s3", "s4")]
+    dists = [0.1, 0.2, 0.3, 0.4]
+
+    out_ids, out_docs, _ = main_module._rerank_by_relevance(ids, docs, metas, dists, {}, 3)
+
+    assert out_ids == ["a", "c", "d"]
