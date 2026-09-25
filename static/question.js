@@ -226,9 +226,22 @@ function buildSourceReader(s) {
     return h3;
   }
 
+  // Nutzerwunsch (2026-09-26): KI-Icon, solange Zusammenfassung bzw.
+  // Schlagworte von der KI stammen und nicht von Hand überarbeitet sind.
+  function aiIcon(tooltipKey) {
+    const icon = document.createElement('span');
+    icon.className = 'source-summary-icon';
+    icon.innerHTML = MAGIC_ICON;
+    const tooltip = t(tooltipKey);
+    icon.title = tooltip;
+    icon.setAttribute('aria-label', tooltip);
+    return icon;
+  }
+
   if (s.summary) {
     const p = document.createElement('p');
     p.textContent = s.summary;
+    if (s.summary_ai_generated !== false) p.prepend(aiIcon('import.aiSummaryTooltip'), ' ');
     article.appendChild(sectionHeading('common.readerSummary'));
     article.appendChild(p);
   }
@@ -236,6 +249,7 @@ function buildSourceReader(s) {
     const p = document.createElement('p');
     p.className = 'source-reader-terms';
     p.textContent = s.key_terms.join(' · ');
+    if (s.key_terms_ai_generated !== false) p.prepend(aiIcon('common.aiKeyTermsTooltip'), ' ');
     article.appendChild(sectionHeading('common.readerKeyTerms'));
     article.appendChild(p);
   }
@@ -649,7 +663,7 @@ function buildSourcesList(sources) {
     // Hier bewusst die KI-Zusammenfassung statt des Chunk-Ausschnitts (anders
     // als buildSourceInfo() in der Konversationsansicht) - fehlt sie (noch)
     // für eine Quelle, auf den Chunk-Ausschnitt zurückfallen.
-    if (s.summary) {
+    if (s.summary && s.summary_ai_generated !== false) {
       const icon = document.createElement('span');
       icon.className = 'source-summary-icon';
       const tooltip = t('import.aiSummaryTooltip');
@@ -658,6 +672,8 @@ function buildSourcesList(sources) {
       icon.innerHTML = MAGIC_ICON;
       p.appendChild(icon);
       p.appendChild(document.createTextNode(' ' + s.summary));
+    } else if (s.summary) {
+      p.textContent = s.summary;
     } else {
       p.textContent = truncateWords(s.text, 100);
     }

@@ -5280,10 +5280,20 @@ details a {
   background: rgba(0, 0, 0, 0.45);
 }
 
+/* Nutzerwunsch (2026-09-26): das "x" bleibt beim Scrollen oben rechts
+   stehen und ist auch über darunter laufendem Text gut sichtbar. */
 .source-edit-dialog .jobs-bar-close {
-  position: absolute;
-  top: 0.5rem;
-  right: 0.5rem;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  margin: -1.75rem -0.25rem 0 auto;
+  width: 2rem;
+  height: 2rem;
+  border: 1px solid var(--color-border);
+  border-radius: 50%;
+  background: var(--color-bg);
+  color: var(--color-text);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
 }
 
 .source-edit-dialog-list {

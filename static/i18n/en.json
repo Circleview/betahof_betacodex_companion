@@ -8,6 +8,7 @@
   "common.sourceDeletedBadge": "deleted",
   "common.readerSummary": "Summary",
   "common.readerKeyTerms": "Key terms",
+  "common.aiKeyTermsTooltip": "AI-generated key terms",
   "common.readerFullText": "Full text",
   "common.readerRestrictedNote": "The full text of this source is protected by copyright and is therefore not shown.",
   "common.readerNoText": "No full text is available for this source.",

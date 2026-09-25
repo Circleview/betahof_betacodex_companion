@@ -607,6 +607,7 @@ def _to_source_out(
     data["summary"] = data.get(f"summary_{lang}") or ""
     data["key_terms"] = data.get(f"key_terms_{lang}") or []
     data["summary_ai_generated"] = data.get(f"summary_ai_generated_{lang}", True)
+    data["key_terms_ai_generated"] = data.get(f"key_terms_ai_generated_{lang}", True)
     data["has_pdf"] = (PDF_DIR / f"{data['id']}.pdf").exists()
     data["has_audio"] = _existing_audio_file(data["id"]) is not None
     return SourceOut(**data)
@@ -672,6 +673,8 @@ def _generate_summary_background(source_id: str, text: str) -> None:
         sources[source_id]["key_terms_en"] = result["en"]["key_terms"]
         sources[source_id]["summary_ai_generated_de"] = True
         sources[source_id]["summary_ai_generated_en"] = True
+        sources[source_id]["key_terms_ai_generated_de"] = True
+        sources[source_id]["key_terms_ai_generated_en"] = True
         sources[source_id]["processing_status"] = None
         sources[source_id]["processing_step"] = None
         _save_sources(sources)
@@ -1954,20 +1957,28 @@ def update_source(
                 "restricted": source.restricted,
             }
         )
-        if source.summary is not None:
+        # Fix (2026-09-26): das Formular schickt Zusammenfassung und
+        # Schlagworte bei JEDEM Speichern mit - als "von Hand überarbeitet"
+        # zählt nur eine tatsächliche Änderung (sonst verlor z. B. eine reine
+        # Titeländerung das KI-Icon und löste eine Übersetzung aus).
+        summary_changed = source.summary is not None and source.summary != (
+            sources[source_id].get(f"summary_{x_lang}") or ""
+        )
+        if summary_changed:
             sources[source_id][f"summary_{x_lang}"] = source.summary
             # Nutzerwunsch (2026-08-23): eine von Hand überarbeitete
             # Zusammenfassung gilt ab jetzt als kuratiert - ein späterer KI-
             # Lauf (generate_source_summary) darf sie nicht mehr
             # kommentarlos überschreiben (siehe dort).
             sources[source_id][f"summary_ai_generated_{x_lang}"] = False
-        if source.key_terms is not None:
+        if source.key_terms is not None and source.key_terms != (sources[source_id].get(f"key_terms_{x_lang}") or []):
             sources[source_id][f"key_terms_{x_lang}"] = source.key_terms
+            sources[source_id][f"key_terms_ai_generated_{x_lang}"] = False
         if source.relevance_score is not None:
             sources[source_id]["relevance_score"] = source.relevance_score
         _save_sources(sources)
 
-    if source.summary is not None and source.summary.strip():
+    if summary_changed and source.summary.strip():
         other_lang = "en" if x_lang == "de" else "de"
         background_tasks.add_task(_translate_summary_background, source_id, source.summary, other_lang)
 
@@ -3491,10 +3502,12 @@ def generate_source_summary(
             sources[source_id]["summary_de"] = result["de"]["summary"]
             sources[source_id]["key_terms_de"] = result["de"]["key_terms"]
             sources[source_id]["summary_ai_generated_de"] = True
+            sources[source_id]["key_terms_ai_generated_de"] = True
         if sources[source_id].get("summary_ai_generated_en") is not False:
             sources[source_id]["summary_en"] = result["en"]["summary"]
             sources[source_id]["key_terms_en"] = result["en"]["key_terms"]
             sources[source_id]["summary_ai_generated_en"] = True
+            sources[source_id]["key_terms_ai_generated_en"] = True
         title = sources[source_id].get("title", source_id)
         _save_sources(sources)
         _register_all_terms(source_id, sources[source_id])
@@ -4333,6 +4346,7 @@ def ask(question: QuestionIn, request: Request, x_lang: str = Header(default=i18
                 position=meta["position"],
                 text=doc,
                 summary=sources.get(meta["source_id"], {}).get(f"summary_{summary_lang}") or None,
+                summary_ai_generated=sources.get(meta["source_id"], {}).get(f"summary_ai_generated_{summary_lang}", True),
                 is_web_fallback=is_web,
                 allowlist_entry_id=meta.get("allowlist_entry_id") if is_web else None,
                 url_reachable=sources.get(meta["source_id"], {}).get("url_reachable"),

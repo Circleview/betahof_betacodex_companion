@@ -8,6 +8,7 @@
   "common.sourceDeletedBadge": "gelöscht",
   "common.readerSummary": "Zusammenfassung",
   "common.readerKeyTerms": "Schlagworte",
+  "common.aiKeyTermsTooltip": "KI-generierte Schlagworte",
   "common.readerFullText": "Volltext",
   "common.readerRestrictedNote": "Der Volltext dieser Quelle ist urheberrechtlich geschützt und wird deshalb nicht angezeigt.",
   "common.readerNoText": "Für diese Quelle ist kein Volltext hinterlegt.",

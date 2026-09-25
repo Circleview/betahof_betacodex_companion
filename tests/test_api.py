@@ -8181,3 +8181,30 @@ def test_creative_event_stream_uses_cleaned_text_for_revisions():
     documents = [e["document"] for e in events if e["type"] == "document"]
     assert documents == ["# Titel\n\nSauberer Text."]
     assert events[-1]["sources"]["web"] == [{"title": "A", "url": "https://a.org"}]
+
+
+def test_update_source_keeps_ai_flags_when_summary_and_terms_unchanged(client, monkeypatch):
+    """Fix (2026-09-26): das Formular schickt Zusammenfassung/Schlagworte bei
+    jedem Speichern mit - nur eine echte Änderung zählt als "von Hand"."""
+    translations = []
+    monkeypatch.setattr(summarization, "translate_summary", lambda text, target_lang="de": translations.append(text) or "x")
+    source_id = client.post("/api/sources", json={"title": "Q", "text": "Text."}).json()["id"]
+    sources = main_module._load_sources()
+    sources[source_id].update({"summary_de": "KI-Text.", "key_terms_de": ["Team"], "summary_ai_generated_de": True})
+    main_module._save_sources(sources)
+
+    stored = client.put(
+        f"/api/sources/{source_id}",
+        json={"title": "Neuer Titel", "text": "Text.", "summary": "KI-Text.", "key_terms": ["Team"]},
+    ).json()
+
+    assert stored["summary_ai_generated"] is True
+    assert stored["key_terms_ai_generated"] is True
+    assert translations == []
+
+    stored = client.put(
+        f"/api/sources/{source_id}",
+        json={"title": "Neuer Titel", "text": "Text.", "summary": "KI-Text.", "key_terms": ["Team", "Rolle"]},
+    ).json()
+    assert stored["summary_ai_generated"] is True
+    assert stored["key_terms_ai_generated"] is False

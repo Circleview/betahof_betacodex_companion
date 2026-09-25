@@ -4137,3 +4137,15 @@ def test_creative_format_buttons_keep_scroll_position():
     body = match.group(0)
     assert "documentField.focus({ preventScroll: true })" in body
     assert "documentField.scrollTop = scrollTop" in body
+
+
+def test_reader_shows_ai_icons_and_sticky_close_button():
+    """Nutzerwunsch (2026-09-26): KI-Icon an Zusammenfassung/Schlagworten,
+    solange nicht von Hand überarbeitet; "x" bleibt beim Scrollen sichtbar."""
+    js_source = (STATIC_DIR / "question.js").read_text()
+    reader = re.search(r"function buildSourceReader.*?\n\}", js_source, re.S).group(0)
+    assert "if (s.summary_ai_generated !== false) p.prepend(aiIcon('import.aiSummaryTooltip'), ' ');" in reader
+    assert "if (s.key_terms_ai_generated !== false) p.prepend(aiIcon('common.aiKeyTermsTooltip'), ' ');" in reader
+    css = (STATIC_DIR / "style.css").read_text()
+    block = re.search(r"\.source-edit-dialog \.jobs-bar-close \{[^}]*\}", css).group(0)
+    assert "position: sticky" in block and "background: var(--color-bg)" in block

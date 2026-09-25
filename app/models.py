@@ -32,6 +32,7 @@ class SourceOut(BaseModel):
     summary: str = ""
     summary_ai_generated: bool = True
     key_terms: list[str] = []
+    key_terms_ai_generated: bool = True
     has_pdf: bool = False
     has_audio: bool = False
     relevance_score: Optional[int] = None
@@ -162,6 +163,7 @@ class ChunkRef(BaseModel):
     position: int
     text: str
     summary: Optional[str] = None
+    summary_ai_generated: bool = True
     highlighted_texts: list[str] = []
     # Backlog: LLM/Internet-Fallback bei dünner Quellenlage - kennzeichnet
     # Chunks aus der separaten Web-Fallback-Collection (statt aus den
