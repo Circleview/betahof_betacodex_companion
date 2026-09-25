@@ -4071,3 +4071,13 @@ def test_conversation_edit_dialog_loads_single_source_with_full_text():
     exports = (STATIC_DIR / "source-edit.js").read_text()
     assert "export function buildEditPanel(" in exports
     assert "export function setKnownAuthors(" in exports
+
+
+def test_icon_buttons_visible_in_conversation_edit_dialog():
+    """Regression (2026-09-25, v0.77.0): .icon-button ist auf Desktop per
+    opacity:0 versteckt und erscheint nur beim Zeilen-Hover in der
+    Quellenliste - im Bearbeiten-Dialog der Konversation war der Mülleimer
+    dadurch unsichtbar."""
+    css = (STATIC_DIR / "style.css").read_text()
+    match = re.search(r"\.source-edit-dialog \.icon-button \{\s*opacity: 1;", css)
+    assert match, "Icons im Bearbeiten-Dialog müssen immer sichtbar sein."

@@ -2821,6 +2821,12 @@ button.send-button {
     opacity: 1;
   }
 
+  /* Im Bearbeiten-Dialog der Konversation gibt es kein Zeilen-Hover -
+     Mülleimer & Co. sind dort immer sichtbar. */
+  .source-edit-dialog .icon-button {
+    opacity: 1;
+  }
+
   .icon-button.warning-icon {
     opacity: 1;
   }
