@@ -768,6 +768,7 @@ export function buildEditPanel(s, options = {}) {
           const err = await res.json().catch(() => ({}));
           throw new Error(err.detail || t('import.updateFailed'));
         }
+        const updatedSource = await res.json();
         // update_source registriert neu hinzugefügte Autor:innen synchron
         // (authors.register_author), daher kann das Profil direkt im
         // Anschluss per PUT gespeichert werden - identisch zum Anlegen-Formular.
@@ -779,7 +780,7 @@ export function buildEditPanel(s, options = {}) {
             body: JSON.stringify(profile),
           }).catch(() => {});
         }
-        options.onSaved?.();
+        options.onSaved?.(updatedSource);
       } catch (err) {
         status.textContent = t('common.errorPrefix') + err.message;
         submitBtn.disabled = false;

@@ -193,15 +193,80 @@ async function openSourceEditDialog(sourceId) {
     );
     const source = await sourceRes.json();
     status.remove();
-    list.appendChild(
-      module.buildEditPanel(source, {
-        onSaved: () => dialog.close(),
-        onCancel: () => dialog.close(),
-      })
-    );
+
+    // Löschen wie in der Quellenübersicht mit Rückgängig-Leiste. Wird der
+    // Dialog währenddessen geschlossen, gilt das Löschen als bestätigt.
+    let pendingDeletion = null;
+    async function deleteNow() {
+      clearTimeout(pendingDeletion);
+      pendingDeletion = null;
+      const res = await fetch(`/api/sources/${encodeURIComponent(sourceId)}`, {
+        method: 'DELETE',
+        headers: module.jsonHeaders(),
+      }).catch(() => null);
+      if (res?.ok) updateCitedSource(sourceId, { deleted: true });
+      dialog.close();
+    }
+    function renderPanel(isPendingDeletion) {
+      list.replaceChildren(
+        module.buildEditPanel(source, {
+          pendingDeletion: isPendingDeletion,
+          onSaved: (updated) => {
+            updateCitedSource(sourceId, {
+              title: updated.title,
+              authors: updated.authors,
+              date: updated.date,
+              url: updated.url,
+              listen_url: updated.listen_url,
+              summary: updated.summary,
+              url_reachable: updated.url_reachable,
+            });
+            dialog.close();
+          },
+          onCancel: () => dialog.close(),
+          onDelete: () => {
+            pendingDeletion = setTimeout(deleteNow, module.UNDO_DURATION_MS);
+            renderPanel(true);
+          },
+          onUndoDelete: () => {
+            clearTimeout(pendingDeletion);
+            pendingDeletion = null;
+            renderPanel(false);
+          },
+        })
+      );
+    }
+    dialog.addEventListener('close', () => {
+      if (pendingDeletion) deleteNow();
+    });
+    renderPanel(false);
   } catch (err) {
     status.textContent = t('common.errorPrefix') + err.message;
   }
+}
+
+// Überträgt Änderungen aus dem Bearbeiten-Dialog auf die Konversation:
+// Verlauf, Seitenleiste und offene Zitat-Karten zeigen denselben Stand.
+// conversationHistory, conversationCitedSources und die Zitat-Buttons teilen
+// sich dieselben Quellen-Objekte - Object.assign reicht für alle drei.
+function updateCitedSource(sourceId, changes) {
+  conversationHistory.forEach((turn) =>
+    (turn.sources || []).forEach((s) => {
+      if (s.source_id === sourceId) Object.assign(s, changes);
+    })
+  );
+  const cited = conversationCitedSources.get(sourceId);
+  if (cited) Object.assign(cited, changes);
+  saveConversationHistory();
+  renderSidebarSources();
+  document
+    .querySelectorAll(`.citation-card-content[data-source-id="${CSS.escape(sourceId)}"]`)
+    .forEach((wrapper) => {
+      const heading = wrapper.querySelector('.citation-card-heading');
+      heading.replaceChildren();
+      appendCitationHeading(heading, cited || { source_id: sourceId, ...changes });
+      if (changes.deleted) wrapper.querySelector('.citation-card-text .external-link:last-child')?.remove();
+    });
 }
 
 // Backlog #75: Gegenstück zu appendEditSourceLink für alle anderen
@@ -224,6 +289,8 @@ function appendViewSourceLink(container, sourceId) {
 }
 
 function appendSourceLink(container, sourceId) {
+  // Aus dem Bearbeiten-Dialog gelöscht (updateCitedSource) - Link liefe ins Leere.
+  if (conversationCitedSources.get(sourceId)?.deleted) return;
   if (hasPflegerRole()) {
     appendEditSourceLink(container, sourceId);
   } else {
@@ -288,6 +355,13 @@ function appendTitleText(container, s) {
   // (url_reachable === false, siehe Quellenverwaltung) soll auch hier
   // nicht mehr verlinkt werden - fällt auf denselben Pfad wie eine Quelle
   // ganz ohne URL zurück (reiner Titeltext, kein Link/Icon).
+  if (s.deleted) {
+    const span = document.createElement('span');
+    span.className = 'source-deleted-title';
+    span.textContent = `${s.title} (${t('common.sourceDeletedBadge')})`;
+    container.appendChild(span);
+    return;
+  }
   const citationUrl = s.url_reachable === false ? null : s.listen_url || s.url;
   if (!citationUrl) {
     container.appendChild(document.createTextNode(s.title));
@@ -407,6 +481,7 @@ function appendTextWithHighlight(container, text, highlight) {
 function buildSourceInfo(s, highlight) {
   const wrapper = document.createElement('div');
   wrapper.className = 'citation-card-content';
+  wrapper.dataset.sourceId = s.source_id;
 
   const heading = document.createElement('p');
   heading.className = 'citation-card-heading';

@@ -5,6 +5,7 @@
   "common.openSource": "Open source",
   "common.editSource": "Edit source",
   "common.loadingSource": "Loading source …",
+  "common.sourceDeletedBadge": "deleted",
   "common.viewSource": "View source",
   "common.excludeWebPage": "Exclude unsuitable page from the index",
   "common.webPageExcluded": "Excluded",

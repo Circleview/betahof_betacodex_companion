@@ -5281,3 +5281,8 @@ details a {
 .source-edit-dialog li.source-edit-panel {
   margin: 0;
 }
+
+.source-deleted-title {
+  text-decoration: line-through;
+  color: var(--color-text-muted);
+}

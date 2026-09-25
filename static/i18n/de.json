@@ -5,6 +5,7 @@
   "common.openSource": "Quelle öffnen",
   "common.editSource": "Quelle bearbeiten",
   "common.loadingSource": "Quelle wird geladen …",
+  "common.sourceDeletedBadge": "gelöscht",
   "common.viewSource": "Quelle ansehen",
   "common.excludeWebPage": "Unpassende Seite aus dem Index ausschließen",
   "common.webPageExcluded": "Ausgeschlossen",

@@ -4062,7 +4062,12 @@ def test_conversation_edit_dialog_loads_single_source_with_full_text():
     assert "import('/source-edit.js')" in body
     assert "fetch(`/api/sources/${encodeURIComponent(sourceId)}`" in body
     assert "module.buildEditPanel(source" in body
-    assert "onSaved: () => dialog.close()" in body
+    # Speichern/Löschen übertragen sich auf die Konversation (Titel, Status).
+    assert "updateCitedSource(sourceId, {" in body
+    assert "updateCitedSource(sourceId, { deleted: true })" in body
+    # Rückgängig wie in der Quellenübersicht; Schließen bestätigt das Löschen.
+    assert "setTimeout(deleteNow, module.UNDO_DURATION_MS)" in body
+    assert "if (pendingDeletion) deleteNow();" in body
     exports = (STATIC_DIR / "source-edit.js").read_text()
     assert "export function buildEditPanel(" in exports
     assert "export function setKnownAuthors(" in exports
