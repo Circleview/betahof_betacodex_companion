@@ -4,6 +4,7 @@
   "common.errorPrefix": "Fehler: ",
   "common.openSource": "Quelle öffnen",
   "common.editSource": "Quelle bearbeiten",
+  "common.loadingSource": "Quelle wird geladen …",
   "common.viewSource": "Quelle ansehen",
   "common.excludeWebPage": "Unpassende Seite aus dem Index ausschließen",
   "common.webPageExcluded": "Ausgeschlossen",

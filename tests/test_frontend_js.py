@@ -8,6 +8,15 @@ import pytest
 STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
 
 
+def _import_js_source() -> str:
+    # Seit 2026-09-25 liegt das Bearbeiten-Formular samt Helfern in
+    # static/source-edit.js (von import.js importiert) - die Regex-basierten
+    # Funktions-Extraktionen unten durchsuchen beide Dateien gemeinsam.
+    # "export " fällt weg, damit per node -e ausgeführte Ausschnitte laufen.
+    combined = (STATIC_DIR / "import.js").read_text() + "\n" + (STATIC_DIR / "source-edit.js").read_text()
+    return re.sub(r"^export ", "", combined, flags=re.M)
+
+
 def _run_node(script: str):
     """Führt ein Node-Skript aus und parst dessen stdout als JSON - gemeinsame
     Grundlage für alle _run_*-Helfer unten, die jeweils nur den JS-Quelltext
@@ -566,7 +575,7 @@ console.log(JSON.stringify(findButtons(container, []).map((b) => b.textContent))
 
 
 def _run_current_tag_segment_bounds(value: str, cursor_pos: int):
-    js_source = (STATIC_DIR / "import.js").read_text()
+    js_source = _import_js_source()
     match = re.search(r"function currentTagSegmentBounds.*?\n\}", js_source, re.S)
     assert match, "currentTagSegmentBounds wurde in import.js nicht gefunden."
     script = f"""
@@ -759,7 +768,7 @@ def _check_file_for_orphaned_dom_elements(filename: str) -> dict[str, list[str]]
 
 
 def test_import_js_has_no_orphaned_dom_elements():
-    js_source = (STATIC_DIR / "import.js").read_text()
+    js_source = _import_js_source()
     all_orphaned = []
     for match in FUNCTION_START_RE.finditer(js_source):
         fn_name_match = re.search(r"function\s+(\w+)", js_source[max(0, match.start() - 30) : match.end()])
@@ -811,7 +820,7 @@ def test_question_js_has_no_orphaned_dom_elements():
 def test_regression_edit_panel_form_is_appended():
     """Gezielter Regressionstest für den konkreten Bug: buildEditPanel baute ein <form>,
     hängte es aber nie ans zurückgegebene <li> an, wodurch das Bearbeiten-Panel leer blieb."""
-    js_source = (STATIC_DIR / "import.js").read_text()
+    js_source = _import_js_source()
     match = re.search(r"function buildEditPanel\([^)]*\)\s*\{", js_source)
     assert match, "buildEditPanel wurde nicht gefunden."
     start = match.end() - 1
@@ -870,7 +879,7 @@ def _run_load_full_source_text(*, initial_sources, fetched_sources, active_filte
     2026-08-31: Ladereihenfolge - Volltext wird erst NACH der sichtbaren
     Liste nachgeladen und hier per Mock-fetch/allSources/activeFilter/
     applySearchFilter isoliert getestet, kein DOM nötig)."""
-    js_source = (STATIC_DIR / "import.js").read_text()
+    js_source = _import_js_source()
     match = re.search(r"async function loadFullSourceText.*?\n\}", js_source, re.S)
     assert match, "loadFullSourceText wurde in import.js nicht gefunden."
     func_source = match.group(0)
@@ -929,7 +938,7 @@ def test_regression_edit_entry_points_wait_for_full_source_text_before_opening()
     ?edit=<id>-Deep-Link) zuerst `fullTextReady` abwarten - sonst könnte das
     Formular mit leerem Volltext geöffnet und dieser leere Stand beim
     Speichern über den echten Volltext der Quelle geschrieben werden."""
-    js_source = (STATIC_DIR / "import.js").read_text()
+    js_source = _import_js_source()
 
     edit_btn_match = re.search(
         r"editBtn\.addEventListener\('click', async \(\) => \{.*?\n\s*\}\);", js_source, re.S
@@ -1627,7 +1636,7 @@ def _run_source_suggestion_row_click(action: str, *, fetch_ok: bool = True) -> d
     Ablehnen-Logik selbst, nicht um den Popover-Mechanismus (der bereits
     über extractAndFillFromUrl/den bestehenden #popover-load-Test-Pfad
     abgedeckt ist)."""
-    js_source = (STATIC_DIR / "import.js").read_text()
+    js_source = _import_js_source()
     match = re.search(r"function renderSourceSuggestionRow.*?\n\}", js_source, re.S)
     assert match, "renderSourceSuggestionRow wurde in import.js nicht gefunden."
     func_source = match.group(0)
@@ -1738,7 +1747,7 @@ def _run_render_jobs_list_error_job_click(button_index: int, *, clicks: int = 1)
     fehlgeschlagenen Jobs - mit minimalen Stubs für fetch/t/jsonHeaders/
     fetchImportJobs/loadSources (kein volles jsdom nötig, siehe
     _run_append_title_text)."""
-    js_source = (STATIC_DIR / "import.js").read_text()
+    js_source = _import_js_source()
     match = re.search(r"function renderJobsListInto.*?\n\}", js_source, re.S)
     assert match, "renderJobsListInto wurde in import.js nicht gefunden."
     func_source = match.group(0)
@@ -1850,7 +1859,7 @@ def test_error_job_cancel_button_deletes_source_on_second_click():
 
 
 def _run_update_broken_links_button(*, is_pfleger: bool, sources: list[dict]) -> dict:
-    js_source = (STATIC_DIR / "import.js").read_text()
+    js_source = _import_js_source()
     match = re.search(r"function updateBrokenLinksButton\(\) \{.*?\n\}", js_source, re.S)
     assert match, "updateBrokenLinksButton wurde in import.js nicht gefunden."
     func_source = match.group(0)
@@ -1914,7 +1923,7 @@ def test_update_broken_links_button_hidden_for_non_pfleger_even_with_broken_sour
 
 
 def _run_youtube_transcript_fallback_script(action_js: str) -> dict:
-    js_source = (STATIC_DIR / "import.js").read_text()
+    js_source = _import_js_source()
     extract_id_match = re.search(r"function extractYoutubeVideoId\(url\) \{.*?\n\}", js_source, re.S)
     hint_match = re.search(
         r"function setYoutubeTranscriptFallbackHintVisible\(visible\) \{.*?\n\}", js_source, re.S
@@ -2007,10 +2016,13 @@ def test_extract_youtube_video_id_handles_watch_and_short_urls():
 
 
 def _run_photo_credit_domain(call_expr: str):
-    js_source = (STATIC_DIR / "import.js").read_text()
+    js_source = _import_js_source()
     match = re.search(r"const PHOTO_HOST_LABELS.*?function photoCreditDomain.*?\n\}", js_source, re.S)
     assert match, "PHOTO_HOST_LABELS/photoCreditDomain wurden in import.js nicht gefunden."
+    hostname_match = re.search(r"function extractHostname.*?\n\}", js_source, re.S)
+    assert hostname_match, "extractHostname wurde nicht gefunden."
     script = f"""
+{hostname_match.group(0)}
 {match.group(0)}
 console.log(JSON.stringify({call_expr}));
 """
@@ -2057,7 +2069,7 @@ def _run_import_js_functions(patterns: list[str], call_expr: str):
     zusammenhängende Definitionen aus import.js kombinieren müssen (z.B.
     resolveSocialPlatform() ruft sowohl detectSocialPlatform() als auch das
     an anderer Stelle definierte extractHostname() auf)."""
-    js_source = (STATIC_DIR / "import.js").read_text()
+    js_source = _import_js_source()
     parts = []
     for pattern in patterns:
         match = re.search(pattern, js_source, re.S)
@@ -2084,7 +2096,7 @@ def _run_sort_sources(sources: list[dict]) -> list[dict]:
     Zwischenüberschrift, auch bei nur einer Quelle - eine Quelle mit
     mehreren Autor:innen muss deshalb unter JEDER ihrer Autor:innen als
     eigener Eintrag erscheinen, nicht nur bei Autor:innen mit >1 Quelle)."""
-    js_source = (STATIC_DIR / "import.js").read_text()
+    js_source = _import_js_source()
     match = re.search(r"function sortSources.*?\n\}", js_source, re.S)
     assert match, "sortSources wurde in import.js nicht gefunden."
     func_source = match.group(0)
@@ -2146,7 +2158,7 @@ def _run_source_toolbar_overflow(steps: list[dict]) -> list[bool]:
     'sort-toolbar--hidden-for-space' ausgeblendet ist. Icon-Gruppe (200px)
     und Suche (53px) sind immer sichtbar, Sortierung (93px) ist das
     einzige Element, das die Funktion selbst ein-/ausblendet."""
-    js_source = (STATIC_DIR / "import.js").read_text()
+    js_source = _import_js_source()
     match = re.search(r"function initSourceToolbarOverflow.*?\n\}", js_source, re.S)
     assert match, "initSourceToolbarOverflow wurde in import.js nicht gefunden."
     func_source = match.group(0)
@@ -2246,7 +2258,7 @@ def _run_source_toolbar_overflow_last_resort(client_width: int) -> dict:
     (Nutzerwunsch 2026-09-23: Ähnliche-Schlagworte-Icon statt der Suche)
     isoliert testen lässt. Liefert den Zustand aller drei Stufen nach einem
     einzelnen Schritt."""
-    js_source = (STATIC_DIR / "import.js").read_text()
+    js_source = _import_js_source()
     match = re.search(r"function initSourceToolbarOverflow.*?\n\}", js_source, re.S)
     assert match, "initSourceToolbarOverflow wurde in import.js nicht gefunden."
     func_source = match.group(0)
@@ -2352,7 +2364,7 @@ def _run_remove_source_suggestion_row(*, reserve_ids: list[str], visible_ids: li
     wird durch einen Spy ersetzt - hier geht es nur um die Nachrück-
     Choreographie selbst, nicht um den Zeilenaufbau (separat abgedeckt).
     Entfernt wird immer die Zeile mit id 'a'."""
-    js_source = (STATIC_DIR / "import.js").read_text()
+    js_source = _import_js_source()
     match = re.search(r"function removeSourceSuggestionRow.*?\n\}", js_source, re.S)
     assert match, "removeSourceSuggestionRow wurde in import.js nicht gefunden."
     func_source = match.group(0)
@@ -2700,7 +2712,7 @@ def _run_highlight_terms_in_element(key_terms, authors, text="Vor Dezentralisier
     dafür, dass Autor:innen-Namen unter den Schlagworten NICHT mehr
     hervorgehoben werden (2026-08-23, Nutzerfeedback: Namensabgleich war zu
     fehleranfällig)."""
-    js_source = (STATIC_DIR / "import.js").read_text()
+    js_source = _import_js_source()
     highlight_match = re.search(r"function highlightTermsInElement.*?\n\}", js_source, re.S)
     escape_match = re.search(r"function escapeRegExp.*?\n\}", js_source, re.S)
     assert highlight_match, "highlightTermsInElement wurde in import.js nicht gefunden."
@@ -3647,21 +3659,23 @@ def test_question_log_render_preserves_open_answer_details_across_filter():
 
 
 def test_url_health_status_block_includes_verify_link_button():
-    js_source = (STATIC_DIR / "import.js").read_text()
+    js_source = (STATIC_DIR / "source-edit.js").read_text()
     match = re.search(r"if \(s\.url_reachable === false\) \{.*?\n  \}", js_source, re.S)
     assert match, "Der url-health-status-Block wurde in import.js nicht gefunden."
     block = match.group(0)
     assert "verify-link-button" in block
-    assert "verifySourceLink(s.id, healthStatus, verifyBtn)" in block
+    assert "verifySourceLink(s.id, healthStatus, verifyBtn, options.onLinkVerified)" in block
 
 
 def test_verify_source_link_posts_to_verify_link_endpoint_and_reloads():
-    js_source = (STATIC_DIR / "import.js").read_text()
-    match = re.search(r"async function verifySourceLink\(sourceId, statusEl, button\) \{.*?\n\}", js_source, re.S)
-    assert match, "verifySourceLink wurde in import.js nicht gefunden."
+    js_source = _import_js_source()
+    match = re.search(r"async function verifySourceLink\(sourceId, statusEl, button, onVerified\) \{.*?\n\}", js_source, re.S)
+    assert match, "verifySourceLink wurde in source-edit.js nicht gefunden."
     func_source = match.group(0)
     assert "/api/sources/${sourceId}/verify-link" in func_source
-    assert "loadSources();" in func_source
+    assert "onVerified?.();" in func_source
+    # Die Quellenliste lädt danach neu (Callback aus import.js).
+    assert "onLinkVerified: () => loadSources()" in js_source
 
 
 # --- import.js: Scroll-Fokus beim Annehmen eines Quellenvorschlags (2026-09-01) ---
@@ -3673,7 +3687,7 @@ def test_open_url_popover_with_url_scrolls_the_popover_into_view():
     # ohne aktives Scrollen blieb es außerhalb des sichtbaren Bereichs,
     # wenn die Nutzer:in beim Annehmen eines Quellenvorschlags tief in der
     # Liste gescrollt war.
-    js_source = (STATIC_DIR / "import.js").read_text()
+    js_source = _import_js_source()
     match = re.search(r"function openUrlPopoverWithUrl\(url\) \{.*?\n\}", js_source, re.S)
     assert match, "openUrlPopoverWithUrl wurde in import.js nicht gefunden."
     func_source = match.group(0)
@@ -3684,7 +3698,7 @@ def test_open_url_popover_with_url_scrolls_the_popover_into_view():
 
 
 def test_update_source_management_visibility_sets_read_only_heading_without_pfleger_role():
-    js_source = (STATIC_DIR / "import.js").read_text()
+    js_source = _import_js_source()
     match = re.search(r"function updateSourceManagementVisibility\(\) \{.*?\n\}", js_source, re.S)
     assert match, "updateSourceManagementVisibility wurde in import.js nicht gefunden."
     func_source = match.group(0)
@@ -3700,7 +3714,7 @@ def test_i18n_changed_reapplies_source_management_visibility():
     # erneuten Aufruf hier würde die rollenabhängige Überschrift nach einem
     # Sprachwechsel wieder "Quellen verwalten" zeigen, selbst ohne
     # Pfleger:innen-Rolle.
-    js_source = (STATIC_DIR / "import.js").read_text()
+    js_source = _import_js_source()
     match = re.search(r"document\.addEventListener\('i18n:changed', \(\) => \{.*?\n\}\);", js_source, re.S)
     assert match, "Der i18n:changed-Listener wurde in import.js nicht gefunden."
     assert "updateSourceManagementVisibility();" in match.group(0)
@@ -3993,7 +4007,7 @@ def _run_term_overview(entries, sources, lang):
     """Führt static/import.js#buildOverviewTerms und #termLetter per Node
     aus (Schlagwort-Übersicht, Nutzerwunsch 2026-09-23) - beide Funktionen
     werden isoliert aus dem Quelltext extrahiert."""
-    js_source = (STATIC_DIR / "import.js").read_text()
+    js_source = _import_js_source()
     build = re.search(r"function buildOverviewTerms.*?\n\}", js_source, re.S)
     letter = re.search(r"function termLetter.*?\n\}", js_source, re.S)
     assert build and letter, "buildOverviewTerms/termLetter wurden in import.js nicht gefunden."
@@ -4032,3 +4046,23 @@ def test_format_countdown_shows_minutes_and_zero_padded_seconds():
     func = match.group(0).replace("export function", "function")
     result = _run_node(f"{func}\nconsole.log(JSON.stringify([599, 61, 9, 1].map(formatCountdown)));")
     assert result == ["9:59", "1:01", "0:09", "0:01"]
+
+
+def test_conversation_edit_dialog_loads_single_source_with_full_text():
+    """Nutzerwunsch (2026-09-25): der Stift in der Konversation öffnet das
+    Bearbeiten-Formular (source-edit.js) direkt vor Ort. Es muss die Quelle
+    einzeln MIT Volltext laden - sonst würde Speichern einen leeren Text über
+    den echten schreiben (siehe fullTextReady-Test oben)."""
+    js_source = (STATIC_DIR / "question.js").read_text()
+    link_match = re.search(r"function appendEditSourceLink.*?\n\}", js_source, re.S)
+    assert link_match and "openSourceEditDialog(sourceId)" in link_match.group(0)
+    dialog_match = re.search(r"async function openSourceEditDialog.*?\n\}", js_source, re.S)
+    assert dialog_match, "openSourceEditDialog wurde in question.js nicht gefunden."
+    body = dialog_match.group(0)
+    assert "import('/source-edit.js')" in body
+    assert "fetch(`/api/sources/${encodeURIComponent(sourceId)}`" in body
+    assert "module.buildEditPanel(source" in body
+    assert "onSaved: () => dialog.close()" in body
+    exports = (STATIC_DIR / "source-edit.js").read_text()
+    assert "export function buildEditPanel(" in exports
+    assert "export function setKnownAuthors(" in exports

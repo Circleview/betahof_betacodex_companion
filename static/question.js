@@ -127,8 +127,81 @@ function appendEditSourceLink(container, sourceId) {
   a.title = label;
   a.setAttribute('aria-label', label);
   a.innerHTML = EDIT_ICON;
+  // Nutzerwunsch (2026-09-25): normaler Klick öffnet das Bearbeiten-Formular
+  // direkt hier (Komponente aus source-edit.js), die Konversation bleibt
+  // stehen. Mittelklick/Strg-Klick öffnen weiterhin die Quellenübersicht.
+  a.addEventListener('click', (e) => {
+    if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+    e.preventDefault();
+    openSourceEditDialog(sourceId);
+  });
   container.appendChild(a);
   attachConversationHandoff(a);
+}
+
+// Quelle (inkl. Volltext) und Autor:innen erst beim Öffnen laden, das Modul
+// per dynamischem import() - normale Besucher:innen laden davon nichts.
+async function openSourceEditDialog(sourceId) {
+  const dialog = document.createElement('dialog');
+  dialog.className = 'source-edit-dialog';
+  dialog.setAttribute('aria-label', t('common.editSource'));
+
+  const closeBtn = document.createElement('button');
+  closeBtn.type = 'button';
+  closeBtn.className = 'jobs-bar-close';
+  const closeLabel = t('import.closeButtonTitle');
+  closeBtn.title = closeLabel;
+  closeBtn.setAttribute('aria-label', closeLabel);
+  closeBtn.innerHTML = CLOSE_ICON;
+  closeBtn.addEventListener('click', () => dialog.close());
+
+  const status = document.createElement('p');
+  status.className = 'edit-status';
+  status.textContent = t('common.loadingSource');
+
+  // buildAuthorFields verweist per list="author-suggestions" auf diese Liste.
+  const datalist = document.createElement('datalist');
+  datalist.id = 'author-suggestions';
+
+  const list = document.createElement('ul');
+  list.className = 'source-edit-dialog-list';
+
+  dialog.append(closeBtn, status, datalist, list);
+  dialog.addEventListener('close', () => dialog.remove());
+  document.body.appendChild(dialog);
+  dialog.showModal();
+
+  try {
+    const headers = { 'X-Lang': getLang() };
+    const [module, sourceRes, authorsRes] = await Promise.all([
+      import('/source-edit.js'),
+      fetch(`/api/sources/${encodeURIComponent(sourceId)}`, { headers }),
+      fetch('/api/authors', { headers }),
+    ]);
+    if (!sourceRes.ok) {
+      const err = await sourceRes.json().catch(() => ({}));
+      throw new Error(err.detail || sourceRes.statusText);
+    }
+    const authors = authorsRes.ok ? await authorsRes.json() : [];
+    module.setKnownAuthors(authors);
+    datalist.replaceChildren(
+      ...authors.map((author) => {
+        const option = document.createElement('option');
+        option.value = author.name;
+        return option;
+      })
+    );
+    const source = await sourceRes.json();
+    status.remove();
+    list.appendChild(
+      module.buildEditPanel(source, {
+        onSaved: () => dialog.close(),
+        onCancel: () => dialog.close(),
+      })
+    );
+  } catch (err) {
+    status.textContent = t('common.errorPrefix') + err.message;
+  }
 }
 
 // Backlog #75: Gegenstück zu appendEditSourceLink für alle anderen

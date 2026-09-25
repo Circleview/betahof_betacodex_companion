@@ -6044,6 +6044,36 @@ def test_broken_links_count_reflects_persisted_url_reachable_field(client):
     assert response.json() == {"count": 1}
 
 
+# Nutzerwunsch (2026-09-25): Einzelabruf fürs Bearbeiten-Formular in der
+# Konversation - inkl. Volltext, nur für Quellen-Pfleger:innen.
+def test_get_single_source_returns_full_text(client):
+    source_id = client.post("/api/sources", json={"title": "Einzeln", "text": "Volltext."}).json()["id"]
+
+    response = client.get(f"/api/sources/{source_id}")
+
+    assert response.status_code == 200
+    assert response.json()["title"] == "Einzeln"
+    assert response.json()["text"] == "Volltext."
+
+
+def test_get_single_source_404_for_unknown_or_deleted(client):
+    source_id = client.post("/api/sources", json={"title": "Weg", "text": "Text."}).json()["id"]
+    client.delete(f"/api/sources/{source_id}")
+
+    assert client.get(f"/api/sources/{source_id}").status_code == 404
+    assert client.get("/api/sources/gibt-es-nicht").status_code == 404
+
+
+def test_get_single_source_requires_pfleger_role(client, anon_client):
+    source_id = client.post("/api/sources", json={"title": "Geheim", "text": "Text."}).json()["id"]
+
+    assert anon_client.get(f"/api/sources/{source_id}").status_code in (401, 403)
+
+
+def test_broken_links_count_route_not_shadowed_by_single_source_route(client):
+    assert client.get("/api/sources/broken-links-count").json() == {"count": 0}
+
+
 def test_broken_links_count_ignores_deleted_sources(client):
     create_res = client.post(
         "/api/sources", json={"title": "Mit URL", "url": "https://example.org", "text": "Text."}
