@@ -4074,7 +4074,8 @@ def _ask_event_stream(
     # identischem Text anzulegen (siehe question_log.add_event_type).
     # Reine Absage: ins Fragen-Log der kurze Satz statt der langen Erklärung.
     log_answer = raw_answer_text.strip() if answer_text in NO_ANSWER_EXPLANATIONS.values() else answer_text
-    if should_log_question_events and NO_ANSWER_PHRASES.get(lang, NO_ANSWER_PHRASES["de"]) in raw_answer_text:
+    # Der Satz kommt in der Sprache der Frage, nicht zwingend der Oberfläche.
+    if should_log_question_events and any(p in raw_answer_text for p in NO_ANSWER_PHRASES.values()):
         if first_question_log_id:
             question_log.add_event_type(first_question_log_id, "no_answer")
         else:

@@ -8088,3 +8088,18 @@ def test_rerank_drops_duplicate_texts_and_fills_up_to_top_k():
     out_ids, out_docs, _ = main_module._rerank_by_relevance(ids, docs, metas, dists, {}, 3)
 
     assert out_ids == ["a", "c", "d"]
+
+
+def test_ask_logs_no_answer_when_phrase_comes_in_question_language_not_ui_language(client, monkeypatch):
+    """Backlog (2026-09-25): englische Frage auf deutscher Oberfläche -> das
+    Modell antwortet mit dem englischen Absage-Satz. Erkennung (Fragen-Log)
+    und freundliche Erklärung müssen trotzdem greifen."""
+    monkeypatch.setattr(main_module, "IS_DEV_ENVIRONMENT", False)
+    monkeypatch.setattr(llm, "stream_answer_question", lambda *a, **k: iter(["The available sources do not answer this."]))
+    client.post("/api/sources", json={"title": "Q", "text": "Text."})
+
+    res = client.post("/api/ask", json={"question": "What about aquarium fish?"}, headers={"X-Lang": "de"})
+
+    answer = [json.loads(line)["answer"] for line in res.text.splitlines() if json.loads(line)["type"] == "answer"][-1]
+    assert answer == main_module.NO_ANSWER_EXPLANATIONS["en"]
+    assert [e for e in question_log.list_entries() if "no_answer" in e["event_types"]]
