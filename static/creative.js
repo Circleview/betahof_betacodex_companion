@@ -97,6 +97,28 @@ export function formatCountdown(seconds) {
   return `${m}:${String(s).padStart(2, '0')}`;
 }
 
+// Nutzerwunsch (2026-09-25): "i" neben dem Countdown erklärt, was die Zeit
+// bedeutet - nur während des Cooldowns sichtbar, per Tastatur fokussierbar
+// (Tooltip über title, Screenreader über aria-label).
+const INFO_ICON =
+  '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" ' +
+  'stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
+  '<circle cx="12" cy="12" r="10"></circle>' +
+  '<line x1="12" y1="16" x2="12" y2="12"></line>' +
+  '<line x1="12" y1="8" x2="12.01" y2="8"></line>' +
+  '</svg>';
+
+function buildCooldownInfo() {
+  const info = document.createElement('span');
+  info.className = 'creative-cooldown-info hidden';
+  info.tabIndex = 0;
+  info.setAttribute('role', 'note');
+  info.innerHTML = INFO_ICON;
+  return info;
+}
+const submitCooldownInfo = buildCooldownInfo();
+submitBtn.after(submitCooldownInfo);
+
 let cooldownUntil = 0;
 let cooldownTimer = null;
 // Von setBusy gepflegt - nach Ablauf des Cooldowns gilt wieder dieser Zustand.
@@ -128,6 +150,12 @@ function applyCooldown() {
     submitShowsCountdown = false;
   }
   submitBtn.title = tooltip;
+  const infoText = t('creative.cooldownInfo');
+  [submitCooldownInfo, ...currentSectionEls.map((els) => els.cooldownInfo)].forEach((info) => {
+    info.classList.toggle('hidden', !blocked);
+    info.title = infoText;
+    info.setAttribute('aria-label', infoText);
+  });
   const sectionLabel = t('creative.sectionSubmitButton');
   currentSectionEls.forEach((els) => {
     els.submitBtn.disabled = disabled;
@@ -557,13 +585,15 @@ function buildSectionElement(section, index) {
   submitBtn.setAttribute('aria-label', submitLabel);
   submitBtn.addEventListener('click', () => submitSectionRevision(index));
   submitRow.appendChild(submitBtn);
+  const cooldownInfo = buildCooldownInfo();
+  submitRow.appendChild(cooldownInfo);
 
   panel.appendChild(submitRow);
 
   wrapper.appendChild(panel);
   reviseBtn.addEventListener('click', () => toggleSectionPanel(index));
 
-  return { wrapper, panel, textarea, micBtn, submitBtn, reviseBtn };
+  return { wrapper, panel, textarea, micBtn, submitBtn, reviseBtn, cooldownInfo };
 }
 
 // Lässt "Bearbeiten" und die Abschnitts-Stifte einmal aufblinken, damit

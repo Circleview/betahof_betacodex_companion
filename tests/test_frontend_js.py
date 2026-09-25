@@ -4120,6 +4120,9 @@ def test_creative_cooldown_shows_on_buttons_and_greys_out_inputs():
     assert "creativeMicButton.disabled = disabled" in body
     assert "els.micBtn.disabled = disabled" in body
     assert "creative.cooldownButtonTitle" in body
+    # "i"-Icon neben dem Countdown, nur während des Cooldowns sichtbar.
+    assert "info.classList.toggle('hidden', !blocked)" in body
+    assert "creative.cooldownInfo" in body
     css = (STATIC_DIR / "style.css").read_text()
     assert "#creative-instruction:disabled" in css
 

@@ -456,6 +456,7 @@
   "creative.redoTitle": "Wiederholen – zurückgenommene Änderung wiederherstellen",
   "creative.rateLimitedCountdown": "Zu viele Anfragen – nächster Versuch in {time} möglich.",
   "creative.cooldownButtonTitle": "Zu viele Anfragen – wieder möglich in {time}",
+  "creative.cooldownInfo": "Wartezeit bis zur nächsten Anfrage: Zum Schutz vor Überlastung sind im Kreativ-Modus nur wenige Anfragen innerhalb von 10 Minuten möglich. Danach geht es automatisch weiter.",
   "questionLog.filter.creative": "Kreativ-Modus",
   "questionLog.eventType.section": "Abschnitt"
 }

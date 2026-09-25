@@ -5326,3 +5326,16 @@ details a {
 .source-reader-text {
   line-height: 1.6;
 }
+
+/* Info-Icon neben dem Countdown-Button (creative.js: buildCooldownInfo). */
+.creative-cooldown-info {
+  display: inline-flex;
+  align-items: center;
+  color: var(--color-text-muted);
+  cursor: help;
+}
+
+.creative-cooldown-info:hover,
+.creative-cooldown-info:focus-visible {
+  color: var(--color-accent);
+}
