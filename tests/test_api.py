@@ -8159,3 +8159,25 @@ def test_normalize_beta_kodex_spelling_once_per_language_and_idempotent(client):
     assert fixed["key_terms_de"] == ["Beta-Kodex", "Selbstorganisation"]
     assert fixed["title"] == "Presenting the BetaCodex"
     assert fixed["text"] == "Im Englischen BetaCodex."
+
+
+def test_creative_event_stream_uses_cleaned_text_for_revisions():
+    """Nutzer-Bug (2026-09-25): bei Überarbeitungen mit Websuche landeten
+    Ankündigungen ("Ich recherchiere ...") im Dokument. Live gestreamt wird
+    weiter roh, als Dokument zählt aber nur die bereinigte Fassung - und
+    erst am Ende (kein frühes document-Event aus dem Rohtext)."""
+
+    class FakeStream:
+        is_revision = True
+        clean_text = "# Titel\n\nSauberer Text.\n\n---SOURCES---\n[Web]: A — https://a.org"
+        real_web_urls = {"https://a.org"}
+        usage = None
+
+        def __iter__(self):
+            return iter(["Ich recherchiere.", "# Titel\n\nSauberer Text.\n\n---SOURCES---\n[Web]: A — https://a.org"])
+
+    events = [json.loads(line) for line in main_module._creative_event_stream("de", [], FakeStream())]
+
+    documents = [e["document"] for e in events if e["type"] == "document"]
+    assert documents == ["# Titel\n\nSauberer Text."]
+    assert events[-1]["sources"]["web"] == [{"title": "A", "url": "https://a.org"}]

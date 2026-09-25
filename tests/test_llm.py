@@ -1,3 +1,4 @@
+import pytest
 from unittest.mock import MagicMock, patch
 
 from app import llm
@@ -314,9 +315,47 @@ def _fake_creative_client(document_text, search_result_urls=None):
     search_block = MagicMock(type="web_search_tool_result")
     search_block.content = [MagicMock(url=u) for u in (search_result_urls or [])]
     stream_manager.__enter__.return_value.get_final_message.return_value = MagicMock(
-        content=[search_block]
+        content=[search_block, MagicMock(type="text", text=document_text)]
     )
     return client
+
+
+def _block(type_, text=None):
+    return MagicMock(type=type_, text=text)
+
+
+def test_clean_section_revision_drops_announcement_before_web_search():
+    """Nutzer-Bug (2026-09-25): "Ich recherchiere ..." vor der Websuche landete
+    im Dokument bzw. blieb als einziges Ergebnis übrig."""
+    blocks = [
+        _block("text", "Ich suche nach Forschungsdaten."),
+        _block("server_tool_use"),
+        _block("web_search_tool_result"),
+        _block("text", "## Teams\n\nNeuer Text."),
+    ]
+    assert llm.clean_section_revision(blocks, "## Teams\n\nAlter Text.") == "## Teams\n\nNeuer Text."
+
+
+def test_clean_section_revision_drops_commentary_before_heading():
+    blocks = [
+        _block("web_search_tool_result"),
+        _block("text", "Die Recherche bestätigt die Aussagen.\n\n"),
+        _block("text", "## Teams\n\nNeuer Text.\n\n---SOURCES---\n[Web]: A — https://a.org"),
+    ]
+    cleaned = llm.clean_section_revision(blocks, "## Teams\n\nAlter Text.")
+    assert cleaned.startswith("## Teams")
+    assert "---SOURCES---" in cleaned
+
+
+def test_clean_section_revision_keeps_text_without_heading_or_search():
+    blocks = [_block("text", "Kürzerer Absatz ohne Überschrift.")]
+    assert llm.clean_section_revision(blocks, "Alter Absatz.") == "Kürzerer Absatz ohne Überschrift."
+
+
+def test_clean_section_revision_raises_when_only_announcement_remains():
+    blocks = [_block("text", "Ich recherchiere das für Sie."), _block("server_tool_use"), _block("web_search_tool_result")]
+    with pytest.raises(llm.SectionRevisionError):
+        llm.clean_section_revision(blocks, "## Teams\n\nAlter Text.")
 
 
 def test_stream_creative_response_uses_sonnet_for_empty_document():

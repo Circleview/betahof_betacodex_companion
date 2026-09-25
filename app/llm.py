@@ -358,7 +358,9 @@ Regeln:
 - Anders als im strikten Frage-Antwort-Modus darfst du hier freier, explorierender und kreativer schreiben - auch über Themen, die die kuratierten BetaCodex-Quellen nicht abdecken (z. B. Workshop-Methodik), gestützt auf das Web-Search-Werkzeug und dein Trainingswissen.
 - Wird unten ein Abschnitt "BetaCodex-Kontext" mitgeliefert: Aussagen, die sich konkret auf den BetaCodex bzw. die dort skizzierten Quellen beziehen, müssen durch diesen Kontext gedeckt sein - erfinde nichts, was ihm widerspricht.
 - Für alles, was der BetaCodex-Kontext nicht abdeckt, darfst du recherchieren (Web-Search-Werkzeug) oder dein allgemeines Wissen nutzen - erfinde aber auch dort keine Fakten, Quellen oder Zitate, die du nicht durch eine echte Websuche oder gesichertes Wissen belegen kannst.
-- Tempo: Beginne SOFORT mit dem Schreiben (Titel bzw. erster Absatz), noch bevor du recherchierst - der Text wird live mitgelesen, Wartezeit vor dem ersten Wort ist zu vermeiden. Recherchiere erst danach und nur gezielt, mit möglichst wenigen Suchanfragen, und arbeite die Funde in den weiteren Text ein. Der Einstieg darf ohne Recherche auskommen (orientierend statt mit Einzelbelegen).
+- Tempo beim ERSTEN Entwurf (leeres Dokument): Beginne SOFORT mit dem Schreiben (Titel bzw. erster Absatz), noch bevor du recherchierst - der Text wird live mitgelesen, Wartezeit vor dem ersten Wort ist zu vermeiden. Recherchiere erst danach und nur gezielt, mit möglichst wenigen Suchanfragen, und arbeite die Funde in den weiteren Text ein. Der Einstieg darf ohne Recherche auskommen (orientierend statt mit Einzelbelegen).
+- Bei einer ÜBERARBEITUNG (bestehendes Dokument): Recherchiere, falls nötig, zuerst - still, ohne Ankündigung - und schreibe danach das vollständige Dokument in einem Stück.
+- Kündige nie an, was du tust, und kommentiere keine Rechercheergebnisse (kein "Ich recherchiere ...", kein "Perfekt, ich habe ... gefunden") - weder vor noch nach einer Websuche.
 - Deine gesamte Antwort IST das Dokument: Gib direkt den vollständigen, fertigen Text aus - keine Chat-Einleitung, kein "Hier ist der überarbeitete Text:", kein Meta-Kommentar davor oder danach.
 - Wird unten ein "Aktuelles Dokument" mitgeliefert, ist das eine VOLLSTÄNDIGE ERSETZUNG: Schreibe den GESAMTEN Text gemäß der Anweisung neu, nicht nur den geänderten Teil. Ist das Dokument leer, verfasse den ersten vollständigen Entwurf.
 - Keine eingeklammerten Quellenverweise wie [1], [2] im Fließtext - anders als im strikten Modus stehen Quellen ausschließlich im Block am Ende (siehe unten).
@@ -377,7 +379,9 @@ Rules:
 - Unlike the strict Q&A mode, here you may write more freely, exploratively, and creatively - including about topics the curated BetaCodex sources don't cover (e.g. workshop facilitation methods), drawing on the web-search tool and your training knowledge.
 - If a "BetaCodex context" section is provided below: statements specific to the BetaCodex or the sources outlined there must be supported by that context - don't invent anything that contradicts it.
 - For anything the BetaCodex context doesn't cover, you may research (web-search tool) or use your general knowledge - but never invent facts, sources, or quotes you can't back up with a real search result or well-established knowledge.
-- Speed: start WRITING IMMEDIATELY (title or first paragraph), before you research - the text is read live as it streams, so avoid any wait before the first word. Only research afterwards and only where it matters, using as few searches as possible, and work the findings into the rest of the text. The opening can do without research (orienting rather than citing specifics).
+- Speed for the FIRST draft (empty document): start WRITING IMMEDIATELY (title or first paragraph), before you research - the text is read live as it streams, so avoid any wait before the first word. Only research afterwards and only where it matters, using as few searches as possible, and work the findings into the rest of the text. The opening can do without research (orienting rather than citing specifics).
+- For a REVISION (existing document): research first if needed - silently, without announcing it - and then write the complete document in one go.
+- Never announce what you are doing and never comment on search results (no "I'll research ...", no "Great, I found ...") - neither before nor after a web search.
 - Your entire reply IS the document: output the complete, ready-to-use text directly - no chat framing, no "Here is the revised text:", no meta-commentary before or after.
 - If a "Current document" is provided below, this is a FULL REPLACEMENT: rewrite the ENTIRE text according to the instruction, not just the changed part. If it is empty, write the first full draft.
 - No bracketed citations like [1], [2] in the body text - unlike the strict mode, sources appear only in the trailing block below.
@@ -406,6 +410,7 @@ Regeln:
 - Unten bekommst du das GESAMTE Dokument, aber NUR als Kontext (Ton, Terminologie, roter Faden) - schreibe es NICHT neu.
 - Überarbeite AUSSCHLIESSLICH den unten separat markierten Abschnitt gemäß der Anweisung.
 - Deine gesamte Antwort ist die überarbeitete Fassung DIESES EINEN Abschnitts - keine Chat-Einleitung, kein "Hier ist der überarbeitete Abschnitt:", kein Meta-Kommentar, kein Rest des Dokuments.
+- Kündige nichts an und kommentiere nichts - weder vor noch nach einer Websuche: kein "Ich recherchiere ...", kein "Die Recherche zeigt ...". Recherchiere still und schreibe danach ausschließlich den überarbeiteten Abschnitt, beginnend mit seiner Überschrift.
 - Behalte die ursprüngliche Überschrift des Abschnitts bei (gleicher Text, gleiches Markdown-Level), außer die Anweisung verlangt ausdrücklich eine andere Überschrift.
 - Wird unten ein Abschnitt "BetaCodex-Kontext" mitgeliefert: Aussagen, die sich konkret auf den BetaCodex bzw. die dort skizzierten Quellen beziehen, müssen durch diesen Kontext gedeckt sein - erfinde nichts, was ihm widerspricht.
 - Für alles, was der BetaCodex-Kontext nicht abdeckt, darfst du recherchieren (Web-Search-Werkzeug) oder dein allgemeines Wissen nutzen - erfinde aber auch dort keine Fakten, Quellen oder Zitate, die du nicht durch eine echte Websuche oder gesichertes Wissen belegen kannst.
@@ -425,6 +430,7 @@ Rules:
 - Below you get the ENTIRE document, but ONLY as context (tone, terminology, narrative thread) - do NOT rewrite it.
 - Revise EXCLUSIVELY the section marked separately below, according to the instruction.
 - Your entire reply is the revised version of THIS ONE section - no chat framing, no "Here is the revised section:", no meta-commentary, no rest of the document.
+- Don't announce or comment on anything - neither before nor after a web search: no "I'll research ...", no "The research shows ...". Research silently, then write only the revised section, starting with its heading.
 - Keep the section's original heading (same text, same Markdown level), unless the instruction explicitly asks for a different heading.
 - If a "BetaCodex context" section is provided below: statements specific to the BetaCodex or the sources outlined there must be supported by that context - don't invent anything that contradicts it.
 - For anything the BetaCodex context doesn't cover, you may research (web-search tool) or use your general knowledge - but never invent facts, sources, or quotes you can't back up with a real search result or well-established knowledge.
@@ -522,10 +528,13 @@ class CreativeStream:
     model dient der Beobachtbarkeit/Tests (welches Modell diese Anfrage
     tatsächlich bedient hat)."""
 
-    def __init__(self, chunks, urls_box: dict, model: str):
+    def __init__(self, chunks, urls_box: dict, model: str, is_revision: bool = False):
         self._chunks = chunks
         self._urls_box = urls_box
         self.model = model
+        # Ganzdokument-Überarbeitung: das Dokument ist erst nach dem Stream
+        # (clean_text) gültig - siehe app/main.py:_creative_event_stream.
+        self.is_revision = is_revision
 
     def __iter__(self):
         return iter(self._chunks)
@@ -533,6 +542,14 @@ class CreativeStream:
     @property
     def real_web_urls(self) -> set[str]:
         return self._urls_box["urls"]
+
+    @property
+    def clean_text(self) -> str | None:
+        """Bereinigte Fassung einer Ganzdokument-Überarbeitung (ohne
+        Ankündigungen/Kommentare rund um die Websuche) - None beim ersten
+        Entwurf und bei Abschnitten (dort liefert der Stream selbst schon
+        die bereinigte Fassung)."""
+        return self._urls_box.get("clean_text")
 
     @property
     def usage(self) -> dict | None:
@@ -558,6 +575,35 @@ def _usage_dict(model: str, usage) -> dict:
         "cache_read_input_tokens": int(getattr(usage, "cache_read_input_tokens", 0) or 0),
         "web_search_requests": int(getattr(server_tool_use, "web_search_requests", 0) or 0) if server_tool_use else 0,
     }
+
+
+class SectionRevisionError(Exception):
+    """Die Abschnitts-Überarbeitung enthielt nach dem Bereinigen keinen
+    Abschnitt mehr (nur Ankündigung/Kommentar) - lieber Fehler als Müll im
+    Dokument."""
+
+
+_MARKDOWN_HEADING_RE = re.compile(r"^#{1,6}\s", re.MULTILINE)
+_WEB_SEARCH_BLOCK_TYPES = ("server_tool_use", "web_search_tool_result")
+
+
+def clean_section_revision(blocks, section: str) -> str:  # auch für Ganzdokument-Überarbeitungen
+    """Nutzer-Bug (2026-09-25): mit Websuche kündigt das Modell sein Vorgehen
+    an ("Ich recherchiere ...") und kommentiert manchmal das Ergebnis ("Die
+    Recherche bestätigt ...") - text_stream hängte das vor den Abschnitt,
+    bricht es danach ab, blieb NUR die Ankündigung übrig. Daher: nur Text
+    NACH der letzten Websuche zählt, und beginnt der Original-Abschnitt mit
+    einer Überschrift, fällt alles vor der ersten Überschrift weg."""
+    last_search = max((i for i, b in enumerate(blocks) if b.type in _WEB_SEARCH_BLOCK_TYPES), default=-1)
+    text = "".join(b.text for b in blocks[last_search + 1 :] if b.type == "text")
+    if _MARKDOWN_HEADING_RE.match(section.lstrip()):
+        heading = _MARKDOWN_HEADING_RE.search(text)
+        if heading:
+            text = text[heading.start() :]
+    document, _ = parse_document_and_sources(text)
+    if not document:
+        raise SectionRevisionError()
+    return text.strip()
 
 
 def stream_creative_response(
@@ -608,9 +654,21 @@ def stream_creative_response(
             messages=[{"role": "user", "content": user_content}],
             **tool_kwargs,
         ) as stream:
-            yield from stream.text_stream
-            final_message = stream.get_final_message()
+            if section is not None:
+                # Abschnitte werden im Frontend ohnehin nicht live gestreamt
+                # (nur das "document"-Event zählt) - erst bereinigen, dann liefern.
+                final_message = stream.get_final_message()
+                yield clean_section_revision(final_message.content, section)
+            else:
+                yield from stream.text_stream
+                final_message = stream.get_final_message()
+                # Überarbeitung: live gestreamt, aber als Dokument zählt am
+                # Ende nur die bereinigte Fassung (siehe clean_section_revision,
+                # CreativeStream.clean_text) - der erste Entwurf bleibt roh,
+                # dort ist Text vor der Recherche gewollt (Tempo-Regel).
+                if document.strip():
+                    urls_box["clean_text"] = clean_section_revision(final_message.content, document)
         urls_box["urls"] = web_search_tool.real_search_result_urls(final_message)
         urls_box["usage"] = _usage_dict(model, final_message.usage)
 
-    return CreativeStream(_generate(), urls_box, model)
+    return CreativeStream(_generate(), urls_box, model, is_revision=section is None and bool(document.strip()))

@@ -4421,7 +4421,9 @@ def _creative_event_stream(lang, betacodex_sources, creative_stream, usage_meta=
             if new_text:
                 yield json.dumps({"type": "delta", "text": new_text}) + "\n"
                 sent_len = len(visible_raw)
-            if marker_index != -1 and not document_sent:
+            # Bei Überarbeitungen gilt erst die bereinigte Fassung am Ende
+            # (CreativeStream.clean_text) - kein frühes "document"-Event.
+            if marker_index != -1 and not document_sent and not getattr(creative_stream, "is_revision", False):
                 early_document, _ = llm.parse_document_and_sources(buffer)
                 yield json.dumps({"type": "document", "document": early_document}) + "\n"
                 document_sent = True
@@ -4429,8 +4431,9 @@ def _creative_event_stream(lang, betacodex_sources, creative_stream, usage_meta=
         yield json.dumps({"type": "error", "message": i18n.get_message("creative_llm_failed", lang)}) + "\n"
         return
 
-    document_text, web_source_candidates = llm.parse_document_and_sources(buffer)
-    remaining = document_text[sent_len:]
+    clean_text = getattr(creative_stream, "clean_text", None)
+    document_text, web_source_candidates = llm.parse_document_and_sources(clean_text or buffer)
+    remaining = document_text[sent_len:] if clean_text is None else ""
     if remaining:
         yield json.dumps({"type": "delta", "text": remaining}) + "\n"
     if not document_sent:
