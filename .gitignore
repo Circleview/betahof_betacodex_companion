@@ -6,3 +6,6 @@ data/*
 !data/.gitkeep
 backups/
 .DS_Store
+
+# Lokale Daten-Backups (scripts/pull_prod_sources.sh) - enthalten users.json/Logs
+data.bak-*/
