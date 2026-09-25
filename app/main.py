@@ -3034,20 +3034,22 @@ def get_broken_links_count(_user: str = Depends(require_role(users.QUELLEN_PFLEG
     return BrokenLinksCountOut(count=count)
 
 
-# Nutzerwunsch (2026-09-25): das Bearbeiten-Formular in der Konversation
-# (static/question.js) braucht EINE Quelle inkl. Volltext - ohne dafür wie
-# GET /api/sources den ganzen Bestand zu laden. Steht bewusst NACH
+# Nutzerwunsch (2026-09-25): Bearbeiten- und Lese-Dialog in der Konversation
+# (static/question.js) brauchen EINE Quelle - ohne dafür wie GET /api/sources
+# den ganzen Bestand zu laden. Öffentlich wie GET /api/sources: geschützte
+# Volltexte (restricted) sehen nur Quellen-Pfleger:innen. Steht bewusst NACH
 # broken-links-count, sonst würde {source_id} diese Route verdecken.
 @app.get("/api/sources/{source_id}", response_model=SourceOut)
 def get_source(
     source_id: str,
+    request: Request,
     x_lang: str = Header(default=i18n.DEFAULT_LANG),
-    _user: str = Depends(require_role(users.QUELLEN_PFLEGER)),
 ):
     entry = _load_sources().get(source_id)
     if not entry or entry.get("deleted_at"):
         raise HTTPException(404, i18n.get_message("source_not_found", x_lang))
-    return _to_source_out(entry, can_view_full_text=True, lang=x_lang)
+    can_view_full_text = users.has_role(_get_current_user_email(request), users.QUELLEN_PFLEGER)
+    return _to_source_out(entry, can_view_full_text, lang=x_lang)
 
 
 # Backlog: LLM/Internet-Fallback bei dünner Quellenlage - eine freigegebene

@@ -5292,3 +5292,29 @@ details a {
   text-decoration: line-through;
   color: var(--color-text-muted);
 }
+
+/* Lese-Dialog "Quelle ansehen" (question.js: buildSourceReader). */
+.source-reader {
+  padding: 0 0.5rem 0.5rem;
+}
+
+.source-reader h2 {
+  margin: 0 0 0.25rem;
+}
+
+.source-reader h3 {
+  margin: 1.25rem 0 0.4rem;
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-text-muted);
+}
+
+.source-reader-meta {
+  color: var(--color-text-muted);
+  margin: 0;
+}
+
+.source-reader-text {
+  line-height: 1.6;
+}

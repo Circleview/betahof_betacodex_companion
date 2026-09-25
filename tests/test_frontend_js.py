@@ -4060,7 +4060,9 @@ def test_conversation_edit_dialog_loads_single_source_with_full_text():
     assert dialog_match, "openSourceEditDialog wurde in question.js nicht gefunden."
     body = dialog_match.group(0)
     assert "import('/source-edit.js')" in body
-    assert "fetch(`/api/sources/${encodeURIComponent(sourceId)}`" in body
+    assert "fetchSource(sourceId)" in body
+    fetch_match = re.search(r"async function fetchSource.*?\n\}", js_source, re.S)
+    assert fetch_match and "fetch(`/api/sources/${encodeURIComponent(sourceId)}`" in fetch_match.group(0)
     assert "module.buildEditPanel(source" in body
     # Speichern/Löschen übertragen sich auf die Konversation (Titel, Status).
     assert "updateCitedSource(sourceId, {" in body
@@ -4081,3 +4083,19 @@ def test_icon_buttons_visible_in_conversation_edit_dialog():
     css = (STATIC_DIR / "style.css").read_text()
     match = re.search(r"\.source-edit-dialog \.icon-button \{\s*opacity: 1;", css)
     assert match, "Icons im Bearbeiten-Dialog müssen immer sichtbar sein."
+
+
+def test_view_source_link_opens_reader_dialog_instead_of_new_tab():
+    """Nutzerwunsch (2026-09-25): das Auge ("Quelle ansehen") öffnet eine
+    Lese-Ansicht in der Konversation - ein neuer Tab auf die eigene Domain
+    landete bei installierter App im App-Fenster."""
+    js_source = (STATIC_DIR / "question.js").read_text()
+    link_match = re.search(r"function appendViewSourceLink.*?\n\}", js_source, re.S)
+    assert link_match and "openSourceViewDialog(sourceId)" in link_match.group(0)
+    assert "e.preventDefault()" in link_match.group(0)
+    reader_match = re.search(r"function buildSourceReader.*?\n\}", js_source, re.S)
+    assert reader_match, "buildSourceReader wurde nicht gefunden."
+    reader = reader_match.group(0)
+    # Geschützte Quellen: Server liefert den Text leer, der Dialog erklärt das.
+    assert "common.readerRestrictedNote" in reader
+    assert "renderMarkdown(s.text)" in reader

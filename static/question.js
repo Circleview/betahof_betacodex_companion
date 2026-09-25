@@ -141,10 +141,12 @@ function appendEditSourceLink(container, sourceId) {
 
 // Quelle (inkl. Volltext) und Autor:innen erst beim Öffnen laden, das Modul
 // per dynamischem import() - normale Besucher:innen laden davon nichts.
-async function openSourceEditDialog(sourceId) {
+// Gemeinsames Gerüst für Bearbeiten- und Lese-Dialog: Schließen-Kreuz,
+// Ladehinweis, wird beim Schließen aus dem DOM entfernt.
+function openSourceDialog(label) {
   const dialog = document.createElement('dialog');
   dialog.className = 'source-edit-dialog';
-  dialog.setAttribute('aria-label', t('common.editSource'));
+  dialog.setAttribute('aria-label', label);
 
   const closeBtn = document.createElement('button');
   closeBtn.type = 'button';
@@ -159,29 +161,114 @@ async function openSourceEditDialog(sourceId) {
   status.className = 'edit-status';
   status.textContent = t('common.loadingSource');
 
+  dialog.append(closeBtn, status);
+  dialog.addEventListener('close', () => dialog.remove());
+  document.body.appendChild(dialog);
+  dialog.showModal();
+  return { dialog, status };
+}
+
+async function fetchSource(sourceId) {
+  const res = await fetch(`/api/sources/${encodeURIComponent(sourceId)}`, { headers: { 'X-Lang': getLang() } });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || res.statusText);
+  }
+  return res.json();
+}
+
+// Nutzerwunsch (2026-09-25): "Quelle ansehen" (Auge) öffnet eine Lese-
+// Ansicht direkt in der Konversation statt der Quellenübersicht in einem
+// neuen Tab - neue Tabs auf die eigene Domain fängt eine installierte App
+// (manifest.json) ab und öffnet sie im App-Fenster. Geschützte Volltexte
+// liefert der Server ohne Pfleger-Rolle leer (GET /api/sources/{id}).
+async function openSourceViewDialog(sourceId) {
+  const { dialog, status } = openSourceDialog(t('common.viewSource'));
+  try {
+    const s = await fetchSource(sourceId);
+    status.remove();
+    dialog.appendChild(buildSourceReader(s));
+  } catch (err) {
+    status.textContent = t('common.errorPrefix') + err.message;
+  }
+}
+
+function buildSourceReader(s) {
+  const article = document.createElement('article');
+  article.className = 'source-reader';
+
+  const heading = document.createElement('h2');
+  heading.textContent = s.title;
+  article.appendChild(heading);
+
+  const meta = document.createElement('p');
+  meta.className = 'source-reader-meta';
+  const year = s.date ? s.date.split('-')[0] : null;
+  meta.textContent = [(s.authors || []).join(', '), year].filter(Boolean).join(' · ');
+  const url = s.url_reachable === false ? null : s.listen_url || s.url;
+  if (url) {
+    const a = document.createElement('a');
+    a.href = url;
+    a.target = '_blank';
+    a.rel = 'noopener noreferrer';
+    a.className = 'external-link';
+    const label = t('common.openSource');
+    a.title = label;
+    a.setAttribute('aria-label', label);
+    a.innerHTML = EXTERNAL_LINK_ICON;
+    meta.appendChild(a);
+  }
+  article.appendChild(meta);
+
+  function sectionHeading(labelKey) {
+    const h3 = document.createElement('h3');
+    h3.textContent = t(labelKey);
+    return h3;
+  }
+
+  if (s.summary) {
+    const p = document.createElement('p');
+    p.textContent = s.summary;
+    article.appendChild(sectionHeading('common.readerSummary'));
+    article.appendChild(p);
+  }
+  if (s.key_terms && s.key_terms.length) {
+    const p = document.createElement('p');
+    p.className = 'source-reader-terms';
+    p.textContent = s.key_terms.join(' · ');
+    article.appendChild(sectionHeading('common.readerKeyTerms'));
+    article.appendChild(p);
+  }
+  const text = document.createElement('div');
+  text.className = 'source-reader-text';
+  if (s.text) {
+    // renderMarkdown escaped HTML (markdown.js), der Quelltext ist Nutzer-Inhalt.
+    text.innerHTML = renderMarkdown(s.text);
+  } else {
+    text.textContent = t(s.restricted ? 'common.readerRestrictedNote' : 'common.readerNoText');
+  }
+  article.appendChild(sectionHeading('common.readerFullText'));
+  article.appendChild(text);
+  return article;
+}
+
+async function openSourceEditDialog(sourceId) {
+  const { dialog, status } = openSourceDialog(t('common.editSource'));
+
   // buildAuthorFields verweist per list="author-suggestions" auf diese Liste.
   const datalist = document.createElement('datalist');
   datalist.id = 'author-suggestions';
 
   const list = document.createElement('ul');
   list.className = 'source-edit-dialog-list';
-
-  dialog.append(closeBtn, status, datalist, list);
-  dialog.addEventListener('close', () => dialog.remove());
-  document.body.appendChild(dialog);
-  dialog.showModal();
+  dialog.append(datalist, list);
 
   try {
-    const headers = { 'X-Lang': getLang() };
-    const [module, sourceRes, authorsRes] = await Promise.all([
+    const [module, source, authorsRes] = await Promise.all([
       import('/source-edit.js'),
-      fetch(`/api/sources/${encodeURIComponent(sourceId)}`, { headers }),
-      fetch('/api/authors', { headers }),
+      fetchSource(sourceId),
+      fetch('/api/authors', { headers: { 'X-Lang': getLang() } }),
     ]);
-    if (!sourceRes.ok) {
-      const err = await sourceRes.json().catch(() => ({}));
-      throw new Error(err.detail || sourceRes.statusText);
-    }
     const authors = authorsRes.ok ? await authorsRes.json() : [];
     module.setKnownAuthors(authors);
     datalist.replaceChildren(
@@ -191,7 +278,6 @@ async function openSourceEditDialog(sourceId) {
         return option;
       })
     );
-    const source = await sourceRes.json();
     status.remove();
 
     // Löschen wie in der Quellenübersicht mit Rückgängig-Leiste. Wird der
@@ -284,6 +370,12 @@ function appendViewSourceLink(container, sourceId) {
   a.title = label;
   a.setAttribute('aria-label', label);
   a.innerHTML = VIEW_ICON;
+  // Normaler Klick: Lese-Dialog statt neuem Tab (siehe openSourceViewDialog).
+  a.addEventListener('click', (e) => {
+    if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+    e.preventDefault();
+    openSourceViewDialog(sourceId);
+  });
   container.appendChild(a);
   attachConversationHandoff(a);
 }
