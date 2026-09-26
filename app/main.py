@@ -4072,7 +4072,7 @@ def _ask_event_stream(
     history,
     should_log_question_events,
     first_question_log_id,
-    usage_email=None,
+    usage=None,
 ):
     """Generator für die NDJSON-Stream-Antwort von /api/ask: ein frühes
     "sources"-Event (Titel/Autor:in/Link, siehe unten), dann ein "delta"-
@@ -4106,7 +4106,7 @@ def _ask_event_stream(
 
     try:
         for delta in llm.stream_answer_question(
-            question_text, llm_chunks, lang=lang, author_bios=author_bios, history=history, usage_email=usage_email
+            question_text, llm_chunks, lang=lang, author_bios=author_bios, history=history, usage=usage
         ):
             buffer += delta
             # Ersetzt eine bereits VOLLSTÄNDIG angekommene Platzhalter-
@@ -4228,31 +4228,15 @@ def _ask_event_stream(
     ) + "\n"
 
 
-@app.post("/api/ask")
-def ask(question: QuestionIn, request: Request, x_lang: str = Header(default=i18n.DEFAULT_LANG)):
-    client_ip = request.client.host if request.client else "unknown"
-    if ratelimit.is_rate_limited(client_ip):
-        raise HTTPException(429, i18n.get_message("rate_limited", x_lang))
-    if not captcha.verify_turnstile_token(question.turnstile_token, client_ip):
-        raise HTTPException(400, i18n.get_message("captcha_failed", x_lang))
-
-    # Backlog #97: anonymisiertes Log der ersten Frage einer Konversation -
-    # bewusst schon hier, VOR der eigentlichen RAG-Suche, damit auch Fragen
-    # ohne Treffer erfasst werden (gerade die sind für die Lücken-Analyse
-    # interessant). Ausschlüsse siehe _should_log_question_event(). Die id
-    # wird unten an _ask_event_stream weitergereicht, das die Antwort
-    # nachträgt, sobald sie feststeht (Nutzerwunsch, Livegang-Vorbereitung
-    # 2026-09-10, siehe question_log.set_answer).
-    should_log_question_events = _should_log_question_event(request)
-    first_question_log_id = None
-    if question.is_first_message and should_log_question_events:
-        first_question_log_id = question_log.log_question(question.question)
-
+def _ask_context(question_text: str, history: list[dict], x_lang: str, top_k: int = 5, usage_email: str | None = None):
+    """Suche für eine Frage (2026-09-26 aus ask() herausgelöst, damit auch
+    das MCP-Werkzeug ask_question exakt dieselbe Logik nutzt): Quellen
+    finden, gewichten, Hybrid-Suche, Autor:innen-Viten. Liefert
+    (llm_chunks, chunk_refs, author_bios, query_embedding)."""
     sources = _load_sources()
     if not sources:
         raise HTTPException(400, i18n.get_message("no_sources", x_lang))
 
-    history = [turn.model_dump() for turn in question.history[-ASK_HISTORY_MAX_TURNS:]]
 
     # Fix (2026-08-20, per Screenshot gemeldet): eine kurze Folgefrage wie
     # "Erzähle mehr" trägt allein kaum thematischen Anker - die frühere
@@ -4263,27 +4247,27 @@ def ask(question: QuestionIn, request: Request, x_lang: str = Header(default=i18
     # Verlaufs zu einer eigenständigen Suchanfrage um. Schlägt der Call fehl
     # (liefert None), fällt es auf die alte, einfache Verkettung zurück -
     # eine Anthropic-Störung darf die Anfrage nie komplett blockieren.
-    query_text = question.question
+    query_text = question_text
     if history:
         query_text = llm.rewrite_followup_query(
-            question.question, history, x_lang, usage_email=_get_current_user_email(request)
+            question_text, history, x_lang, usage_email=usage_email
         ) or (
-            f"{history[-1]['question']} {question.question}"
+            f"{history[-1]['question']} {question_text}"
         )
 
     query_embedding = embeddings.embed_query(query_text)
     # Wiederverwendet weiter unten auch für author_bios - ein Namensabgleich
     # reicht für beides (siehe Kommentar bei AUTHOR_MENTION_DISTANCE_FACTOR).
-    mentioned_author_names = authors.find_mentioned(question.question)
+    mentioned_author_names = authors.find_mentioned(question_text)
     curated_hits = vectorstore.query(
-        query_embedding, top_k=question.top_k * RELEVANCE_OVERFETCH_MULTIPLIER
+        query_embedding, top_k=top_k * RELEVANCE_OVERFETCH_MULTIPLIER
     )
     # Immer mitabgefragt, siehe Kommentar oben - rein lokal, keine spürbare
     # Zeitkosten. exclude_page_ids berücksichtigt manuell ausgeschlossene
     # Einzelseiten (siehe app/web_index.py:set_excluded).
     web_hits = vectorstore.query_web(
         query_embedding,
-        top_k=question.top_k * RELEVANCE_OVERFETCH_MULTIPLIER,
+        top_k=top_k * RELEVANCE_OVERFETCH_MULTIPLIER,
         exclude_page_ids=web_index.excluded_page_ids(),
     )
 
@@ -4335,7 +4319,7 @@ def ask(question: QuestionIn, request: Request, x_lang: str = Header(default=i18
                 where={"source_id": source_id},
             )
             keyword_match = _source_matches_question_keywords(
-                sources.get(source_id, {}), question.question
+                sources.get(source_id, {}), question_text
             )
             factor = (
                 AUTHOR_MENTION_KEYWORD_MATCH_FACTOR
@@ -4362,10 +4346,10 @@ def ask(question: QuestionIn, request: Request, x_lang: str = Header(default=i18
         raise HTTPException(400, i18n.get_message("no_matching_chunks", x_lang))
 
     ids, documents, metadatas = _rerank_by_relevance(
-        ids, documents, metadatas, distances, sources, question.top_k
+        ids, documents, metadatas, distances, sources, top_k
     )
     ids, documents, metadatas = _ensure_term_hits(
-        ids, documents, metadatas, query_embedding, query_text, question.top_k
+        ids, documents, metadatas, query_embedding, query_text, top_k
     )
 
     unknown_label = "unbekannt" if x_lang == "de" else "unknown"
@@ -4426,6 +4410,34 @@ def ask(question: QuestionIn, request: Request, x_lang: str = Header(default=i18
         if bio:
             author_bios.append({"name": name, "bio": bio})
 
+    return llm_chunks, chunk_refs, author_bios, query_embedding
+
+
+@app.post("/api/ask")
+def ask(question: QuestionIn, request: Request, x_lang: str = Header(default=i18n.DEFAULT_LANG)):
+    client_ip = request.client.host if request.client else "unknown"
+    if ratelimit.is_rate_limited(client_ip):
+        raise HTTPException(429, i18n.get_message("rate_limited", x_lang))
+    if not captcha.verify_turnstile_token(question.turnstile_token, client_ip):
+        raise HTTPException(400, i18n.get_message("captcha_failed", x_lang))
+
+    # Backlog #97: anonymisiertes Log der ersten Frage einer Konversation -
+    # bewusst schon hier, VOR der eigentlichen RAG-Suche, damit auch Fragen
+    # ohne Treffer erfasst werden (gerade die sind für die Lücken-Analyse
+    # interessant). Ausschlüsse siehe _should_log_question_event(). Die id
+    # wird unten an _ask_event_stream weitergereicht, das die Antwort
+    # nachträgt, sobald sie feststeht (Nutzerwunsch, Livegang-Vorbereitung
+    # 2026-09-10, siehe question_log.set_answer).
+    should_log_question_events = _should_log_question_event(request)
+    first_question_log_id = None
+    if question.is_first_message and should_log_question_events:
+        first_question_log_id = question_log.log_question(question.question)
+
+    history = [turn.model_dump() for turn in question.history[-ASK_HISTORY_MAX_TURNS:]]
+    llm_chunks, chunk_refs, author_bios, query_embedding = _ask_context(
+        question.question, history, x_lang, question.top_k, _get_current_user_email(request)
+    )
+
     chunk_docs = [chunk_ref.text for chunk_ref in chunk_refs]
     return StreamingResponse(
         _ask_event_stream(
@@ -4439,7 +4451,7 @@ def ask(question: QuestionIn, request: Request, x_lang: str = Header(default=i18
             history,
             should_log_question_events,
             first_question_log_id,
-            _get_current_user_email(request),
+            {"channel": "ask", "email": _get_current_user_email(request)},
         ),
         media_type="application/x-ndjson",
     )

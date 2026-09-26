@@ -119,24 +119,28 @@ def anthropic_usage(model: str, usage) -> dict:
     }
 
 
-def track_anthropic(model: str, usage, channel: str, email: str | None = None) -> None:
+def track_anthropic(
+    model: str, usage, channel: str, email: str | None = None, key_id: str | None = None
+) -> None:
     """Kostenmessung für einen Claude-Aufruf - darf die eigentliche Funktion
     nie unterbrechen (Fehler landen nur im Server-Log). email: angemeldetes
     Konto, das den Aufruf ausgelöst hat (None = anonym bzw. System)."""
     try:
-        record(anthropic_usage(model, usage), channel=channel, web_search=False, email=email)
+        record(anthropic_usage(model, usage), channel=channel, web_search=False, email=email, key_id=key_id)
     except Exception:
         logging.getLogger(__name__).exception("Kostenmessung (%s) fehlgeschlagen", channel)
 
 
-def track_anthropic_stream(model: str, stream, channel: str, email: str | None = None) -> None:
+def track_anthropic_stream(
+    model: str, stream, channel: str, email: str | None = None, key_id: str | None = None
+) -> None:
     """Wie track_anthropic, aber für einen fertig gelesenen Stream."""
     try:
         final_usage = stream.get_final_message().usage
     except Exception:
         logging.getLogger(__name__).exception("Kostenmessung (%s) fehlgeschlagen", channel)
         return
-    track_anthropic(model, final_usage, channel, email)
+    track_anthropic(model, final_usage, channel, email, key_id)
 
 
 def track_service(channel: str, model: str, quantity: float, email: str | None = None) -> None:

@@ -1,7 +1,8 @@
-"""MCP-Zugang zum Kreativ-Modus (Nutzerwunsch 2026-09-24): Endpunkt /mcp in
-der bestehenden App (Streamable HTTP, zustandslos, JSON-Antworten), zwei
-Werkzeuge - Text erzeugen, Text überarbeiten -, jeweils mit abschaltbarer
-Websuche (Default an).
+"""MCP-Zugang zu BetaCodex Chat (Nutzerwunsch 2026-09-24, erweitert
+2026-09-26): Endpunkt /mcp in der bestehenden App (Streamable HTTP,
+zustandslos, JSON-Antworten). Werkzeuge: Frage beantworten (wie der
+Konversationsmodus, nur kuratierte Quellen, mit Belegen) sowie Text erzeugen
+und Text überarbeiten (Kreativ-Modus, Websuche abschaltbar, Default an).
 
 Anmeldung: "Authorization: Bearer <Schlüssel>" oder "x-api-key: <Schlüssel>"
 (app/mcp_keys.py, siehe _extract_key). Der
@@ -14,6 +15,7 @@ Jeder Aufruf läuft durch dieselbe Kreativ-Logik wie die Oberfläche
 und Konto im Verbrauchsprotokoll (app/usage.py) und - anonym, Badge "MCP" -
 im Fragen-Log."""
 import json
+import re
 
 import anyio
 from mcp.server.mcpserver import Context, MCPServer
@@ -35,13 +37,18 @@ ALLOWED_HOSTS = [
 ]
 
 server = MCPServer(
-    name="BetaCodex Kreativ-Modus",
+    name="BetaCodex Chat",
     instructions=(
-        "Schreibt und überarbeitet Texte zum BetaCodex (Beta-Organisation, dezentrale Führung) "
-        "auf Basis kuratierter BetaCodex-Quellen, optional ergänzt um eine Websuche. "
-        "Writes and revises texts about the BetaCodex based on curated sources, optionally with web search."
+        "Beantwortet Fragen zum Beta-Kodex (Beta-Organisation, dezentrale Führung) ausschließlich aus "
+        "kuratierten Quellen mit Belegen (ask_question) und schreibt bzw. überarbeitet Texte auf dieser "
+        "Grundlage, optional ergänzt um eine Websuche (create_text, revise_text). "
+        "Answers questions about the BetaCodex strictly from curated sources with citations (ask_question) "
+        "and writes or revises texts on that basis, optionally with web search (create_text, revise_text)."
     ),
 )
+
+PUBLIC_BASE_URL = "https://chat.betacodex.org"
+MAX_QUESTION_CHARS = 2000
 
 
 def _format_result(document: str, sources: dict, lang: str) -> str:
@@ -71,16 +78,7 @@ def _run_creative(key: dict, instruction: str, document: str, lang: str, web_sea
         raise ToolError(i18n.get_message("creative_instruction_too_long", lang))
     if len(document) > main.CREATIVE_MAX_DOCUMENT_CHARS:
         raise ToolError(i18n.get_message("creative_document_too_long", lang))
-    exceeded = mcp_keys.limit_exceeded(key)
-    if exceeded:
-        raise ToolError(
-            i18n.get_message(
-                f"mcp_limit_{exceeded}",
-                lang,
-                calls=key["daily_call_limit"],
-                eur=f"{key['monthly_eur_limit']:.2f}",
-            )
-        )
+    _check_limits(key, lang)
 
     llm_chunks, betacodex_sources = main._creative_context(instruction, document, lang)
     creative_stream = llm.stream_creative_response(instruction, document, llm_chunks, lang=lang, web_search=web_search)
@@ -100,11 +98,107 @@ def _run_creative(key: dict, instruction: str, document: str, lang: str, web_sea
     return _format_result(result_document, sources, lang)
 
 
+def _check_limits(key: dict, lang: str) -> None:
+    exceeded = mcp_keys.limit_exceeded(key)
+    if exceeded:
+        raise ToolError(
+            i18n.get_message(
+                f"mcp_limit_{exceeded}",
+                lang,
+                calls=key["daily_call_limit"],
+                eur=f"{key['monthly_eur_limit']:.2f}",
+            )
+        )
+
+
+def _format_answer(answer: str, chunk_refs: list[dict], lang: str) -> str:
+    """Antwort mit ihren [n]-Belegen, darunter die zitierten Quellen in
+    derselben Nummerierung. Relative Links (z. B. in der Keine-Antwort-
+    Erklärung) werden absolut, damit sie außerhalb der Website funktionieren."""
+    answer = answer.strip().replace("](/", f"]({PUBLIC_BASE_URL}/")
+    cited = sorted({int(n) for n in re.findall(r"\[(\d+)\]", answer)})
+    lines = [answer]
+    refs = [(n, chunk_refs[n - 1]) for n in cited if 0 < n <= len(chunk_refs)]
+    if refs:
+        lines.append("\n---\n" + ("Quellen:" if lang == "de" else "Sources:"))
+        for n, ref in refs:
+            authors = ", ".join(ref.get("authors") or [])
+            year = (ref.get("date") or "")[:4]
+            meta = ", ".join(x for x in (authors, year) if x)
+            url = None if ref.get("url_reachable") is False else ref.get("listen_url") or ref.get("url")
+            kind = "Web" if ref.get("is_web_fallback") else "BetaCodex"
+            lines.append(f"[{n}] {kind}: {ref['title']}" + (f" ({meta})" if meta else "") + (f" {url}" if url else ""))
+    return "\n".join(lines)
+
+
+def _run_ask(key: dict, question: str, lang: str) -> str:
+    """Nutzerwunsch (2026-09-26): Frage-Antwort wie im Konversationsmodus -
+    dieselbe Suche (main._ask_context) und derselbe Antwort-Stream wie der
+    Chat, Kosten auf den Schlüssel (Kanal "mcp_ask", zählt gegen dessen
+    Limits wie ein Kreativ-Aufruf)."""
+    from app import main  # zur Laufzeit - main bindet dieses Modul selbst ein
+
+    lang = lang if lang in ("de", "en") else i18n.DEFAULT_LANG
+    question = question.strip()
+    if not question:
+        raise ToolError(i18n.get_message("mcp_question_empty", lang))
+    if len(question) > MAX_QUESTION_CHARS:
+        raise ToolError(i18n.get_message("mcp_question_too_long", lang))
+    _check_limits(key, lang)
+
+    try:
+        llm_chunks, chunk_refs, author_bios, query_embedding = main._ask_context(
+            question, [], lang, usage_email=key["email"]
+        )
+    except main.HTTPException as e:
+        raise ToolError(e.detail) from e
+    usage_meta = {"channel": "mcp_ask", "email": key["email"], "key_id": key["id"]}
+    answer, sources = "", []
+    for line in main._ask_event_stream(
+        question,
+        llm_chunks,
+        lang,
+        author_bios or None,
+        chunk_refs,
+        [ref.text for ref in chunk_refs],
+        query_embedding,
+        [],
+        False,
+        None,
+        usage_meta,
+    ):
+        event = json.loads(line)
+        if event["type"] == "answer":
+            answer = event["answer"]
+        elif event["type"] == "done":
+            sources = event["sources"]
+        elif event["type"] == "error":
+            raise ToolError(event["message"])
+
+    if not main.IS_DEV_ENVIRONMENT and not users.has_role(key["email"], users.SYSTEM_ADMIN):
+        question_log.log_mcp(question, answer)
+    return _format_answer(answer, sources, lang)
+
+
 def _current_key(ctx: Context) -> dict:
     key = ctx.request_context.request.scope.get(_SCOPE_KEY)
     if key is None:  # nur erreichbar, wenn _BearerKeyAuth umgangen würde
         raise ToolError("Nicht angemeldet / not authenticated")
     return key
+
+
+@server.tool(
+    name="ask_question",
+    description=(
+        "Frage zum Beta-Kodex beantworten - wie der Konversationsmodus von BetaCodex Chat: ausschließlich "
+        "aus kuratierten Quellen, mit Belegen [n] und Quellenliste, ohne Websuche und ohne Erfindungen. "
+        "Answer a question about the BetaCodex like BetaCodex Chat's conversation mode: strictly from "
+        "curated sources, with citations [n] and a source list. language: 'de' oder/or 'en'."
+    ),
+)
+async def ask_question(question: str, ctx: Context, language: str = "de") -> str:
+    key = _current_key(ctx)
+    return await anyio.to_thread.run_sync(_run_ask, key, question, language)
 
 
 @server.tool(

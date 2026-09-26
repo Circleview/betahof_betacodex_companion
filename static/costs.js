@@ -23,7 +23,7 @@ const SVG_NS = 'http://www.w3.org/2000/svg';
 // = Stapel von unten nach oben = Farbslot, validiert per dataviz-Validator),
 // Anbieter im Tooltip. Unbekannte Kanäle zählen zu "Hintergrund & Pflege".
 const USAGE_GROUPS = [
-  { key: 'conversation', channels: ['ask'] },
+  { key: 'conversation', channels: ['ask', 'mcp_ask'] },
   { key: 'creative', channels: ['ui', 'mcp'] },
   { key: 'tts', channels: ['tts'] },
   { key: 'background', channels: ['summary', 'ocr', 'stt', 'discovery'] },

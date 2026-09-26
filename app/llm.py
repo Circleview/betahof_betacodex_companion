@@ -280,7 +280,7 @@ def stream_answer_question(
     lang: str = DEFAULT_LANG,
     author_bios: list[dict] | None = None,
     history: list[dict] | None = None,
-    usage_email: str | None = None,
+    usage: dict | None = None,
 ):
     """Wie answer_question, liefert die Antwort aber als Generator einzelner
     Text-Fragmente, sobald Anthropic sie erzeugt (Backlog: Antwortzeit
@@ -322,8 +322,9 @@ def stream_answer_question(
         messages=messages,
     ) as stream:
         yield from stream.text_stream
-        # usage_email: angemeldetes Konto für "Meine Kosten" (None = anonym).
-        usage_log.track_anthropic_stream(MODEL_NAME, stream, "ask", usage_email)
+        # usage: Kostenzuordnung {"channel", "email", "key_id"} - Chat:
+        # Kanal "ask" mit angemeldetem Konto, MCP: "mcp_ask" mit Schlüssel.
+        usage_log.track_anthropic_stream(MODEL_NAME, stream, **{"channel": "ask", **(usage or {})})
 
 
 def answer_question(

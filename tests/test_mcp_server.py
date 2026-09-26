@@ -112,7 +112,7 @@ def test_revoked_key_and_removed_role_are_rejected(mcp_client):
 def test_tools_list_offers_create_and_revise(mcp_client):
     _, secret = mcp_keys.create_key(OWNER, "Laptop")
     tools = _rpc(mcp_client, "tools/list", {}, secret).json()["result"]["tools"]
-    assert {t["name"] for t in tools} == {"create_text", "revise_text"}
+    assert {t["name"] for t in tools} == {"ask_question", "create_text", "revise_text"}
 
 
 def test_create_text_returns_document_with_sources_and_records_usage(mcp_client, _isolate):
@@ -198,3 +198,68 @@ def test_key_accepted_via_x_api_key_or_authorization_with_and_without_scheme(mcp
         json={"jsonrpc": "2.0", "id": 1, "method": "tools/list"},
     )
     assert response.status_code == 200
+
+
+
+# --- Frage-Antwort wie im Konversationsmodus (2026-09-26) ---
+
+
+@pytest.fixture
+def fake_ask(monkeypatch):
+    from app.models import ChunkRef
+
+    ref = ChunkRef(
+        chunk_id="c1", source_id="s1", title="Die 12 Gesetze", authors=["Niels Pflaeging"], date="2021-01-01",
+        url="https://example.org/gesetze", position=0, text="Teams entscheiden selbst.",
+    )
+    monkeypatch.setattr(main_module, "_ask_context", lambda question, history, lang, top_k=5, usage_email=None: ([], [ref], [], [0.1]))
+    monkeypatch.setattr(main_module, "_compute_occurrence_highlights", lambda answer, docs, quotes: [[]])
+    monkeypatch.setattr(main_module, "_best_local_sentence", lambda doc, emb: None)
+    calls = []
+
+    def fake_answer(question, chunks, lang="de", author_bios=None, history=None, usage=None):
+        calls.append({"question": question, "lang": lang, "usage": usage})
+        yield "Teams entscheiden selbst [1]."
+
+    monkeypatch.setattr(llm, "stream_answer_question", fake_answer)
+    return calls
+
+
+def test_ask_question_answers_with_citations_and_source_list(mcp_client, fake_ask):
+    key, secret = mcp_keys.create_key(OWNER, "Laptop")
+
+    result = _call(mcp_client, secret, "ask_question", {"question": "Wer entscheidet?", "language": "de"}).json()["result"]
+
+    assert result.get("isError") is not True
+    text = result["content"][0]["text"]
+    assert text.startswith("Teams entscheiden selbst [1].")
+    assert "[1] BetaCodex: Die 12 Gesetze (Niels Pflaeging, 2021) https://example.org/gesetze" in text
+    # Kosten auf den Schlüssel - zählt gegen dessen Limits.
+    assert fake_ask[0]["usage"] == {"channel": "mcp_ask", "email": OWNER, "key_id": key["id"]}
+    assert question_log.list_entries()[0]["event_types"] == ["mcp"]
+
+
+def test_ask_question_counts_against_daily_limit(mcp_client, fake_ask):
+    key, secret = mcp_keys.create_key(OWNER, "Laptop")
+    mcp_keys.set_limits(key["id"], daily_call_limit=1, monthly_eur_limit=5.0)
+    usage.record(FAKE_USAGE, channel="mcp_ask", web_search=False, key_id=key["id"], email=OWNER)
+
+    result = _call(mcp_client, secret, "ask_question", {"question": "Noch eine?"}).json()["result"]
+
+    assert result["isError"] is True
+    assert "Tageslimit" in result["content"][0]["text"]
+    assert fake_ask == []
+
+
+def test_ask_question_rejects_empty_question(mcp_client, fake_ask):
+    _, secret = mcp_keys.create_key(OWNER, "Laptop")
+
+    result = _call(mcp_client, secret, "ask_question", {"question": "  "}).json()["result"]
+
+    assert result["isError"] is True
+    assert fake_ask == []
+
+
+def test_format_answer_makes_relative_links_absolute():
+    text = mcp_server._format_answer("Siehe [Quellenübersicht](/import.html).", [], "de")
+    assert "(https://chat.betacodex.org/import.html)" in text
