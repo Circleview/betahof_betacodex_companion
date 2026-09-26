@@ -1,5 +1,7 @@
 import anthropic
 
+from app import usage as usage_log
+
 MODEL_NAME = "claude-haiku-4-5-20251001"
 
 # Nutzerwunsch (2026-09-22): einmalige, von Quellen-Pfleger:innen angestoßene
@@ -193,6 +195,7 @@ def _call_tool(system_prompt: str, tool: dict, content: str) -> dict | None:
         tool_choice={"type": "tool", "name": tool["name"]},
         messages=[{"role": "user", "content": content}],
     )
+    usage_log.track_anthropic(MODEL_NAME, message.usage, "summary")
     for block in message.content:
         if block.type == "tool_use":
             return block.input
@@ -350,6 +353,7 @@ def find_similar_term_groups(term_list: list[str], lang: str = DEFAULT_LANG) -> 
         )
     except Exception:
         return []
+    usage_log.track_anthropic(MERGE_SUGGESTIONS_MODEL, message.usage, "summary")
 
     known_terms = set(term_list)
     groups = []
@@ -386,6 +390,7 @@ def generate_author_bio(name: str, texts: list[str], lang: str = DEFAULT_LANG) -
             system=BIO_SYSTEM_PROMPTS[lang],
             messages=[{"role": "user", "content": f"Name: {name}\n\n{content[:MAX_INPUT_CHARS]}"}],
         )
+        usage_log.track_anthropic(MODEL_NAME, message.usage, "summary")
         return message.content[0].text.strip()
     except Exception:
         return ""

@@ -14,6 +14,7 @@ Schreiben weg (gleiche Frist wie das Fragen-Log, app/question_log.py)."""
 import csv
 import io
 import json
+import logging
 import threading
 import urllib.request
 from datetime import datetime, timedelta, timezone
@@ -34,6 +35,17 @@ PRICES_USD_PER_MTOK = {
 CACHE_WRITE_FACTOR = 1.25  # 5-Minuten-Cache
 CACHE_READ_FACTOR = 0.10
 WEB_SEARCH_USD = 0.01  # 10 USD je 1.000 Suchen
+
+# Nutzerwunsch (2026-09-26): Kostenübersicht über ALLE kostenpflichtigen
+# Dienste, nicht nur den Kreativ-Modus. Nicht-Anthropic-Dienste rechnen je
+# Einheit ab - Listenpreise Stand 2026-09, ohne Freikontingente.
+SERVICE_PRICES_USD = {
+    # Google Cloud Text-to-Speech, Chirp 3 HD: 30 USD je 1 Mio. Zeichen
+    "google-tts-chirp3-hd": (30.0 / 1_000_000, "chars"),
+    # OpenAI-Transkription: 0,006 USD je Minute
+    "whisper-1": (0.006 / 60, "seconds"),
+    "gpt-4o-transcribe-diarize": (0.006 / 60, "seconds"),
+}
 
 # Umrechnung USD -> EUR (Nutzerwunsch 2026-09-24): tagesaktueller EZB-
 # Referenzkurs über den kostenlosen, schlüssellosen Dienst Frankfurter
@@ -94,8 +106,67 @@ def cost_usd(usage: dict) -> float:
     return tokens_cost + usage["web_search_requests"] * WEB_SEARCH_USD
 
 
-def record(usage: dict, channel: str, web_search: bool, key_id: str | None = None, email: str | None = None) -> dict:
-    usd = cost_usd(usage)
+def anthropic_usage(model: str, usage) -> dict:
+    """Verbrauch eines Claude-Aufrufs (message.usage) als Protokoll-Dict."""
+    server_tool_use = getattr(usage, "server_tool_use", None)
+    return {
+        "model": model,
+        "input_tokens": int(usage.input_tokens or 0),
+        "output_tokens": int(usage.output_tokens or 0),
+        "cache_creation_input_tokens": int(getattr(usage, "cache_creation_input_tokens", 0) or 0),
+        "cache_read_input_tokens": int(getattr(usage, "cache_read_input_tokens", 0) or 0),
+        "web_search_requests": int(getattr(server_tool_use, "web_search_requests", 0) or 0) if server_tool_use else 0,
+    }
+
+
+def track_anthropic(model: str, usage, channel: str) -> None:
+    """Kostenmessung für einen Claude-Aufruf - darf die eigentliche Funktion
+    nie unterbrechen (Fehler landen nur im Server-Log)."""
+    try:
+        record(anthropic_usage(model, usage), channel=channel, web_search=False)
+    except Exception:
+        logging.getLogger(__name__).exception("Kostenmessung (%s) fehlgeschlagen", channel)
+
+
+def track_anthropic_stream(model: str, stream, channel: str) -> None:
+    """Wie track_anthropic, aber für einen fertig gelesenen Stream."""
+    try:
+        final_usage = stream.get_final_message().usage
+    except Exception:
+        logging.getLogger(__name__).exception("Kostenmessung (%s) fehlgeschlagen", channel)
+        return
+    track_anthropic(model, final_usage, channel)
+
+
+def track_service(channel: str, model: str, quantity: float) -> None:
+    """Kostenmessung für Nicht-Anthropic-Dienste (TTS, Transkription) - Menge
+    in der Einheit aus SERVICE_PRICES_USD. Unterbricht nie die Funktion."""
+    try:
+        price, unit = SERVICE_PRICES_USD[model]
+        entry = {
+            "model": model,
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "cache_creation_input_tokens": 0,
+            "cache_read_input_tokens": 0,
+            "web_search_requests": 0,
+            "quantity": round(quantity, 2),
+            "unit": unit,
+        }
+        record(entry, channel=channel, web_search=False, usd=quantity * price)
+    except Exception:
+        logging.getLogger(__name__).exception("Kostenmessung (%s) fehlgeschlagen", channel)
+
+
+def record(
+    usage: dict,
+    channel: str,
+    web_search: bool,
+    key_id: str | None = None,
+    email: str | None = None,
+    usd: float | None = None,
+) -> dict:
+    usd = cost_usd(usage) if usd is None else usd
     fx = current_fx()
     entry = {
         "ts": datetime.now(timezone.utc).isoformat(),
@@ -175,7 +246,8 @@ def monthly_summary(month: str) -> dict:
 
 CSV_FIELDS = [
     "ts", "channel", "email", "key_id", "model", "web_search_enabled", "input_tokens", "output_tokens",
-    "cache_creation_input_tokens", "cache_read_input_tokens", "web_search_requests", "cost_usd", "cost_eur",
+    "cache_creation_input_tokens", "cache_read_input_tokens", "web_search_requests", "quantity", "unit",
+    "cost_usd", "cost_eur",
     "usd_to_eur", "fx_date", "fx_source",
 ]
 

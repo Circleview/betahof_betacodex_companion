@@ -1223,3 +1223,21 @@ def test_fetch_html_rejects_oversized_response():
     resp.__enter__.return_value = resp
     with patch("app.extraction._safe_opener.open", return_value=resp):
         assert extraction._fetch_html("https://example.org/gross") is None
+
+
+def test_transcribe_audio_records_stt_cost_per_segment(tmp_path, monkeypatch):
+    """2026-09-26: OpenAI-Transkription fließt je Audio-Minute in die Kostenübersicht."""
+    from app import usage
+
+    audio = tmp_path / "folge.mp3"
+    audio.write_bytes(b"x")
+    monkeypatch.setattr(extraction, "split_audio_file", lambda path: [path])
+    monkeypatch.setattr(extraction, "_audio_duration_seconds", lambda path: 90.0)
+    monkeypatch.setattr(extraction, "_transcribe_chunk_with_retries", lambda *a, **k: ("Text", None))
+
+    text, error = extraction.transcribe_audio(audio)
+
+    assert (text, error) == ("Text", None)
+    (entry,) = usage.list_entries()
+    assert (entry["channel"], entry["model"], entry["quantity"]) == ("stt", "gpt-4o-transcribe-diarize", 90.0)
+    assert entry["cost_usd"] == pytest.approx(0.009)

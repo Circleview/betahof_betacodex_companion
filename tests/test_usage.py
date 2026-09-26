@@ -140,3 +140,25 @@ def test_monthly_summary_and_csv_carry_the_rate():
 
 def test_monthly_summary_without_calls_shows_current_rate():
     assert usage.monthly_summary("2020-01")["fx"] == {"rate": 0.9, "date": "2026-09-23", "source": "ecb"}
+
+
+# --- Kostenmessung über alle Dienste (2026-09-26) ---
+
+
+def test_track_service_records_cost_per_unit():
+    usage.track_service("tts", "google-tts-chirp3-hd", 1000)
+    usage.track_service("stt", "whisper-1", 120)
+
+    tts, stt = usage.list_entries()
+    assert tts["channel"] == "tts" and tts["unit"] == "chars" and tts["quantity"] == 1000
+    assert tts["cost_usd"] == pytest.approx(0.03)
+    assert stt["cost_usd"] == pytest.approx(0.012)
+    summary = usage.monthly_summary(tts["ts"][:7])
+    assert set(summary["by_channel"]) == {"tts", "stt"}
+
+
+def test_tracking_never_raises():
+    usage.track_service("tts", "unbekanntes-modell", 5)
+    usage.track_anthropic("unbekanntes-modell", object(), "ask")
+    usage.track_anthropic_stream("claude-haiku-4-5-20251001", object(), "ask")
+    assert usage.list_entries() == []

@@ -2,6 +2,7 @@ import re
 
 import anthropic
 
+from app import usage as usage_log
 from app import web_search_tool
 
 MODEL_NAME = "claude-haiku-4-5-20251001"
@@ -251,6 +252,7 @@ def rewrite_followup_query(question: str, history: list[dict], lang: str = DEFAU
             system=REWRITE_SYSTEM_PROMPTS[lang],
             messages=messages,
         )
+        usage_log.track_anthropic(MODEL_NAME, response.usage, "ask")
         rewritten = "".join(
             block.text for block in response.content if getattr(block, "type", None) == "text"
         ).strip()
@@ -317,6 +319,7 @@ def stream_answer_question(
         messages=messages,
     ) as stream:
         yield from stream.text_stream
+        usage_log.track_anthropic_stream(MODEL_NAME, stream, "ask")
 
 
 def answer_question(
@@ -566,15 +569,7 @@ _CREATIVE_NO_WEB_SEARCH_NOTE = {
 
 
 def _usage_dict(model: str, usage) -> dict:
-    server_tool_use = getattr(usage, "server_tool_use", None)
-    return {
-        "model": model,
-        "input_tokens": int(usage.input_tokens or 0),
-        "output_tokens": int(usage.output_tokens or 0),
-        "cache_creation_input_tokens": int(getattr(usage, "cache_creation_input_tokens", 0) or 0),
-        "cache_read_input_tokens": int(getattr(usage, "cache_read_input_tokens", 0) or 0),
-        "web_search_requests": int(getattr(server_tool_use, "web_search_requests", 0) or 0) if server_tool_use else 0,
-    }
+    return usage_log.anthropic_usage(model, usage)
 
 
 class SectionRevisionError(Exception):

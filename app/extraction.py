@@ -19,6 +19,8 @@ from openai import OpenAI
 from pypdf import PdfReader
 from youtube_transcript_api import YouTubeTranscriptApi
 
+from app import usage as usage_log
+
 # Manche Server (Bot-/Hotlink-Schutz, z.B. bei WordPress-gehosteten Podcast-
 # Medien) lehnen Requests ohne "Accept"-Header mit HTTP 406 ab, selbst mit
 # plausiblem User-Agent - ein echter Browser schickt diesen Header immer mit.
@@ -624,6 +626,10 @@ def transcribe_audio(
                 shutil.rmtree(segments[0].parent, ignore_errors=True)
             return "", f"Abschnitt {index + 1}/{total}: {error_detail}"
         texts[index] = text
+        # Kostenmessung (2026-09-26): OpenAI rechnet je Audio-Minute ab.
+        if duration:
+            model = "gpt-4o-transcribe-diarize" if segment_path.suffix.lower() in _DIARIZE_EXTENSIONS else "whisper-1"
+            usage_log.track_service("stt", model, duration)
         if on_segment_success:
             on_segment_success(index, total, text)
 
@@ -769,6 +775,7 @@ def _ocr_page(image_bytes: bytes) -> str:
                 }
             ],
         )
+        usage_log.track_anthropic(_OCR_MODEL_NAME, message.usage, "ocr")
         return message.content[0].text.strip()
     except Exception as e:
         print(f"[OCR] _ocr_page fehlgeschlagen: {e!r}", file=sys.stderr)

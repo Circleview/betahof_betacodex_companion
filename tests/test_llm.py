@@ -533,3 +533,21 @@ def test_stream_creative_response_exposes_usage_after_exhausting_stream():
         "cache_read_input_tokens": 200,
         "web_search_requests": 2,
     }
+
+
+def test_answer_question_records_ask_cost():
+    """2026-09-26: Konversationsmodus-Antworten fließen in die Kostenübersicht."""
+    from app import usage
+
+    client = _fake_client("Antwort")
+    final = client.messages.stream.return_value.__enter__.return_value.get_final_message.return_value
+    final.usage = MagicMock(
+        input_tokens=1000, output_tokens=200, cache_creation_input_tokens=0, cache_read_input_tokens=0, server_tool_use=None
+    )
+    with patch.object(llm, "_get_client", return_value=client):
+        llm.answer_question("Frage?", [])
+
+    (entry,) = usage.list_entries()
+    assert entry["channel"] == "ask"
+    assert entry["model"] == llm.MODEL_NAME
+    assert entry["cost_usd"] == pytest.approx((1000 * 1.0 + 200 * 5.0) / 1_000_000)

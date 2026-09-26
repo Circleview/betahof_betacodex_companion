@@ -8284,3 +8284,13 @@ def test_user_management_endpoints_require_user_admin(anon_client):
 
     assert anon_client.post("/api/auth/users/x@test.local/resend-invite").status_code == 403
     assert anon_client.delete("/api/auth/users/x@test.local").status_code == 403
+
+
+def test_speech_records_tts_cost_per_character(anon_client, monkeypatch):
+    """2026-09-26: Vorlesen (Google TTS) fließt je Zeichen in die Kostenübersicht."""
+    monkeypatch.setattr(tts, "synthesize_speech", lambda text, lang="de", speaking_rate=1.0: b"mp3")
+
+    anon_client.post("/api/speech", json={"text": "Hallo Welt"})
+
+    (entry,) = usage.list_entries()
+    assert (entry["channel"], entry["quantity"], entry["unit"]) == ("tts", 10, "chars")

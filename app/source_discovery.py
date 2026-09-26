@@ -15,6 +15,7 @@ Worker (app/main.py) zum Absturz bringen."""
 import anthropic
 
 from app import web_search_tool
+from app import usage as usage_log
 
 MODEL_NAME = "claude-haiku-4-5-20251001"
 MAX_SEARCH_USES = 5
@@ -91,6 +92,7 @@ def _run_discovery(system_prompt: str, user_content: str) -> list[dict]:
             ],
             messages=[{"role": "user", "content": user_content}],
         )
+        usage_log.track_anthropic(MODEL_NAME, message.usage, "discovery")
         # Nutzerfeedback (2026-08-23): das Modell füllt submit_candidates als
         # EIGENEN, separaten Tool-Call - dabei kann es plausibel klingende,
         # aber nie tatsächlich gefundene URLs erfinden (Halluzination), statt

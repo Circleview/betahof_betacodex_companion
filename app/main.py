@@ -4719,6 +4719,8 @@ def synthesize_speech(payload: SpeechIn, x_lang: str = Header(default=i18n.DEFAU
         audio = tts.synthesize_speech(text, lang=lang, speaking_rate=payload.rate)
     except tts.SpeechSynthesisError:
         raise HTTPException(502, i18n.get_message("speech_synthesis_failed", x_lang))
+    # Kostenmessung (2026-09-26): Google TTS rechnet je Zeichen ab.
+    usage.track_service("tts", "google-tts-chirp3-hd", len(text))
     return Response(content=audio, media_type="audio/mpeg")
 
 
