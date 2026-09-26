@@ -5378,3 +5378,99 @@ details a {
     font-size: 0.8rem;
   }
 }
+
+/* Monatsverlauf (static/costs.js, 2026-09-26): eine Reihe, dünne Balken mit
+   4px abgerundeter Oberkante, recessives Raster, Hover-Tooltip. */
+.costs-history {
+  position: relative;
+  margin: 1.5rem 0 2rem;
+}
+
+.costs-history figcaption {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.25rem 0.75rem;
+  margin-bottom: 0.5rem;
+}
+
+.costs-history-title {
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  color: var(--color-text-muted);
+}
+
+.costs-history-hint {
+  font-size: 0.8rem;
+  color: var(--color-text-muted);
+}
+
+.costs-chart svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.costs-bar {
+  fill: var(--color-accent);
+}
+
+.costs-grid {
+  stroke: var(--color-border);
+  stroke-width: 1;
+}
+
+.costs-baseline {
+  stroke: var(--color-text-muted);
+  stroke-width: 1;
+}
+
+.costs-axis-label {
+  fill: var(--color-text-muted);
+  font-size: 11px;
+}
+
+.costs-axis-label--selected {
+  fill: var(--color-text);
+  font-weight: 700;
+}
+
+.costs-hit {
+  fill: transparent;
+  cursor: pointer;
+}
+
+.costs-hit:hover,
+.costs-hit:focus-visible {
+  fill: var(--color-accent-tint);
+  outline: none;
+}
+
+.costs-tooltip {
+  position: absolute;
+  top: 2rem;
+  transform: translateX(-50%);
+  width: max-content;
+  max-width: 18rem;
+  padding: 0.5rem 0.75rem;
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+  font-size: 0.8rem;
+  color: var(--color-text-muted);
+  pointer-events: none;
+  z-index: 2;
+}
+
+.costs-tooltip-title {
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.costs-tooltip-value {
+  color: var(--color-text);
+  margin-bottom: 0.25rem;
+}

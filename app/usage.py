@@ -256,6 +256,33 @@ def monthly_summary(month: str, email: str | None = None) -> dict:
     return summary
 
 
+def last_months(count: int, now: datetime | None = None) -> list[str]:
+    """Die letzten count Monate ("YYYY-MM"), ältester zuerst, bis inkl. heute."""
+    now = now or datetime.now(timezone.utc)
+    year, month = now.year, now.month
+    months = []
+    for _ in range(count):
+        months.append(f"{year:04d}-{month:02d}")
+        year, month = (year, month - 1) if month > 1 else (year - 1, 12)
+    return months[::-1]
+
+
+def monthly_history(months: list[str], email: str | None = None) -> list[dict]:
+    """Nutzerwunsch (2026-09-26): Monatsverlauf als Balkengrafik - Summen je
+    Monat (auch leere Monate), dazu je Monat die Kosten nach Kanal für den
+    Tooltip. Mit email nur die Einträge dieses Kontos."""
+    history = {m: {"month": m, "calls": 0, "cost_usd": 0.0, "cost_eur": 0.0, "by_channel": {}} for m in months}
+    for e in list_entries():
+        bucket = history.get(e["ts"][:7])
+        if bucket is None or (email and e.get("email") != email):
+            continue
+        bucket["calls"] += 1
+        bucket["cost_usd"] += e["cost_usd"]
+        bucket["cost_eur"] += e["cost_eur"]
+        bucket["by_channel"][e["channel"]] = bucket["by_channel"].get(e["channel"], 0.0) + e["cost_eur"]
+    return [history[m] for m in months]
+
+
 CSV_FIELDS = [
     "ts", "channel", "email", "key_id", "model", "web_search_enabled", "input_tokens", "output_tokens",
     "cache_creation_input_tokens", "cache_read_input_tokens", "web_search_requests", "quantity", "unit",

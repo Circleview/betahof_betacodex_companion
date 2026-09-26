@@ -32,6 +32,16 @@
       <a id="costs-csv-link" class="link-button" data-i18n="mcp.csvExport"></a>
     </div>
     <p id="costs-hint" class="web-allowlist-hint"></p>
+    <!-- 2026-09-26: Monatsverlauf als Balkengrafik; Klick auf einen Monat
+         wählt ihn für die Tabelle darunter. -->
+    <figure class="costs-history">
+      <figcaption>
+        <span class="costs-history-title" data-i18n="costs.historyHeading"></span>
+        <span class="costs-history-hint" data-i18n="costs.historyHint"></span>
+      </figcaption>
+      <div id="costs-chart" class="costs-chart"></div>
+      <div id="costs-tooltip" class="costs-tooltip hidden" role="status"></div>
+    </figure>
     <div id="costs-summary"></div>
   </div>
 </section>

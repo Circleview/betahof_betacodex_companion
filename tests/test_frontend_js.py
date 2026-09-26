@@ -4176,3 +4176,13 @@ def test_costs_moved_from_mcp_page_to_own_page():
     assert "const base = all ? '/api/costs' : '/api/costs/mine';" in costs_js
     assert "buildSummaryTable(summary, { showAccounts: all })" in costs_js
     assert "costsLink.href = '/costs.html'" in (STATIC_DIR / "auth.js").read_text()
+
+
+def test_costs_page_has_monthly_bar_chart_linked_to_month_filter():
+    """Nutzerwunsch (2026-09-26): Monatsverlauf als Balkengrafik; die
+    Monatstabelle mit Filter bleibt, Klick auf einen Balken wählt den Monat."""
+    js = (STATIC_DIR / "costs.js").read_text()
+    assert "fetch(`${base}/history`" in js
+    assert "monthInput.value = entry.month;" in js
+    html = (STATIC_DIR / "costs.html").read_text()
+    assert 'id="costs-chart"' in html and 'id="costs-month"' in html and 'id="costs-summary"' in html

@@ -4865,6 +4865,20 @@ def costs_csv(
     return _csv_response(usage.export_csv(month), f"betacodex-kosten-{month}.csv")
 
 
+HISTORY_MONTHS = 12
+
+
+@app.get("/api/costs/history")
+def costs_history(_user: str = Depends(require_role(users.SYSTEM_ADMIN))):
+    return usage.monthly_history(usage.last_months(HISTORY_MONTHS))
+
+
+@app.get("/api/costs/mine/history")
+def my_costs_history(request: Request, x_lang: str = Header(default=i18n.DEFAULT_LANG)):
+    email = _require_login(request, x_lang)
+    return usage.monthly_history(usage.last_months(HISTORY_MONTHS), email=email)
+
+
 @app.get("/api/costs/mine")
 def my_costs_summary(request: Request, month: str | None = None, x_lang: str = Header(default=i18n.DEFAULT_LANG)):
     email = _require_login(request, x_lang)

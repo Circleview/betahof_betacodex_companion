@@ -8345,3 +8345,22 @@ def test_logged_in_speech_cost_is_attributed_to_account(anon_client, monkeypatch
 
     (entry,) = usage.list_entries()
     assert entry["email"] == "lena@test.local"
+
+
+def test_costs_history_for_admin_and_own_account(anon_client):
+    _record_cost("ask", "lena@test.local")
+    _record_cost("ask")
+    login(anon_client, "lena@test.local", users.QUELLEN_PFLEGER)
+
+    mine = anon_client.get("/api/costs/mine/history").json()
+    assert len(mine) == 12 and mine[-1]["calls"] == 1
+    assert anon_client.get("/api/costs/history").status_code == 403
+
+
+def test_costs_history_admin_sees_all(anon_client):
+    _record_cost("ask", "lena@test.local")
+    _record_cost("ask")
+    login(anon_client, "root@test.local", users.SYSTEM_ADMIN)
+
+    history = anon_client.get("/api/costs/history").json()
+    assert history[-1]["calls"] == 2 and history[-1]["by_channel"]["ask"] > 0

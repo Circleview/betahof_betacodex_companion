@@ -162,3 +162,22 @@ def test_tracking_never_raises():
     usage.track_anthropic("unbekanntes-modell", object(), "ask")
     usage.track_anthropic_stream("claude-haiku-4-5-20251001", object(), "ask")
     assert usage.list_entries() == []
+
+
+def test_last_months_spans_year_boundary():
+    from datetime import datetime, timezone
+
+    assert usage.last_months(3, now=datetime(2026, 2, 10, tzinfo=timezone.utc)) == ["2025-12", "2026-01", "2026-02"]
+
+
+def test_monthly_history_includes_empty_months_and_filters_by_email():
+    usage.track_service("tts", "google-tts-chirp3-hd", 1000, email="lena@test.local")
+    usage.track_service("tts", "google-tts-chirp3-hd", 2000)
+    month = usage.list_entries()[0]["ts"][:7]
+
+    history = usage.monthly_history(["2000-01", month])
+
+    assert history[0]["calls"] == 0 and history[0]["by_channel"] == {}
+    assert history[1]["calls"] == 2
+    mine = usage.monthly_history([month], email="lena@test.local")
+    assert mine[0]["calls"] == 1 and mine[0]["cost_usd"] == pytest.approx(0.03)
