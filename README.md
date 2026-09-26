@@ -167,14 +167,17 @@ Assistent das offen, statt zu spekulieren.
   Hintergrund-Job), das Feedback-API kürzt überlange Texte auf 2.000 Zeichen
   Frage/Anweisung bzw. 20.000 Zeichen Antwort/Text.
 
-### MCP-Zugang zum Kreativ-Modus
+### MCP-Zugang
 
-Der Kreativ-Modus lässt sich auch aus MCP-fähigen Programmen wie Claude
-Code nutzen – für einen kleinen, eingeladenen Kreis mit der Rolle
-„MCP-Nutzung“.
+BetaCodex Chat lässt sich auch aus MCP-fähigen Programmen wie Claude Code
+oder Claude nutzen – für einen kleinen, eingeladenen Kreis mit der Rolle
+„MCP-Nutzung“. Der MCP-Server heißt „BetaCodex Chat“.
 
-- Zwei Werkzeuge: `create_text` (neuen Text erzeugen) und `revise_text`
-  (bestehenden Text nach einer Anweisung überarbeiten), jeweils auf
+- `ask_question`: Frage beantworten wie im Konversationsmodus –
+  ausschließlich aus kuratierten Quellen, mit Belegen [n] und
+  Quellenliste, dieselbe Suche wie im Chat.
+- `create_text` (neuen Text erzeugen) und `revise_text` (bestehenden Text
+  nach einer Anweisung überarbeiten) aus dem Kreativ-Modus, jeweils auf
   Deutsch oder Englisch und mit abschaltbarer Websuche (Standard: an).
   Ergebnis ist Markdown mit Quellenliste – dieselbe Logik wie in der
   Oberfläche.
@@ -530,6 +533,7 @@ Commit-/Tag-Nachrichten in Git.
 
 | Version | Wesentliche Änderungen |
 |---|---|
+| v0.82.0 | **MCP: Frage-Antwort wie im Konversationsmodus** – neues Werkzeug `ask_question` (nur kuratierte Quellen, Belege [n] und Quellenliste, dieselbe Suche wie der Chat), zählt gegen die Schlüssel-Limits, Kosten als „MCP-Fragen“ unter „Konversation“. MCP-Server heißt jetzt „BetaCodex Chat“. Datenschutzerklärung angepasst |
 | v0.81.0 | Kostenübersicht: **Monatsverlauf der letzten 12 Monate als gestapelte Balkengrafik** nach Nutzungsart (Konversation, Kreativ-Modus & MCP, Vorlesen, Hintergrund & Pflege) mit Legende; Tooltip mit Kosten, Aufrufen und Kosten je Anbieter (Anthropic, Google, OpenAI); Klick auf einen Monat wählt ihn für Tabelle und CSV. Monatsauswahl steht jetzt unter der Grafik |
 | v0.80.0 | **Kostenübersicht als eigene Seite** (`costs.html`): System-Admins sehen alle Kosten über alle Konten (nach Kanal und Konto, inkl. „anonym“ und „System“), alle anderen Angemeldeten unter „Meine Kosten“ nur ihre eigenen – jeweils mit Monatsauswahl und CSV. Erfasst werden jetzt **alle kostenpflichtigen Dienste**: Anthropic (Kreativ-Modus, Konversation, Zusammenfassungen, PDF-Texterkennung, Quellen-Vorschläge), Google TTS (Vorlesen, je Zeichen) und OpenAI (Audio-Transkription, je Minute); Kosten angemeldeter Nutzung werden dem Konto zugeordnet. Die MCP-Seite zeigt nur noch Schlüssel und Limits. Datenschutzerklärung angepasst |
 | v0.79.0 | **Nutzerverwaltung als eigene Seite** (`users.html`, Link im Login-Menü für User-Admins) statt im Login-Popover: Einladen mit mehreren Rollen auf einmal, Kontenliste mit Name, Status, Rollen-Häkchen, eingeladen am und letztem Login, „Einladung erneut senden“ für noch nicht angemeldete Konten, Konto entfernen (nicht das eigene, nicht den letzten System-Admin, Admin-Konten nur durch System-Admins). Einladungs-Mail nennt die Rollen lesbar. Datenschutzerklärung ergänzt. Zuvor als Fixes v0.78.1–v0.78.3: Kreativ-Modus ohne Recherche-Ankündigungen im Text, Lese-Dialog zeigt Volltext nur ohne Web-Quelle, KI-Icon an Zusammenfassung/Schlagworten, fest stehendes Schließen-x |
