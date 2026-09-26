@@ -275,6 +275,10 @@ Andere MCP-Clients brauchen die Adresse `https://chat.betacodex.org/mcp`
   vergeben und entzogen (Admin-Rollen nur durch System-Admins). Dort lassen
   sich Personen mit mehreren Rollen einladen, Einladungen erneut senden und
   Konten entfernen.
+- Kostenübersicht (`costs.html`): System-Admins sehen die Kosten aller
+  kostenpflichtigen Dienste (Anthropic, Google TTS, OpenAI) über alle
+  Konten, alle anderen Angemeldeten ihre eigenen – nach Kanal, je Monat,
+  als CSV exportierbar.
 - Jede Änderung an einer Quelle landet diff-basiert in einem
   Änderungs-Log (mit Rückgängig-Funktion) – sichtbar für alle
   Quellen-Pfleger:innen, nicht nur für die handelnde Person.
@@ -525,6 +529,7 @@ Commit-/Tag-Nachrichten in Git.
 
 | Version | Wesentliche Änderungen |
 |---|---|
+| v0.80.0 | **Kostenübersicht als eigene Seite** (`costs.html`): System-Admins sehen alle Kosten über alle Konten (nach Kanal und Konto, inkl. „anonym“ und „System“), alle anderen Angemeldeten unter „Meine Kosten“ nur ihre eigenen – jeweils mit Monatsauswahl und CSV. Erfasst werden jetzt **alle kostenpflichtigen Dienste**: Anthropic (Kreativ-Modus, Konversation, Zusammenfassungen, PDF-Texterkennung, Quellen-Vorschläge), Google TTS (Vorlesen, je Zeichen) und OpenAI (Audio-Transkription, je Minute); Kosten angemeldeter Nutzung werden dem Konto zugeordnet. Die MCP-Seite zeigt nur noch Schlüssel und Limits. Datenschutzerklärung angepasst |
 | v0.79.0 | **Nutzerverwaltung als eigene Seite** (`users.html`, Link im Login-Menü für User-Admins) statt im Login-Popover: Einladen mit mehreren Rollen auf einmal, Kontenliste mit Name, Status, Rollen-Häkchen, eingeladen am und letztem Login, „Einladung erneut senden“ für noch nicht angemeldete Konten, Konto entfernen (nicht das eigene, nicht den letzten System-Admin, Admin-Konten nur durch System-Admins). Einladungs-Mail nennt die Rollen lesbar. Datenschutzerklärung ergänzt. Zuvor als Fixes v0.78.1–v0.78.3: Kreativ-Modus ohne Recherche-Ankündigungen im Text, Lese-Dialog zeigt Volltext nur ohne Web-Quelle, KI-Icon an Zusammenfassung/Schlagworten, fest stehendes Schließen-x |
 | v0.78.0 | „Quelle ansehen“ (Auge) öffnet einen **Lese-Dialog** in der Konversation (Titel, Autor:innen, Link, Zusammenfassung, Schlagworte, Volltext – geschützte Volltexte nur für Quellen-Pfleger:innen) statt eines neuen Tabs, der bei installierter App im App-Fenster landete. Freundliche, erklärende Antwort statt knapper Absage, in der Sprache der Frage. Suche: doppelte Ausschnitte belegen nur noch einen Platz, gebeugte Formen treffen Schlagworte, Hybrid-Suche auch im Kreativ-Modus/MCP. Kreativ-Modus: Countdown direkt im Absenden-Button mit Info-Icon, Anweisungsfeld und Mikrofon während der Wartezeit ausgegraut, Formatieren hält die Scroll-Position. 404-Seite mit Navigation und Einstieg in eine neue Konversation. Schreibweise „Beta-Kodex“ (DE) / „BetaCodex“ (EN) in Zusammenfassungen und Oberfläche. Skript `scripts/pull_prod_sources.sh` holt den Quellenstand der Produktion ins Dev-System |
 | v0.77.0 | Quellen direkt aus der Konversation bearbeiten: Der Stift an Zitat und Seitenleiste öffnet das Bearbeiten-Formular als Dialog, die Konversation bleibt stehen (Mittel-/Strg-Klick öffnet weiter die Quellenübersicht). Löschen dort mit derselben 30-Sekunden-Rückgängig-Leiste; geänderte Titel/Autor:innen/Links erscheinen sofort in Seitenleiste und Zitat-Karten, gelöschte Quellen durchgestrichen mit Hinweis. Technisch: Bearbeiten-Formular als eigene Komponente `static/source-edit.js` (von Quellenübersicht und Konversation genutzt), neuer Endpunkt `GET /api/sources/{id}` (eine Quelle inkl. Volltext, nur Quellen-Pfleger:innen) |
