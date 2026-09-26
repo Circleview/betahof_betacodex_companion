@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow, noarchive">
+<meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#1c1c1c" media="(prefers-color-scheme: dark)">
+<link rel="icon" type="image/png" href="/icons/favicon.png">
+<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+<title>Kosten &ndash; BetaCodex Chat</title>
+<link rel="stylesheet" href="/style.css">
+<script src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit" async></script>
+</head>
+<body>
+<a href="#costs-bereich" class="skip-link" data-i18n="common.skipToContent"></a>
+<header id="site-header">
+  <span id="lang-switcher" class="lang-switcher"></span>
+  <span id="auth-widget" class="auth-widget"></span>
+</header>
+
+<!-- 2026-09-26: eigene Kostenseite - System-Admins sehen alle Kosten über
+     alle Konten, alle anderen Angemeldeten nur ihre eigenen. Logik in costs.js. -->
+<section id="costs-bereich" tabindex="-1">
+  <h2 id="costs-heading"></h2>
+  <p id="costs-status" class="web-allowlist-hint"></p>
+  <div id="costs-content" class="hidden">
+    <div class="mcp-admin-header">
+      <label class="mcp-month-label"><span data-i18n="mcp.month"></span>
+        <input type="month" id="costs-month">
+      </label>
+      <a id="costs-csv-link" class="link-button" data-i18n="mcp.csvExport"></a>
+    </div>
+    <p id="costs-hint" class="web-allowlist-hint"></p>
+    <div id="costs-summary"></div>
+  </div>
+</section>
+
+<footer class="site-footer" id="site-footer"></footer>
+
+<script type="module" src="/init-header.js"></script>
+<script type="module" src="/costs.js"></script>
+<script type="module" src="/init-footer.js"></script>
+</body>
+</html>

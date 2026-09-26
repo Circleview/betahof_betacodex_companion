@@ -4164,3 +4164,15 @@ def test_user_management_moved_from_popover_to_own_page():
     html = (STATIC_DIR / "users.html").read_text()
     assert '<script type="module" src="/users.js"></script>' in html
     assert '<header id="site-header">' in html
+
+
+def test_costs_moved_from_mcp_page_to_own_page():
+    """2026-09-26: Kostenübersicht als eigene Seite - System-Admins alle
+    Kosten, alle anderen Angemeldeten nur die eigenen."""
+    mcp_html = (STATIC_DIR / "mcp.html").read_text()
+    assert 'id="mcp-summary"' not in mcp_html and 'id="mcp-month"' not in mcp_html
+    assert "/api/mcp/usage" not in (STATIC_DIR / "mcp.js").read_text()
+    costs_js = (STATIC_DIR / "costs.js").read_text()
+    assert "const base = all ? '/api/costs' : '/api/costs/mine';" in costs_js
+    assert "buildSummaryTable(summary, { showAccounts: all })" in costs_js
+    assert "costsLink.href = '/costs.html'" in (STATIC_DIR / "auth.js").read_text()

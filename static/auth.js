@@ -121,6 +121,14 @@ function buildLoggedInPanel() {
     wrapper.appendChild(mcpLink);
   }
 
+  // 2026-09-26: eigene Kostenseite - System-Admins sehen alle Kosten,
+  // alle anderen Angemeldeten ihre eigenen.
+  const costsLink = document.createElement('a');
+  costsLink.href = '/costs.html';
+  costsLink.className = 'link-button auth-mcp-link';
+  costsLink.textContent = t(hasRole('system_admin') ? 'auth.costsLink' : 'auth.myCostsLink');
+  wrapper.appendChild(costsLink);
+
   // 2026-09-26: Nutzerverwaltung als eigene Seite (users.html) statt im
   // Popover - dort war es mit Rollen-Häkchen je Konto zu eng geworden.
   if (hasRole('user_admin')) {

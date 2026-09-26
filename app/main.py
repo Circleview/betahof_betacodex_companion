@@ -4072,6 +4072,7 @@ def _ask_event_stream(
     history,
     should_log_question_events,
     first_question_log_id,
+    usage_email=None,
 ):
     """Generator für die NDJSON-Stream-Antwort von /api/ask: ein frühes
     "sources"-Event (Titel/Autor:in/Link, siehe unten), dann ein "delta"-
@@ -4105,7 +4106,7 @@ def _ask_event_stream(
 
     try:
         for delta in llm.stream_answer_question(
-            question_text, llm_chunks, lang=lang, author_bios=author_bios, history=history
+            question_text, llm_chunks, lang=lang, author_bios=author_bios, history=history, usage_email=usage_email
         ):
             buffer += delta
             # Ersetzt eine bereits VOLLSTÄNDIG angekommene Platzhalter-
@@ -4264,7 +4265,9 @@ def ask(question: QuestionIn, request: Request, x_lang: str = Header(default=i18
     # eine Anthropic-Störung darf die Anfrage nie komplett blockieren.
     query_text = question.question
     if history:
-        query_text = llm.rewrite_followup_query(question.question, history, x_lang) or (
+        query_text = llm.rewrite_followup_query(
+            question.question, history, x_lang, usage_email=_get_current_user_email(request)
+        ) or (
             f"{history[-1]['question']} {question.question}"
         )
 
@@ -4436,6 +4439,7 @@ def ask(question: QuestionIn, request: Request, x_lang: str = Header(default=i18
             history,
             should_log_question_events,
             first_question_log_id,
+            _get_current_user_email(request),
         ),
         media_type="application/x-ndjson",
     )
@@ -4643,7 +4647,7 @@ def creative(payload: CreativeRequestIn, request: Request, x_lang: str = Header(
             x_lang,
             betacodex_sources,
             creative_stream,
-            {"channel": "ui", "web_search": payload.web_search},
+            {"channel": "ui", "web_search": payload.web_search, "email": _get_current_user_email(request)},
             {"instruction": instruction, "section": payload.section is not None}
             if _should_log_question_event(request)
             else None,
@@ -4704,7 +4708,7 @@ def get_conversation_handoff(token: str, request: Request, x_lang: str = Header(
 
 
 @app.post("/api/speech")
-def synthesize_speech(payload: SpeechIn, x_lang: str = Header(default=i18n.DEFAULT_LANG)):
+def synthesize_speech(payload: SpeechIn, request: Request, x_lang: str = Header(default=i18n.DEFAULT_LANG)):
     # Bewusst ohne require_role (wie /api/ask öffentlich nutzbar) - das
     # Vorlesen einer ohnehin öffentlich sichtbaren Antwort braucht keine
     # Anmeldung. Kein Rate-Limiting hier: nur erreichbar über eine bereits
@@ -4720,7 +4724,7 @@ def synthesize_speech(payload: SpeechIn, x_lang: str = Header(default=i18n.DEFAU
     except tts.SpeechSynthesisError:
         raise HTTPException(502, i18n.get_message("speech_synthesis_failed", x_lang))
     # Kostenmessung (2026-09-26): Google TTS rechnet je Zeichen ab.
-    usage.track_service("tts", "google-tts-chirp3-hd", len(text))
+    usage.track_service("tts", "google-tts-chirp3-hd", len(text), _get_current_user_email(request))
     return Response(content=audio, media_type="audio/mpeg")
 
 
@@ -4824,27 +4828,54 @@ def set_mcp_key_limits(
     return mcp_keys.with_stats(key)
 
 
-@app.get("/api/mcp/usage")
-def mcp_usage_summary(
+# Nutzerwunsch (2026-09-26): eigene Kostenübersicht-Seite (static/costs.html)
+# statt Kostenblock auf der MCP-Seite - System-Admins sehen alle Kosten über
+# alle Konten, alle anderen Angemeldeten nur ihre eigenen.
+def _csv_response(content: str, filename: str) -> Response:
+    return Response(
+        content,
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+def _require_login(request: Request, x_lang: str) -> str:
+    email = _get_current_user_email(request)
+    if not email or not users.get_user(email):
+        raise HTTPException(401, i18n.get_message("login_required", x_lang))
+    return email
+
+
+@app.get("/api/costs")
+def costs_summary(
     month: str | None = None,
-    _user: str = Depends(require_role(users.USER_ADMIN)),
+    _user: str = Depends(require_role(users.SYSTEM_ADMIN)),
     x_lang: str = Header(default=i18n.DEFAULT_LANG),
 ):
     return usage.monthly_summary(_usage_month(month, x_lang))
 
 
-@app.get("/api/mcp/usage.csv")
-def mcp_usage_csv(
+@app.get("/api/costs.csv")
+def costs_csv(
     month: str | None = None,
-    _user: str = Depends(require_role(users.USER_ADMIN)),
+    _user: str = Depends(require_role(users.SYSTEM_ADMIN)),
     x_lang: str = Header(default=i18n.DEFAULT_LANG),
 ):
     month = _usage_month(month, x_lang)
-    return Response(
-        usage.export_csv(month),
-        media_type="text/csv; charset=utf-8",
-        headers={"Content-Disposition": f'attachment; filename="betacodex-kreativ-kosten-{month}.csv"'},
-    )
+    return _csv_response(usage.export_csv(month), f"betacodex-kosten-{month}.csv")
+
+
+@app.get("/api/costs/mine")
+def my_costs_summary(request: Request, month: str | None = None, x_lang: str = Header(default=i18n.DEFAULT_LANG)):
+    email = _require_login(request, x_lang)
+    return usage.monthly_summary(_usage_month(month, x_lang), email=email)
+
+
+@app.get("/api/costs/mine.csv")
+def my_costs_csv(request: Request, month: str | None = None, x_lang: str = Header(default=i18n.DEFAULT_LANG)):
+    email = _require_login(request, x_lang)
+    month = _usage_month(month, x_lang)
+    return _csv_response(usage.export_csv(month, email=email), f"betacodex-meine-kosten-{month}.csv")
 
 
 class NoCacheStaticFiles(StaticFiles):

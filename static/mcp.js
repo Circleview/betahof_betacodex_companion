@@ -1,5 +1,6 @@
 import { initI18n, t, getLang } from '/i18n.js';
 import { initAuth, hasRole, onAuthChange } from '/auth.js';
+import { formatCurrency, formatMoney } from '/cost-format.js';
 
 // 2026-09-24: MCP-Zugänge zum Kreativ-Modus (app/mcp_server.py). Konten mit
 // der Rolle MCP-Nutzung legen hier eigene Schlüssel an (Klartext nur einmal
@@ -12,7 +13,6 @@ await initAuth();
 const statusEl = document.getElementById('mcp-status');
 const ownEl = document.getElementById('mcp-own');
 const adminEl = document.getElementById('mcp-admin');
-const monthInput = document.getElementById('mcp-month');
 const endpointUrl = `${window.location.origin}/mcp`;
 
 function jsonHeaders() {
@@ -21,15 +21,6 @@ function jsonHeaders() {
 
 function formatDate(iso) {
   return iso ? new Date(iso).toLocaleString(getLang() === 'de' ? 'de-DE' : 'en-GB') : '–';
-}
-
-function formatCurrency(amount, currency) {
-  return amount.toLocaleString(getLang() === 'de' ? 'de-DE' : 'en-GB', { style: 'currency', currency });
-}
-
-// Nutzerwunsch: immer beide Werte - EUR (Limits) und USD (wie abgerechnet).
-function formatMoney(eur, usd) {
-  return `${formatCurrency(eur, 'EUR')} (${formatCurrency(usd, 'USD')})`;
 }
 
 // Widerrufen zweistufig wie das Löschen von Schlagworten (import.js).
@@ -138,70 +129,11 @@ async function loadOwnKeys() {
   document.getElementById('mcp-own-empty').classList.toggle('hidden', keys.length > 0);
 }
 
-function buildSummaryTable(summary) {
-  const table = document.createElement('table');
-  table.className = 'mcp-summary-table';
-  const caption = document.createElement('caption');
-  caption.textContent = fxText(summary.fx);
-  table.appendChild(caption);
-  const head = document.createElement('tr');
-  [t('mcp.colScope'), t('mcp.colCalls'), t('mcp.colSearches'), t('mcp.colCost')].forEach((label) => {
-    const th = document.createElement('th');
-    th.textContent = label;
-    head.appendChild(th);
-  });
-  table.appendChild(head);
-  // Nutzerwunsch (2026-09-24): Gesamt, darunter als eigene Gruppen "nach
-  // Kanal" und "nach Konto" - dieselben Aufrufe aus zwei Blickwinkeln, damit
-  // die Zeilen nicht wie Summanden gelesen werden.
-  function addRow(name, v, className) {
-    const tr = document.createElement('tr');
-    tr.className = className;
-    [name, String(v.calls), String(v.web_search_requests), formatMoney(v.cost_eur, v.cost_usd)].forEach((text) => {
-      const td = document.createElement('td');
-      td.textContent = text;
-      tr.appendChild(td);
-    });
-    table.appendChild(tr);
-  }
-  function addGroup(labelKey, entries) {
-    if (!entries.length) return;
-    const tr = document.createElement('tr');
-    tr.className = 'mcp-summary-group';
-    const th = document.createElement('th');
-    th.colSpan = 4;
-    th.scope = 'rowgroup';
-    th.textContent = t(labelKey);
-    tr.appendChild(th);
-    table.appendChild(tr);
-    entries.forEach(([name, v]) => addRow(name, v, 'mcp-summary-sub'));
-  }
-  addRow(t('mcp.total'), summary.total, 'mcp-summary-total');
-  addGroup('mcp.groupChannel', Object.entries(summary.by_channel).map(([ch, v]) => [t(`mcp.channel.${ch}`), v]));
-  addGroup('mcp.groupAccount', Object.entries(summary.by_email));
-  return table;
-}
-
-// Nutzerwunsch (2026-09-24): der Umrechnungskurs ist fester Teil der
-// Übersicht (Tabellenüberschrift) - jüngster Kurs des Monats bzw. ohne
-// Aufrufe der aktuelle Tageskurs; jeder einzelne Kurs steht im CSV.
-function fxText(fx) {
-  const locale = getLang() === 'de' ? 'de-DE' : 'en-GB';
-  const rate = fx.rate.toLocaleString(locale, { maximumFractionDigits: 5 });
-  if (fx.source === 'fallback') return t('mcp.fxFallback', { rate });
-  return t('mcp.fxNote', { rate, date: new Date(`${fx.date}T00:00:00`).toLocaleDateString(locale) });
-}
-
+// 2026-09-26: die Kostenübersicht steht auf einer eigenen Seite (costs.html) -
+// hier nur noch alle Schlüssel mit Verbrauch im laufenden Monat und Limits.
 async function loadAdmin() {
-  const month = monthInput.value;
-  document.getElementById('mcp-csv-link').href = `/api/mcp/usage.csv?month=${encodeURIComponent(month)}`;
-  const [summaryRes, keysRes] = await Promise.all([
-    fetch(`/api/mcp/usage?month=${encodeURIComponent(month)}`, { headers: jsonHeaders() }),
-    fetch(`/api/mcp/admin/keys?month=${encodeURIComponent(month)}`, { headers: jsonHeaders() }),
-  ]);
-  if (!summaryRes.ok || !keysRes.ok) return;
-  const summary = await summaryRes.json();
-  document.getElementById('mcp-summary').replaceChildren(buildSummaryTable(summary));
+  const keysRes = await fetch('/api/mcp/admin/keys', { headers: jsonHeaders() });
+  if (!keysRes.ok) return;
   const keys = await keysRes.json();
   document
     .getElementById('mcp-admin-list')
@@ -225,8 +157,6 @@ document.getElementById('mcp-setup-url').textContent = endpointUrl;
 document.getElementById('mcp-connector-url').textContent = endpointUrl;
 document.getElementById('mcp-setup-claude-code').textContent =
   `claude mcp add --transport http betacodex ${endpointUrl} --header "Authorization: Bearer <${t('mcp.yourKey')}>"`;
-monthInput.value = new Date().toISOString().slice(0, 7);
-monthInput.addEventListener('change', loadAdmin);
 
 document.getElementById('mcp-create-form').addEventListener('submit', async (e) => {
   e.preventDefault();

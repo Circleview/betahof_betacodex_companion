@@ -119,26 +119,27 @@ def anthropic_usage(model: str, usage) -> dict:
     }
 
 
-def track_anthropic(model: str, usage, channel: str) -> None:
+def track_anthropic(model: str, usage, channel: str, email: str | None = None) -> None:
     """Kostenmessung für einen Claude-Aufruf - darf die eigentliche Funktion
-    nie unterbrechen (Fehler landen nur im Server-Log)."""
+    nie unterbrechen (Fehler landen nur im Server-Log). email: angemeldetes
+    Konto, das den Aufruf ausgelöst hat (None = anonym bzw. System)."""
     try:
-        record(anthropic_usage(model, usage), channel=channel, web_search=False)
+        record(anthropic_usage(model, usage), channel=channel, web_search=False, email=email)
     except Exception:
         logging.getLogger(__name__).exception("Kostenmessung (%s) fehlgeschlagen", channel)
 
 
-def track_anthropic_stream(model: str, stream, channel: str) -> None:
+def track_anthropic_stream(model: str, stream, channel: str, email: str | None = None) -> None:
     """Wie track_anthropic, aber für einen fertig gelesenen Stream."""
     try:
         final_usage = stream.get_final_message().usage
     except Exception:
         logging.getLogger(__name__).exception("Kostenmessung (%s) fehlgeschlagen", channel)
         return
-    track_anthropic(model, final_usage, channel)
+    track_anthropic(model, final_usage, channel, email)
 
 
-def track_service(channel: str, model: str, quantity: float) -> None:
+def track_service(channel: str, model: str, quantity: float, email: str | None = None) -> None:
     """Kostenmessung für Nicht-Anthropic-Dienste (TTS, Transkription) - Menge
     in der Einheit aus SERVICE_PRICES_USD. Unterbricht nie die Funktion."""
     try:
@@ -153,7 +154,7 @@ def track_service(channel: str, model: str, quantity: float) -> None:
             "quantity": round(quantity, 2),
             "unit": unit,
         }
-        record(entry, channel=channel, web_search=False, usd=quantity * price)
+        record(entry, channel=channel, web_search=False, email=email, usd=quantity * price)
     except Exception:
         logging.getLogger(__name__).exception("Kostenmessung (%s) fehlgeschlagen", channel)
 
@@ -214,8 +215,20 @@ def key_stats(key_id: str, now: datetime | None = None, month: str | None = None
     return {"calls_today": calls_today, "month_eur": round(month_eur, 4), "month_usd": round(month_usd, 4)}
 
 
-def monthly_summary(month: str) -> dict:
-    """month = "YYYY-MM". Summen je Kanal, je Konto und je Schlüssel."""
+# Hintergrund-/Pflegearbeiten ohne auslösende Person - in der Übersicht
+# "System", alles andere ohne Konto "anonym" (Nutzerwunsch 2026-09-26).
+SYSTEM_CHANNELS = ("summary", "ocr", "discovery", "stt")
+
+
+def account_of(entry: dict) -> str:
+    if entry.get("email"):
+        return entry["email"]
+    return "system" if entry["channel"] in SYSTEM_CHANNELS else "anonymous"
+
+
+def monthly_summary(month: str, email: str | None = None) -> dict:
+    """month = "YYYY-MM". Summen je Kanal, je Konto und je Schlüssel - mit
+    email nur die Einträge dieses Kontos ("Meine Kosten")."""
     def empty():
         return {"calls": 0, "cost_usd": 0.0, "cost_eur": 0.0, "web_search_requests": 0}
 
@@ -227,14 +240,13 @@ def monthly_summary(month: str) -> dict:
 
     summary = {"month": month, "total": empty(), "by_channel": {}, "by_email": {}, "by_key": {}, "fx": None}
     for e in list_entries():
-        if not e["ts"].startswith(month):
+        if not e["ts"].startswith(month) or (email and e.get("email") != email):
             continue
         # Kurs des jüngsten Eintrags im Monat (Einträge sind chronologisch).
         summary["fx"] = {"rate": e["usd_to_eur"], "date": e["fx_date"], "source": e["fx_source"]}
         add(summary["total"], e)
         add(summary["by_channel"].setdefault(e["channel"], empty()), e)
-        if e["email"]:
-            add(summary["by_email"].setdefault(e["email"], empty()), e)
+        add(summary["by_email"].setdefault(account_of(e), empty()), e)
         if e["key_id"]:
             add(summary["by_key"].setdefault(e["key_id"], empty()), e)
     # Ohne Aufrufe im Monat: aktueller Tageskurs, damit die Übersicht den
@@ -252,11 +264,11 @@ CSV_FIELDS = [
 ]
 
 
-def export_csv(month: str) -> str:
+def export_csv(month: str, email: str | None = None) -> str:
     buf = io.StringIO()
     writer = csv.DictWriter(buf, fieldnames=CSV_FIELDS, extrasaction="ignore")
     writer.writeheader()
     for e in list_entries():
-        if e["ts"].startswith(month):
+        if e["ts"].startswith(month) and (not email or e.get("email") == email):
             writer.writerow(e)
     return buf.getvalue()

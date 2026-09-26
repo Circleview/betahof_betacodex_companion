@@ -224,7 +224,9 @@ _REWRITE_USER_PROMPTS = {
 }
 
 
-def rewrite_followup_query(question: str, history: list[dict], lang: str = DEFAULT_LANG) -> str | None:
+def rewrite_followup_query(
+    question: str, history: list[dict], lang: str = DEFAULT_LANG, usage_email: str | None = None
+) -> str | None:
     """Formuliert eine vage Folgefrage anhand des Gesprächsverlaufs zu einer
     eigenständigen, für die Vektorsuche tauglichen Anfrage um (siehe
     Kommentar bei REWRITE_SYSTEM_PROMPTS). Gibt None zurück, wenn history
@@ -252,7 +254,7 @@ def rewrite_followup_query(question: str, history: list[dict], lang: str = DEFAU
             system=REWRITE_SYSTEM_PROMPTS[lang],
             messages=messages,
         )
-        usage_log.track_anthropic(MODEL_NAME, response.usage, "ask")
+        usage_log.track_anthropic(MODEL_NAME, response.usage, "ask", usage_email)
         rewritten = "".join(
             block.text for block in response.content if getattr(block, "type", None) == "text"
         ).strip()
@@ -278,6 +280,7 @@ def stream_answer_question(
     lang: str = DEFAULT_LANG,
     author_bios: list[dict] | None = None,
     history: list[dict] | None = None,
+    usage_email: str | None = None,
 ):
     """Wie answer_question, liefert die Antwort aber als Generator einzelner
     Text-Fragmente, sobald Anthropic sie erzeugt (Backlog: Antwortzeit
@@ -319,7 +322,8 @@ def stream_answer_question(
         messages=messages,
     ) as stream:
         yield from stream.text_stream
-        usage_log.track_anthropic_stream(MODEL_NAME, stream, "ask")
+        # usage_email: angemeldetes Konto für "Meine Kosten" (None = anonym).
+        usage_log.track_anthropic_stream(MODEL_NAME, stream, "ask", usage_email)
 
 
 def answer_question(

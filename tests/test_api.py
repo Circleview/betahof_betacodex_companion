@@ -332,7 +332,7 @@ def client(tmp_path, monkeypatch):
     monkeypatch.setattr(
         llm,
         "stream_answer_question",
-        lambda question, chunks, lang="de", author_bios=None, history=None: iter(["Testantwort [1]."]),
+        lambda question, chunks, lang="de", author_bios=None, history=None, **kwargs: iter(["Testantwort [1]."]),
     )
     # /api/creative (Kreativ-Modus, 2026-08-26) - Standard-Mock analog zu
     # stream_answer_question oben, liefert ein CreativeStream-förmiges
@@ -2696,7 +2696,7 @@ def test_ask_passes_author_bio_when_question_mentions_registered_author(client, 
 
     captured = {}
 
-    def fake_answer(question, chunks, lang="de", author_bios=None, history=None):
+    def fake_answer(question, chunks, lang="de", author_bios=None, history=None, **kwargs):
         captured["author_bios"] = author_bios
         return iter(["Testantwort [1]."])
 
@@ -2722,7 +2722,7 @@ def test_ask_passes_no_author_bio_when_question_does_not_mention_author(client, 
 
     captured = {}
 
-    def fake_answer(question, chunks, lang="de", author_bios=None, history=None):
+    def fake_answer(question, chunks, lang="de", author_bios=None, history=None, **kwargs):
         captured["author_bios"] = author_bios
         return iter(["Testantwort [1]."])
 
@@ -2744,7 +2744,7 @@ def test_ask_passes_history_to_llm(client, monkeypatch):
     )
     captured = {}
 
-    def fake_answer(question, chunks, lang="de", author_bios=None, history=None):
+    def fake_answer(question, chunks, lang="de", author_bios=None, history=None, **kwargs):
         captured["history"] = history
         return iter(["Testantwort [1]."])
 
@@ -2772,7 +2772,7 @@ def test_ask_caps_history_to_last_turns_even_if_client_sends_more(client, monkey
     )
     captured = {}
 
-    def fake_answer(question, chunks, lang="de", author_bios=None, history=None):
+    def fake_answer(question, chunks, lang="de", author_bios=None, history=None, **kwargs):
         captured["history"] = history
         return iter(["Testantwort [1]."])
 
@@ -2809,7 +2809,7 @@ def test_ask_uses_rewritten_query_for_history_follow_up(client, monkeypatch):
         lambda text: captured.setdefault("query_text", text) and [1.0, 0.0] or [1.0, 0.0],
     )
     monkeypatch.setattr(
-        llm, "rewrite_followup_query", lambda question, history, lang: "BetaCodex und Vertrauen"
+        llm, "rewrite_followup_query", lambda question, history, lang, **kwargs: "BetaCodex und Vertrauen"
     )
 
     client.post(
@@ -2837,7 +2837,7 @@ def test_ask_falls_back_to_concatenation_when_rewrite_fails(client, monkeypatch)
         "embed_query",
         lambda text: captured.setdefault("query_text", text) and [1.0, 0.0] or [1.0, 0.0],
     )
-    monkeypatch.setattr(llm, "rewrite_followup_query", lambda question, history, lang: None)
+    monkeypatch.setattr(llm, "rewrite_followup_query", lambda question, history, lang, **kwargs: None)
 
     client.post(
         "/api/ask",
@@ -2945,7 +2945,7 @@ def test_ask_uses_llm_quote_when_it_matches_the_chunk(client, monkeypatch):
     monkeypatch.setattr(
         llm,
         "stream_answer_question",
-        lambda question, chunks, lang="de", author_bios=None, history=None: iter([
+        lambda question, chunks, lang="de", author_bios=None, history=None, **kwargs: iter([
             "Aussage [1].\n\n---QUOTES---\n"
             '[1]: "Der BetaCodex beschreibt Prinzipien dezentraler Organisation."\n'
         ]),
@@ -2973,7 +2973,7 @@ def test_ask_falls_back_to_local_highlight_when_llm_quote_not_found_in_chunk(cli
     monkeypatch.setattr(
         llm,
         "stream_answer_question",
-        lambda question, chunks, lang="de", author_bios=None, history=None: iter([
+        lambda question, chunks, lang="de", author_bios=None, history=None, **kwargs: iter([
             "Antwort [1].\n\n---QUOTES---\n"
             '[1]: "Dieser Satz kommt in der Quelle so gar nicht vor."\n'
         ]),
@@ -3009,7 +3009,7 @@ def test_ask_uses_original_chunk_whitespace_not_llm_quote_for_highlight(client, 
     monkeypatch.setattr(
         llm,
         "stream_answer_question",
-        lambda question, chunks, lang="de", author_bios=None, history=None: iter([
+        lambda question, chunks, lang="de", author_bios=None, history=None, **kwargs: iter([
             "Antwort [1].\n\n---QUOTES---\n"
             # Das Modell gibt ein normales statt des geschützten Leerzeichens
             # wieder - genau der real beobachtete Fall.
@@ -3047,7 +3047,7 @@ def test_ask_matches_llm_quote_despite_typographic_quote_mismatch(client, monkey
     monkeypatch.setattr(
         llm,
         "stream_answer_question",
-        lambda question, chunks, lang="de", author_bios=None, history=None: iter([
+        lambda question, chunks, lang="de", author_bios=None, history=None, **kwargs: iter([
             "Antwort [1].\n\n---QUOTES---\n"
             # Modell nutzt gerades Apostroph, Quelle typografisches (’).
             '[1]: "Most managers currently manage the actions of their organizations\' parts taken separately."\n'
@@ -3121,7 +3121,7 @@ def test_local_highlight_sentence_embeddings_are_cached_across_requests(client, 
     monkeypatch.setattr(
         llm,
         "stream_answer_question",
-        lambda question, chunks, lang="de", author_bios=None, history=None: iter(["Antwort [1]."]),
+        lambda question, chunks, lang="de", author_bios=None, history=None, **kwargs: iter(["Antwort [1]."]),
     )
 
     # Erst NACH dem Anlegen der Quellen mitzählen - deren eigene Indizierung
@@ -3164,7 +3164,7 @@ def test_local_highlight_cache_ignores_stale_entry_after_source_edit(client, mon
     monkeypatch.setattr(
         llm,
         "stream_answer_question",
-        lambda question, chunks, lang="de", author_bios=None, history=None: iter(["Antwort [2]."]),
+        lambda question, chunks, lang="de", author_bios=None, history=None, **kwargs: iter(["Antwort [2]."]),
     )
 
     first = ask_result(client.post("/api/ask", json={"question": "Frage eins?"}))
@@ -3202,7 +3202,7 @@ def test_ask_gives_uncited_chunk_a_lazy_local_highlight_fallback(client, monkeyp
     monkeypatch.setattr(
         llm,
         "stream_answer_question",
-        lambda question, chunks, lang="de", author_bios=None, history=None: iter(["Antwort [1]."]),
+        lambda question, chunks, lang="de", author_bios=None, history=None, **kwargs: iter(["Antwort [1]."]),
     )
 
     response = client.post("/api/ask", json={"question": "Frage?"})
@@ -3230,7 +3230,7 @@ def test_ask_uses_different_highlight_per_occurrence_of_the_same_source(client, 
     monkeypatch.setattr(
         llm,
         "stream_answer_question",
-        lambda question, chunks, lang="de", author_bios=None, history=None: iter([
+        lambda question, chunks, lang="de", author_bios=None, history=None, **kwargs: iter([
             "Aussage A [1]. Aussage B [1].\n\n---QUOTES---\n"
             '[1]: "Der BetaCodex beschreibt Prinzipien dezentraler Organisation."\n'
             '[1]: "Teams organisieren sich in Zellen ohne zentrale Weisung."\n'
@@ -3585,7 +3585,7 @@ def test_role_required_message_in_english(anon_client):
 def test_ask_uses_requested_language(client, monkeypatch):
     captured = {}
 
-    def fake_answer(question, chunks, lang="de", author_bios=None, history=None):
+    def fake_answer(question, chunks, lang="de", author_bios=None, history=None, **kwargs):
         captured["lang"] = lang
         return iter(["Answer"])
 
@@ -5666,7 +5666,7 @@ def test_delete_source_removes_terms(client, monkeypatch):
 def test_listen_url_persists_and_appears_in_ask_citation(client, monkeypatch):
     captured = {}
 
-    def fake_answer(question, chunks, lang="de", author_bios=None, history=None):
+    def fake_answer(question, chunks, lang="de", author_bios=None, history=None, **kwargs):
         captured["lang"] = lang
         return iter(["Testantwort [1]."])
 
@@ -7908,7 +7908,8 @@ def test_creative_records_ui_usage_and_passes_web_search_flag(client, monkeypatc
     entries = usage.list_entries()
     assert len(entries) == 1
     assert entries[0]["channel"] == "ui" and entries[0]["web_search_enabled"] is False
-    assert entries[0]["key_id"] is None and entries[0]["email"] is None
+    # Seit 2026-09-26 dem angemeldeten Konto zugeordnet ("Meine Kosten").
+    assert entries[0]["key_id"] is None and entries[0]["email"] == PFLEGER
 
 
 
@@ -7967,12 +7968,8 @@ def test_user_admin_sees_all_keys_sets_limits_and_exports_usage(anon_client):
     assert limits.json()["daily_call_limit"] == 50 and limits.json()["monthly_eur_limit"] == 12.5
     assert anon_client.put(f"/api/mcp/keys/{key['id']}/limits", json={"daily_call_limit": -1, "monthly_eur_limit": 1}).status_code == 400
 
-    summary = anon_client.get("/api/mcp/usage").json()
-    assert summary["by_email"]["owner@test.local"]["calls"] == 1
-    csv_response = anon_client.get("/api/mcp/usage.csv")
-    assert csv_response.headers["content-type"].startswith("text/csv")
-    assert "owner@test.local" in csv_response.text
-    assert anon_client.get("/api/mcp/usage?month=kaputt").status_code == 400
+    # Kosten stehen seit 2026-09-26 auf der eigenen Kostenübersicht - nur System-Admins.
+    assert anon_client.get("/api/costs").status_code == 403
 
 
 def test_admin_key_list_reports_costs_for_selected_month(anon_client):
@@ -8294,3 +8291,57 @@ def test_speech_records_tts_cost_per_character(anon_client, monkeypatch):
 
     (entry,) = usage.list_entries()
     assert (entry["channel"], entry["quantity"], entry["unit"]) == ("tts", 10, "chars")
+
+
+# --- Eigene Kostenübersicht (2026-09-26) ---
+
+
+def _record_cost(channel, email=None, cost_input=1000):
+    usage.record(
+        {"model": "claude-haiku-4-5-20251001", "input_tokens": cost_input, "output_tokens": 0,
+         "cache_creation_input_tokens": 0, "cache_read_input_tokens": 0, "web_search_requests": 0},
+        channel=channel, web_search=False, email=email,
+    )
+
+
+def test_system_admin_sees_all_costs_by_account(anon_client):
+    _record_cost("ask", "lena@test.local")
+    _record_cost("ask")          # anonym
+    _record_cost("summary")      # Hintergrund -> System
+    login(anon_client, "root@test.local", users.SYSTEM_ADMIN)
+
+    summary = anon_client.get("/api/costs").json()
+
+    assert summary["total"]["calls"] == 3
+    assert set(summary["by_email"]) == {"lena@test.local", "anonymous", "system"}
+    csv_response = anon_client.get("/api/costs.csv")
+    assert csv_response.headers["content-type"].startswith("text/csv")
+    assert "lena@test.local" in csv_response.text
+    assert anon_client.get("/api/costs?month=kaputt").status_code == 400
+
+
+def test_user_sees_only_own_costs(anon_client):
+    _record_cost("ask", "lena@test.local")
+    _record_cost("tts", "other@test.local")
+    login(anon_client, "lena@test.local", users.QUELLEN_PFLEGER)
+
+    mine = anon_client.get("/api/costs/mine").json()
+
+    assert mine["total"]["calls"] == 1
+    assert list(mine["by_email"]) == ["lena@test.local"]
+    assert "other@test.local" not in anon_client.get("/api/costs/mine.csv").text
+    assert anon_client.get("/api/costs").status_code == 403
+
+
+def test_my_costs_require_login(anon_client):
+    assert anon_client.get("/api/costs/mine").status_code == 401
+
+
+def test_logged_in_speech_cost_is_attributed_to_account(anon_client, monkeypatch):
+    monkeypatch.setattr(tts, "synthesize_speech", lambda text, lang="de", speaking_rate=1.0: b"mp3")
+    login(anon_client, "lena@test.local", users.QUELLEN_PFLEGER)
+
+    anon_client.post("/api/speech", json={"text": "Hallo"})
+
+    (entry,) = usage.list_entries()
+    assert entry["email"] == "lena@test.local"
