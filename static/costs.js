@@ -19,6 +19,29 @@ monthInput.value = new Date().toISOString().slice(0, 7);
 // Gesamtkosten in EUR). Hover/Fokus zeigt einen Tooltip mit Kosten, Aufrufen
 // und den größten Kanälen, Klick/Enter wählt den Monat für die Tabelle.
 const SVG_NS = 'http://www.w3.org/2000/svg';
+// Nutzerwunsch (2026-09-26): Balken nach Nutzungsart gestapelt (Reihenfolge
+// = Stapel von unten nach oben = Farbslot, validiert per dataviz-Validator),
+// Anbieter im Tooltip. Unbekannte Kanäle zählen zu "Hintergrund & Pflege".
+const USAGE_GROUPS = [
+  { key: 'conversation', channels: ['ask'] },
+  { key: 'creative', channels: ['ui', 'mcp'] },
+  { key: 'tts', channels: ['tts'] },
+  { key: 'background', channels: ['summary', 'ocr', 'stt', 'discovery'] },
+];
+const PROVIDER_OF_CHANNEL = { tts: 'google', stt: 'openai' }; // sonst Anthropic
+
+function groupOf(channel) {
+  const index = USAGE_GROUPS.findIndex((g) => g.channels.includes(channel));
+  return index >= 0 ? index : USAGE_GROUPS.length - 1;
+}
+
+function groupValues(entry) {
+  const values = USAGE_GROUPS.map(() => 0);
+  Object.entries(entry.by_channel).forEach(([ch, eur]) => {
+    values[groupOf(ch)] += eur;
+  });
+  return values;
+}
 const CHART = { width: 960, height: 220, left: 64, right: 8, top: 12, bottom: 32 };
 let history = [];
 
@@ -43,10 +66,14 @@ function monthLabel(month, withYear) {
 
 function showTooltip(entry, x) {
   const tooltip = document.getElementById('costs-tooltip');
-  const channels = Object.entries(entry.by_channel)
+  const byProvider = {};
+  Object.entries(entry.by_channel).forEach(([ch, eur]) => {
+    const provider = PROVIDER_OF_CHANNEL[ch] || 'anthropic';
+    byProvider[provider] = (byProvider[provider] || 0) + eur;
+  });
+  const channels = Object.entries(byProvider)
     .sort((a, b) => b[1] - a[1])
-    .slice(0, 3)
-    .map(([ch, eur]) => `${t(`mcp.channel.${ch}`)}: ${formatCurrency(eur, 'EUR')}`);
+    .map(([provider, eur]) => `${t(`costs.provider.${provider}`)}: ${formatCurrency(eur, 'EUR')}`);
   tooltip.replaceChildren(
     ...[
       [monthLabel(entry.month, true), 'costs-tooltip-title'],
@@ -94,20 +121,29 @@ function renderChart() {
   const selected = monthInput.value;
   history.forEach((entry, i) => {
     const cx = left + slot * i + slot / 2;
-    const h = top + plotH - y(entry.cost_eur);
-    if (h > 0) {
-      // Oben 4px abgerundet, unten bündig an der Grundlinie.
-      const r = Math.min(4, h, barW / 2);
-      const x0 = cx - barW / 2;
-      const yTop = y(entry.cost_eur);
-      const base = top + plotH;
+    // Gestapelt von unten nach oben; nur das oberste Segment bekommt die
+    // 4px-Rundung, 2px Hintergrund-Fuge zwischen den Segmenten.
+    const x0 = cx - barW / 2;
+    let stackTop = 0;
+    const segments = groupValues(entry)
+      .map((value, g) => ({ value, g }))
+      .filter((seg) => seg.value > 0);
+    segments.forEach((seg, k) => {
+      const yBottom = y(stackTop);
+      stackTop += seg.value;
+      const yTop = y(stackTop);
+      const gap = k > 0 ? 2 : 0;
+      const bottom = yBottom - gap;
+      if (bottom - yTop <= 0) return;
+      const isTop = k === segments.length - 1;
+      const r = isTop ? Math.min(4, bottom - yTop, barW / 2) : 0;
       svg.appendChild(
         svgEl('path', {
-          d: `M${x0},${base} V${yTop + r} Q${x0},${yTop} ${x0 + r},${yTop} H${x0 + barW - r} Q${x0 + barW},${yTop} ${x0 + barW},${yTop + r} V${base} Z`,
-          class: 'costs-bar',
+          d: `M${x0},${bottom} V${yTop + r} Q${x0},${yTop} ${x0 + r},${yTop} H${x0 + barW - r} Q${x0 + barW},${yTop} ${x0 + barW},${yTop + r} V${bottom} Z`,
+          class: `costs-bar costs-bar--${seg.g + 1}`,
         })
       );
-    }
+    });
     const withYear = i === 0 || entry.month.endsWith('-01');
     const label = svgEl('text', {
       x: cx,
@@ -151,10 +187,24 @@ function renderChart() {
   document.getElementById('costs-chart').replaceChildren(svg);
 }
 
+function renderLegend() {
+  document.getElementById('costs-legend').replaceChildren(
+    ...USAGE_GROUPS.map((group, g) => {
+      const item = document.createElement('span');
+      item.className = 'costs-legend-item';
+      const swatch = document.createElement('span');
+      swatch.className = `costs-legend-swatch costs-bar--${g + 1}`;
+      item.append(swatch, t(`costs.group.${group.key}`));
+      return item;
+    })
+  );
+}
+
 async function loadHistory(base) {
   const res = await fetch(`${base}/history`, { headers: { 'X-Lang': getLang() } });
   if (!res.ok) return;
   history = await res.json();
+  renderLegend();
   renderChart();
 }
 

@@ -4186,3 +4186,15 @@ def test_costs_page_has_monthly_bar_chart_linked_to_month_filter():
     assert "monthInput.value = entry.month;" in js
     html = (STATIC_DIR / "costs.html").read_text()
     assert 'id="costs-chart"' in html and 'id="costs-month"' in html and 'id="costs-summary"' in html
+
+
+def test_cost_chart_stacks_by_usage_type_and_shows_providers():
+    """Nutzerwunsch (2026-09-26): Balken nach Nutzungsart gestapelt (4 Gruppen,
+    Legende), Anbieter im Tooltip. Jeder Kanal gehört zu genau einer Gruppe."""
+    js = (STATIC_DIR / "costs.js").read_text()
+    for key in ("conversation", "creative", "tts", "background"):
+        assert f"key: '{key}'" in js
+    for channel in ("'ask'", "'ui'", "'mcp'", "'tts'", "'summary'", "'ocr'", "'stt'", "'discovery'"):
+        assert js.count(channel) >= 1
+    assert "costs.provider." in js
+    assert "renderLegend();" in js

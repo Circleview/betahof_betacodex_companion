@@ -5413,8 +5413,48 @@ details a {
   height: auto;
 }
 
-.costs-bar {
-  fill: var(--color-accent);
+/* Nutzungsarten, Farben aus der validierten dataviz-Referenzpalette
+   (Slots 1-4, Reihenfolge = Stapel von unten nach oben). */
+:root {
+  --cost-series-1: #2a78d6;
+  --cost-series-2: #eb6834;
+  --cost-series-3: #1baf7a;
+  --cost-series-4: #eda100;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --cost-series-1: #3987e5;
+    --cost-series-2: #d95926;
+    --cost-series-3: #199e70;
+    --cost-series-4: #c98500;
+  }
+}
+
+.costs-bar--1 { fill: var(--cost-series-1); background: var(--cost-series-1); }
+.costs-bar--2 { fill: var(--cost-series-2); background: var(--cost-series-2); }
+.costs-bar--3 { fill: var(--cost-series-3); background: var(--cost-series-3); }
+.costs-bar--4 { fill: var(--cost-series-4); background: var(--cost-series-4); }
+
+.costs-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 1rem;
+  margin-bottom: 0.5rem;
+  font-size: 0.8rem;
+  color: var(--color-text-muted);
+}
+
+.costs-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.costs-legend-swatch {
+  width: 0.7rem;
+  height: 0.7rem;
+  border-radius: 2px;
 }
 
 .costs-grid {
