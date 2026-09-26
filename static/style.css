@@ -5227,11 +5227,30 @@ details a {
 }
 
 /* Nutzerverwaltung als eigene Seite (static/users.html, 2026-09-26). */
+/* Nutzerwunsch (2026-09-26): Einladen und Kontenliste klar getrennt -
+   Einladen als eigene, getönte Karte, die Konten mit deutlichem Abstand
+   und Trennlinie darunter. */
+.users-invite-panel {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: 1.25rem 1.5rem 1.5rem;
+}
+
+.users-invite-panel h3 {
+  margin-top: 0;
+}
+
 .users-invite-form {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 0.75rem;
-  margin-bottom: 2rem;
+}
+
+.users-list-heading {
+  margin-top: 3rem;
+  padding-top: 1.5rem;
+  border-top: 2px solid var(--color-border);
 }
 
 .users-invite-form .users-invite-roles,
