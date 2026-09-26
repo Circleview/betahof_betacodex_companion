@@ -4149,3 +4149,18 @@ def test_reader_shows_ai_icons_and_sticky_close_button():
     css = (STATIC_DIR / "style.css").read_text()
     block = re.search(r"\.source-edit-dialog \.jobs-bar-close \{[^}]*\}", css).group(0)
     assert "position: sticky" in block and "background: var(--color-bg)" in block
+
+
+def test_user_management_moved_from_popover_to_own_page():
+    """2026-09-26: Nutzerverwaltung als eigene Seite (users.html) - das
+    Login-Popover verlinkt nur noch dorthin."""
+    auth_js = (STATIC_DIR / "auth.js").read_text()
+    assert "buildAdminSection" not in auth_js
+    assert "usersLink.href = '/users.html'" in auth_js
+    users_js = (STATIC_DIR / "users.js").read_text()
+    assert "/resend-invite" in users_js
+    assert "method: 'DELETE'" in users_js
+    assert "JSON.stringify({ email: email.value.trim(), roles," in users_js
+    html = (STATIC_DIR / "users.html").read_text()
+    assert '<script type="module" src="/users.js"></script>' in html
+    assert '<header id="site-header">' in html

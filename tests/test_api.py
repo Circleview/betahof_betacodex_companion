@@ -8208,3 +8208,79 @@ def test_update_source_keeps_ai_flags_when_summary_and_terms_unchanged(client, m
     ).json()
     assert stored["summary_ai_generated"] is True
     assert stored["key_terms_ai_generated"] is False
+
+
+# --- Nutzerverwaltung als eigene Seite (2026-09-26) ---
+
+
+def test_invite_with_multiple_roles_and_mail_lists_them(anon_client, monkeypatch):
+    sent = []
+    monkeypatch.setattr(mail, "send_mail", lambda to, subject, body: sent.append(body))
+    login(anon_client, "admin@test.local", users.USER_ADMIN)
+
+    response = anon_client.post(
+        "/api/auth/invite",
+        json={"email": "new@test.local", "roles": [users.QUELLEN_PFLEGER, users.MCP_NUTZER]},
+    )
+
+    assert response.status_code == 201
+    assert set(response.json()["roles"]) == {users.QUELLEN_PFLEGER, users.MCP_NUTZER}
+    assert "Quellen-Pfleger:in, MCP-Nutzung" in sent[-1]
+
+
+def test_invite_rejects_empty_roles_and_admin_roles_for_user_admin(anon_client):
+    login(anon_client, "admin@test.local", users.USER_ADMIN)
+
+    assert anon_client.post("/api/auth/invite", json={"email": "a@test.local", "roles": []}).status_code == 400
+    forbidden = anon_client.post(
+        "/api/auth/invite", json={"email": "a@test.local", "roles": [users.MCP_NUTZER, users.USER_ADMIN]}
+    )
+    assert forbidden.status_code == 403
+    assert users.get_user("a@test.local") is None
+
+
+def test_resend_invite_only_for_invited_accounts(anon_client, monkeypatch):
+    sent = []
+    monkeypatch.setattr(mail, "send_mail", lambda to, subject, body: sent.append(to))
+    login(anon_client, "admin@test.local", users.USER_ADMIN)
+    anon_client.post("/api/auth/invite", json={"email": "new@test.local", "roles": [users.MCP_NUTZER]})
+
+    assert anon_client.post("/api/auth/users/new@test.local/resend-invite").status_code == 200
+    assert sent[-1] == "new@test.local"
+    # Das eigene (bereits angemeldete) Konto hat Status "active".
+    assert anon_client.post("/api/auth/users/admin@test.local/resend-invite").status_code == 400
+    assert anon_client.post("/api/auth/users/unknown@test.local/resend-invite").status_code == 404
+
+
+def test_delete_user_removes_account(anon_client):
+    login(anon_client, "admin@test.local", users.USER_ADMIN)
+    anon_client.post("/api/auth/invite", json={"email": "new@test.local", "roles": [users.MCP_NUTZER]})
+
+    assert anon_client.delete("/api/auth/users/new@test.local").status_code == 204
+    assert users.get_user("new@test.local") is None
+    assert anon_client.delete("/api/auth/users/new@test.local").status_code == 404
+
+
+def test_delete_user_protections(anon_client):
+    users.invite_user("root@test.local", users.SYSTEM_ADMIN, invited_by="test-bootstrap")
+    login(anon_client, "admin@test.local", users.USER_ADMIN)
+
+    # eigenes Konto nicht, Admin-Konten nur durch System-Admins
+    assert anon_client.delete("/api/auth/users/admin@test.local").status_code == 400
+    assert anon_client.delete("/api/auth/users/root@test.local").status_code == 403
+
+
+def test_delete_user_keeps_last_system_admin(anon_client):
+    login(anon_client, "root@test.local", users.SYSTEM_ADMIN)
+    users.invite_user("other-root@test.local", users.SYSTEM_ADMIN, invited_by="test-bootstrap")
+
+    assert anon_client.delete("/api/auth/users/other-root@test.local").status_code == 204
+    # Jetzt ist root der letzte System-Admin - und das eigene Konto ohnehin tabu.
+    assert anon_client.delete("/api/auth/users/root@test.local").status_code == 400
+
+
+def test_user_management_endpoints_require_user_admin(anon_client):
+    login(anon_client, "pfleger@test.local", users.QUELLEN_PFLEGER)
+
+    assert anon_client.post("/api/auth/users/x@test.local/resend-invite").status_code == 403
+    assert anon_client.delete("/api/auth/users/x@test.local").status_code == 403

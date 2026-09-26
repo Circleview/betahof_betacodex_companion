@@ -52,7 +52,9 @@ def send_login_link_email(to: str, link_url: str, lang: str = i18n.DEFAULT_LANG)
     send_mail(to, subject, body)
 
 
-def send_invite_email(to: str, link_url: str, role: str, lang: str = i18n.DEFAULT_LANG) -> None:
+def send_invite_email(to: str, link_url: str, roles: list[str] | str, lang: str = i18n.DEFAULT_LANG) -> None:
+    roles = [roles] if isinstance(roles, str) else roles
     subject = i18n.get_message("mail_invite_subject", lang)
-    body = i18n.get_message("mail_invite_body", lang, role=role, link=link_url)
+    labels = ", ".join(i18n.get_message(f"role_{role}", lang) for role in roles)
+    body = i18n.get_message("mail_invite_body", lang, role=labels, link=link_url)
     send_mail(to, subject, body)

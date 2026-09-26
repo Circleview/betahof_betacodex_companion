@@ -212,7 +212,10 @@ class EarlyAccessIn(BaseModel):
 
 class InviteIn(BaseModel):
     email: str
-    role: str
+    # 2026-09-26: mehrere Rollen beim Einladen - "role" bleibt für ältere
+    # Aufrufer gültig, "roles" hat Vorrang.
+    role: Optional[str] = None
+    roles: list[str] = []
     name: Optional[str] = None
 
 

@@ -2728,19 +2728,67 @@ def invite_user(
     current_user: str = Depends(require_role(users.USER_ADMIN)),
     x_lang: str = Header(default=i18n.DEFAULT_LANG),
 ):
-    if payload.role not in users.ALL_ROLES:
+    roles = payload.roles or ([payload.role] if payload.role else [])
+    if not roles:
+        raise HTTPException(400, i18n.get_message("invite_no_roles", x_lang))
+    if any(role not in users.ALL_ROLES for role in roles):
         raise HTTPException(400, i18n.get_message("invite_invalid_role", x_lang))
-    if payload.role in (users.USER_ADMIN, users.SYSTEM_ADMIN) and not users.has_role(
-        current_user, users.SYSTEM_ADMIN
-    ):
+    if set(roles) & set(users.ADMIN_ROLES) and not users.has_role(current_user, users.SYSTEM_ADMIN):
         raise HTTPException(403, i18n.get_message("invite_role_forbidden", x_lang))
 
     email = payload.email.strip().lower()
-    entry = users.invite_user(email, payload.role, invited_by=current_user, name=payload.name)
+    for role in roles:
+        entry = users.invite_user(email, role, invited_by=current_user, name=payload.name)
+    _send_invite(request, email, roles, x_lang)
+    return entry
+
+
+def _send_invite(request: Request, email: str, roles: list[str], x_lang: str) -> None:
     token = auth.create_magic_link_token(email, auth.INVITE_LINK_MAX_AGE_SECONDS)
     link_url = str(request.base_url) + f"api/auth/verify?token={token}"
-    mail.send_invite_email(email, link_url, payload.role, x_lang)
+    mail.send_invite_email(email, link_url, roles, x_lang)
+
+
+# 2026-09-26: Nutzerverwaltung als eigene Seite (static/users.js) - Einladung
+# erneut senden (nur noch nicht angemeldete Konten, gegen Spam begrenzt).
+@app.post("/api/auth/users/{email}/resend-invite", response_model=AdminUserOut)
+def resend_invite(
+    email: str,
+    request: Request,
+    _user: str = Depends(require_role(users.USER_ADMIN)),
+    x_lang: str = Header(default=i18n.DEFAULT_LANG),
+):
+    entry = users.get_user(email)
+    if entry is None:
+        raise HTTPException(404, i18n.get_message("user_not_found", x_lang))
+    if entry["status"] != "invited":
+        raise HTTPException(400, i18n.get_message("resend_only_invited", x_lang))
+    if ratelimit.is_rate_limited(f"resend-invite:{entry['email']}", max_requests=5, window_seconds=3600):
+        raise HTTPException(429, i18n.get_message("rate_limited", x_lang))
+    _send_invite(request, entry["email"], entry["roles"], x_lang)
     return entry
+
+
+# 2026-09-26: Konto entfernen - nicht das eigene, nicht den letzten System-
+# Admin, Admin-Konten nur durch System-Admins (gleiche Regel wie Rollen).
+# MCP-Schlüssel des Kontos werden damit ungültig (an die Rolle gebunden).
+@app.delete("/api/auth/users/{email}", status_code=204)
+def delete_user(
+    email: str,
+    current_user: str = Depends(require_role(users.USER_ADMIN)),
+    x_lang: str = Header(default=i18n.DEFAULT_LANG),
+):
+    entry = users.get_user(email)
+    if entry is None:
+        raise HTTPException(404, i18n.get_message("user_not_found", x_lang))
+    if entry["email"] == (current_user or "").strip().lower():
+        raise HTTPException(400, i18n.get_message("user_delete_self", x_lang))
+    if set(entry["roles"]) & set(users.ADMIN_ROLES) and not users.has_role(current_user, users.SYSTEM_ADMIN):
+        raise HTTPException(403, i18n.get_message("user_delete_forbidden", x_lang))
+    if users.SYSTEM_ADMIN in entry["roles"] and users.count_with_role(users.SYSTEM_ADMIN) <= 1:
+        raise HTTPException(400, i18n.get_message("last_system_admin_delete", x_lang))
+    users.delete_user(email)
+    return Response(status_code=204)
 
 
 # Nutzerwunsch (2026-09-24): Rollen eines bestehenden Kontos einzeln

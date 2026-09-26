@@ -98,5 +98,6 @@ def test_send_invite_email_builds_subject_and_body(monkeypatch):
     to, subject, body = send_mail_mock.call_args[0]
     assert to == "to@test.local"
     assert "Einladung" in subject
-    assert "quellen_pfleger" in body
+    # 2026-09-26: lesbare Rollenbezeichnung statt interner ID
+    assert "Quellen-Pfleger:in" in body
     assert "https://example.org/verify?token=abc" in body

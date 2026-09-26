@@ -98,6 +98,15 @@ def set_roles(email: str, roles: list[str]) -> dict | None:
     return entry
 
 
+def delete_user(email: str) -> bool:
+    email = _normalize_email(email)
+    users = _load()
+    if users.pop(email, None) is None:
+        return False
+    _save(users)
+    return True
+
+
 def count_with_role(role: str) -> int:
     return sum(1 for u in _load().values() if role in u["roles"])
 
