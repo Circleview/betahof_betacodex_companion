@@ -426,7 +426,7 @@ def test_stream_creative_response_uses_section_system_prompt_when_section_given(
         )
 
     kwargs = client.messages.stream.call_args.kwargs
-    assert kwargs["system"] == llm.CREATIVE_SECTION_SYSTEM_PROMPTS["de"]
+    assert kwargs["system"][0]["text"] == llm.CREATIVE_SECTION_SYSTEM_PROMPTS["de"]
     user_content = kwargs["messages"][0]["content"]
     assert "# Eins\n\nAlter Text.\n\n# Zwei\n\nWeiterer Text." in user_content
     assert "# Eins\n\nAlter Text.\n\n" in user_content
@@ -438,7 +438,7 @@ def test_stream_creative_response_uses_whole_document_system_prompt_without_sect
         list(llm.stream_creative_response("Kürze das.", "Bestehender Text.", []))
 
     kwargs = client.messages.stream.call_args.kwargs
-    assert kwargs["system"] == llm.CREATIVE_SYSTEM_PROMPTS["de"]
+    assert kwargs["system"][0]["text"] == llm.CREATIVE_SYSTEM_PROMPTS["de"]
 
 
 def test_stream_creative_response_uses_haiku_for_section_revision():
@@ -551,3 +551,16 @@ def test_answer_question_records_ask_cost():
     assert entry["channel"] == "ask"
     assert entry["model"] == llm.MODEL_NAME
     assert entry["cost_usd"] == pytest.approx((1000 * 1.0 + 200 * 5.0) / 1_000_000)
+
+
+def test_stream_creative_response_appends_cached_humanizer_guide():
+    # Nutzerwunsch (2026-09-27): humanizer-Skill als Stilrichtlinie im
+    # Kreativ-Modus, als eigener gecachter System-Block hinter den Regeln.
+    client = _fake_creative_client("Text.")
+    with patch.object(llm, "_get_client", return_value=client):
+        list(llm.stream_creative_response("Anweisung", "", [], lang="en"))
+
+    guide = client.messages.stream.call_args.kwargs["system"][1]
+    assert guide["cache_control"] == {"type": "ephemeral"}
+    assert guide["text"].startswith(llm._HUMANIZER_BRIDGES["en"])
+    assert "### 1. Not X but Y" in guide["text"]

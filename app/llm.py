@@ -1,4 +1,5 @@
 import re
+from pathlib import Path
 
 import anthropic
 
@@ -373,7 +374,7 @@ Regeln:
 - Wird unten ein "Aktuelles Dokument" mitgeliefert, ist das eine VOLLSTÄNDIGE ERSETZUNG: Schreibe den GESAMTEN Text gemäß der Anweisung neu, nicht nur den geänderten Teil. Ist das Dokument leer, verfasse den ersten vollständigen Entwurf.
 - Keine eingeklammerten Quellenverweise wie [1], [2] im Fließtext - anders als im strikten Modus stehen Quellen ausschließlich im Block am Ende (siehe unten).
 - Markdown ist erlaubt, wo es zum Zielformat passt (Überschriften, Fett, Listen) - natürlich eingesetzt, nicht mechanisch.
-- Schreibe so, dass man dem Text nicht sofort anmerkt, dass ihn eine KI verfasst hat: variiere Satzlänge und Satzanfänge, statt jeden Absatz nach demselben Muster (Thesensatz, drei Stützpunkte, Fazitsatz) aufzubauen. Vermeide abgenutzte Übergangsfloskeln ("Darüber hinaus", "Nicht zuletzt", "Zusammenfassend lässt sich sagen", "Es ist wichtig zu betonen, dass ..."). Beziehe konkret Stellung, statt jede Aussage sofort wieder auszubalancieren oder zu relativieren. Orientiere dich, wo der BetaCodex-Kontext es hergibt, am Ton der zitierten Quellen statt an einem generischen Assistenz-Ton.
+- Schreibe so, dass man dem Text nicht anmerkt, dass ihn eine KI verfasst hat - halte dich dafür an die Stilrichtlinie am Ende. Orientiere dich, wo der BetaCodex-Kontext es hergibt, am Ton der zitierten Quellen statt an einem generischen Assistenz-Ton.
 - Antworte in der Sprache der Anweisung.
 - Schreibst du auf Deutsch, heißt das Rahmenwerk selbst "Beta-Kodex" (mit Bindestrich) - nicht "BetaCodex". Auf Englisch bleibt es "BetaCodex" (ein Wort, ohne Bindestrich).
 - Füge nach dem Dokument (durch eine Leerzeile getrennt) einen Block mit allen tatsächlich per Websuche gefundenen und im Text verwendeten Web-Quellen hinzu, exaktes Format:
@@ -394,7 +395,7 @@ Rules:
 - If a "Current document" is provided below, this is a FULL REPLACEMENT: rewrite the ENTIRE text according to the instruction, not just the changed part. If it is empty, write the first full draft.
 - No bracketed citations like [1], [2] in the body text - unlike the strict mode, sources appear only in the trailing block below.
 - Markdown is fine where it fits the target format (headings, bold, lists) - used naturally, not mechanically.
-- Write so the text doesn't immediately read as AI-written: vary sentence length and sentence openers instead of building every paragraph on the same pattern (topic sentence, three supporting points, concluding sentence). Avoid worn-out transition fillers ("Furthermore", "Moreover", "In conclusion", "It's important to note that ..."). Take a clear stance instead of immediately hedging or balancing every claim. Where the BetaCodex context supports it, match the tone of the cited sources rather than a generic assistant voice.
+- Write so the text doesn't read as AI-written - follow the style guide at the end for this. Where the BetaCodex context supports it, match the tone of the cited sources rather than a generic assistant voice.
 - Answer in the language of the instruction.
 - If you write in German, the framework itself is called "Beta-Kodex" (with a hyphen) - not "BetaCodex". In English it stays "BetaCodex" (one word, no hyphen).
 - After the document (separated by a blank line), add a block listing every web source you actually found via search and used in the text, exact format:
@@ -453,6 +454,32 @@ Rules:
   Only real URLs you actually found via web search - never invent one. Do NOT list BetaCodex sources here. If you used no web source, omit the block entirely.
 """,
 }
+
+# Nutzerwunsch (2026-09-27): der humanizer-Skill aus Claude (MIT, Quelle am Ende
+# von app/prompts/humanizer.md) als Stilrichtlinie für alle Kreativ-Texte.
+# app/prompts/humanizer.md ist eine Kopie von SKILL.md ohne Frontmatter -
+# bei Skill-Updates von Hand neu kopieren. Die Brücke davor passt den auf
+# Überarbeitung + Englisch ausgelegten Skill an: Schreiben statt Umschreiben,
+# Ausgabeformat aus den Regeln, deutsche Typografie bleibt.
+_HUMANIZER_GUIDE = (Path(__file__).parent / "prompts" / "humanizer.md").read_text(encoding="utf-8")
+_HUMANIZER_BRIDGES = {
+    "de": """Stilrichtlinie (humanizer): Die folgende Anleitung beschreibt Muster, an denen man KI-Texte erkennt. Vermeide diese Muster schon beim Schreiben - gerade die starken (§1-§5, Gedankenstriche §8). Die Abschnitte "How to work" und "What to return" gelten hier nicht: Du schreibst direkt die Endfassung, ohne Entwurf und ohne Musterliste; Ausgabeformat und ---SOURCES---Block richten sich allein nach den Regeln oben. Für deutsche Texte gilt: deutsche Anführungszeichen („...“) sind korrekt (§21 gilt nur für Englisch), Bindestrich-Komposita wie "Beta-Kodex" folgen der deutschen Rechtschreibung (§10 gilt nur für Englisch), und die Wortliste in §12 übertragen sinngemäß auf deutsche Entsprechungen ("entscheidend", "zudem", "maßgeblich", "unterstreicht" ...).
+
+""",
+    "en": """Style guide (humanizer): The guide below describes patterns that mark text as AI-written. Avoid these patterns while writing - especially the strong ones (§1-§5, dashes §8). The sections "How to work" and "What to return" do not apply here: write the final version directly, with no draft and no list of patterns; output format and the ---SOURCES--- block follow the rules above only.
+
+""",
+}
+
+
+def _creative_system(rules: str, lang: str) -> list[dict]:
+    # cache_control: die Richtlinie ist ~7k Tokens und bei jeder Kreativ-
+    # Anfrage gleich - Folgeanfragen innerhalb von 5 Min. lesen sie aus dem Cache.
+    return [
+        {"type": "text", "text": rules},
+        {"type": "text", "text": _HUMANIZER_BRIDGES[lang] + _HUMANIZER_GUIDE, "cache_control": {"type": "ephemeral"}},
+    ]
+
 
 _CREATIVE_LANGUAGE_REMINDERS = {
     "de": "(Wichtig: Antworte in der Sprache dieser Anweisung, auch wenn der BetaCodex-Kontext oben in einer anderen Sprache verfasst ist.)",
@@ -626,10 +653,10 @@ def stream_creative_response(
     model = CREATIVE_FIRST_DRAFT_MODEL if not document.strip() else MODEL_NAME
     context = _build_creative_context(curated_chunks)
     if section is not None:
-        system_prompt = CREATIVE_SECTION_SYSTEM_PROMPTS[lang]
+        system_prompt = _creative_system(CREATIVE_SECTION_SYSTEM_PROMPTS[lang], lang)
         user_content = _build_creative_section_user_content(instruction, document, section, context, lang)
     else:
-        system_prompt = CREATIVE_SYSTEM_PROMPTS[lang]
+        system_prompt = _creative_system(CREATIVE_SYSTEM_PROMPTS[lang], lang)
         user_content = _build_creative_user_content(instruction, document, context, lang)
     # 2026-09-24: Websuche pro Aufruf abschaltbar (MCP-Werkzeuge, später
     # Vergleichstests mit/ohne) - die System-Prompts erwähnen das Werkzeug,
