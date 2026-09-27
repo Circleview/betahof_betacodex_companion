@@ -133,6 +133,10 @@ Assistent das offen, statt zu spekulieren.
 - Kosten-bewusste Modellwahl: der erste Entwurf (leeres Dokument) nutzt
   ein größeres Modell (Claude Sonnet), jede Überarbeitung eines
   bestehenden Dokuments das günstigere Haiku-Modell wie im Rest der App.
+- Stilrichtlinie gegen typische KI-Muster: der humanizer-Skill aus Claude
+  (MIT, Kopie in `app/prompts/humanizer.md`) hängt an allen Kreativ-Prompts
+  (Entwurf, Überarbeitung, Abschnitt, MCP) und wird per Prompt-Caching
+  zwischengespeichert. Bei Skill-Updates die Datei neu kopieren.
 - Formatierungs-Toolbar (Fett, Kursiv, Überschrift, Liste) direkt über dem
   Dokumentfeld, dazu ein Bearbeiten/Vorschau-Umschalter, der die fertig
   formatierte Ansicht ohne sichtbare Markdown-Syntax zeigt.
@@ -533,6 +537,7 @@ Commit-/Tag-Nachrichten in Git.
 
 | Version | Wesentliche Änderungen |
 |---|---|
+| v0.83.0 | Kreativ-Modus: **humanizer-Skill als Stilrichtlinie** (Kopie des Claude-Skills unter `app/prompts/humanizer.md`) für Entwurf, Überarbeitung, Abschnitte und MCP – vermeidet typische KI-Muster wie Nicht-X-sondern-Y, Schlusssätze, Gedankenstriche, Dreierlisten; deutsche Typografie bleibt. Der ~11,6k-Token-Block wird per Prompt-Caching zwischengespeichert |
 | v0.82.0 | **MCP: Frage-Antwort wie im Konversationsmodus** – neues Werkzeug `ask_question` (nur kuratierte Quellen, Belege [n] und Quellenliste, dieselbe Suche wie der Chat), zählt gegen die Schlüssel-Limits, Kosten als „MCP-Fragen“ unter „Konversation“. MCP-Server heißt jetzt „BetaCodex Chat“. Datenschutzerklärung angepasst |
 | v0.81.0 | Kostenübersicht: **Monatsverlauf der letzten 12 Monate als gestapelte Balkengrafik** nach Nutzungsart (Konversation, Kreativ-Modus & MCP, Vorlesen, Hintergrund & Pflege) mit Legende; Tooltip mit Kosten, Aufrufen und Kosten je Anbieter (Anthropic, Google, OpenAI); Klick auf einen Monat wählt ihn für Tabelle und CSV. Monatsauswahl steht jetzt unter der Grafik |
 | v0.80.0 | **Kostenübersicht als eigene Seite** (`costs.html`): System-Admins sehen alle Kosten über alle Konten (nach Kanal und Konto, inkl. „anonym“ und „System“), alle anderen Angemeldeten unter „Meine Kosten“ nur ihre eigenen – jeweils mit Monatsauswahl und CSV. Erfasst werden jetzt **alle kostenpflichtigen Dienste**: Anthropic (Kreativ-Modus, Konversation, Zusammenfassungen, PDF-Texterkennung, Quellen-Vorschläge), Google TTS (Vorlesen, je Zeichen) und OpenAI (Audio-Transkription, je Minute); Kosten angemeldeter Nutzung werden dem Konto zugeordnet. Die MCP-Seite zeigt nur noch Schlüssel und Limits. Datenschutzerklärung angepasst |
