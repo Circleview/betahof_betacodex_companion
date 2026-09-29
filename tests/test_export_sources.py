@@ -1,9 +1,9 @@
-from scripts.export_sources_md import format_author, render, sort_key
+from scripts.export_sources import format_author, render, sort_key
 
 
 def _src(authors, title="T", **kw):
     return {"title": title, "authors": authors, "date": None, "url": None, "summary": "",
-            "summary_ai_generated": True, "restricted": False, **kw}
+            "summary_ai_generated": True, **kw}
 
 
 def test_sort_by_last_name_with_particles_umlauts_and_orgs():
@@ -33,10 +33,29 @@ def test_render_marks_ai_vs_manual_and_never_includes_text():
     out = render([
         _src(["Lisa Gill"], title="KI", summary="Auto", text="GEHEIMER VOLLTEXT"),
         _src(["Ralf Hildebrandt"], title="Hand", summary="Zeile 1\nZeile 2",
-             summary_ai_generated=False, restricted=True, url="https://x.org"),
+             summary_ai_generated=False, url="https://x.org"),
     ], "de")
     assert "GEHEIMER VOLLTEXT" not in out
     assert "**Zusammenfassung (KI-generiert):**\n\n> Auto" in out
     assert "**Zusammenfassung (von Hand verfasst):**\n\n> Zeile 1\n> Zeile 2" in out
-    assert "Link: <https://x.org> · geschützt" in out
+    assert "Link: <https://x.org>\n" in out
+    assert "geschützt" not in out
     assert out.index("Gill, Lisa") < out.index("Hildebrandt, Ralf")
+
+
+def test_render_json_merges_languages_and_carries_license():
+    import json
+    from scripts.export_sources import render_json
+    de = [_src(["Lisa Gill"], id="a", summary="DE", key_terms=["Führung"], text="VOLLTEXT"),
+          _src(["Ralf Hildebrandt"], id="b", summary="Hand", summary_ai_generated=False, key_terms=None)]
+    en = [_src(["Lisa Gill"], id="a", summary="EN", key_terms=["leadership"]),
+          _src(["Ralf Hildebrandt"], id="b", summary="", key_terms=None)]
+    out = render_json({"de": de, "en": en})
+    assert "VOLLTEXT" not in out
+    data = json.loads(out)
+    assert data["license"] == "CC BY-NC-SA 4.0" and data["schema_version"] == 1
+    a, b = data["sources"]
+    assert a["summary"] == {"de": "DE", "en": "EN"}
+    assert a["key_terms"] == {"de": ["Führung"], "en": ["leadership"]}
+    assert b["summary_ai_generated"] == {"de": False, "en": True}
+    assert b["key_terms"] == {"de": [], "en": []}

@@ -4,6 +4,8 @@
 
 All curated sources, sorted by the (first) author's last name. Full texts are deliberately not published here.
 
+License: [CC BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/), attribution “BetaCodex Chat (https://chat.betacodex.org)” – see [LICENSE.md](LICENSE.md). Machine-readable: [sources.json](sources.json).
+
 Number of sources: 368
 
 ### Ackoff, Russell – Systems explained
@@ -16,7 +18,7 @@ Date: 2022-03-23 · Link: <https://www.open.edu/openlearn/5f/e5/5fe5a2e7a5d5db11
 
 ### Ackoff, Russell – Systems, Messes and Interactive Planning
 
-Date: 1974-01-01 · Link: <https://www.academia.edu/24716002/Systems_messes_and_interactive_planning_Russell_Ackoff_> · restricted
+Date: 1974-01-01 · Link: <https://www.academia.edu/24716002/Systems_messes_and_interactive_planning_Russell_Ackoff_>
 
 **Summary (AI-generated):**
 
@@ -24,7 +26,7 @@ Date: 1974-01-01 · Link: <https://www.academia.edu/24716002/Systems_messes_and_
 
 ### Adler, Paul Simon – “Democratic Taylorism”: The Toyota Production System at NUMMI
 
-Date: 1995-01-01 · Link: <https://faculty.marshall.usc.edu/Paul-Adler/research/democratic%20taylorism-toyota%20pro.pdf> · restricted
+Date: 1995-01-01 · Link: <https://faculty.marshall.usc.edu/Paul-Adler/research/democratic%20taylorism-toyota%20pro.pdf>
 
 **Summary (AI-generated):**
 
@@ -48,7 +50,7 @@ Date: 2023-05-23 · Link: <https://www.youtube.com/watch?v=fHlZ4QCdx2c>
 
 ### betacodex.org – BetaCodex Laws: The Alternative to Management and command & control
 
-Date: 2026-07-25 · Link: <https://betacodex.org/principles> · restricted
+Date: 2026-07-25 · Link: <https://betacodex.org/principles>
 
 **Summary (AI-generated):**
 
@@ -544,7 +546,7 @@ Date: 2016-11-30 · Link: <https://www.youtube.com/watch?v=Vfq1OS4q-3w>
 
 ### Hamel, Gary – First, Let’s Fire All the Managers
 
-Date: 2011-11-02 · Link: <https://hbr.org/2011/12/first-lets-fire-all-the-managers> · restricted
+Date: 2011-11-02 · Link: <https://hbr.org/2011/12/first-lets-fire-all-the-managers>
 
 **Summary (AI-generated):**
 
@@ -584,7 +586,7 @@ Date: 2021-12-04 · Link: <https://www.qomenius.com/de/post/bestimmt-information
 
 ### Hermann, Silke – Gestaltungsmacht Stich Steuerungsmacht: Organisationen im Wandel
 
-Date: 2025-05-01 · Link: <https://vimeo.com/1090003146> · restricted
+Date: 2025-05-01 · Link: <https://vimeo.com/1090003146>
 
 **Summary (AI-generated):**
 
@@ -632,7 +634,7 @@ Date: 2021-12-21 · Link: <https://www.sichtart.at/wp-content/uploads/2022/01/di
 
 ### Herzberg, Frederick – R0301F_pdf.fm
 
-Date: 1987-10-01 · Link: <https://www.insidemarketing.it/wp-content/uploads/2020/08/one_more_time_-_how_do_you_motivate_employees.pdf> · restricted
+Date: 1987-10-01 · Link: <https://www.insidemarketing.it/wp-content/uploads/2020/08/one_more_time_-_how_do_you_motivate_employees.pdf>
 
 **Summary (AI-generated):**
 
@@ -824,7 +826,7 @@ Date: 2021-05-01 · Link: <https://www.alfiekohn.org/article/bd25/>
 
 ### Kohn, Alfie – Why Incentive PlansCannot Work
 
-Date: 1993-10-01 · Link: <https://hbr.org/1993/09/why-incentive-plans-cannot-work> · restricted
+Date: 1993-10-01 · Link: <https://hbr.org/1993/09/why-incentive-plans-cannot-work>
 
 **Summary (AI-generated):**
 
@@ -872,7 +874,7 @@ Date: 2026-09-19 · Link: <https://www.youtube.com/watch?v=BwVb31zwaD8>
 
 ### Krims, Jan – Unternehmen als Hort der Demokratie
 
-Date: 2025-05-01 · Link: <https://vimeo.com/1089109278> · restricted
+Date: 2025-05-01 · Link: <https://vimeo.com/1089109278>
 
 **Summary (AI-generated):**
 
@@ -1024,7 +1026,7 @@ Date: 2023-02-22 · Link: <https://www.youtube.com/watch?v=jWdObd8dBAE>
 
 ### Peters, Thomas J. – The Destruction Imperative
 
-Date: 2003-10-01 · Link: <https://www.leadershipnow.com/leadershop/9647-X.html> · restricted
+Date: 2003-10-01 · Link: <https://www.leadershipnow.com/leadershop/9647-X.html>
 
 **Summary (AI-generated):**
 
@@ -1232,7 +1234,7 @@ Date: 2025-04-18 · Link: <https://betacodex.org/white-papers/paper/deming-in-ja
 
 ### Pflaeging, Niels; Silke Hermann – Die 12 Gesetze des Beta-Kodex
 
-Date: 2021-05-13 · Link: <https://www.redforty2.com/product-page/die-12-gesetze-des-beta-kodex-brosch%C3%BCre-no-1> · restricted
+Date: 2021-05-13 · Link: <https://www.redforty2.com/product-page/die-12-gesetze-des-beta-kodex-brosch%C3%BCre-no-1>
 
 **Summary (written by hand):**
 
@@ -1760,7 +1762,7 @@ Date: 2025-01-17 · Link: <https://www.redforty2.com/post/your-company-has-exact
 
 ### Pflaeging, Niels; Ernst Weichselbaum – Zeitwert: Das Weichselbaum-System für Organisationen
 
-Date: 2020-07-30 · Link: <https://www.amazon.de/dp/3800663589?ref=cm_sw_r_ffobk_cp_ud_dp_NEN5K8Z4KZGWHR00RCVT&ref_=cm_sw_r_ffobk_cp_ud_dp_NEN5K8Z4KZGWHR00RCVT&social_share=cm_sw_r_ffobk_cp_ud_dp_NEN5K8Z4KZGWHR00RCVT&bestFormat=true> · restricted
+Date: 2020-07-30 · Link: <https://www.amazon.de/dp/3800663589?ref=cm_sw_r_ffobk_cp_ud_dp_NEN5K8Z4KZGWHR00RCVT&ref_=cm_sw_r_ffobk_cp_ud_dp_NEN5K8Z4KZGWHR00RCVT&social_share=cm_sw_r_ffobk_cp_ud_dp_NEN5K8Z4KZGWHR00RCVT&bestFormat=true>
 
 **Summary (AI-generated):**
 
@@ -2456,7 +2458,7 @@ Date: 2025-11-20 · Link: <https://www.tandfonline.com/doi/full/10.1080/13698230
 
 ### Unterberg, Kai; Stefan Willuda – Wie Wertschöpfungsdesign Selbstorganisation ermöglicht
 
-Date: 2026-02-11 · Link: <https://changement-magazin.de/praxis/fallstudie/teamentwicklung-und-organisation-wie-wertschoepfungsdesign-selbstorganisation-ermoeglicht-8163> · restricted
+Date: 2026-02-11 · Link: <https://changement-magazin.de/praxis/fallstudie/teamentwicklung-und-organisation-wie-wertschoepfungsdesign-selbstorganisation-ermoeglicht-8163>
 
 **Summary (AI-generated):**
 

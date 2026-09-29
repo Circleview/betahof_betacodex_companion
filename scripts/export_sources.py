@@ -1,11 +1,13 @@
-"""Exportiert die Quellenliste der Produktion als Markdown (DE + EN).
+"""Exportiert die Quellenliste der Produktion als Markdown (DE + EN) und JSON.
 
 Läuft wöchentlich per GitHub Actions (.github/workflows/export-sources.yml).
 Liest nur die öffentliche API und übernimmt ausschließlich die Felder aus
 FIELDS - Volltexte landen nie in der Ausgabe, auch falls die API einmal
 welche liefern sollte.
 
-Aufruf: python scripts/export_sources_md.py [API-Basis-URL]
+Lizenz der Ausgabe: CC BY-NC-SA 4.0, siehe docs/sources/LICENSE.md.
+
+Aufruf: python scripts/export_sources.py [API-Basis-URL]
 """
 
 import json
@@ -16,7 +18,10 @@ from pathlib import Path
 
 API = "https://chat.betacodex.org"
 OUT_DIR = Path(__file__).resolve().parent.parent / "docs" / "sources"
-FIELDS = ("title", "authors", "date", "url", "summary", "summary_ai_generated", "restricted")
+FIELDS = ("id", "title", "authors", "date", "url", "summary", "summary_ai_generated", "key_terms")
+LICENSE = "CC BY-NC-SA 4.0"
+LICENSE_URL = "https://creativecommons.org/licenses/by-nc-sa/4.0/"
+ATTRIBUTION = "BetaCodex Chat (https://chat.betacodex.org)"
 
 LANGS = {
     "de": {
@@ -25,10 +30,11 @@ LANGS = {
         "heading": "Quellen des BetaCodex Chat",
         "intro": "Alle kuratierten Quellen, sortiert nach Nachname der (ersten) Autor:in. "
         "Volltexte werden hier bewusst nicht veröffentlicht.",
+        "license": f"Lizenz: [{LICENSE}]({LICENSE_URL}), Namensnennung „{ATTRIBUTION}“ – "
+        "siehe [LICENSE.md](LICENSE.md). Maschinenlesbar: [sources.json](sources.json).",
         "count": "Anzahl Quellen",
         "date": "Datum",
         "link": "Link",
-        "restricted": "geschützt",
         "ai": "Zusammenfassung (KI-generiert)",
         "manual": "Zusammenfassung (von Hand verfasst)",
         "no_summary": "Keine Zusammenfassung vorhanden.",
@@ -40,10 +46,11 @@ LANGS = {
         "heading": "BetaCodex Chat sources",
         "intro": "All curated sources, sorted by the (first) author's last name. "
         "Full texts are deliberately not published here.",
+        "license": f"License: [{LICENSE}]({LICENSE_URL}), attribution “{ATTRIBUTION}” – "
+        "see [LICENSE.md](LICENSE.md). Machine-readable: [sources.json](sources.json).",
         "count": "Number of sources",
         "date": "Date",
         "link": "Link",
-        "restricted": "restricted",
         "ai": "Summary (AI-generated)",
         "manual": "Summary (written by hand)",
         "no_summary": "No summary available.",
@@ -89,6 +96,8 @@ def render(sources: list[dict], lang: str) -> str:
         "",
         t["intro"],
         "",
+        t["license"],
+        "",
         f"{t['count']}: {len(sources)}",
         "",
     ]
@@ -99,8 +108,6 @@ def render(sources: list[dict], lang: str) -> str:
         meta = [f"{t['date']}: {s['date'] or '–'}"]
         if s["url"]:
             meta.append(f"{t['link']}: <{s['url']}>")
-        if s["restricted"]:
-            meta.append(t["restricted"])
         lines += [" · ".join(meta), ""]
         summary = (s["summary"] or "").strip()
         if summary:
@@ -112,17 +119,49 @@ def render(sources: list[dict], lang: str) -> str:
     return "\n".join(lines)
 
 
+def render_json(by_lang: dict[str, list[dict]]) -> str:
+    # Ein Eintrag je Quelle, Zusammenfassung/Schlagworte je Sprache; Sortierung
+    # wie in den Markdown-Listen.
+    en = {s["id"]: s for s in by_lang["en"]}
+    sources = [
+        {
+            "id": s["id"],
+            "title": s["title"],
+            "authors": s["authors"] or [],
+            "date": s["date"],
+            "url": s["url"],
+            "summary": {"de": s["summary"] or "", "en": en.get(s["id"], {}).get("summary") or ""},
+            "summary_ai_generated": {
+                "de": s["summary_ai_generated"],
+                "en": en.get(s["id"], {}).get("summary_ai_generated", True),
+            },
+            "key_terms": {"de": s["key_terms"] or [], "en": en.get(s["id"], {}).get("key_terms") or []},
+        }
+        for s in sorted(by_lang["de"], key=sort_key)
+    ]
+    data = {
+        "schema_version": 1,
+        "license": LICENSE,
+        "license_url": LICENSE_URL,
+        "attribution": ATTRIBUTION,
+        "sources": sources,
+    }
+    return json.dumps(data, ensure_ascii=False, indent=2) + "\n"
+
+
 def main(api: str = API) -> None:
     OUT_DIR.mkdir(parents=True, exist_ok=True)
-    for lang, t in LANGS.items():
-        sources = fetch(api, lang)
-        path = OUT_DIR / t["file"]
-        # Schutz gegen eine kaputte/leere API-Antwort: nicht die Liste leeren.
-        previous = path.read_text().count("\n### ") if path.exists() else 0
+    by_lang = {lang: fetch(api, lang) for lang in LANGS}
+    # Schutz gegen eine kaputte/leere API-Antwort: nicht die Liste leeren.
+    json_path = OUT_DIR / "sources.json"
+    previous = len(json.loads(json_path.read_text())["sources"]) if json_path.exists() else 0
+    for lang, sources in by_lang.items():
         if len(sources) < previous // 2:
             sys.exit(f"{lang}: nur {len(sources)} statt bisher {previous} Quellen - Abbruch")
-        path.write_text(render(sources, lang))
-        print(f"{path.name}: {len(sources)} Quellen")
+    for lang, t in LANGS.items():
+        (OUT_DIR / t["file"]).write_text(render(by_lang[lang], lang))
+    json_path.write_text(render_json(by_lang))
+    print(f"{len(by_lang['de'])} Quellen exportiert")
 
 
 if __name__ == "__main__":

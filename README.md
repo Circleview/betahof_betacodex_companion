@@ -293,12 +293,14 @@ Andere MCP-Clients brauchen die Adresse `https://chat.betacodex.org/mcp`
 - Anonymisierte Erstfragen neuer Konversationen werden separat
   protokolliert und helfen dabei, Lücken im Quellenbestand zu erkennen.
 - Öffentliche Quellenliste im Repo: [`docs/sources/QUELLEN.md`](docs/sources/QUELLEN.md)
-  (DE) und [`SOURCES.md`](docs/sources/SOURCES.md) (EN) – Titel, Datum,
-  Link und Zusammenfassung (mit Hinweis „KI-generiert“/„von Hand
-  verfasst“), sortiert nach Nachname der ersten Autor:in, **ohne
-  Volltexte**. Ein GitHub-Actions-Workflow
+  (DE), [`SOURCES.md`](docs/sources/SOURCES.md) (EN) und maschinenlesbar
+  [`sources.json`](docs/sources/sources.json) (beide Sprachen, mit
+  Schlagworten) – Titel, Datum, Link und Zusammenfassung (mit Hinweis
+  „KI-generiert“/„von Hand verfasst“), sortiert nach Nachname der ersten
+  Autor:in, **ohne Volltexte**, unter
+  [CC BY-NC-SA 4.0](docs/sources/LICENSE.md) (nicht kommerziell). Ein GitHub-Actions-Workflow
   (`.github/workflows/export-sources.yml`) liest dafür montags die
-  öffentliche Produktions-API (`scripts/export_sources_md.py`) und
+  öffentliche Produktions-API (`scripts/export_sources.py`) und
   committet nur bei Änderungen; das löst kein Deployment aus.
 
 ### Einbettbar

@@ -1,7 +1,7 @@
 name: Quellenliste exportieren
 
 # Wöchentlicher Export der Produktions-Quellen nach docs/sources/ (ohne
-# Volltexte, siehe scripts/export_sources_md.py). Committet nur bei
+# Volltexte, siehe scripts/export_sources.py). Committet nur bei
 # Änderungen; Commits auf main lösen kein Deployment aus (nur Tags).
 on:
   schedule:
@@ -21,7 +21,7 @@ jobs:
         with:
           python-version: "3.11"
 
-      - run: python scripts/export_sources_md.py
+      - run: python scripts/export_sources.py
 
       - name: Commit bei Änderungen
         run: |
