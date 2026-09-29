@@ -544,6 +544,16 @@ git config core.hooksPath scripts/git-hooks
 
 ---
 
+## Lizenz
+
+- **Code:** [MIT](LICENSE) – auch kommerzielle Nutzung erlaubt, unter
+  Beibehaltung des Copyright-Vermerks (Namensnennung).
+- **Quellenliste** (`docs/sources/`): [CC BY-NC-SA 4.0](docs/sources/LICENSE.md),
+  nicht kommerziell.
+- **Die Werke hinter den Quellen** gehören ihren Autor:innen. Sie dürfen nur
+  im Rahmen des Zitatrechts zitiert, aber nicht anderweitig genutzt werden –
+  keine der beiden Lizenzen räumt daran Rechte ein.
+
 ## Versionshistorie
 
 Kurzüberblick über die wichtigsten Ausbaustufen (neueste zuerst). Reine
