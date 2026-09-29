@@ -5166,6 +5166,7 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
         <path data-edge-from="app" data-edge-to="claude_api" data-edge-label="Antwort-Generierung" data-edge-key="4" data-composition-points="630,292;720,292" d="M 630 292 L 720 292" class="a-emphasis" data-animate="edge" style="--step:4" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
         <path data-edge-from="github" data-edge-to="actions" data-edge-label="git tag Push" data-edge-key="5" data-composition-points="180,461;250,461" d="M 180 461 L 250 461" class="a-dashed" data-animate="edge" style="--step:5" stroke-width="1.5" marker-end="url(#arrowhead-dashed)"/>
         <path data-edge-from="actions" data-edge-to="app" data-edge-label="SSH-Deploy (Farbwechsel)" data-edge-key="6" data-composition-points="390,461;390,376.5;480,376.5;480,292" d="M 390 461 L 390 384.5 Q 390 376.5 398 376.5 L 472 376.5 Q 480 376.5 480 368.5 L 480 292" class="a-security" data-animate="edge" style="--step:6" stroke-width="1.5" marker-end="url(#arrowhead-security)"/>
+        <path data-edge-from="actions" data-edge-to="github" data-edge-label="wöchentl. Quellenliste" data-edge-key="7" data-composition-points="250,461;180,461" d="M 250 461 L 180 461" class="a-dashed" data-animate="edge" style="--step:7" stroke-width="1.5" marker-end="url(#arrowhead-dashed)"/>
 
         <!-- Components -->
         <g id="node-user" data-node-id="user" data-node-label="Nutzer:in" tabindex="0" role="button" aria-label="Focus Nutzer:in, Browser, Architecture component" aria-pressed="false" data-node-kind="external" data-node-sublabel="Browser" data-node-context="Architecture component">
@@ -5204,15 +5205,15 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
         <text data-detail="context" x="110" y="475" class="t-muted" font-size="9" text-anchor="middle">Quell-Code</text>
         </g>
 
-        <g id="node-actions" data-node-id="actions" data-node-label="GitHub Actions" tabindex="0" role="button" aria-label="Focus GitHub Actions, Tests + SSH-Deploy, Architecture component" aria-pressed="false" data-node-kind="cloud" data-node-sublabel="Tests + SSH-Deploy" data-node-context="Architecture component">
-          <title>GitHub Actions · Tests + SSH-Deploy · Architecture component</title>
+        <g id="node-actions" data-node-id="actions" data-node-label="GitHub Actions" tabindex="0" role="button" aria-label="Focus GitHub Actions, Tests, Deploy, Quellen-Export, Architecture component" aria-pressed="false" data-node-kind="cloud" data-node-sublabel="Tests, Deploy, Quellen-Export" data-node-context="Architecture component">
+          <title>GitHub Actions · Tests, Deploy, Quellen-Export · Architecture component</title>
           <rect x="250" y="430" width="140" height="62" rx="6" class="c-mask"/>
           <rect x="250" y="430" width="140" height="62" rx="6" class="c-cloud" data-animate="node" style="--step:6" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="cloud" class="semantic-sigil s-cloud" transform="translate(256 436) scale(0.6875)">
             <path d="M4.3 12.5h7.3a2.4 2.4 0 0 0 .2-4.8 4 4 0 0 0-7.5-1.3A3.1 3.1 0 0 0 4.3 12.5Z"/>
           </g>
           <text data-node-label="" data-detail-anchor="" x="320" y="459" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">GitHub Actions</text>
-        <text data-detail="context" x="320" y="475" class="t-muted" font-size="9" text-anchor="middle">Tests + SSH-Deploy</text>
+        <text data-detail="context" x="320" y="475" class="t-muted" font-size="7.5" text-anchor="middle">Tests, Deploy, Quellen-Export</text>
         </g>
 
         <g id="node-caddy" data-node-id="caddy" data-node-label="Caddy" tabindex="0" role="button" aria-label="Focus Caddy, TLS + Reverse Proxy, Hetzner Cloud CX23 (Falkenstein)" aria-pressed="false" data-node-kind="security" data-node-sublabel="TLS + Reverse Proxy" data-node-context="Hetzner Cloud CX23 (Falkenstein)">
@@ -5291,6 +5292,10 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
         <g data-detail="context" data-edge-from="actions" data-edge-to="app" data-edge-label="SSH-Deploy (Farbwechsel)" data-edge-key="6">
           <rect x="372.4" y="356.5" width="125.19999999999999" height="14" rx="3" class="c-mask"/>
           <text x="435" y="366.5" class="t-security" font-size="8" text-anchor="middle">SSH-Deploy (Farbwechsel)</text>
+        </g>
+        <g data-detail="context" data-edge-from="actions" data-edge-to="github" data-edge-label="wöchentl. Quellenliste" data-edge-key="7">
+          <rect x="157.2" y="500" width="115.6" height="14" rx="3" class="c-mask"/>
+          <text x="215" y="510" class="t-messagebus" font-size="8" text-anchor="middle">wöchentl. Quellenliste</text>
         </g>
 
         <!-- Boundary labels (foreground masks keep routes out of titles) -->

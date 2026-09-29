@@ -54,7 +54,7 @@
       "id": "actions",
       "type": "cloud",
       "label": "GitHub Actions",
-      "sublabel": "Tests + SSH-Deploy",
+      "sublabel": "Tests, Deploy, Quellen-Export",
       "pos": [
         250,
         430
@@ -184,6 +184,16 @@
       "label": "SSH-Deploy (Farbwechsel)",
       "variant": "security",
       "route": "orthogonal-v"
+    },
+    {
+      "from": "actions",
+      "to": "github",
+      "label": "wöchentl. Quellenliste",
+      "variant": "dashed",
+      "labelAt": [
+        215,
+        510
+      ]
     }
   ],
   "cards": [

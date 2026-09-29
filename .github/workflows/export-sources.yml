@@ -1,0 +1,36 @@
+name: Quellenliste exportieren
+
+# Wöchentlicher Export der Produktions-Quellen nach docs/sources/ (ohne
+# Volltexte, siehe scripts/export_sources_md.py). Committet nur bei
+# Änderungen; Commits auf main lösen kein Deployment aus (nur Tags).
+on:
+  schedule:
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - run: python scripts/export_sources_md.py
+
+      - name: Commit bei Änderungen
+        run: |
+          git add docs/sources
+          if git diff --cached --quiet; then
+            echo "Keine Änderungen."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "Quellenliste aktualisiert"
+          git push
