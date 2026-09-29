@@ -342,6 +342,12 @@ Quellen zitiert. Das ist der zentrale Unterschied zu einem gewöhnlichen
 Chatbot: Statt "irgendwas Plausibles" zu generieren, muss das Modell seine
 Antwort auf konkrete, nachprüfbare Textstellen stützen.
 
+Warum die Antworten beim Beta-Kodex bleiben, was wir dabei gelernt und was
+wir verworfen haben, steht ausführlich für andere, die eigene KI-Werkzeuge
+bauen, in [`docs/WIE-ES-FUNKTIONIERT.md`](docs/WIE-ES-FUNKTIONIERT.md)
+(englisch: [`docs/HOW-IT-WORKS.md`](docs/HOW-IT-WORKS.md)). Ein Test hält es
+mit Prompts und Suchparametern synchron.
+
 Es gibt zwei getrennte Abläufe: Import (Quellen ins System bringen) und
 Fragen stellen (den Chat nutzen).
 
