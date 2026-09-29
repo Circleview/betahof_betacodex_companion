@@ -20,7 +20,7 @@ from urllib.parse import quote, urlsplit
 import networkx as nx
 from dotenv import load_dotenv
 from fastapi import BackgroundTasks, Depends, FastAPI, File, Header, HTTPException, Request, UploadFile
-from fastapi.responses import FileResponse, RedirectResponse, Response, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.routing import Route
 
@@ -323,6 +323,78 @@ async def enforce_early_access(request: Request, call_next):
         if not auth.verify_early_access_token(request.cookies.get(auth.EARLY_ACCESS_COOKIE_NAME)):
             return FileResponse(STATIC_DIR / "early-access.html")
     return await call_next(request)
+
+
+# Backlog (2026-09-20): ohne Obergrenze las der Server jeden Body komplett
+# ein, bevor Zeichenlimits oder Rate-Limits griffen. Als reine ASGI-
+# Middleware, damit sie auch /mcp und Bodies ohne Content-Length (chunked)
+# erfasst - die werden beim Lesen mitgezählt.
+REQUEST_BODY_LIMITS = {
+    "/api/extract-pdf-upload": 200 * 1024 * 1024,
+    "/api/extract-audio-upload": 200 * 1024 * 1024,
+    "/api/sources": 20 * 1024 * 1024,  # Volltexte beim Anlegen/Bearbeiten
+}
+REQUEST_BODY_DEFAULT_LIMIT = 1024 * 1024
+
+
+class _BodyTooLarge(Exception):
+    pass
+
+
+class RequestBodyLimitMiddleware:
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            return await self.app(scope, receive, send)
+        path = scope["path"]
+        limit = next((v for k, v in REQUEST_BODY_LIMITS.items() if path.startswith(k)), REQUEST_BODY_DEFAULT_LIMIT)
+        headers = dict(scope["headers"])
+        lang = headers.get(b"x-lang", b"").decode() or i18n.DEFAULT_LANG
+
+        state = {"too_large": False, "started": False, "rejected": False}
+
+        async def reject():
+            state["rejected"] = True
+            await JSONResponse({"detail": i18n.get_message("request_too_large", lang)}, 413)(scope, receive, send)
+
+        length = headers.get(b"content-length", b"")
+        if length.isdigit() and int(length) > limit:
+            return await reject()
+
+        received = 0
+
+        async def counting_receive():
+            nonlocal received
+            message = await receive()
+            if message["type"] == "http.request":
+                received += len(message.get("body", b""))
+                if received > limit:
+                    state["too_large"] = True
+                    raise _BodyTooLarge()
+            return message
+
+        # FastAPI macht aus Fehlern beim Body-Lesen eine eigene 400-Antwort -
+        # die wird hier durch die 413 ersetzt.
+        async def replacing_send(message):
+            if state["too_large"] and not state["started"]:
+                if not state["rejected"]:
+                    await reject()
+                return
+            state["started"] = True
+            await send(message)
+
+        try:
+            await self.app(scope, counting_receive, replacing_send)
+        except Exception:
+            if not state["too_large"]:
+                raise
+        if state["too_large"] and not state["started"] and not state["rejected"]:
+            await reject()
+
+
+app.add_middleware(RequestBodyLimitMiddleware)
 
 
 @app.post("/api/early-access")
