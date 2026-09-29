@@ -1040,6 +1040,9 @@ document.getElementById('popover-load').addEventListener('click', () => {
 
 const AUDIO_UPLOAD_EXTENSIONS = ['.mp3', '.wav', '.m4a', '.ogg', '.flac', '.aac', '.mp4', '.mpeg', '.mpga', '.webm'];
 const AUDIO_UPLOAD_MAX_BYTES = 25 * 1024 * 1024;
+// Spiegel von REQUEST_BODY_LIMITS in app/main.py - vorab prüfen, statt
+// erst nach dem Hochladen abgelehnt zu werden.
+const UPLOAD_MAX_BYTES = 200 * 1024 * 1024;
 
 function isAudioUploadFile(file) {
   if (file.type && file.type.startsWith('audio/')) return true;
@@ -1053,6 +1056,10 @@ document.getElementById('popover-upload').addEventListener('click', async () => 
   const file = fileInput.files[0];
   if (!file) {
     status.textContent = t('import.pleaseChooseFile');
+    return;
+  }
+  if (file.size > UPLOAD_MAX_BYTES) {
+    status.textContent = t('import.uploadTooLarge');
     return;
   }
   const isAudio = isAudioUploadFile(file);

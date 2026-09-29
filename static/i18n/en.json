@@ -111,6 +111,7 @@
   "import.uploadingExtracting": "Uploading and extracting...",
   "import.uploadingExtractingLargeAudio": "Uploading and transcribing - this can take several minutes for large audio files...",
   "import.uploadFailedGeneric": "Upload failed",
+  "import.uploadTooLarge": "The file is too large (max. 200 MB). Please choose a smaller file or import the source via a link.",
   "import.fieldTitle": "Title*",
   "import.fieldAuthor": "Author",
   "import.addAuthor": "Add another author",

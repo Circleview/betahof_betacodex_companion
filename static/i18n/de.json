@@ -111,6 +111,7 @@
   "import.uploadingExtracting": "Lade hoch und extrahiere...",
   "import.uploadingExtractingLargeAudio": "Lade hoch und transkribiere - bei großen Audiodateien kann das mehrere Minuten dauern...",
   "import.uploadFailedGeneric": "Fehler beim Hochladen",
+  "import.uploadTooLarge": "Die Datei ist zu groß (höchstens 200 MB). Bitte eine kleinere Datei wählen oder die Quelle per Link importieren.",
   "import.fieldTitle": "Titel*",
   "import.fieldAuthor": "Autor",
   "import.addAuthor": "Weitere:n Autor:in hinzufügen",

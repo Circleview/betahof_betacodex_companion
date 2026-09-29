@@ -10,7 +10,7 @@ def test_content_length_over_limit_is_rejected_before_reading():
     r = client.post("/api/answer-feedback", content=b"x" * (LIMIT + 1),
                     headers={"Content-Type": "application/json", "X-Lang": "en"})
     assert r.status_code == 413
-    assert r.json()["detail"] == "The request is too large."
+    assert r.json()["detail"] == main.i18n.get_message("request_too_large", "en")
 
 
 def test_chunked_body_over_limit_is_counted_while_reading():
@@ -20,7 +20,7 @@ def test_chunked_body_over_limit_is_counted_while_reading():
 
     r = client.post("/api/ask", content=body(), headers={"Content-Type": "application/json"})
     assert r.status_code == 413
-    assert r.json()["detail"] == "Die Anfrage ist zu groß."
+    assert r.json()["detail"] == main.i18n.get_message("request_too_large", "de")
 
 
 def test_small_body_passes_through():
