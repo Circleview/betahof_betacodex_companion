@@ -6,7 +6,7 @@ All curated sources, sorted by the (first) author's last name. Full texts are de
 
 License: [CC BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/), attribution “BetaCodex Chat (https://chat.betacodex.org)” – see [LICENSE.md](LICENSE.md). Machine-readable: [sources.json](sources.json).
 
-Number of sources: 368
+Number of sources: 369
 
 ### Ackoff, Russell – Systems explained
 
@@ -2927,6 +2927,14 @@ Date: 2016-02-16 · Link: <https://dynamikrobust.com/wp-content/uploads/2016/03/
 **Summary (AI-generated):**
 
 > Dr. Gerhard Wohland's text distinguishes three types of IT systems based on their fields of application. First: ERP systems and process control that can automate blue work processes. Second: IT tools such as text or drawing programs that function independently of concrete processes and are only useful in red environments. Third: Self-learning systems like neural networks that can replicate blue brain functions through mathematical structures and feedback in learning environments. These systems can, for example, automatically classify documents. However, Wohland emphasizes that none of these technologies can automate red components or consciousness functions. They cannot understand or communicate, nor can they generate or process information. Unrealistic projects that ignore this necessarily end in failure.
+
+### Wohland, Gerhard; Lars Vollmer – Was machen Höchstleistungsunternehmen anders? Dr. Wohland auf dem intrinsify.me FLC.
+
+Date: 2014-07-17 · Link: <https://www.youtube.com/watch?v=8EIt7B6OBlU>
+
+**Summary (AI-generated):**
+
+> This text is an excerpt from a discussion on managing high-performing organizations. The core concept is dynamic robustness: high-performance companies are characterized by their ability not to suffer from organizational dynamics and surprises, but rather to harness and create them. Unlike traditional, taylorism-based organizations, high-performers think and feel differently. They build their structures concretely around people and consciously integrate human abilities into value creation processes. While traditional organizations are overwhelmed because their tayloristic structure no longer fits the dynamic environment, high-performance organizations succeed in coping with their environment and challenges. This creates more satisfied employees. The reason for resistance to transformation lies not in company size but in past success, which constrains organizations.
 
 ### Wohland, Gerhard – Wohlands Zündfunken - rot, blau, Plan, Strategie
 

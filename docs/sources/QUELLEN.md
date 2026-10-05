@@ -6,7 +6,7 @@ Alle kuratierten Quellen, sortiert nach Nachname der (ersten) Autor:in. Volltext
 
 Lizenz: [CC BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/), Namensnennung „BetaCodex Chat (https://chat.betacodex.org)“ – siehe [LICENSE.md](LICENSE.md). Maschinenlesbar: [sources.json](sources.json).
 
-Anzahl Quellen: 368
+Anzahl Quellen: 369
 
 ### Ackoff, Russell – Systems explained
 
@@ -2927,6 +2927,14 @@ Datum: 2016-02-16 · Link: <https://dynamikrobust.com/wp-content/uploads/2016/03
 **Zusammenfassung (KI-generiert):**
 
 > Der Text von Dr. Gerhard Wohland unterscheidet drei Typen von EDV-Systemen nach ihren Anwendungsgebieten. Erstens: ERP-Systeme und Prozesssteuerungen, die blaue Arbeitsabläufe technisieren. Zweitens: EDV-Werkzeuge wie Text- oder Zeichenprogramme, die unabhängig von konkreten Prozessen funktionieren und nur in roter Umgebung nützlich sind. Drittens: Selbstlernende Systeme wie Neuronale Netze, die durch mathematische Strukturen und Rückkopplung in Lernumgebungen blaue Funktionen des Gehirns nachbilden können. Diese Systeme können beispielsweise Dokumente automatisch klassifizieren. Wohland betont jedoch, dass keine dieser Technologien rote Anteile oder Bewusstseinsfunktionen technisieren können. Sie können weder verstehen noch kommunizieren und keine Information erzeugen oder verarbeiten. Unrealistische Projekte, die dies ignorieren, führen notwendig zu Fehlschlägen.
+
+### Wohland, Gerhard; Lars Vollmer – Was machen Höchstleistungsunternehmen anders? Dr. Wohland auf dem intrinsify.me FLC.
+
+Datum: 2014-07-17 · Link: <https://www.youtube.com/watch?v=8EIt7B6OBlU>
+
+**Zusammenfassung (KI-generiert):**
+
+> Der Text ist ein Gesprächsauszug zur Führung von Hochleistungsorganisationen. Kern ist das Konzept der Dynamikrobustheit: Hochleistungsunternehmen zeichnen sich dadurch aus, dass sie mit organisatorischer Dynamik und Überraschungen nicht leiden, sondern diese nutzen und erzeugen. Im Gegensatz zu traditionellen, auf Taylorismus basierenden Organisationen denken und fühlen Hochleistungsunternehmen anders. Sie bauen ihre Strukturen konkret um die Menschen herum auf und integrieren menschliche Fähigkeiten bewusst in Wertschöpfungsprozesse. Während traditionelle Unternehmen überlastet sind, weil sich ihre tayloristische Struktur nicht mehr in die dynamische Umgebung einfügt, schaffen es Hochleistungsorganisationen, mit ihrer Umgebung und ihren Herausforderungen erfolgreich umzugehen. Dies erzeugt zufriedenere Mitarbeitende. Der Grund für Widerstände gegen Transformation liegt nicht in der Größe, sondern im Erfolg der Vergangenheit, die Unternehmen fesselt.
 
 ### Wohland, Gerhard – Wohlands Zündfunken - rot, blau, Plan, Strategie
 
