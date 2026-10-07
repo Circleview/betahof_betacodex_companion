@@ -2530,6 +2530,22 @@ button.send-button {
 .question-log-text {
   margin: 0.2rem 0 0;
   color: var(--color-text);
+  overflow-wrap: anywhere;
+}
+
+/* Lange Texte auf 4 Zeilen kürzen; "Mehr" (question-log.js) klappt auf. */
+.question-log-text--clamped {
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.question-log-more-btn {
+  display: block;
+  margin: 0.2rem 0 0;
+  font-size: 0.8rem;
+  font-weight: 400;
 }
 
 .question-log-question-link {
@@ -2575,6 +2591,7 @@ button.send-button {
   border-left: 2px solid var(--color-border);
   color: var(--color-text-muted);
   font-size: 0.9rem;
+  overflow-wrap: anywhere;
 }
 
 .question-log-type-badge {
@@ -2658,6 +2675,70 @@ button.send-button {
   background: var(--color-accent);
   border-color: var(--color-accent);
   color: #fff;
+}
+
+/* Fragen-Log mobil (Idee e1cd2bc6): 2-Spalten-Zeitstrahl (Linie | Inhalt),
+   Tag-Marker als Zwischenzeile, Filter-Pillen scrollen in einer Zeile,
+   Touch-Ziele >= 44px. Muss NACH den Basisregeln stehen. */
+@media (max-width: 480px) {
+  .question-log-header-row {
+    position: static;
+  }
+
+  .question-log-filter {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    width: 100%;
+    justify-content: flex-start;
+    scrollbar-width: none;
+    -webkit-mask-image: linear-gradient(to right, #000 85%, transparent);
+    mask-image: linear-gradient(to right, #000 85%, transparent);
+  }
+
+  .question-log-filter-btn {
+    min-height: 44px;
+    flex-shrink: 0;
+    white-space: nowrap;
+  }
+
+  #question-log-list.timeline-mode {
+    grid-template-columns: 1.25rem minmax(0, 1fr);
+    column-gap: 0.5rem;
+  }
+
+  #question-log-list.timeline-mode::after {
+    grid-column: 1;
+  }
+
+  #question-log-list .question-log-day-marker {
+    grid-column: 1 / -1;
+    text-align: left;
+    margin-right: 0;
+    padding-right: 0;
+    background: var(--color-bg);
+    z-index: 1;
+  }
+
+  #question-log-list .question-log-entry {
+    grid-column: 2;
+    padding: 0.6rem 0 0.6rem calc(0.5rem + 0.625rem);
+    margin-left: calc(-1 * (0.5rem + 0.625rem));
+  }
+
+  .question-log-type-badge,
+  .question-log-feedback-badge {
+    white-space: nowrap;
+  }
+
+  .question-log-answer-details summary {
+    padding-block: 0.8rem;
+  }
+
+  .question-log-delete-button,
+  .question-log-more-btn {
+    min-height: 44px;
+    padding-block: 0.6rem;
+  }
 }
 
 .icon-button {

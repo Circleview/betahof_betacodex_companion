@@ -346,6 +346,8 @@
   "questionLog.feedbackBad": "Schlecht",
   "questionLog.openConversationTitle": "Diese Frage im Konversationsmodus öffnen",
   "questionLog.showAnswer": "Antwort anzeigen",
+  "questionLog.showMore": "Mehr",
+  "questionLog.showLess": "Weniger",
   "questionLog.deleteButton": "Löschen",
   "questionLog.deleteConfirmButton": "Sicher? Löschen",
   "questionLog.deleteFailed": "Löschen fehlgeschlagen.",

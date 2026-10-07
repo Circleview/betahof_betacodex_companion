@@ -346,6 +346,8 @@
   "questionLog.feedbackBad": "Bad",
   "questionLog.openConversationTitle": "Open this question in conversation mode",
   "questionLog.showAnswer": "Show answer",
+  "questionLog.showMore": "More",
+  "questionLog.showLess": "Less",
   "questionLog.deleteButton": "Delete",
   "questionLog.deleteConfirmButton": "Sure? Delete",
   "questionLog.deleteFailed": "Failed to delete.",

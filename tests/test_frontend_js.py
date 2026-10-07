@@ -4207,8 +4207,8 @@ def _question_log_css_block_mobile() -> str:
     css = (STATIC_DIR / "style.css").read_text()
     base = css.index("#question-log-list .question-log-entry {")
     start = css.index("@media (max-width: 480px) {", base)
-    assert "#question-log-list" in css[start : start + 400], "Mobil-Block fürs Fragen-Log fehlt nach den Basisregeln."
     end = css.index("\n}\n", start)
+    assert "#question-log-list" in css[start:end], "Mobil-Block fürs Fragen-Log fehlt nach den Basisregeln."
     return css[start:end]
 
 

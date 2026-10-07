@@ -44,6 +44,10 @@ const activeEventTypes = new Set(filterButtons.map((btn) => btn.dataset.eventTyp
 // Zustand pro Element, damit es ein erneutes render() (z.B. durch einen
 // Filter-Klick) übersteht.
 const deleteConfirmPendingIds = new Set();
+// Lange Fragetexte werden auf 4 Zeilen gekürzt; aufgeklappte IDs bleiben über
+// render() (Filter, Löschen-Klick, Nachladen) hinweg erhalten.
+const CLAMP_MIN_CHARS = 140;
+const expandedIds = new Set();
 
 function isSameDay(a, b) {
   return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
@@ -109,6 +113,43 @@ function buildQuestionLink(text, mode) {
   return a;
 }
 
+function buildMoreButton(entry, textEl) {
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'link-button question-log-more-btn';
+  const sync = () => {
+    const open = expandedIds.has(entry.id);
+    btn.setAttribute('aria-expanded', String(open));
+    btn.textContent = t(open ? 'questionLog.showLess' : 'questionLog.showMore');
+    textEl.classList.toggle('question-log-text--clamped', !open);
+  };
+  sync();
+  btn.addEventListener('click', () => {
+    if (expandedIds.has(entry.id)) expandedIds.delete(entry.id);
+    else expandedIds.add(entry.id);
+    sync();
+  });
+  return btn;
+}
+
+// Fragetext (Link) + ggf. "Mehr"-Knopf. Der Knopf erscheint nur, wenn der
+// gekürzte Text wirklich überläuft (Messung nach dem Einhängen).
+function appendQuestionText(li, entry) {
+  const text = document.createElement('p');
+  text.className = 'question-log-text';
+  text.appendChild(buildQuestionLink(entry.text, entry.mode));
+  li.appendChild(text);
+  if (entry.text.length <= CLAMP_MIN_CHARS) return;
+  if (expandedIds.has(entry.id)) {
+    li.appendChild(buildMoreButton(entry, text));
+    return;
+  }
+  text.classList.add('question-log-text--clamped');
+  requestAnimationFrame(() => {
+    if (text.isConnected && text.scrollHeight > text.clientHeight) text.after(buildMoreButton(entry, text));
+  });
+}
+
 function buildFeedbackBadge(feedback) {
   const span = document.createElement('span');
   span.className = `question-log-feedback-badge question-log-feedback-badge--${feedback}`;
@@ -163,10 +204,7 @@ function buildEntryElement(entry) {
     li.appendChild(buildFeedbackBadge(entry.feedback));
   }
 
-  const text = document.createElement('p');
-  text.className = 'question-log-text';
-  text.appendChild(buildQuestionLink(entry.text, entry.mode));
-  li.appendChild(text);
+  appendQuestionText(li, entry);
 
   if (entry.has_answer) {
     // Nutzerwunsch (2026-09-01): die volle Antwort steht standardmäßig
