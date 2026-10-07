@@ -2797,6 +2797,96 @@ def test_ask_caps_history_to_last_turns_even_if_client_sends_more(client, monkey
     ]
 
 
+def _ask_with_history(client, monkeypatch, history, expect_llm=True):
+    """Hilfe für die Verlaufs-Tests: liefert, was Antwort- und Umformulierungs-Call bekommen."""
+    client.post(
+        "/api/sources",
+        json={"title": "Q", "text": "Der BetaCodex beschreibt Prinzipien dezentraler Organisation."},
+    )
+    captured = {"answer": None, "rewrite": None}
+
+    def fake_answer(question, chunks, lang="de", author_bios=None, history=None, **kwargs):
+        captured["answer"] = history
+        return iter(["Testantwort [1]."])
+
+    def fake_rewrite(question, history, lang, **kwargs):
+        captured["rewrite"] = history
+        return "umformuliert"
+
+    monkeypatch.setattr(llm, "stream_answer_question", fake_answer)
+    monkeypatch.setattr(llm, "rewrite_followup_query", fake_rewrite)
+    response = client.post("/api/ask", json={"question": "Weiter?", "history": history})
+    return response, captured
+
+
+def _turns(n, size=10):
+    return [{"question": f"F{i:03d}" + "q" * size, "answer": f"A{i:03d}" + "a" * size} for i in range(n)]
+
+
+def test_ask_history_keeps_last_ten_turns_in_order(client, monkeypatch):
+    turns = _turns(12)
+    _, captured = _ask_with_history(client, monkeypatch, turns)
+    assert captured["answer"] == turns[2:]
+
+
+def test_ask_history_drops_oldest_turns_over_char_budget(client, monkeypatch):
+    # 10 Turns à 3200 Zeichen = 32.000 > 30.000 -> der älteste fällt weg
+    turns = _turns(10, size=1596)
+    _, captured = _ask_with_history(client, monkeypatch, turns)
+    kept = captured["answer"]
+    assert kept == turns[1:]
+    assert sum(len(t["question"]) + len(t["answer"]) for t in kept) <= 30_000
+
+
+def test_ask_history_rejects_oversized_field_without_llm_call(client, monkeypatch):
+    for field in ("question", "answer"):
+        turn = {"question": "F?", "answer": "A."}
+        turn[field] = "x" * 8001
+        response, captured = _ask_with_history(client, monkeypatch, [turn])
+        assert response.status_code == 422
+        assert captured["answer"] is None and captured["rewrite"] is None
+
+
+def test_ask_history_rejects_more_than_fifty_turns_without_llm_call(client, monkeypatch):
+    response, captured = _ask_with_history(client, monkeypatch, _turns(51))
+    assert response.status_code == 422
+    assert captured["answer"] is None and captured["rewrite"] is None
+
+
+def test_ask_history_drops_turn_with_blank_answer(client, monkeypatch):
+    turns = [
+        {"question": "F1?", "answer": "A1."},
+        {"question": "F2?", "answer": "   "},
+        {"question": "F3?", "answer": "A3."},
+    ]
+    _, captured = _ask_with_history(client, monkeypatch, turns)
+    assert captured["answer"] == [turns[0], turns[2]]
+
+
+def test_ask_rewrite_gets_last_three_turns_answer_gets_all(client, monkeypatch):
+    turns = _turns(10)
+    _, captured = _ask_with_history(client, monkeypatch, turns)
+    assert captured["rewrite"] == turns[-3:]
+    assert captured["answer"] == turns
+
+
+def test_ask_empty_history_skips_rewrite(client, monkeypatch):
+    _, captured = _ask_with_history(client, monkeypatch, [])
+    assert captured["rewrite"] is None
+
+
+def test_history_limits_match_between_frontend_and_backend():
+    import re
+    from app import models
+    from pathlib import Path
+
+    js = (Path(main_module.__file__).parent.parent / "static" / "question.js").read_text()
+    turns = int(re.search(r"const ASK_HISTORY_MAX_TURNS = (\d+);", js).group(1))
+    field = int(re.search(r"const ASK_HISTORY_MAX_FIELD_CHARS = (\d+);", js).group(1))
+    assert turns == main_module.ASK_HISTORY_MAX_TURNS
+    assert field == models.HistoryTurnIn.model_fields["question"].metadata[0].max_length
+
+
 def test_ask_uses_rewritten_query_for_history_follow_up(client, monkeypatch):
     client.post(
         "/api/sources",
