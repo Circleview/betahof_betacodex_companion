@@ -4218,6 +4218,11 @@ def test_question_log_mobile_block_uses_two_column_timeline_and_scrolling_filter
     assert re.search(r"\.question-log-header-row \{[^}]*position: static", block)
     assert re.search(r"\.question-log-filter \{[^}]*overflow-x: auto", block)
     assert re.search(r"\.question-log-filter-btn \{[^}]*min-height: 44px", block)
+    assert re.search(r"\.question-log-day-marker \{[^}]*grid-column: 1 / -1", block)
+    assert re.search(r"::after \{[^}]*grid-column: 1;", block)
+    # Letzte Pille scrollt aus dem Verlauf; Fokusrahmen wird nicht abgeschnitten.
+    filt = re.search(r"\.question-log-filter \{[^}]*\}", block).group(0)
+    assert "padding-inline-end" in filt and "padding-block" in filt
 
 
 def test_question_log_text_wraps_long_words_and_clamps():
@@ -4249,9 +4254,11 @@ def _run_question_log_text(text: str, expanded_ids: list, overflow: bool, click:
     set_decl = re.search(r"const expandedIds = new Set\(\);", js_source)
     assert set_decl, "expandedIds fehlt."
     funcs = [
-        re.search(rf"function {name}\(.*?\n\}}", js_source, re.S) for name in ("buildMoreButton", "appendQuestionText")
+        re.search(rf"function {name}\(.*?\n\}}", js_source, re.S)
+        for name in ("buildMoreButton", "appendQuestionText", "runClampChecks")
     ]
-    assert all(funcs), "buildMoreButton/appendQuestionText fehlen."
+    assert all(funcs), "buildMoreButton/appendQuestionText/runClampChecks fehlen."
+    assert re.search(r"let clampChecks = \[\];", js_source), "clampChecks fehlt."
     script = f"""
 class El {{
   constructor(tag) {{ this.tag = tag; this.children = []; this.attrs = {{}}; this.cls = new Set(); this.l = {{}};
@@ -4275,9 +4282,12 @@ function buildQuestionLink(text) {{ const a = new El('a'); a.textContent = text;
 {set_decl.group(0)}
 {funcs[0].group(0)}
 {funcs[1].group(0)}
+let clampChecks = [];
+{funcs[2].group(0)}
 for (const id of {json.dumps(expanded_ids)}) expandedIds.add(id);
 const li = new El('li');
 appendQuestionText(li, {{ id: 'a', text: {json.dumps(text)}, mode: 'chat' }});
+runClampChecks();
 let p = li.children[0];
 let btn = li.children[1];
 if ({json.dumps(click)} && btn) btn.click();
@@ -4288,6 +4298,7 @@ console.log(JSON.stringify({{
   label: btn ? btn.textContent : null,
   stored: expandedIds.has('a'),
   btnClamped: btn ? btn.cls.has('question-log-more-btn') : null,
+  controls: btn ? btn.attrs['aria-controls'] === p.id && !!p.id : null,
 }}));
 """
     return _run_node(script)
@@ -4298,7 +4309,7 @@ LONG = "Wie funktioniert die dezentrale Führung im Beta-Kodex genau? " * 5
 
 def test_question_log_long_overflowing_text_is_clamped_with_more_button():
     r = _run_question_log_text(LONG, [], overflow=True, click=False)
-    assert r == {"clamped": True, "hasBtn": True, "expanded": "false", "label": "questionLog.showMore", "stored": False, "btnClamped": True}
+    assert r == {"clamped": True, "hasBtn": True, "expanded": "false", "label": "questionLog.showMore", "stored": False, "btnClamped": True, "controls": True}
 
 
 def test_question_log_more_button_expands_and_collapses():
@@ -4308,7 +4319,14 @@ def test_question_log_more_button_expands_and_collapses():
 
 def test_question_log_long_text_that_fits_gets_no_button():
     r = _run_question_log_text(LONG, [], overflow=False, click=False)
-    assert r["hasBtn"] is False
+    assert r["hasBtn"] is False and r["clamped"] is False
+
+
+def test_question_log_clamp_check_is_batched_and_delete_clears_expanded():
+    js = (STATIC_DIR / "question-log.js").read_text()
+    assert "requestAnimationFrame" not in re.search(r"function appendQuestionText.*?\n\}", js, re.S).group(0)
+    assert js.count("requestAnimationFrame(runClampChecks)") == 1
+    assert "expandedIds.delete(entry.id)" in re.search(r"async function deleteEntry.*?\n\}", js, re.S).group(0)
 
 
 def test_question_log_short_text_never_clamped_or_button():
