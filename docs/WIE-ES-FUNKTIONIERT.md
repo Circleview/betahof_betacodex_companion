@@ -220,14 +220,16 @@ sind willkommen.
 | Distanz-Faktor für Quellen einer genannten Autor:in | `0.5` | `app/main.py: AUTHOR_MENTION_DISTANCE_FACTOR` |
 | … wenn zusätzlich ein Schlagwort der Quelle in der Frage steht | `0.05` | `app/main.py: AUTHOR_MENTION_KEYWORD_MATCH_FACTOR` |
 | Begriffe pro Frage mit garantiertem Ausschnitt (Hybrid-Suche) | `3` | `app/main.py: LEXICAL_MAX_TERMS` |
-| Frühere Gesprächsrunden im Prompt | `3` | `app/main.py: ASK_HISTORY_MAX_TURNS` |
+| Frühere Gesprächsrunden im Prompt | `10` | `app/main.py: ASK_HISTORY_MAX_TURNS` |
+| Zeichenbudget für den Gesprächsverlauf im Prompt | `30000` | `app/main.py: ASK_HISTORY_MAX_CHARS` |
+| Gesprächsrunden für die Umformulierung der Suchanfrage | `3` | `app/main.py: ASK_REWRITE_HISTORY_TURNS` |
 | Textausschnitte als Beta-Kontext im Kreativ-Modus | `6` | `app/main.py: CREATIVE_TOP_K` |
 | Max. Websuchen pro Kreativ-Anfrage | `3` | `app/llm.py: CREATIVE_MAX_SEARCH_USES` |
 | Kreativ-Anfragen pro IP | `6/10 min` | `app/main.py: CREATIVE_RATE_LIMIT_*` |
 
 Diese Tabelle wird aus dem Code erzeugt. Ändern sich Prompts oder Parameter, schlägt `tests/test_how_it_works_doc.py` fehl, bis der Text oben geprüft und `python scripts/how_it_works.py --write` gelaufen ist.
 
-<!-- fingerprint: aa60384c772d -->
+<!-- fingerprint: 9884d015076b -->
 <!-- END generiert -->
 
 ## Wie dieses Dokument aktuell bleibt

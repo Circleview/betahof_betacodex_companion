@@ -214,14 +214,16 @@ welcome.
 | Distance factor for sources of a mentioned author | `0.5` | `app/main.py: AUTHOR_MENTION_DISTANCE_FACTOR` |
 | … if a key term of the source also appears in the question | `0.05` | `app/main.py: AUTHOR_MENTION_KEYWORD_MATCH_FACTOR` |
 | Terms per question with a guaranteed excerpt (hybrid search) | `3` | `app/main.py: LEXICAL_MAX_TERMS` |
-| Previous conversation turns in the prompt | `3` | `app/main.py: ASK_HISTORY_MAX_TURNS` |
+| Previous conversation turns in the prompt | `10` | `app/main.py: ASK_HISTORY_MAX_TURNS` |
+| Character budget for the conversation history in the prompt | `30000` | `app/main.py: ASK_HISTORY_MAX_CHARS` |
+| Conversation turns used to rewrite the search query | `3` | `app/main.py: ASK_REWRITE_HISTORY_TURNS` |
 | Excerpts as Beta context in creative mode | `6` | `app/main.py: CREATIVE_TOP_K` |
 | Max. web searches per creative request | `3` | `app/llm.py: CREATIVE_MAX_SEARCH_USES` |
 | Creative requests per IP | `6/10 min` | `app/main.py: CREATIVE_RATE_LIMIT_*` |
 
 This table is generated from the code. If prompts or settings change, `tests/test_how_it_works_doc.py` fails until the text above has been reviewed and `python scripts/how_it_works.py --write` has been run.
 
-<!-- fingerprint: aa60384c772d -->
+<!-- fingerprint: 9884d015076b -->
 <!-- END generiert -->
 
 ## How this document stays current
