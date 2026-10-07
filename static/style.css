@@ -2738,6 +2738,7 @@ button.send-button {
   .question-log-more-btn {
     min-height: 44px;
     padding-block: 0.6rem;
+    margin-top: 0;
   }
 }
 
