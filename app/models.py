@@ -1,6 +1,6 @@
 from typing import Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class SourceIn(BaseModel):
@@ -62,9 +62,10 @@ class ImportJobOut(BaseModel):
     processing_error: Optional[str] = None
 
 
+# Feldgrenze muss zu ASK_HISTORY_MAX_FIELD_CHARS in static/question.js passen.
 class HistoryTurnIn(BaseModel):
-    question: str
-    answer: str
+    question: str = Field(max_length=8000)
+    answer: str = Field(max_length=8000)
 
 
 class QuestionIn(BaseModel):
@@ -79,7 +80,7 @@ class QuestionIn(BaseModel):
     # das Modell nicht bei jeder Folgefrage bei null anfängt (siehe
     # app/main.py ask() - wird dort defensiv auf die letzten paar Turns
     # gekappt, unabhängig davon, wie viele das Frontend mitschickt).
-    history: list[HistoryTurnIn] = []
+    history: list[HistoryTurnIn] = Field(default_factory=list, max_length=50)
 
 
 class CreativeRequestIn(BaseModel):

@@ -1252,8 +1252,11 @@ onAuthChange(() => {
 // wirkte wie ständige Wiederholung. Nur Frage+Antwort (keine Quellen) gehen
 // mit, das reicht dem Modell für die Konversation und hält den Request
 // klein; app/main.py kappt serverseitig defensiv nochmal auf dieselbe
-// Anzahl.
-const ASK_HISTORY_MAX_TURNS = 3;
+// Anzahl (muss zu app/main.py passen).
+const ASK_HISTORY_MAX_TURNS = 10;
+// Feldgrenze je Frage/Antwort im Verlauf (muss zu app/models.py passen) -
+// sonst scheitert jede Folgefrage mit 422, wenn eine frühere Frage länger ist.
+const ASK_HISTORY_MAX_FIELD_CHARS = 8000;
 
 function loadConversationHistory() {
   try {
@@ -1494,8 +1497,8 @@ questionForm.addEventListener('submit', async (e) => {
         turnstile_token: turnstileToken,
         is_first_message: conversationHistory.length === 0,
         history: conversationHistory.slice(-ASK_HISTORY_MAX_TURNS).map(({ question, answer }) => ({
-          question,
-          answer,
+          question: question.slice(0, ASK_HISTORY_MAX_FIELD_CHARS),
+          answer: answer.slice(0, ASK_HISTORY_MAX_FIELD_CHARS),
         })),
       }),
     });

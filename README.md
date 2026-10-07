@@ -61,6 +61,9 @@ Assistent das offen, statt zu spekulieren.
 - Fett hervorgehobene Fachbegriffe in einer Antwort sind anklickbar – ein
   Klick vertieft genau diesen Begriff als Folgefrage, im Kontext der
   laufenden Konversation.
+- Gesprächsgedächtnis: die letzten 10 Frage-Antwort-Paare (höchstens 30.000
+  Zeichen, je Frage/Antwort max. 8.000, max. 50 Paare pro Anfrage) gehen mit
+  an das Modell; die Suchanfrage wird nur aus den letzten 3 umformuliert.
 - Jede Antwort lässt sich per Icon in die Zwischenablage kopieren
   (formatiert und als Klartext, ohne die `[n]`-Verweise).
 - Antwortet in der Sprache, in der gefragt wurde – Oberfläche und

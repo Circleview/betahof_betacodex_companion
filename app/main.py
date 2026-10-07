@@ -3918,7 +3918,23 @@ AUTHOR_MENTION_KEYWORD_MATCH_FACTOR = 0.05
 # davon, wie viele Turns das Frontend mitschickt (QuestionIn.history) - hält
 # den Prompt schlank und begrenzt den Schaden eines manipulierten Requests
 # ohne UI.
-ASK_HISTORY_MAX_TURNS = 3
+# Idee 24907bf2: 10 Turns, zusätzlich ein Zeichenbudget; muss zu
+# ASK_HISTORY_MAX_TURNS in static/question.js passen. Invariante: die
+# Feldgrenzen in models.HistoryTurnIn (je 8000) garantieren, dass ein Turn
+# (2 x 8000) immer unter MAX_CHARS bleibt - ein Kürzungszweig ist unnötig.
+ASK_HISTORY_MAX_TURNS = 10
+ASK_HISTORY_MAX_CHARS = 30_000
+# Die Umformulierung der Suchanfrage braucht nur den jüngsten Kontext.
+ASK_REWRITE_HISTORY_TURNS = 3
+
+
+def _trim_history(turns: list[dict]) -> list[dict]:
+    """Leere Antworten verwerfen (Anthropic lehnt leere assistant-Inhalte
+    ab), letzte MAX_TURNS behalten, älteste entfernen bis MAX_CHARS passt."""
+    turns = [t for t in turns if t["answer"].strip()][-ASK_HISTORY_MAX_TURNS:]
+    while sum(len(t["question"]) + len(t["answer"]) for t in turns) > ASK_HISTORY_MAX_CHARS:
+        turns = turns[1:]
+    return turns
 
 # Nutzerwunsch (2026-08-26): Kreativ-Modus (siehe app/llm.py:
 # stream_creative_response) - eigene, deutlich engere Rate-Grenze als
@@ -4322,7 +4338,7 @@ def _ask_context(question_text: str, history: list[dict], x_lang: str, top_k: in
     query_text = question_text
     if history:
         query_text = llm.rewrite_followup_query(
-            question_text, history, x_lang, usage_email=usage_email
+            question_text, history[-ASK_REWRITE_HISTORY_TURNS:], x_lang, usage_email=usage_email
         ) or (
             f"{history[-1]['question']} {question_text}"
         )
@@ -4505,7 +4521,7 @@ def ask(question: QuestionIn, request: Request, x_lang: str = Header(default=i18
     if question.is_first_message and should_log_question_events:
         first_question_log_id = question_log.log_question(question.question)
 
-    history = [turn.model_dump() for turn in question.history[-ASK_HISTORY_MAX_TURNS:]]
+    history = _trim_history([turn.model_dump() for turn in question.history])
     llm_chunks, chunk_refs, author_bios, query_embedding = _ask_context(
         question.question, history, x_lang, question.top_k, _get_current_user_email(request)
     )
