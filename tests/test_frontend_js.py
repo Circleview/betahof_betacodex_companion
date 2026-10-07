@@ -4337,3 +4337,37 @@ def test_question_log_short_text_never_clamped_or_button():
 def test_question_log_expanded_state_survives_rerender():
     r = _run_question_log_text(LONG, ["a"], overflow=True, click=False)
     assert r["clamped"] is False and r["hasBtn"] is True and r["expanded"] == "true"
+
+
+# --- Änderungslog mobil optimieren (gleiches Muster wie Fragen-Log) ---
+
+
+def _changelog_css_block_mobile() -> str:
+    css = (STATIC_DIR / "style.css").read_text()
+    base = css.index("#changelog-list .changelog-entry {")
+    start = css.index("@media (max-width: 480px) {", base)
+    end = css.index("\n}\n", start)
+    assert "#changelog-list" in css[start:end], "Mobil-Block fürs Änderungslog fehlt nach den Basisregeln."
+    return css[start:end]
+
+
+def test_changelog_mobile_block_uses_two_column_timeline():
+    block = _changelog_css_block_mobile()
+    assert re.search(r"#changelog-list\.timeline-mode \{[^}]*grid-template-columns: 1\.25rem minmax\(0, 1fr\)", block)
+    assert re.search(r"#changelog-list\.timeline-mode::after \{[^}]*grid-column: 1;", block)
+    assert re.search(r"\.changelog-day-marker \{[^}]*grid-column: 1 / -1", block)
+    assert re.search(r"#changelog-list \.changelog-entry \{[^}]*grid-column: 2", block)
+
+
+def test_changelog_mobile_revert_buttons_are_touch_targets_and_wrap():
+    block = _changelog_css_block_mobile()
+    assert re.search(r"\.changelog-revert-row \{[^}]*flex-wrap: wrap", block)
+    assert re.search(r"\.changelog-revert-row \.link-button \{[^}]*min-height: 44px", block)
+
+
+def test_changelog_long_labels_and_values_wrap_on_all_viewports():
+    css = (STATIC_DIR / "style.css").read_text()
+    assert re.search(r"\.changelog-target-label \{[^}]*overflow-wrap: anywhere", css)
+    assert re.search(r"\.changelog-field-list li \{[^}]*overflow-wrap: anywhere", css)
+    # 1fr ohne minmax(0, …) lässt lange Inhalte die Spalte sprengen (Desktop).
+    assert re.search(r"#changelog-list\.timeline-mode \{[^}]*grid-template-columns: max-content 1\.25rem minmax\(0, 1fr\)", css)
