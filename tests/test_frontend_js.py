@@ -4371,3 +4371,8 @@ def test_changelog_long_labels_and_values_wrap_on_all_viewports():
     assert re.search(r"\.changelog-field-list li \{[^}]*overflow-wrap: anywhere", css)
     # 1fr ohne minmax(0, …) lässt lange Inhalte die Spalte sprengen (Desktop).
     assert re.search(r"#changelog-list\.timeline-mode \{[^}]*grid-template-columns: max-content 1\.25rem minmax\(0, 1fr\)", css)
+
+
+def test_changelog_mobile_time_sits_on_top_like_question_log():
+    block = _changelog_css_block_mobile()
+    assert re.search(r"\.changelog-time \{[^}]*order: -1[^}]*flex-basis: 100%", block)
