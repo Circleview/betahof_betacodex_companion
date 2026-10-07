@@ -3929,9 +3929,9 @@ ASK_REWRITE_HISTORY_TURNS = 3
 
 
 def _trim_history(turns: list[dict]) -> list[dict]:
-    """Leere Antworten verwerfen (Anthropic lehnt leere assistant-Inhalte
+    """Leere Fragen und Antworten verwerfen (Anthropic lehnt leere assistant-Inhalte
     ab), letzte MAX_TURNS behalten, älteste entfernen bis MAX_CHARS passt."""
-    turns = [t for t in turns if t["answer"].strip()][-ASK_HISTORY_MAX_TURNS:]
+    turns = [t for t in turns if t["question"].strip() and t["answer"].strip()][-ASK_HISTORY_MAX_TURNS:]
     while sum(len(t["question"]) + len(t["answer"]) for t in turns) > ASK_HISTORY_MAX_CHARS:
         turns = turns[1:]
     return turns
