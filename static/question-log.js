@@ -48,6 +48,7 @@ const deleteConfirmPendingIds = new Set();
 // render() (Filter, Löschen-Klick, Nachladen) hinweg erhalten.
 const CLAMP_MIN_CHARS = 140;
 const expandedIds = new Set();
+let clampChecks = [];
 
 function isSameDay(a, b) {
   return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
@@ -117,6 +118,7 @@ function buildMoreButton(entry, textEl) {
   const btn = document.createElement('button');
   btn.type = 'button';
   btn.className = 'link-button question-log-more-btn';
+  btn.setAttribute('aria-controls', textEl.id);
   const sync = () => {
     const open = expandedIds.has(entry.id);
     btn.setAttribute('aria-expanded', String(open));
@@ -133,20 +135,31 @@ function buildMoreButton(entry, textEl) {
 }
 
 // Fragetext (Link) + ggf. "Mehr"-Knopf. Der Knopf erscheint nur, wenn der
-// gekürzte Text wirklich überläuft (Messung nach dem Einhängen).
+// gekürzte Text wirklich überläuft (gebündelte Messung, siehe runClampChecks).
 function appendQuestionText(li, entry) {
   const text = document.createElement('p');
   text.className = 'question-log-text';
   text.appendChild(buildQuestionLink(entry.text, entry.mode));
   li.appendChild(text);
   if (entry.text.length <= CLAMP_MIN_CHARS) return;
+  text.id = `question-log-text-${entry.id}`;
   if (expandedIds.has(entry.id)) {
     li.appendChild(buildMoreButton(entry, text));
     return;
   }
   text.classList.add('question-log-text--clamped');
-  requestAnimationFrame(() => {
-    if (text.isConnected && text.scrollHeight > text.clientHeight) text.after(buildMoreButton(entry, text));
+  clampChecks.push({ text, entry });
+}
+
+// Erst alle Höhen lesen, dann schreiben (kein Layout-Thrashing). Ohne
+// Überlauf fällt die Kürzung weg, damit kein abgeschnittener Text ohne Knopf bleibt.
+function runClampChecks() {
+  const checks = clampChecks.filter(({ text }) => text.isConnected);
+  clampChecks = [];
+  const overflowing = checks.map(({ text }) => text.scrollHeight > text.clientHeight);
+  checks.forEach(({ text, entry }, i) => {
+    if (overflowing[i]) text.after(buildMoreButton(entry, text));
+    else text.classList.remove('question-log-text--clamped');
   });
 }
 
@@ -262,6 +275,7 @@ async function deleteEntry(entry) {
     });
     if (!res.ok) throw new Error();
     deleteConfirmPendingIds.delete(entry.id);
+    expandedIds.delete(entry.id);
     allEntries = allEntries.filter((e) => e.id !== entry.id);
     answerCache.delete(entry.id);
     applyFilter({ resetPaging: false });
@@ -307,6 +321,7 @@ function render() {
     if (openTimestamps.has(d.dataset.timestamp)) d.open = true;
   });
   listEl.style.setProperty('--timeline-row-end', String(gridRow + 1));
+  requestAnimationFrame(runClampChecks);
 
   // Noch nicht gerenderte Einträge übrig: unsichtbares Sentinel ans Ende, das
   // beim Scrollen die nächste Seite nachlädt (Daten liegen ja schon vor).

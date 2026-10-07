@@ -2690,6 +2690,9 @@ button.send-button {
     overflow-x: auto;
     width: 100%;
     justify-content: flex-start;
+    padding-block: 3px;
+    padding-inline: 3px 3rem;
+    padding-inline-end: 3rem;
     scrollbar-width: none;
     -webkit-mask-image: linear-gradient(to right, #000 85%, transparent);
     mask-image: linear-gradient(to right, #000 85%, transparent);
