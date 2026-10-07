@@ -2797,7 +2797,7 @@ def test_ask_caps_history_to_last_turns_even_if_client_sends_more(client, monkey
     ]
 
 
-def _ask_with_history(client, monkeypatch, history, expect_llm=True):
+def _ask_with_history(client, monkeypatch, history):
     """Hilfe für die Verlaufs-Tests: liefert, was Antwort- und Umformulierungs-Call bekommen."""
     client.post(
         "/api/sources",
@@ -2851,6 +2851,15 @@ def test_ask_history_rejects_more_than_fifty_turns_without_llm_call(client, monk
     response, captured = _ask_with_history(client, monkeypatch, _turns(51))
     assert response.status_code == 422
     assert captured["answer"] is None and captured["rewrite"] is None
+
+
+def test_ask_history_drops_turn_with_blank_question(client, monkeypatch):
+    turns = [
+        {"question": " \n", "answer": "A1."},
+        {"question": "F2?", "answer": "A2."},
+    ]
+    _, captured = _ask_with_history(client, monkeypatch, turns)
+    assert captured["answer"] == [turns[1]]
 
 
 def test_ask_history_drops_turn_with_blank_answer(client, monkeypatch):
