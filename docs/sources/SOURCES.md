@@ -6,7 +6,7 @@ All curated sources, sorted by the (first) author's last name. Full texts are de
 
 License: [CC BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/), attribution “BetaCodex Chat (https://chat.betacodex.org)” – see [LICENSE.md](LICENSE.md). Machine-readable: [sources.json](sources.json).
 
-Number of sources: 369
+Number of sources: 372
 
 ### Ackoff, Russell – Systems explained
 
@@ -2311,6 +2311,30 @@ Date: 2021-10-07 · Link: <https://audio.podigee-cdn.net/559834-m-bede039a43d94b
 **Summary (AI-generated):**
 
 > The podcast "Good New Work" discusses alternative approaches to contemporary organizational management. The focus is on Peer Recruiting – a decentralized recruitment process where team colleagues meet candidates in individual conversations rather than using assessment centers or résumé analysis. This method leverages organizational diversity and personalities to find the best fit. Borath Customs Agents, a customs brokerage in Gdańsk with 80 employees, serves as a case study. The company transformed into a self-organizing, decentralized structure via Open Space Beta Transformation. Neonila Mitschke-Melech reports how Peer Recruiting works there: candidates have relaxed one-on-one conversations with various colleagues instead of stressful commission interviews, creating more authentic interactions and better insight into cultural fit and mutual compatibility.
+
+### Sechser, Elisabeth – Rethinking Management: Es ist gefährlich, wenn sich nicht alle im Unternehmen für Wirtschaft interessieren
+
+Date: 2026-09-08 · Link: <https://www.sichtart.at/rethinking-management-wirtschaft/>
+
+**Summary (AI-generated):**
+
+> The text criticizes the logic of cost-cutting measures in social and healthcare organizations. Reduced services don't disappear; they shift to other public systems, families, or unpaid care work, weakening social participation and democratic structures. The author argues that all employees and leaders must develop economic literacy—not to cut more, but to recognize genuine waste and protect value creation. Three central problems are identified: the thinking problem (optimizing easily measurable aspects rather than actual value creation), the competence and power problem (lacking economic literacy), and the design problem (accepting established logics as given). Economic literacy is a matter of power and necessary for better decision-making and innovation.
+
+### Sechser, Elisabeth – Rethinking Management: Wenn Effizienz Wertschöpfung zerstört | 2 - Sichtart
+
+Date: 2025-09-10 · Link: <https://www.sichtart.at/rethinking-management-wenn-effizienz-wertschoepfung-zerstoert/>
+
+**Summary (AI-generated):**
+
+> The text introduces the concept of Relational Expertise Organizations (REOs), where value creation emerges through situational application of expertise, judgment, and relational competence. Elisabeth Sechser criticizes the transfer of industrial efficiency logic to social and healthcare work, even though these activities cannot be standardized. Professional interaction is itself part of the service, not merely its framework. Unsuitable management systems with rigid metrics and controls divert attention, weaken responsibility, and generate long-term costs. Sechser argues that democratic accountability can also be ensured through decentralized, trust-based governance. In REOs, high personnel expenditures represent direct value creation, not a cost problem. True efficiency reduces waste, not organizational capacity. Management systems must fit the type of value creation, not vice versa.
+
+### Sechser, Elisabeth – Rethinking Management: Wirtschaftliche Sprachlosigkeit beenden | 3 - Sichtart
+
+Date: 2026-10-12 · Link: <https://www.sichtart.at/wirtschaftliche-sprachlosigkeit-beenden/>
+
+**Summary (AI-generated):**
+
+> The text addresses a central problem in social and healthcare organizations: professionals possess valuable knowledge about value creation but often cannot articulate it in economic terms, thus losing influence in decision-making. Based on Mary Parker Follett's concept of the "Law of the Situation," the author argues that relevant knowledge should have influence where decisions are made. Economic literacy does not mean calculating everything, but rather linking impact assumptions, resources, results, and follow-up costs in an understandable way. The text proposes bringing economic information to work sites, discussing impact and resources together, and making expert knowledge usable in negotiations. Only by connecting professional and economic knowledge do better decisions emerge.
 
 ### Sechser, Elisabeth; Silke Hermann – Statt Karriere machen, zusammenarbeiten und lernen
 

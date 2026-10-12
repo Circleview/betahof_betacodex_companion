@@ -6,7 +6,7 @@ Alle kuratierten Quellen, sortiert nach Nachname der (ersten) Autor:in. Volltext
 
 Lizenz: [CC BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/), Namensnennung „BetaCodex Chat (https://chat.betacodex.org)“ – siehe [LICENSE.md](LICENSE.md). Maschinenlesbar: [sources.json](sources.json).
 
-Anzahl Quellen: 369
+Anzahl Quellen: 372
 
 ### Ackoff, Russell – Systems explained
 
@@ -2311,6 +2311,30 @@ Datum: 2021-10-07 · Link: <https://audio.podigee-cdn.net/559834-m-bede039a43d94
 **Zusammenfassung (KI-generiert):**
 
 > Der Podcast "Gutes Neues Arbeiten" behandelt alternative Ansätze zur modernen Unternehmensführung. Fokus liegt auf Peer Recruiting – ein dezentrales Rekrutierungsverfahren, bei dem Teamkollegen Kandidaten in Einzelgesprächen kennenlernen, statt über Assessment Center oder Lebenslaufanalysen zu entscheiden. Das Verfahren nutzt die Vielfalt und Persönlichkeiten im Unternehmen, um beste Passung zu finden. Als Fallbeispiel dient Borath Customs Agents, eine Zollagentur in Gedingen (80 Mitarbeiter), die sich via Open Space Beta Transformation zu einer selbstorganisierten, dezentralen Organisationsstruktur entwickelt hat. Neonila Mitschke-Melech berichtet, wie Peer Recruiting dort praktiziert wird: Kandidaten führen entspannte Zweiergespräche mit verschiedenen Kollegen statt stressiger Kommissionssituationen, wodurch authentischere Wechselwirkungen entstehen.
+
+### Sechser, Elisabeth – Rethinking Management: Es ist gefährlich, wenn sich nicht alle im Unternehmen für Wirtschaft interessieren
+
+Datum: 2026-09-08 · Link: <https://www.sichtart.at/rethinking-management-wirtschaft/>
+
+**Zusammenfassung (KI-generiert):**
+
+> Der Text kritisiert die Logik von Sparmaßnahmen im Sozial- und Gesundheitsbereich. Eingesparte Leistungen verschwinden nicht, sondern verlagern sich in andere öffentliche Systeme, zu Familien oder unbezahlte Care-Arbeit, was Teilhabe und demokratische Strukturen schwächt. Der Autor plädiert dafür, dass alle Mitarbeitenden und Führungskräfte wirtschaftlich sprachfähig werden – nicht um mehr zu sparen, sondern um echte Verschwendung zu erkennen und Wertschöpfung zu schützen. Drei zentrale Probleme werden identifiziert: das Denkproblem (Optimierung leicht Messbaren statt tatsächlicher Wertschöpfung), das Kompetenz- und Machtproblem (fehlende wirtschaftliche Sprachfähigkeit) und das Gestaltungsproblem (Akzeptanz etablierter Logiken). Wirtschaftliche Sprachfähigkeit ist eine Machtfrage und notwendig für bessere Entscheidungen und Innovationen.
+
+### Sechser, Elisabeth – Rethinking Management: Wenn Effizienz Wertschöpfung zerstört | 2 - Sichtart
+
+Datum: 2025-09-10 · Link: <https://www.sichtart.at/rethinking-management-wenn-effizienz-wertschoepfung-zerstoert/>
+
+**Zusammenfassung (KI-generiert):**
+
+> Der Text führt das Konzept der Relationalen Expertiseorganisationen (REO) ein, in denen Wertschöpfung durch situationsbezogene Anwendung von Fachwissen, Urteilskraft und Beziehungskompetenz entsteht. Elisabeth Sechser kritisiert, dass industrielle Effizienzlogiken auf soziale und Gesundheitsarbeit übertragen werden, obwohl diese Tätigkeiten nicht standardisierbar sind. Professionelle Interaktion ist hier selbst Teil der Leistung, nicht nur deren Rahmen. Ungeeignete Managementsysteme mit starren Kennzahlen und Kontrollen lenken Aufmerksamkeit ab, schwächen Verantwortung und erzeugen Folgekosten. Sechser argumentiert, dass demokratische Rechenschaft auch durch dezentrale, vertrauensbasierte Steuerung gewährleistet werden kann. In REOs sind hohe Personalausgaben kein Kostenproblem, sondern Ausdruck direkter Wertschöpfung. Echte Effizienz reduziert Verschwendung, nicht Leistungsfähigkeit. Managementsysteme müssen zur Art der Wertschöpfung passen, nicht umgekehrt.
+
+### Sechser, Elisabeth – Rethinking Management: Wirtschaftliche Sprachlosigkeit beenden | 3 - Sichtart
+
+Datum: 2026-10-12 · Link: <https://www.sichtart.at/wirtschaftliche-sprachlosigkeit-beenden/>
+
+**Zusammenfassung (KI-generiert):**
+
+> Der Text behandelt ein zentrales Problem im Sozial- und Gesundheitsbereich: Fachkräfte verfügen über wertvolles Wissen über Wertschöpfung, können dieses aber oft nicht wirtschaftlich artikulieren und verlieren daher bei Entscheidungen an Einfluss. Basierend auf Mary Parker Folletts Konzept der „Law of the Situation" argumentiert der Autor, dass relevantes Wissen dort Einfluss haben sollte, wo Entscheidungen entstehen. Wirtschaftliche Sprachfähigkeit bedeutet nicht, alles zu berechnen, sondern Wirkannahmen, Ressourcen, Ergebnisse und Folgekosten nachvollziehbar zu verbinden. Der Text schlägt vor, wirtschaftliche Informationen an Arbeitsorte zu bringen, Wirkung und Ressourcen gemeinsam zu besprechen und Fachwissen in Verhandlungen nutzbar zu machen. Nur durch die Verbindung von fachlichem und wirtschaftlichem Wissen entstehen bessere Entscheidungen.
 
 ### Sechser, Elisabeth; Silke Hermann – Statt Karriere machen, zusammenarbeiten und lernen
 
