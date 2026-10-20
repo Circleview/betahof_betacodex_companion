@@ -70,7 +70,48 @@ def test_answer_question_repeats_language_instruction_next_to_the_question():
         )
 
     user_content = client.messages.stream.call_args.kwargs["messages"][0]["content"]
-    assert user_content.rstrip().endswith(llm._LANGUAGE_REMINDERS["en"])
+    assert llm._LANGUAGE_REMINDERS["en"] in user_content
+
+
+def _user_content(question, lang):
+    client = _fake_client("Answer")
+    with patch.object(llm, "_get_client", return_value=client):
+        llm.answer_question(
+            question,
+            [{"title": "T", "author": "A", "date": "D", "text": "Deutscher Text"}],
+            lang=lang,
+        )
+    return client.messages.stream.call_args.kwargs["messages"][0]["content"]
+
+
+def test_english_question_gets_explicit_english_sentence_last():
+    """Bug: Der allgemeine Reminder ('Sprache der Frage') reichte nicht, Haiku
+    antwortete bei deutschem Kontext trotzdem auf Deutsch. Jetzt steht zuletzt
+    ein expliziter Satz in der erkannten Fragesprache."""
+    content = _user_content("Can you describe the consultative decision making?", "en")
+    assert content.rstrip().endswith("Answer exclusively in English.")
+
+
+def test_english_question_with_german_ui_still_gets_english_sentence():
+    content = _user_content("Can you describe the consultative decision making?", "de")
+    assert content.rstrip().endswith("Answer exclusively in English.")
+
+
+def test_german_question_with_english_ui_gets_german_sentence():
+    content = _user_content("Was ist konsultative Entscheidung?", "en")
+    assert content.rstrip().endswith("Antworte ausschließlich auf Deutsch.")
+
+
+def test_ambiguous_question_gets_no_explicit_sentence():
+    content = _user_content("Scrum?", "en")
+    assert "exclusively" not in content and "ausschließlich auf Deutsch" not in content
+    assert content.rstrip().endswith(llm._LANGUAGE_REMINDERS["en"])
+
+
+def test_question_language_detection():
+    assert llm._question_language("Can you describe the consultative decision making?") == "en"
+    assert llm._question_language("Was ist konsultative Entscheidung?") == "de"
+    assert llm._question_language("") is None
 
 
 def test_answer_question_without_author_bios_omits_section():
