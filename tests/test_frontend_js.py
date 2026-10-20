@@ -4378,20 +4378,49 @@ def test_changelog_mobile_time_sits_on_top_like_question_log():
     assert re.search(r"\.changelog-time \{[^}]*order: -1[^}]*flex-basis: 100%", block)
 
 
-def test_mobile_submit_blurs_input_and_rescrolls_after_keyboard_closes():
-    """Idee b5bd431b: auf dem iPhone blieb nach dem Senden die Tastatur offen,
-    iOS scrollte das Feld erneut ins Bild und die Frage landete außerhalb des
-    sichtbaren Bereichs. Mobil: blur() vor dem Scroll, Scroll nach dem
-    Schließen (visualViewport-resize, Timeout-Fallback) einmal wiederholen.
-    Nur Quelltext-Prüfung - question.js ist ohne DOM nicht ausführbar."""
+def _run_rescroll_after_keyboard(*, with_viewport: bool, resize: bool, timeout: bool) -> dict:
+    """Führt question.js#rescrollAfterKeyboard per Node mit Stubs aus."""
     js_source = (STATIC_DIR / "question.js").read_text()
-    handler = re.search(r"questionForm\.addEventListener\('submit'.*?scrollQuestionIntoView\(userMessage\);.*?questionInput\.focus\(\);\s*\}", js_source, re.S)
+    match = re.search(r"function rescrollAfterKeyboard.*?\n\}", js_source, re.S)
+    assert match, "rescrollAfterKeyboard wurde nicht gefunden."
+    script = f"""
+{match.group(0)}
+let scrolls = 0, resizeFn = null, timerFn = null, timerMs = null;
+const viewport = {json.dumps(with_viewport)} ? {{
+  addEventListener: (type, fn) => {{ if (type === 'resize') resizeFn = fn; }},
+  removeEventListener: () => {{ resizeFn = null; }},
+}} : undefined;
+rescrollAfterKeyboard(viewport, (fn, ms) => {{ timerFn = fn; timerMs = ms; }}, () => {{ scrolls++; }});
+if ({json.dumps(resize)} && resizeFn) resizeFn();
+if ({json.dumps(timeout)} && timerFn) timerFn();
+console.log(JSON.stringify({{ scrolls, timerMs }}));
+"""
+    return _run_node(script)
+
+
+def test_rescroll_after_keyboard_scrolls_exactly_once():
+    """Idee b5bd431b: Nach-Scroll nach dem Schließen der Tastatur - genau
+    einmal, egal ob resize, Timeout oder beides; ohne visualViewport kein Fehler."""
+    assert _run_rescroll_after_keyboard(with_viewport=True, resize=True, timeout=False)["scrolls"] == 1
+    assert _run_rescroll_after_keyboard(with_viewport=True, resize=False, timeout=True)["scrolls"] == 1
+    assert _run_rescroll_after_keyboard(with_viewport=False, resize=False, timeout=True)["scrolls"] == 1
+    both = _run_rescroll_after_keyboard(with_viewport=True, resize=True, timeout=True)
+    assert both["scrolls"] == 1
+    assert both["timerMs"] == 400
+    # Vor Resize/Timeout kein Scroll.
+    assert _run_rescroll_after_keyboard(with_viewport=True, resize=False, timeout=False)["scrolls"] == 0
+
+
+def test_touch_submit_blurs_input_before_scroll_and_desktop_keeps_focus():
+    """Idee b5bd431b: Touch-Geräte (pointer: coarse, auch iPad/iPhone quer)
+    verlassen das Feld vor dem Scroll; focus() nur ohne Touch."""
+    js_source = (STATIC_DIR / "question.js").read_text()
+    handler = re.search(r"questionForm\.addEventListener\('submit'.*?questionInput\.focus\(\);\s*\}", js_source, re.S)
     assert handler, "Submit-Handler wurde nicht gefunden."
     body = handler.group(0)
-    assert "matchMedia('(max-width: 640px)')" in body
+    assert "matchMedia('(pointer: coarse)')" in body
+    assert "max-width: 640px" not in body
     assert body.index("questionInput.blur()") < body.index("scrollQuestionIntoView(userMessage)")
-    assert "window.visualViewport" in body and "'resize'" in body
-    assert "{ once: true }" in body and "setTimeout(" in body and "400" in body
-    # Desktop: focus() bleibt im else-Zweig, kein blur() dort.
+    assert "rescrollAfterKeyboard(" in body
     assert body.count("questionInput.blur()") == 1
     assert body.count("questionInput.focus()") == 1
