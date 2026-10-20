@@ -4376,3 +4376,22 @@ def test_changelog_long_labels_and_values_wrap_on_all_viewports():
 def test_changelog_mobile_time_sits_on_top_like_question_log():
     block = _changelog_css_block_mobile()
     assert re.search(r"\.changelog-time \{[^}]*order: -1[^}]*flex-basis: 100%", block)
+
+
+def test_mobile_submit_blurs_input_and_rescrolls_after_keyboard_closes():
+    """Idee b5bd431b: auf dem iPhone blieb nach dem Senden die Tastatur offen,
+    iOS scrollte das Feld erneut ins Bild und die Frage landete außerhalb des
+    sichtbaren Bereichs. Mobil: blur() vor dem Scroll, Scroll nach dem
+    Schließen (visualViewport-resize, Timeout-Fallback) einmal wiederholen.
+    Nur Quelltext-Prüfung - question.js ist ohne DOM nicht ausführbar."""
+    js_source = (STATIC_DIR / "question.js").read_text()
+    handler = re.search(r"questionForm\.addEventListener\('submit'.*?scrollQuestionIntoView\(userMessage\);.*?questionInput\.focus\(\);\s*\}", js_source, re.S)
+    assert handler, "Submit-Handler wurde nicht gefunden."
+    body = handler.group(0)
+    assert "matchMedia('(max-width: 640px)')" in body
+    assert body.index("questionInput.blur()") < body.index("scrollQuestionIntoView(userMessage)")
+    assert "window.visualViewport" in body and "'resize'" in body
+    assert "{ once: true }" in body and "setTimeout(" in body and "400" in body
+    # Desktop: focus() bleibt im else-Zweig, kein blur() dort.
+    assert body.count("questionInput.blur()") == 1
+    assert body.count("questionInput.focus()") == 1
