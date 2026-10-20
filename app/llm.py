@@ -173,6 +173,39 @@ _LANGUAGE_REMINDERS = {
     "en": "(Important: even though the text excerpts above may be written in a different language, answer this question in the language it was asked in.)",
 }
 
+# Bug (2026-10-20, per Screenshot gemeldet): trotz _LANGUAGE_REMINDERS
+# antwortete Haiku auf eine englische Frage bei UI=EN auf Deutsch (der
+# Client schaltet danach per Antworttext die UI um). Der Reminder sagt nur
+# "in der Sprache der Frage" - bei deutschem Kontext kippt das Modell
+# trotzdem. Fix: Fragesprache selbst erkennen und als letzte Zeile ein
+# expliziter Satz mit der konkreten Sprache. Zählt die Frage, nicht die UI.
+# Stoppwörter: Kern aus DE_MARKER_WORDS/EN_MARKER_WORDS in static/i18n.js.
+_DE_WORDS = {
+    "der", "die", "das", "und", "ist", "nicht", "wie", "was", "wer", "warum",
+    "wieso", "kann", "welche", "für", "mit", "sich", "auf", "sind", "hat",
+    "wird", "oder", "aber", "wenn", "wo", "wann", "du", "ich", "wir", "eine",
+    "einen", "dass", "bitte", "auch", "über", "zum", "zur", "im", "beim",
+}
+_EN_WORDS = {
+    "the", "is", "and", "not", "how", "what", "who", "why", "can", "which",
+    "for", "with", "does", "do", "are", "has", "have", "will", "but", "if",
+    "where", "when", "this", "that", "you", "we", "they", "should", "please",
+    "about", "to", "of", "describe", "explain", "tell",
+}
+_EXPLICIT_LANGUAGE = {
+    "de": "Antworte ausschließlich auf Deutsch.",
+    "en": "Answer exclusively in English.",
+}
+
+
+def _question_language(question: str) -> str | None:
+    """"de"/"en" nach Stoppwort-Zählung, bei Gleichstand/ohne Treffer None."""
+    words = re.findall(r"[a-zäöüß]+", question.lower())
+    de = sum(w in _DE_WORDS for w in words) + 2 * sum(bool(re.search("[äöüß]", w)) for w in words)
+    en = sum(w in _EN_WORDS for w in words)
+    return "de" if de > en else "en" if en > de else None
+
+
 # Nutzerwunsch (2026-09-25): Haiku griff trotz Systemanweisung zu oft zur
 # Absage, obwohl die Ausschnitte Verwandtes/Teilantworten hergaben - eine
 # Erinnerung direkt nach der Frage wirkt stärker als die Regel weit oben.
@@ -305,12 +338,14 @@ def stream_answer_question(
     for turn in history or []:
         messages.append({"role": "user", "content": turn["question"]})
         messages.append({"role": "assistant", "content": turn["answer"]})
+    explicit = _EXPLICIT_LANGUAGE.get(_question_language(question))
     messages.append(
         {
             "role": "user",
             "content": (
                 f"Kontext-Textausschnitte:\n\n{context}\n\nFrage: {question}\n\n"
                 f"{_PARTIAL_ANSWER_REMINDERS[lang]}\n{_LANGUAGE_REMINDERS[lang]}"
+                + (f"\n{explicit}" if explicit else "")
             ),
         }
     )
