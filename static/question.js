@@ -1466,7 +1466,24 @@ questionForm.addEventListener('submit', async (e) => {
   const { message: userMessage, bubble: userBubble } = buildChatMessage('user');
   userBubble.textContent = question;
   chatMessages.appendChild(userMessage);
+  // Mobil: Feld sofort verlassen, damit die Tastatur schließt und iOS das
+  // fokussierte Feld nicht erneut ins Bild scrollt (Idee b5bd431b). Der Scroll
+  // wird nach dem Schließen (visualViewport-resize, sonst nach 400 ms) einmal
+  // wiederholt, weil Layout- und visualViewport zuvor auseinanderliegen.
+  const isMobile = window.matchMedia('(max-width: 640px)').matches;
+  if (isMobile) questionInput.blur();
   scrollQuestionIntoView(userMessage);
+  if (isMobile) {
+    let rescrolled = false;
+    const rescroll = () => {
+      if (rescrolled) return;
+      rescrolled = true;
+      window.visualViewport?.removeEventListener('resize', rescroll);
+      scrollQuestionIntoView(userMessage);
+    };
+    window.visualViewport?.addEventListener('resize', rescroll, { once: true });
+    setTimeout(rescroll, 400);
+  }
 
   questionInput.value = '';
   autosizeQuestionInput();
@@ -1477,7 +1494,7 @@ questionForm.addEventListener('submit', async (e) => {
   // verschwindet hinter der Tastatur). Am Desktop gibt es dieses Problem
   // nicht - dort bleibt das automatische Fokussieren fürs schnelle
   // Nachfragen bestehen.
-  if (!window.matchMedia('(max-width: 640px)').matches) {
+  if (!isMobile) {
     questionInput.focus();
   }
 
