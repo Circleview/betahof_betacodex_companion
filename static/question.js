@@ -927,6 +927,21 @@ function scrollQuestionIntoView(element) {
   element.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
+// Wiederholt den Scroll einmal, sobald die Tastatur geschlossen ist
+// (visualViewport-resize), spätestens nach 400 ms - ohne visualViewport oder
+// Resize-Ereignis hängt nichts. Genau ein Aufruf, egal welcher Auslöser zuerst kommt.
+function rescrollAfterKeyboard(viewport, setTimeoutFn, scrollFn) {
+  let done = false;
+  const run = () => {
+    if (done) return;
+    done = true;
+    viewport?.removeEventListener('resize', run);
+    scrollFn();
+  };
+  viewport?.addEventListener('resize', run, { once: true });
+  setTimeoutFn(run, 400);
+}
+
 // Nur Quellen, die im gerenderten Antworttext tatsächlich per "[n]" zitiert
 // werden, sollen in der Sidebar auftauchen - data.sources enthält auch
 // Top-K-Treffer, die die KI am Ende gar nicht zitiert hat.
@@ -1466,18 +1481,27 @@ questionForm.addEventListener('submit', async (e) => {
   const { message: userMessage, bubble: userBubble } = buildChatMessage('user');
   userBubble.textContent = question;
   chatMessages.appendChild(userMessage);
+  // Touch-Geräte (Handy, iPad, auch quer): Feld sofort verlassen, damit die
+  // Tastatur schließt und iOS das fokussierte Feld nicht erneut ins Bild
+  // scrollt (Idee b5bd431b). Der Scroll wird nach dem Schließen einmal
+  // wiederholt.
+  const isTouch = window.matchMedia('(pointer: coarse)').matches;
+  if (isTouch) questionInput.blur();
   scrollQuestionIntoView(userMessage);
+  if (isTouch) {
+    rescrollAfterKeyboard(window.visualViewport, setTimeout, () => scrollQuestionIntoView(userMessage));
+  }
 
   questionInput.value = '';
   autosizeQuestionInput();
   questionInput.placeholder = t('index.questionPlaceholderContinue');
-  // Auf dem Handy öffnet .focus() die virtuelle Tastatur, deren eigenes
+  // Auf Touch-Geräten öffnet .focus() die virtuelle Tastatur, deren eigenes
   // "gefokussiertes Feld ins Bild scrollen"-Verhalten den obigen Scroll auf
   // die gerade gestellte Frage sofort wieder zunichtemacht (die Frage
-  // verschwindet hinter der Tastatur). Am Desktop gibt es dieses Problem
+  // verschwindet hinter der Tastatur). Am Desktop (Maus) gibt es dieses Problem
   // nicht - dort bleibt das automatische Fokussieren fürs schnelle
   // Nachfragen bestehen.
-  if (!window.matchMedia('(max-width: 640px)').matches) {
+  if (!isTouch) {
     questionInput.focus();
   }
 
