@@ -713,14 +713,18 @@ def extract_pdf(data: bytes) -> dict:
 
     headings = _pdf_outline_headings(reader)
     text_parts = []
+    has_body = False
     for index, page in enumerate(reader.pages):
-        if index in headings:
-            text_parts.append("\n".join(f"# {t}" for t in headings[index]))
         try:
-            text_parts.append(page.extract_text() or "")
+            page_text = page.extract_text() or ""
         except Exception:
             continue
-    text = "\n".join(part for part in text_parts if part).strip()
+        if index in headings:
+            text_parts.append("\n".join(f"# {t}" for t in headings[index]))
+        text_parts.append(page_text)
+        has_body = has_body or bool(page_text.strip())
+    # Scan ohne Text-Ebene: Lesezeichen allein sind kein Text (sonst startet die OCR nie).
+    text = "\n".join(part for part in text_parts if part).strip() if has_body else ""
 
     return {
         "title": title,
@@ -940,9 +944,32 @@ def _read_capped(z: zipfile.ZipFile, name: str, limit: int = _EPUB_MAX_UNCOMPRES
 
 
 def _parse_xml_safe(data: bytes) -> ElementTree.Element:
+    # Nur UTF-8: sonst ließe sich die Sperre per UTF-16 umgehen.
+    if b"\x00" in data or data[:2] in (b"\xff\xfe", b"\xfe\xff"):
+        raise ValueError("nur UTF-8 erlaubt")
+    declared = re.match(rb"\s*<\?xml[^>]*encoding=[\"']([^\"']+)", data[:200])
+    if declared and declared.group(1).lower() not in (b"utf-8", b"utf8"):
+        raise ValueError("nur UTF-8 erlaubt")
     if re.search(rb"<!(DOCTYPE|ENTITY)", data, re.I):
         raise ValueError("DOCTYPE/ENTITY nicht erlaubt")
     return ElementTree.fromstring(data)
+
+
+def _epub_encrypted_paths(z: zipfile.ZipFile, names: set[str]) -> set[str]:
+    """Pfade aus META-INF/encryption.xml, ausgenommen reine Font-Obfuskation."""
+    if "META-INF/encryption.xml" not in names:
+        return set()
+    root = _parse_xml_safe(_read_capped(z, "META-INF/encryption.xml"))
+    fonts = ("http://www.idpf.org/2008/embedding", "http://ns.adobe.com/pdf/enc#RC")
+    result = set()
+    for data_el in root.iter():
+        if data_el.tag.rsplit("}", 1)[-1] != "EncryptedData":
+            continue
+        algo = next((e.get("Algorithm") for e in data_el.iter() if e.tag.rsplit("}", 1)[-1] == "EncryptionMethod"), "")
+        if algo in fonts:
+            continue
+        result.update(posixpath.normpath(e.get("URI", "")) for e in data_el.iter() if e.tag.rsplit("}", 1)[-1] == "CipherReference")
+    return result
 
 
 def extract_epub(data: bytes) -> dict:
@@ -955,12 +982,15 @@ def extract_epub(data: bytes) -> dict:
             if len(infos) > _EPUB_MAX_ENTRIES or sum(i.file_size for i in infos) > _EPUB_MAX_UNCOMPRESSED:
                 return empty
             names = set(z.namelist())
+            encrypted = _epub_encrypted_paths(z, names)
             container = _parse_xml_safe(_read_capped(z, "META-INF/container.xml"))
             opf_path = next(e.get("full-path") for e in container.iter() if e.tag.endswith("}rootfile") or e.tag == "rootfile")
             opf = _parse_xml_safe(_read_capped(z, opf_path))
             ns_local = lambda el: el.tag.rsplit("}", 1)[-1]  # noqa: E731
             hrefs = {el.get("id"): el.get("href") for el in opf.iter() if ns_local(el) == "item"}
             title, authors, parts = "", [], []
+            seen: set[str] = set()
+            budget = _EPUB_MAX_UNCOMPRESSED
             for el in opf.iter():
                 if ns_local(el) == "title" and not title:
                     title = (el.text or "").strip()
@@ -971,9 +1001,14 @@ def extract_epub(data: bytes) -> dict:
                     if not href:
                         continue
                     path = posixpath.normpath(posixpath.join(posixpath.dirname(opf_path), href.split("#")[0]))
-                    if path.startswith("..") or path.startswith("/") or path not in names:
+                    if path.startswith("..") or path.startswith("/") or path not in names or path in seen:
                         continue
-                    parts.append(_xhtml_to_text(_read_capped(z, path).decode("utf-8", errors="replace")))
+                    if path in encrypted:
+                        return empty  # DRM: Inhalt wäre Zeichensalat
+                    seen.add(path)
+                    raw = _read_capped(z, path, budget)
+                    budget -= len(raw)
+                    parts.append(_xhtml_to_text(raw.decode("utf-8", errors="replace")))
         text = "\n".join(p for p in parts if p).strip()
         return {"title": title, "authors": authors, "date": "", "text": text, "extracted": bool(text)}
     except Exception:

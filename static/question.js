@@ -579,6 +579,13 @@ function splitLeadingHeading(text) {
   return m ? { heading: m[1].trim(), body: text.slice(m[0].length) } : { heading: '', body: text };
 }
 
+// Backend-split_sentences hängt die Überschrift an den ersten Satz - das
+// Highlight bekommt daher dieselbe Befreiung wie der Text.
+function prepareExcerpt(text, highlight) {
+  const { heading, body } = splitLeadingHeading(text);
+  return { heading, body, highlight: highlight ? splitLeadingHeading(highlight).body : highlight };
+}
+
 function appendTextWithHighlight(container, text, highlight) {
   const range = highlight ? findHighlightRange(text, highlight) : null;
   if (!range) {
@@ -622,14 +629,14 @@ function buildSourceInfo(s, highlight) {
   // nachdem, WELCHES Vorkommen dieser Quelle im Antworttext aufgeklappt
   // wurde (`highlight`-Parameter), nicht pauschal dasselbe für die ganze
   // Quelle, da derselbe Chunk mehrere unterschiedliche Aussagen belegen kann.
-  const { heading: chapter, body } = splitLeadingHeading(s.text);
+  const { heading: chapter, body, highlight: bodyHighlight } = prepareExcerpt(s.text, highlight);
   if (chapter) {
     const chapterEl = document.createElement('strong');
     chapterEl.className = 'citation-card-chapter';
     chapterEl.textContent = chapter;
     excerpt.appendChild(chapterEl);
   }
-  appendTextWithHighlight(excerpt, body, highlight);
+  appendTextWithHighlight(excerpt, body, bodyHighlight);
   wrapper.appendChild(excerpt);
 
   // Nutzerwunsch (2026-09-23): eine Quelle mit erkanntem defektem Link soll
