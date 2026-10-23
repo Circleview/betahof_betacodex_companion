@@ -1241,3 +1241,146 @@ def test_transcribe_audio_records_stt_cost_per_segment(tmp_path, monkeypatch):
     (entry,) = usage.list_entries()
     assert (entry["channel"], entry["model"], entry["quantity"]) == ("stt", "gpt-4o-transcribe-diarize", 90.0)
     assert entry["cost_usd"] == pytest.approx(0.009)
+
+
+# --- EPUB / PDF-Lesezeichen (Idee 8d1b69dd) ---------------------------------
+
+import io
+import zipfile
+
+from pypdf import PdfWriter
+
+from app.extraction import extract_epub
+
+_CONTAINER = (
+    '<?xml version="1.0"?><container xmlns="urn:oasis:names:tc:opendocument:xmlns:container" version="1.0">'
+    '<rootfiles><rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/></rootfiles></container>'
+)
+
+
+def _opf(spine_hrefs, extra_head=""):
+    items = "".join(f'<item id="c{i}" href="{h}" media-type="application/xhtml+xml"/>' for i, h in enumerate(spine_hrefs))
+    refs = "".join(f'<itemref idref="c{i}"/>' for i in range(len(spine_hrefs)))
+    return (
+        f'{extra_head}<package xmlns="http://www.idpf.org/2007/opf" version="3.0">'
+        '<metadata xmlns:dc="http://purl.org/dc/elements/1.1/">'
+        "<dc:title>Das Buch</dc:title><dc:creator>Erika Muster</dc:creator></metadata>"
+        f"<manifest>{items}</manifest><spine>{refs}</spine></package>"
+    )
+
+
+def _xhtml(body, head=""):
+    return f'<html xmlns="http://www.w3.org/1999/xhtml"><head><title>t</title>{head}</head><body>{body}</body></html>'
+
+
+def _make_epub(chapters, opf=None, extra_files=None):
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as z:
+        z.writestr("META-INF/container.xml", _CONTAINER)
+        z.writestr("OEBPS/content.opf", opf or _opf(list(chapters)))
+        for name, body in chapters.items():
+            z.writestr(f"OEBPS/{name}", body)
+        for name, body in (extra_files or {}).items():
+            z.writestr(name, body)
+    return buf.getvalue()
+
+
+def test_extract_epub_chapters_in_spine_order_with_headings():
+    # Spine-Reihenfolge b vor a, abweichend von der Dateireihenfolge im Zip.
+    chapters = {
+        "a.xhtml": _xhtml("<h1>Zweites Kapitel</h1><p>Text zwei.</p>"),
+        "b.xhtml": _xhtml("<h1>Erstes Kapitel</h1><p>Text eins.</p><h3>Unterpunkt</h3><p>Mehr.</p>"),
+    }
+    data = _make_epub(chapters, opf=_opf(["b.xhtml", "a.xhtml"]))
+    result = extract_epub(data)
+    assert result["extracted"] is True
+    assert result["title"] == "Das Buch"
+    assert result["authors"] == ["Erika Muster"]
+    text = result["text"]
+    assert text.index("# Erstes Kapitel") < text.index("Text eins.") < text.index("### Unterpunkt") < text.index("# Zweites Kapitel")
+    assert "Text zwei." in text
+
+
+def test_extract_epub_without_headings_is_plain_text():
+    data = _make_epub({"a.xhtml": _xhtml("<p>Nur Fließtext.</p><p>Zweiter Absatz.</p>")})
+    result = extract_epub(data)
+    assert result["extracted"] is True
+    assert "#" not in result["text"]
+    assert "Nur Fließtext." in result["text"] and "Zweiter Absatz." in result["text"]
+
+
+def test_extract_epub_skips_script_and_style():
+    body = "<p>Sichtbar.</p><script>var geheim = 1;</script><style>.x{color:red}</style>"
+    data = _make_epub({"a.xhtml": _xhtml(body, head="<style>h1{}</style>")})
+    text = extract_epub(data)["text"]
+    assert "Sichtbar." in text
+    assert "geheim" not in text and "color" not in text
+
+
+@pytest.mark.parametrize("data", [b"", b"das ist kein zip", b"PK\x03\x04kaputt"])
+def test_extract_epub_broken_input_returns_not_extracted(data):
+    assert extract_epub(data)["extracted"] is False
+
+
+def test_extract_epub_rejects_too_many_entries():
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as z:
+        for i in range(5001):
+            z.writestr(f"f{i}.txt", "x")
+    assert extract_epub(buf.getvalue())["extracted"] is False
+
+
+def test_extract_epub_rejects_oversized_archive():
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+        z.writestr("META-INF/container.xml", _CONTAINER)
+        z.writestr("OEBPS/content.opf", _opf(["a.xhtml"]))
+        z.writestr("OEBPS/a.xhtml", _xhtml("<p>hallo</p>"))
+        z.writestr("big.bin", b"\0" * (101 * 1024 * 1024))  # komprimiert winzig
+    assert extract_epub(buf.getvalue())["extracted"] is False
+
+
+def test_extract_epub_rejects_entity_in_opf():
+    evil = '<?xml version="1.0"?><!DOCTYPE package [<!ENTITY x "boom">]>'
+    data = _make_epub({"a.xhtml": _xhtml("<p>hallo</p>")}, opf=_opf(["a.xhtml"], extra_head=evil))
+    assert extract_epub(data)["extracted"] is False
+
+
+def test_extract_epub_ignores_href_outside_archive():
+    data = _make_epub(
+        {"a.xhtml": _xhtml("<p>drin</p>")},
+        opf=_opf(["../../geheim.xhtml"]),
+        extra_files={"geheim.xhtml": _xhtml("<p>draussen</p>")},
+    )
+    result = extract_epub(data)
+    assert result["extracted"] is False
+    assert "draussen" not in result["text"]
+
+
+def _pdf_with_outline(outline):
+    w = PdfWriter()
+    for _ in range(4):
+        w.add_blank_page(200, 200)
+    for title, page in outline:
+        w.add_outline_item(title, page)
+    buf = io.BytesIO()
+    w.write(buf)
+    return buf.getvalue()
+
+
+def _page_texts_patch(texts):
+    return patch("pypdf.PageObject.extract_text", side_effect=texts)
+
+
+def test_extract_pdf_outline_adds_heading_before_right_page():
+    data = _pdf_with_outline([("Kapitel Eins", 0), ("Kapitel Zwei", 2)])
+    with _page_texts_patch(["S1", "S2", "S3", "S4"]):
+        text = extract_pdf(data)["text"]
+    assert text == "# Kapitel Eins\nS1\nS2\n# Kapitel Zwei\nS3\nS4"
+
+
+def test_extract_pdf_without_outline_is_unchanged():
+    data = _pdf_with_outline([])
+    with _page_texts_patch(["S1", "S2", "S3", "S4"]):
+        text = extract_pdf(data)["text"]
+    assert text == "S1\nS2\nS3\nS4"
