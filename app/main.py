@@ -331,6 +331,7 @@ async def enforce_early_access(request: Request, call_next):
 # erfasst - die werden beim Lesen mitgezählt.
 REQUEST_BODY_LIMITS = {
     "/api/extract-pdf-upload": 200 * 1024 * 1024,
+    "/api/extract-epub-upload": 200 * 1024 * 1024,
     "/api/extract-audio-upload": 200 * 1024 * 1024,
     "/api/sources": 20 * 1024 * 1024,  # Volltexte beim Anlegen/Bearbeiten
 }
@@ -1698,6 +1699,7 @@ def _start_background_workers() -> None:
     ).start()
     _recover_interrupted_processing_jobs()
     threading.Thread(target=_warm_up_local_models, daemon=True).start()
+    threading.Thread(target=_startup_reindex, daemon=True).start()
 
 
 # Aufbewahrungsfrist des Fragen-Logs (Nutzerwunsch): Einträge werden nach zwei
@@ -1711,28 +1713,88 @@ def _purge_expired_question_log_entries_once() -> None:
     question_log.purge_older_than(QUESTION_LOG_RETENTION_DAYS)
 
 
-def _reindex_all_sources() -> None:
-    """Chunked/embedded jede vorhandene Quelle neu (z.B. nach einer
-    Änderung an `chunking.chunk_text()`) - `sources.json` selbst bleibt
-    unangetastet, nur der abgeleitete Chroma-Index wird ersetzt. Pro Quelle
-    gekapselt, damit ein einzelner defekter Datensatz nicht den gesamten
-    Lauf abbricht."""
-    sources = _load_sources()
-    for source_id, data in sources.items():
-        try:
-            source = SourceIn(
-                title=data.get("title", ""),
-                authors=data.get("authors") or [],
-                date=data.get("date"),
-                url=data.get("url"),
-                listen_url=data.get("listen_url"),
-                text=data.get("text", ""),
-            )
-            chunks, chunk_embeddings = _prepare_chunks(source, i18n.DEFAULT_LANG)
-        except Exception:
+def _reindex_one_source(source_id: str, data: dict, only_changed: bool) -> bool:
+    """Gibt True zurück, wenn neu eingebettet wurde."""
+    text = data.get("text", "")
+    source = SourceIn(
+        title=data.get("title", ""),
+        authors=data.get("authors") or [],
+        date=data.get("date"),
+        url=data.get("url"),
+        listen_url=data.get("listen_url"),
+        text=text,
+    )
+    new_chunks = chunking.chunk_text(text.strip()) if text.strip() else []
+    if not new_chunks:
+        return False
+    if only_changed:
+        existing = vectorstore.get_source_chunk_texts(source_id)
+        if existing and existing == new_chunks:
+            return False
+    chunk_embeddings = embeddings.embed_passages(new_chunks)  # langsam, ohne Sperre
+    with _sources_write_lock:
+        sources = _load_sources()
+        current = sources.get(source_id)
+        if current is None or current.get("deleted_at") or current.get("text", "") != text:
+            return False
+        with _vectorstore_write_lock:
+            vectorstore.delete_source_chunks(source_id)
+            current["chunk_count"] = _store_chunks(source_id, source, new_chunks, chunk_embeddings)
+        _save_sources(sources)
+    return True
+
+
+def _reindex_all_sources(only_changed: bool = False) -> int:
+    """Chunked/embedded Quellen neu (z.B. nach einer Änderung an
+    `chunking.chunk_text()`) - `sources.json` bleibt bis auf `chunk_count`
+    unangetastet. Mit only_changed werden Quellen übersprungen, deren
+    Chunks bereits dem neuen Zuschnitt entsprechen (0 Chunks = geändert).
+    Pro Quelle gekapselt, damit ein defekter Datensatz nicht den Lauf
+    abbricht. Liefert die Zahl neu indizierter Quellen."""
+    count = 0
+    for source_id, data in _load_sources().items():
+        if data.get("deleted_at"):
             continue
-        vectorstore.delete_source_chunks(source_id)
-        _store_chunks(source_id, source, chunks, chunk_embeddings)
+        try:
+            count += _reindex_one_source(source_id, data, only_changed)
+        except Exception:
+            logging.getLogger(__name__).exception("Reindex von Quelle %s fehlgeschlagen", source_id)
+    return count
+
+
+# Wartezeit vor dem Start-Reindex: Blue-Green-Deploy schaltet erst um und
+# stoppt die alte Farbe - beide Instanzen sollen nicht gleichzeitig
+# einbetten. An die Umschaltzeit von deploy.sh (liegt nur auf dem Server)
+# anpassen.
+STARTUP_REINDEX_DELAY_SECONDS = 120
+
+
+def _startup_reindex(delay: float = STARTUP_REINDEX_DELAY_SECONDS) -> None:
+    """Zerlegt beim Start Quellen neu, deren Chunks nicht zum aktuellen
+    Chunking passen. Idempotent; wer die Sperre nicht bekommt, lässt aus."""
+    import fcntl
+
+    log = logging.getLogger(__name__)
+    time.sleep(delay)
+    try:
+        with open(DATA_DIR / "reindex.lock", "w") as lock_file:
+            try:
+                fcntl.flock(lock_file, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except OSError:
+                log.info("Start-Reindex: Sperre gehalten, ausgelassen")
+                return
+            todo = sum(
+                1
+                for sid, d in _load_sources().items()
+                if not d.get("deleted_at")
+                and d.get("text", "").strip()
+                and vectorstore.get_source_chunk_texts(sid) != chunking.chunk_text(d["text"].strip())
+            )
+            log.info("Start-Reindex: %d Quellen neu zu indizieren", todo)
+            if todo:
+                _reindex_all_sources(only_changed=True)
+    except Exception:
+        log.exception("Start-Reindex fehlgeschlagen")
 
 
 @app.post("/api/admin/reindex-sources", response_model=MessageOut)
@@ -3662,6 +3724,16 @@ def extract_pdf_upload(
     return ExtractedUpload(**result, upload_id=upload_id)
 
 
+@app.post("/api/extract-epub-upload", response_model=ExtractedUpload)
+def extract_epub_upload(
+    file: UploadFile = File(...),
+    _user: str = Depends(require_role(users.QUELLEN_PFLEGER)),
+):
+    # Kein Staging: anders als PDF wird die EPUB-Datei nicht aufbewahrt
+    # (upload_id bleibt None) - nur der extrahierte Text wird übernommen.
+    return ExtractedUpload(**extraction.extract_epub(file.file.read()), upload_id=None)
+
+
 @app.post("/api/extract-audio-upload", response_model=ExtractedUpload)
 def extract_audio_upload(
     file: UploadFile = File(...),
@@ -4149,6 +4221,21 @@ def _drop_no_answer_lead(text: str, final: bool) -> tuple[str, bool]:
     return text, False
 
 
+def _redact_restricted_refs(refs, sources: dict, can_view_full_text: bool) -> list:
+    """Geschützte (restricted) Quellen verbergen nicht nur den Volltext,
+    sondern auch Chunk-Auszüge: für Nicht-Pfleger:innen bleibt nur die
+    markierte Belegstelle (leer, solange noch keine Hervorhebung feststeht).
+    Das Modell bekommt intern weiter den vollen Chunk."""
+    if can_view_full_text:
+        return list(refs)
+    out = []
+    for ref in refs:
+        if sources.get(ref.source_id, {}).get("restricted"):
+            ref = ref.model_copy(update={"text": " ".join(ref.highlighted_texts)})
+        out.append(ref)
+    return out
+
+
 def _ask_event_stream(
     question_text,
     llm_chunks,
@@ -4161,6 +4248,7 @@ def _ask_event_stream(
     should_log_question_events,
     first_question_log_id,
     usage=None,
+    can_view_full_text=True,
 ):
     """Generator für die NDJSON-Stream-Antwort von /api/ask: ein frühes
     "sources"-Event (Titel/Autor:in/Link, siehe unten), dann ein "delta"-
@@ -4176,8 +4264,12 @@ def _ask_event_stream(
     # statt bis zum "done"-Event zu warten, dessen Hervorhebungs-Berechnung
     # spürbar länger dauern kann. highlighted_texts ist hier noch leer und
     # wird unten im "done"-Event für dieselben Quellen nachgereicht.
+    sources_by_id = _load_sources()
     yield json.dumps(
-        {"type": "sources", "sources": [chunk_ref.model_dump() for chunk_ref in chunk_refs]}
+        {
+            "type": "sources",
+            "sources": [r.model_dump() for r in _redact_restricted_refs(chunk_refs, sources_by_id, can_view_full_text)],
+        }
     ) + "\n"
 
     buffer = ""
@@ -4311,7 +4403,7 @@ def _ask_event_stream(
     yield json.dumps(
         {
             "type": "done",
-            "sources": [chunk_ref.model_dump() for chunk_ref in chunk_refs],
+            "sources": [r.model_dump() for r in _redact_restricted_refs(chunk_refs, sources_by_id, can_view_full_text)],
         }
     ) + "\n"
 
@@ -4540,6 +4632,7 @@ def ask(question: QuestionIn, request: Request, x_lang: str = Header(default=i18
             should_log_question_events,
             first_question_log_id,
             {"channel": "ask", "email": _get_current_user_email(request)},
+            users.has_role(_get_current_user_email(request), users.QUELLEN_PFLEGER),
         ),
         media_type="application/x-ndjson",
     )

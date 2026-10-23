@@ -8651,7 +8651,7 @@ def _restricted_ask_setup(client, monkeypatch):
     monkeypatch.setattr(
         llm,
         "stream_answer_question",
-        lambda *a, **k: iter(["Antwort [1].\n---QUOTES---\n[1]: Der geheime Belegsatz steht hier.\n"]),
+        lambda *a, **k: iter(["Antwort [1].\n---QUOTES---\n[1]: \"Der geheime Belegsatz steht hier.\"\n"]),
     )
 
 
