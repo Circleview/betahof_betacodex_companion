@@ -4464,3 +4464,20 @@ def test_import_file_labels_mention_epub(lang):
     strings = json.loads((STATIC_DIR / "i18n" / f"{lang}.json").read_text())
     assert "EPUB" in strings["import.fileFieldLabel"]
     assert "EPUB" in strings["import.typeFileTitle"]
+
+
+def test_prepare_excerpt_strips_heading_from_highlight_too():
+    # Backend-split_sentences hängt die Überschrift an den ersten Satz.
+    js_source = (STATIC_DIR / "question.js").read_text()
+    funcs = [re.search(rf"function {n}.*?\n\}}", js_source, re.S) for n in ("splitLeadingHeading", "findHighlightRange", "prepareExcerpt")]
+    assert all(funcs), "prepareExcerpt/splitLeadingHeading/findHighlightRange fehlen in question.js"
+    text = "## Kapitel\nErster Satz. Zweiter Satz."
+    highlight = "## Kapitel\nErster Satz."
+    script = (
+        "\n".join(f.group(0) for f in funcs)
+        + f"\nconst r = prepareExcerpt({json.dumps(text)}, {json.dumps(highlight)});"
+        + "\nconsole.log(JSON.stringify({heading: r.heading, range: findHighlightRange(r.body, r.highlight), body: r.body}));"
+    )
+    out = _run_node(script)
+    assert out["heading"] == "Kapitel"
+    assert out["range"] == [0, len("Erster Satz.")]

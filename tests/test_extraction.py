@@ -1384,3 +1384,57 @@ def test_extract_pdf_without_outline_is_unchanged():
     with _page_texts_patch(["S1", "S2", "S3", "S4"]):
         text = extract_pdf(data)["text"]
     assert text == "S1\nS2\nS3\nS4"
+
+
+# --- Fehler-Check-Befunde (F1, F4, S2, S3) -----------------------------------
+
+def test_extract_pdf_scan_with_outline_is_not_extracted():
+    # Scan ohne Text-Ebene, aber mit Lesezeichen: darf nicht als extrahiert
+    # gelten, sonst startet die OCR nie.
+    data = _pdf_with_outline([("Kapitel Eins", 0), ("Kapitel Zwei", 2)])
+    with _page_texts_patch(["", "", "", ""]):
+        result = extract_pdf(data)
+    assert result["extracted"] is False
+    assert result["text"] == ""
+
+
+def test_extract_epub_drm_encrypted_spine_is_not_extracted():
+    enc = (
+        '<encryption xmlns="urn:oasis:names:tc:opendocument:xmlns:container" '
+        'xmlns:enc="http://www.w3.org/2001/04/xmlenc#"><enc:EncryptedData>'
+        '<enc:EncryptionMethod Algorithm="http://www.w3.org/2001/04/xmlenc#aes128-cbc"/>'
+        '<enc:CipherData><enc:CipherReference URI="OEBPS/a.xhtml"/></enc:CipherData>'
+        "</enc:EncryptedData></encryption>"
+    )
+    data = _make_epub({"a.xhtml": _xhtml("<p>Kauderwelsch</p>")}, extra_files={"META-INF/encryption.xml": enc})
+    assert extract_epub(data)["extracted"] is False
+
+
+def test_extract_epub_font_obfuscation_is_fine():
+    enc = (
+        '<encryption xmlns="urn:oasis:names:tc:opendocument:xmlns:container" '
+        'xmlns:enc="http://www.w3.org/2001/04/xmlenc#"><enc:EncryptedData>'
+        '<enc:EncryptionMethod Algorithm="http://www.idpf.org/2008/embedding"/>'
+        '<enc:CipherData><enc:CipherReference URI="OEBPS/font.otf"/></enc:CipherData>'
+        "</enc:EncryptedData></encryption>"
+    )
+    data = _make_epub({"a.xhtml": _xhtml("<p>Lesbar.</p>")}, extra_files={"META-INF/encryption.xml": enc})
+    assert extract_epub(data)["extracted"] is True
+
+
+def test_extract_epub_duplicate_spine_entries_read_once():
+    chapters = {"a.xhtml": _xhtml("<p>EinzigartigerSatz</p>")}
+    data = _make_epub(chapters, opf=_opf(["a.xhtml"] * 50))
+    text = extract_epub(data)["text"]
+    assert text.count("EinzigartigerSatz") == 1
+
+
+@pytest.mark.parametrize("encoding", ["utf-16", "utf-16-le"])
+def test_extract_epub_rejects_utf16_opf_with_entity(encoding):
+    opf = _opf(["a.xhtml"], extra_head='<!DOCTYPE package [<!ENTITY x "boom">]>')
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as z:
+        z.writestr("META-INF/container.xml", _CONTAINER)
+        z.writestr("OEBPS/content.opf", opf.encode(encoding))
+        z.writestr("OEBPS/a.xhtml", _xhtml("<p>hallo</p>"))
+    assert extract_epub(buf.getvalue())["extracted"] is False
