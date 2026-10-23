@@ -1,5 +1,9 @@
 import base64
 import io
+import posixpath
+import zipfile
+from html.parser import HTMLParser
+from xml.etree import ElementTree
 import ipaddress
 import re
 import shutil
@@ -676,6 +680,25 @@ def _parse_pdf_date(raw) -> str:
     return f"{match.group(1)}-{match.group(2)}-{match.group(3)}"
 
 
+def _pdf_outline_headings(reader) -> dict[int, list[str]]:
+    """Lesezeichen (max. 2 Ebenen) als {Seitenindex: [Titel]}. Fehler -> leer.
+    # ponytail: Kapitel beginnt am Seitenanfang, nicht mitten auf der Seite."""
+    result: dict[int, list[str]] = {}
+    try:
+        for item in reader.outline:
+            entries = [item] if not isinstance(item, list) else []
+            if isinstance(item, list):
+                entries = [sub for sub in item if not isinstance(sub, list)]
+            for entry in entries:
+                title = (entry.title or "").strip()
+                if title:
+                    page = reader.get_destination_page_number(entry)
+                    result.setdefault(page, []).append(title)
+    except Exception:
+        return {}
+    return result
+
+
 def extract_pdf(data: bytes) -> dict:
     try:
         reader = PdfReader(io.BytesIO(data))
@@ -688,8 +711,11 @@ def extract_pdf(data: bytes) -> dict:
     authors = _split_authors(author_raw)
     date = _parse_pdf_date(meta.get("/CreationDate")) if meta else ""
 
+    headings = _pdf_outline_headings(reader)
     text_parts = []
-    for page in reader.pages:
+    for index, page in enumerate(reader.pages):
+        if index in headings:
+            text_parts.append("\n".join(f"# {t}" for t in headings[index]))
         try:
             text_parts.append(page.extract_text() or "")
         except Exception:
@@ -865,3 +891,90 @@ def extract_from_url(url: str) -> dict:
         "text": text,
         "extracted": bool(text),
     }
+
+
+
+_EPUB_MAX_UNCOMPRESSED = 100 * 1024 * 1024
+_EPUB_MAX_ENTRIES = 5000
+_EPUB_BLOCK_TAGS = {"p", "div", "br", "li", "tr", "blockquote", "section", "h1", "h2", "h3", "h4", "h5", "h6"}
+
+
+class _XhtmlToText(HTMLParser):
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.parts: list[str] = []
+        self._skip = 0
+
+    def handle_starttag(self, tag, attrs):
+        if tag in ("script", "style", "head"):
+            self._skip += 1
+        elif tag in _EPUB_BLOCK_TAGS:
+            self.parts.append("\n")
+            if tag in ("h1", "h2", "h3"):
+                self.parts.append("#" * int(tag[1]) + " ")
+
+    def handle_endtag(self, tag):
+        if tag in ("script", "style", "head"):
+            self._skip = max(0, self._skip - 1)
+        elif tag in _EPUB_BLOCK_TAGS:
+            self.parts.append("\n")
+
+    def handle_data(self, data):
+        if not self._skip:
+            self.parts.append(data)
+
+
+def _xhtml_to_text(markup: str) -> str:
+    parser = _XhtmlToText()
+    parser.feed(markup)
+    lines = (" ".join(line.split()) for line in "".join(parser.parts).split("\n"))
+    return "\n".join(line for line in lines if line)
+
+
+def _read_capped(z: zipfile.ZipFile, name: str, limit: int = _EPUB_MAX_UNCOMPRESSED) -> bytes:
+    with z.open(name) as f:
+        data = f.read(limit + 1)
+    if len(data) > limit:
+        raise ValueError("zu groß")
+    return data
+
+
+def _parse_xml_safe(data: bytes) -> ElementTree.Element:
+    if re.search(rb"<!(DOCTYPE|ENTITY)", data, re.I):
+        raise ValueError("DOCTYPE/ENTITY nicht erlaubt")
+    return ElementTree.fromstring(data)
+
+
+def extract_epub(data: bytes) -> dict:
+    """Spine-Reihenfolge, h1-h3 als #-###. Jeder Fehler -> extracted False.
+    # ponytail: NCX/nav werden nicht ausgewertet."""
+    empty = {"title": "", "authors": [], "date": "", "text": "", "extracted": False}
+    try:
+        with zipfile.ZipFile(io.BytesIO(data)) as z:
+            infos = z.infolist()
+            if len(infos) > _EPUB_MAX_ENTRIES or sum(i.file_size for i in infos) > _EPUB_MAX_UNCOMPRESSED:
+                return empty
+            names = set(z.namelist())
+            container = _parse_xml_safe(_read_capped(z, "META-INF/container.xml"))
+            opf_path = next(e.get("full-path") for e in container.iter() if e.tag.endswith("}rootfile") or e.tag == "rootfile")
+            opf = _parse_xml_safe(_read_capped(z, opf_path))
+            ns_local = lambda el: el.tag.rsplit("}", 1)[-1]  # noqa: E731
+            hrefs = {el.get("id"): el.get("href") for el in opf.iter() if ns_local(el) == "item"}
+            title, authors, parts = "", [], []
+            for el in opf.iter():
+                if ns_local(el) == "title" and not title:
+                    title = (el.text or "").strip()
+                elif ns_local(el) == "creator" and (el.text or "").strip():
+                    authors.append(el.text.strip())
+                elif ns_local(el) == "itemref":
+                    href = hrefs.get(el.get("idref"))
+                    if not href:
+                        continue
+                    path = posixpath.normpath(posixpath.join(posixpath.dirname(opf_path), href.split("#")[0]))
+                    if path.startswith("..") or path.startswith("/") or path not in names:
+                        continue
+                    parts.append(_xhtml_to_text(_read_capped(z, path).decode("utf-8", errors="replace")))
+        text = "\n".join(p for p in parts if p).strip()
+        return {"title": title, "authors": authors, "date": "", "text": text, "extracted": bool(text)}
+    except Exception:
+        return empty
