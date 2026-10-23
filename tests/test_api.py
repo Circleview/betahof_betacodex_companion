@@ -8463,3 +8463,219 @@ def test_costs_history_admin_sees_all(anon_client):
 
     history = anon_client.get("/api/costs/history").json()
     assert history[-1]["calls"] == 2 and history[-1]["by_channel"]["ask"] > 0
+
+
+# --- Idee 8d1b69dd: EPUB-Upload, Reindex, Restricted-Schutz ------------------
+
+
+def _fake_epub(monkeypatch, text="# Kapitel\n\nInhalt."):
+    monkeypatch.setattr(
+        extraction,
+        "extract_epub",
+        lambda data: {"title": "Buch", "authors": ["Autor"], "date": "2020", "text": text, "extracted": True},
+    )
+
+
+def test_extract_epub_upload_returns_fields_without_staging(client, monkeypatch):
+    _fake_epub(monkeypatch)
+    response = client.post(
+        "/api/extract-epub-upload",
+        files={"file": ("b.epub", b"PK fake", "application/epub+zip")},
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["title"] == "Buch" and data["text"].startswith("# Kapitel")
+    assert data["extracted"] is True
+    assert data["upload_id"] is None
+    assert not (main_module.PDF_UPLOAD_STAGING_DIR).exists()
+
+
+def test_extract_epub_upload_anonymous_and_without_role_forbidden(client, anon_client, monkeypatch):
+    _fake_epub(monkeypatch)
+    files = {"file": ("b.epub", b"PK fake", "application/epub+zip")}
+    assert anon_client.post("/api/extract-epub-upload", files=files).status_code == 403
+    other = TestClient(main_module.app)
+    login(other, "ohne.rolle@test.local")
+    assert other.post("/api/extract-epub-upload", files=files).status_code == 403
+
+
+def test_extract_epub_upload_has_large_body_limit(client, monkeypatch):
+    _fake_epub(monkeypatch)
+    assert main_module.REQUEST_BODY_LIMITS["/api/extract-epub-upload"] == 200 * 1024 * 1024
+    big = b"x" * (main_module.REQUEST_BODY_DEFAULT_LIMIT + 1)
+    # über Standardgrenze, unter Upload-Grenze: nicht 413
+    r = client.post("/api/extract-epub-upload", files={"file": ("b.epub", big)})
+    assert r.status_code == 200
+    # über der Upload-Grenze: 413
+    r = client.post(
+        "/api/extract-epub-upload",
+        content=b"x",
+        headers={"Content-Length": str(200 * 1024 * 1024 + 1), "Content-Type": "multipart/form-data; boundary=x"},
+    )
+    assert r.status_code == 413
+
+
+@pytest.fixture
+def embed_calls(monkeypatch):
+    calls = []
+
+    def fake(texts):
+        calls.append(list(texts))
+        return [[1.0, 0.0] for _ in texts]
+
+    monkeypatch.setattr(embeddings, "embed_passages", fake)
+    return calls
+
+
+def _seed_sources(client, n=2):
+    ids = []
+    for i in range(n):
+        r = client.post("/api/sources", json={"title": f"Q{i}", "text": f"# Kapitel {i}\n\nText {i}."})
+        ids.append(r.json()["id"])
+    return ids
+
+
+def test_reindex_only_changed_skips_unchanged_and_embeds_zero_chunk_sources(client, embed_calls):
+    ids = _seed_sources(client, 2)
+    # Quelle 0: Chunks stimmen; Quelle 1: Index veraltet (anderer Chunk-Text)
+    vectorstore.delete_source_chunks(ids[1])
+    vectorstore.add_chunks([f"{ids[1]}::0"], ["alter Zuschnitt"], [[1.0, 0.0]],
+                           [{"source_id": ids[1], "position": 0, "title": "Q1", "date": "", "url": "", "listen_url": ""}])
+    embed_calls.clear()
+
+    main_module._reindex_all_sources(only_changed=True)
+
+    assert len(embed_calls) == 1  # nur Quelle 1
+    assert vectorstore.get_source_chunk_texts(ids[1]) == ["# Kapitel 1\n\nText 1."]
+    # zweiter Lauf: nichts mehr zu tun
+    embed_calls.clear()
+    main_module._reindex_all_sources(only_changed=True)
+    assert embed_calls == []
+
+
+def test_reindex_only_changed_treats_zero_chunks_as_changed(client, embed_calls):
+    ids = _seed_sources(client, 1)
+    vectorstore.delete_source_chunks(ids[0])
+    embed_calls.clear()
+    main_module._reindex_all_sources(only_changed=True)
+    assert len(embed_calls) == 1
+    assert vectorstore.get_source_chunk_texts(ids[0])
+
+
+def test_reindex_updates_chunk_count(client, embed_calls):
+    ids = _seed_sources(client, 1)
+    sources = main_module._load_sources()
+    sources[ids[0]]["chunk_count"] = 99
+    main_module._save_sources(sources)
+    main_module._reindex_all_sources()
+    assert main_module._load_sources()[ids[0]]["chunk_count"] == 1
+
+
+def test_reindex_does_not_overwrite_text_changed_meanwhile(client, monkeypatch):
+    ids = _seed_sources(client, 1)
+
+    def embed_and_edit(texts):
+        sources = main_module._load_sources()
+        sources[ids[0]]["text"] = "# Neu\n\nWährend des Laufs geändert."
+        main_module._save_sources(sources)
+        return [[1.0, 0.0] for _ in texts]
+
+    monkeypatch.setattr(embeddings, "embed_passages", embed_and_edit)
+    before = vectorstore.get_source_chunk_texts(ids[0])
+    main_module._reindex_all_sources()
+    assert vectorstore.get_source_chunk_texts(ids[0]) == before  # nicht überschrieben
+    assert main_module._load_sources()[ids[0]]["text"].startswith("# Neu")
+
+
+def test_reindex_skips_soft_deleted_source(client, embed_calls):
+    ids = _seed_sources(client, 1)
+    sources = main_module._load_sources()
+    sources[ids[0]]["deleted_at"] = "2026-01-01T00:00:00+00:00"
+    main_module._save_sources(sources)
+    vectorstore.delete_source_chunks(ids[0])
+    embed_calls.clear()
+    main_module._reindex_all_sources(only_changed=True)
+    assert embed_calls == []
+    assert vectorstore.get_source_chunk_texts(ids[0]) == []
+
+
+def test_reindex_continues_after_broken_source(client, monkeypatch):
+    ids = _seed_sources(client, 2)
+    real = embeddings.embed_passages
+    state = {"n": 0}
+
+    def flaky(texts):
+        state["n"] += 1
+        if state["n"] == 1:
+            raise RuntimeError("kaputt")
+        return real(texts)
+
+    monkeypatch.setattr(embeddings, "embed_passages", flaky)
+    main_module._reindex_all_sources()
+    assert state["n"] == 2  # zweite Quelle wurde trotzdem versucht
+
+
+def test_startup_reindex_runs_once_and_skips_when_lock_held(client, embed_calls, monkeypatch, tmp_path):
+    import fcntl
+
+    ids = _seed_sources(client, 1)
+    vectorstore.delete_source_chunks(ids[0])
+    embed_calls.clear()
+
+    held = open(tmp_path / "reindex.lock", "w")
+    fcntl.flock(held, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    main_module._startup_reindex(delay=0)
+    assert embed_calls == []  # fremde Sperre -> ausgelassen
+    held.close()
+
+    main_module._startup_reindex(delay=0)
+    assert len(embed_calls) == 1
+    main_module._startup_reindex(delay=0)
+    assert len(embed_calls) == 1  # idempotent
+
+
+def test_highlight_finds_quote_in_follow_up_chunk_with_heading_prefix():
+    doc = "# Kapitel Eins\nTeams entscheiden selbst, wie sie arbeiten."
+    assert main_module._find_quote_span(doc, "Teams entscheiden selbst") == "Teams entscheiden selbst"
+
+
+def _restricted_ask_setup(client, monkeypatch):
+    client.post(
+        "/api/sources",
+        json={
+            "title": "Buch",
+            "text": "Erster Satz des Buchs. Der geheime Belegsatz steht hier. Weiterer Buchtext folgt.",
+            "restricted": True,
+        },
+    )
+    monkeypatch.setattr(
+        llm,
+        "stream_answer_question",
+        lambda *a, **k: iter(["Antwort [1].\n---QUOTES---\n[1]: Der geheime Belegsatz steht hier.\n"]),
+    )
+
+
+def test_restricted_source_ask_truncates_excerpt_for_anonymous(client, anon_client, monkeypatch):
+    _restricted_ask_setup(client, monkeypatch)
+    response = anon_client.post("/api/ask", json={"question": "Frage?"})
+    events = [json.loads(l) for l in response.text.split("\n") if l.strip()]
+    early = next(e for e in events if e["type"] == "sources")["sources"][0]
+    done = next(e for e in events if e["type"] == "done")["sources"][0]
+    assert "Erster Satz" not in early["text"] and "Weiterer" not in early["text"]
+    assert "Erster Satz" not in done["text"] and "Weiterer" not in done["text"]
+    assert done["text"] == "Der geheime Belegsatz steht hier."
+    assert done["highlighted_texts"] == ["Der geheime Belegsatz steht hier."]
+
+
+def test_restricted_source_ask_full_chunk_for_pfleger(client, monkeypatch):
+    _restricted_ask_setup(client, monkeypatch)
+    response = client.post("/api/ask", json={"question": "Frage?"})
+    done = ask_result(response)["sources"][0]
+    assert "Erster Satz" in done["text"] and "Weiterer Buchtext" in done["text"]
+
+
+def test_unrestricted_source_ask_keeps_full_chunk_for_anonymous(client, anon_client, monkeypatch):
+    client.post("/api/sources", json={"title": "Offen", "text": "Erster Satz. Zweiter Satz. Dritter Satz."})
+    response = anon_client.post("/api/ask", json={"question": "Frage?"})
+    done = ask_result(response)["sources"][0]
+    assert done["text"] == "Erster Satz. Zweiter Satz. Dritter Satz."

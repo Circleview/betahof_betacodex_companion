@@ -263,3 +263,28 @@ def test_ask_question_rejects_empty_question(mcp_client, fake_ask):
 def test_format_answer_makes_relative_links_absolute():
     text = mcp_server._format_answer("Siehe [Quellenübersicht](/import.html).", [], "de")
     assert "(https://chat.betacodex.org/import.html)" in text
+
+
+def test_ask_question_truncates_restricted_excerpt_for_non_pfleger(mcp_client, monkeypatch):
+    from app.models import ChunkRef
+
+    full = "Erster Satz des Buchs. Der geheime Belegsatz. Weiterer Buchtext."
+    ref = ChunkRef(chunk_id="c1", source_id="s1", title="Buch", authors=[], date=None, url=None, position=0, text=full)
+    monkeypatch.setattr(main_module, "_ask_context", lambda *a, **k: ([], [ref], [], [0.1]))
+    monkeypatch.setattr(main_module, "_load_sources", lambda: {"s1": {"restricted": True}})
+    monkeypatch.setattr(main_module, "_compute_occurrence_highlights", lambda answer, docs, quotes: [["Der geheime Belegsatz."]])
+    monkeypatch.setattr(llm, "stream_answer_question", lambda *a, **k: iter(["Antwort [1]."]))
+    seen = {}
+    real_format = mcp_server._format_answer
+
+    def spy(answer, sources, lang):
+        seen["sources"] = sources
+        return real_format(answer, sources, lang)
+
+    monkeypatch.setattr(mcp_server, "_format_answer", spy)
+    users.invite_user(OWNER, users.MCP_NUTZER, invited_by="root@test.local")
+    _, secret = mcp_keys.create_key(OWNER, "Laptop")
+
+    _call(mcp_client, secret, "ask_question", {"question": "Frage?"})
+
+    assert seen["sources"][0]["text"] == "Der geheime Belegsatz."

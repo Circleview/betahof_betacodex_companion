@@ -145,3 +145,17 @@ def test_query_web_without_exclusions_returns_everything(tmp_path, monkeypatch):
     result = vectorstore.query_web([1.0, 0.0, 0.0], top_k=5)
 
     assert result["ids"][0] == ["p1::0"]
+
+
+def test_get_source_chunk_texts_sorted_by_position(tmp_path, monkeypatch):
+    _reset_vectorstore(tmp_path, monkeypatch)
+    vectorstore.add_chunks(
+        ["a::0", "a::1", "a::2", "b::0"],
+        ["null", "eins", "zwei", "fremd"],
+        [[1.0, 0.0]] * 4,
+        [{"source_id": "a", "position": 2}, {"source_id": "a", "position": 0},
+         {"source_id": "a", "position": 1}, {"source_id": "b", "position": 0}],
+    )
+    # Einfüge-Reihenfolge ≠ Position; erwartet wird die Position
+    assert vectorstore.get_source_chunk_texts("a") == ["eins", "zwei", "null"]
+    assert vectorstore.get_source_chunk_texts("unbekannt") == []
