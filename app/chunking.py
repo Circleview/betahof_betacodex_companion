@@ -97,7 +97,7 @@ def _split_long_section(section: str, chunk_size: int, overlap: int) -> list[str
     first_line = section.split("\n", 1)[0]
     if not _HEADING_RE.match(first_line):  # Text vor der ersten Überschrift
         return _chunk_plain(section, chunk_size, overlap)
-    heading = _encoding.decode(_encoding.encode(first_line)[:_PREFIX_MAX_TOKENS])
+    heading = _encoding.decode(_encoding.encode(first_line)[:_PREFIX_MAX_TOKENS]).replace("\ufffd", "")
     prefix = heading + "\n"
     # 2 Tokens Reserve, weil Zusammensetzen Token-Grenzen verschieben kann
     budget = max(overlap + 1, chunk_size - len(_encoding.encode(prefix)) - 2)

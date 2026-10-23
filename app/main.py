@@ -1716,14 +1716,6 @@ def _purge_expired_question_log_entries_once() -> None:
 def _reindex_one_source(source_id: str, data: dict, only_changed: bool) -> bool:
     """Gibt True zurück, wenn neu eingebettet wurde."""
     text = data.get("text", "")
-    source = SourceIn(
-        title=data.get("title", ""),
-        authors=data.get("authors") or [],
-        date=data.get("date"),
-        url=data.get("url"),
-        listen_url=data.get("listen_url"),
-        text=text,
-    )
     new_chunks = chunking.chunk_text(text.strip()) if text.strip() else []
     if not new_chunks:
         return False
@@ -1737,6 +1729,7 @@ def _reindex_one_source(source_id: str, data: dict, only_changed: bool) -> bool:
         current = sources.get(source_id)
         if current is None or current.get("deleted_at") or current.get("text", "") != text:
             return False
+        source = _source_in_from_entry(current)  # aktuelle Metadaten, nicht den Stand vor dem Einbetten
         with _vectorstore_write_lock:
             vectorstore.delete_source_chunks(source_id)
             current["chunk_count"] = _store_chunks(source_id, source, new_chunks, chunk_embeddings)
@@ -1769,32 +1762,40 @@ def _reindex_all_sources(only_changed: bool = False) -> int:
 STARTUP_REINDEX_DELAY_SECONDS = 120
 
 
+def _acquire_reindex_lock():
+    """Nicht blockierende Prozess-Sperre; Datei-Objekt (Sperre hält bis close) oder None."""
+    import fcntl
+
+    lock_file = open(DATA_DIR / "reindex.lock", "w")
+    try:
+        fcntl.flock(lock_file, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        lock_file.close()
+        return None
+    return lock_file
+
+
 def _startup_reindex(delay: float = STARTUP_REINDEX_DELAY_SECONDS) -> None:
     """Zerlegt beim Start Quellen neu, deren Chunks nicht zum aktuellen
     Chunking passen. Idempotent; wer die Sperre nicht bekommt, lässt aus."""
-    import fcntl
-
     log = logging.getLogger(__name__)
     time.sleep(delay)
     try:
-        with open(DATA_DIR / "reindex.lock", "w") as lock_file:
-            try:
-                fcntl.flock(lock_file, fcntl.LOCK_EX | fcntl.LOCK_NB)
-            except OSError:
-                log.info("Start-Reindex: Sperre gehalten, ausgelassen")
-                return
-            todo = sum(
-                1
-                for sid, d in _load_sources().items()
-                if not d.get("deleted_at")
-                and d.get("text", "").strip()
-                and vectorstore.get_source_chunk_texts(sid) != chunking.chunk_text(d["text"].strip())
-            )
-            log.info("Start-Reindex: %d Quellen neu zu indizieren", todo)
-            if todo:
-                _reindex_all_sources(only_changed=True)
+        lock_file = _acquire_reindex_lock()
+        if lock_file is None:
+            log.info("Start-Reindex: Sperre gehalten, ausgelassen")
+            return
+        with lock_file:
+            log.info("Start-Reindex läuft")
+            count = _reindex_all_sources(only_changed=True)
+            log.info("Start-Reindex: %d Quellen neu indiziert", count)
     except Exception:
         log.exception("Start-Reindex fehlgeschlagen")
+
+
+def _reindex_holding_lock(lock_file, only_changed: bool = False) -> None:
+    with lock_file:
+        _reindex_all_sources(only_changed=only_changed)
 
 
 @app.post("/api/admin/reindex-sources", response_model=MessageOut)
@@ -1803,7 +1804,10 @@ def reindex_sources(
     _user: str = Depends(require_role(users.QUELLEN_PFLEGER)),
     x_lang: str = Header(default=i18n.DEFAULT_LANG),
 ):
-    background_tasks.add_task(_reindex_all_sources)
+    lock_file = _acquire_reindex_lock()
+    if lock_file is None:
+        raise HTTPException(409, i18n.get_message("reindex_running", x_lang))
+    background_tasks.add_task(_reindex_holding_lock, lock_file)
     return MessageOut(detail=i18n.get_message("reindex_started", x_lang))
 
 
@@ -4221,6 +4225,11 @@ def _drop_no_answer_lead(text: str, final: bool) -> tuple[str, bool]:
     return text, False
 
 
+# Obergrenze der Belegstellen, die restricted-Quellen an Nicht-Pfleger:innen preisgeben.
+RESTRICTED_EXCERPT_MAX_PASSAGES = 2
+RESTRICTED_EXCERPT_MAX_CHARS = 300
+
+
 def _redact_restricted_refs(refs, sources: dict, can_view_full_text: bool) -> list:
     """Geschützte (restricted) Quellen verbergen nicht nur den Volltext,
     sondern auch Chunk-Auszüge: für Nicht-Pfleger:innen bleibt nur die
@@ -4231,7 +4240,11 @@ def _redact_restricted_refs(refs, sources: dict, can_view_full_text: bool) -> li
     out = []
     for ref in refs:
         if sources.get(ref.source_id, {}).get("restricted"):
-            ref = ref.model_copy(update={"text": " ".join(ref.highlighted_texts)})
+            passages = [
+                h if len(h) <= RESTRICTED_EXCERPT_MAX_CHARS else h[:RESTRICTED_EXCERPT_MAX_CHARS] + "…"
+                for h in ref.highlighted_texts[:RESTRICTED_EXCERPT_MAX_PASSAGES]
+            ]
+            ref = ref.model_copy(update={"text": " … ".join(passages)})
         out.append(ref)
     return out
 
