@@ -120,7 +120,7 @@ function isActiveEditRow(s) {
   return activeEditId === s.id && activeEditAuthorKey === editRowKey(s);
 }
 let pendingUploadId = null;
-let pendingUploadType = null; // 'pdf' | 'audio'
+let pendingUploadType = null; // 'pdf' | 'audio' (EPUB: null, kein Staging)
 let currentSortMode = 'author';
 // Backlog #94: kein Popover (auf Mobile unpraktikabel, siehe git-Historie)
 // - stattdessen klappt dieser Bereich unterhalb der Icon-Leiste auf und
@@ -1050,6 +1050,10 @@ function isAudioUploadFile(file) {
   return AUDIO_UPLOAD_EXTENSIONS.some((ext) => name.endsWith(ext));
 }
 
+function isEpubUploadFile(file) {
+  return file.type === 'application/epub+zip' || file.name.toLowerCase().endsWith('.epub');
+}
+
 document.getElementById('popover-upload').addEventListener('click', async () => {
   const fileInput = document.getElementById('popover-file');
   const status = document.getElementById('upload-status');
@@ -1062,14 +1066,15 @@ document.getElementById('popover-upload').addEventListener('click', async () => 
     status.textContent = t('import.uploadTooLarge');
     return;
   }
-  const isAudio = isAudioUploadFile(file);
+  const isEpub = isEpubUploadFile(file);
+  const isAudio = !isEpub && isAudioUploadFile(file);
   status.textContent = isAudio && file.size > AUDIO_UPLOAD_MAX_BYTES
     ? t('import.uploadingExtractingLargeAudio')
     : t('import.uploadingExtracting');
   try {
     const formData = new FormData();
     formData.append('file', file);
-    const res = await fetch(isAudio ? '/api/extract-audio-upload' : '/api/extract-pdf-upload', {
+    const res = await fetch(isEpub ? '/api/extract-epub-upload' : isAudio ? '/api/extract-audio-upload' : '/api/extract-pdf-upload', {
       method: 'POST',
       headers: { 'X-Lang': getLang() },
       body: formData,
@@ -1080,7 +1085,12 @@ document.getElementById('popover-upload').addEventListener('click', async () => 
     }
     const data = await res.json();
     pendingUploadId = data.upload_id;
-    pendingUploadType = isAudio ? 'audio' : 'pdf';
+    pendingUploadType = isEpub ? null : isAudio ? 'audio' : 'pdf';
+    if (!data.extracted && isEpub) {
+      pendingUploadId = null;
+      status.textContent = t('import.epubNoText');
+      return;
+    }
     if (!data.extracted) {
       if (isAudio) {
         status.textContent = t('import.audioTranscriptionPending');
@@ -1100,7 +1110,8 @@ document.getElementById('popover-upload').addEventListener('click', async () => 
       setListenUrlFieldVisible(true);
       return;
     }
-    fillForm({ title: data.title, authors: data.authors, date: data.date, text: data.text });
+    // Bücher (EPUB) sind urheberrechtlich geschützt: restricted vorbelegt.
+    fillForm({ title: data.title, authors: data.authors, date: data.date, text: data.text, restricted: isEpub });
     showForm();
     // Nutzerwunsch (2026-08-03): Anhör-/Verweis-URL jetzt auch fuer PDFs -
     // dieser Handler kennt nur die beiden Upload-Typen Audio und PDF, isAudio

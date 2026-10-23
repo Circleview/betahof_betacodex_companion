@@ -572,6 +572,13 @@ function findHighlightRange(text, highlight) {
   return match ? [match.index, match.index + match[0].length] : null;
 }
 
+// Chunks beginnen ggf. mit der Kapitelüberschrift als Markdown-Zeile
+// (# bis ###, siehe app/chunking.py) - im Auszug als Überschrift ohne #.
+function splitLeadingHeading(text) {
+  const m = /^#{1,3} (\S[^\n]*)\n?/.exec(text);
+  return m ? { heading: m[1].trim(), body: text.slice(m[0].length) } : { heading: '', body: text };
+}
+
 function appendTextWithHighlight(container, text, highlight) {
   const range = highlight ? findHighlightRange(text, highlight) : null;
   if (!range) {
@@ -615,7 +622,14 @@ function buildSourceInfo(s, highlight) {
   // nachdem, WELCHES Vorkommen dieser Quelle im Antworttext aufgeklappt
   // wurde (`highlight`-Parameter), nicht pauschal dasselbe für die ganze
   // Quelle, da derselbe Chunk mehrere unterschiedliche Aussagen belegen kann.
-  appendTextWithHighlight(excerpt, s.text, highlight);
+  const { heading: chapter, body } = splitLeadingHeading(s.text);
+  if (chapter) {
+    const chapterEl = document.createElement('strong');
+    chapterEl.className = 'citation-card-chapter';
+    chapterEl.textContent = chapter;
+    excerpt.appendChild(chapterEl);
+  }
+  appendTextWithHighlight(excerpt, body, highlight);
   wrapper.appendChild(excerpt);
 
   // Nutzerwunsch (2026-09-23): eine Quelle mit erkanntem defektem Link soll

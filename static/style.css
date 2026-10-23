@@ -1872,6 +1872,13 @@ button.send-button {
   margin: 0 0 0.5rem;
 }
 
+.citation-card-chapter {
+  display: block;
+  color: var(--color-text);
+  font-weight: 600;
+  margin-bottom: 0.25rem;
+}
+
 .citation-highlight {
   background: var(--color-accent-tint);
   color: var(--color-text);
