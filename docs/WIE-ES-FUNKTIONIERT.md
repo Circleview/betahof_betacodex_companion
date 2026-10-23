@@ -29,9 +29,11 @@ Details, die in der Praxis den Unterschied gemacht haben.
 
 ## 2. Die Quellen
 
-- **Import:** URL, PDF, YouTube, Audio oder eingefügter Text
-  (`app/extraction.py`). Der Text wird in überlappende Abschnitte zerlegt
-  (`app/chunking.py`), die an Satzgrenzen enden. Jeder Abschnitt trägt Titel,
+- **Import:** URL, PDF, EPUB, YouTube, Audio oder eingefügter Text
+  (`app/extraction.py`). Der Text wird kapitelweise zerlegt
+  (`app/chunking.py`): Überschriften (`#` bis `###`) begrenzen Abschnitte,
+  kleine Kapitel werden zusammengefasst, lange in überlappende Stücke geteilt,
+  die an Satzgrenzen enden. Jeder Abschnitt trägt Titel,
   Autor:innen, Datum und URL mit. Nur deshalb kann jede Antwort ihre Quelle nennen.
 - **Embeddings lokal:** Ein mehrsprachiges Modell (`app/embeddings.py`) läuft auf
   dem eigenen Server. Die Suche kostet dadurch nichts pro Anfrage und funktioniert
@@ -212,8 +214,8 @@ sind willkommen.
 | Modell für den ersten Kreativ-Entwurf | `claude-sonnet-5` | `app/llm.py: CREATIVE_FIRST_DRAFT_MODEL` |
 | Modell für Zusammenfassungen und Schlagworte beim Import | `claude-haiku-4-5-20251001` | `app/summarization.py: MODEL_NAME` |
 | Embedding-Modell (lokal) | `intfloat/multilingual-e5-base` | `app/embeddings.py: MODEL_NAME` |
-| Zeichen pro Textabschnitt (Chunk) | `900` | `app/chunking.py: CHUNK_SIZE` |
-| Überlappung zwischen Chunks (Zeichen) | `130` | `app/chunking.py: CHUNK_OVERLAP` |
+| Tokens pro Textabschnitt (Chunk) | `900` | `app/chunking.py: CHUNK_SIZE` |
+| Überlappung zwischen Chunks (Tokens) | `130` | `app/chunking.py: CHUNK_OVERLAP` |
 | Textausschnitte pro Antwort (Konversation) | `5` | `app/models.py: QuestionIn.top_k` |
 | So viele Kandidaten mehr werden vor dem Neusortieren geholt | `3` | `app/main.py: RELEVANCE_OVERFETCH_MULTIPLIER` |
 | Max. Einfluss des Relevanzscores (1–10) auf die Distanz | `0.15` | `app/main.py: RELEVANCE_MAX_ADJUSTMENT` |

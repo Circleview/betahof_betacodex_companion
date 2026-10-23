@@ -743,3 +743,24 @@ def test_index_approved_candidate_returns_false_on_extraction_failure(tmp_path, 
 
     assert result is False
     assert web_index.pages_for_entry("entry-1") == {}
+
+
+def test_index_entry_chunks_markdown_page_at_headings(tmp_path, monkeypatch):
+    # Idee 8d1b69dd: trafilatura liefert Markdown - Seiten werden kapitelweise zerlegt.
+    monkeypatch.setattr(vectorstore, "DB_PATH", tmp_path / "chroma")
+    monkeypatch.setattr(vectorstore, "_client", None)
+    monkeypatch.setattr(vectorstore, "_web_collection", None)
+    monkeypatch.setattr(web_index, "WEB_INDEX_FILE", tmp_path / "web_index.json")
+    monkeypatch.setattr(trafilatura.sitemaps, "sitemap_search", lambda url, **kw: MANY_URLS)
+    body = lambda p: " ".join(f"{p}{i}" for i in range(300))  # >450 Tokens
+    text = f"# Eins\n\n{body('eins')}\n\n# Zwei\n\n{body('zwei')}"
+    monkeypatch.setattr(
+        extraction, "extract_from_url", lambda url: {"title": "S", "authors": [], "text": text}
+    )
+    monkeypatch.setattr(embeddings, "embed_passages", lambda texts: [[1.0, 0.0] for _ in texts])
+
+    web_crawler.index_entry("entry-1", "https://beispiel.org", max_pages=1)
+
+    docs = vectorstore._get_web_collection().get(where={"allowlist_entry_id": "entry-1"})["documents"]
+    assert sorted(d.split("\n")[0] for d in docs) == ["# Eins", "# Zwei"]
+    assert not any("eins0 " in d and "zwei0 " in d for d in docs)

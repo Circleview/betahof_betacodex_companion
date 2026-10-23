@@ -224,12 +224,22 @@ Andere MCP-Clients brauchen die Adresse `https://chat.betacodex.org/mcp`
 
 ### Quellen pflegen (Quellen-Pfleger:innen)
 
-- Import per Copy/Paste, URL/Blogpost, PDF-Upload, YouTube-Link oder
-  Audio-/Podcast-Datei (automatische Transkription, mit den bereits
+- Import per Copy/Paste, URL/Blogpost, PDF-Upload, EPUB-Upload (Kapitel
+  werden als `#`-Überschriften übernommen, Titel und Autor:in aus der Datei,
+  „eingeschränkt“ ist vorbelegt; die EPUB-Datei selbst wird nicht
+  gespeichert), YouTube-Link oder Audio-/Podcast-Datei (automatische Transkription, mit den bereits
   eingetragenen Autor:innen-Namen als Vokabular-Hinweis gegen
   wiederkehrende Fehlschreibungen prominenter Namen) – für jeden Typ gibt
   es einen manuellen Fallback, falls die automatische Extraktion
   scheitert.
+- **Zerlegung folgt Überschriften:** Zeilen mit `#`, `##` oder `###` im
+  Quelltext (auch PDF-Lesezeichen, EPUB-Kapitel, Webseiten-Überschriften)
+  begrenzen Textabschnitte; kleine Kapitel werden bis 900 Tokens
+  zusammengefasst, lange geteilt und mit der Überschrift vorangestellt. Beim
+  Start werden Quellen, deren Abschnitte nicht zum aktuellen Zuschnitt
+  passen, einmalig im Hintergrund neu indiziert.
+- Quellen mit „eingeschränkt“ zeigen Nicht-Pfleger:innen (auch anonym und
+  per MCP) nur die belegte Textstelle statt des ganzen Auszugs.
 - Größere Verarbeitungsschritte (z. B. Audio-Transkription) laufen im
   Hintergrund; ein Status-Icon zeigt den Fortschritt, mehrere Importe
   lassen sich parallel anstoßen.
@@ -355,14 +365,14 @@ Es gibt zwei getrennte Abläufe: Import (Quellen ins System bringen) und
 Fragen stellen (den Chat nutzen).
 
 **Phase A – Import**
-1. **Text holen** – URL, PDF, YouTube-Video oder Audiodatei werden
+1. **Text holen** – URL, PDF, EPUB, YouTube-Video oder Audiodatei werden
    angegeben; `app/extraction.py` holt sich den reinen Text daraus
    (Webseiten-Scraping, PDF-Textextraktion, YouTube-Transkript, oder bei
    Audio: Transkription über OpenAI).
 2. **Zerlegen (Chunking)** – Der Text wird in kleine, satzgrenzen-bewusste
-   Abschnitte von je ~900 Zeichen zerlegt (`app/chunking.py`), mit etwas
-   Überlappung zwischen den Stücken, damit an den Schnittstellen kein Sinn
-   verloren geht. Jeder Chunk erhält zusätzlich **Metadaten zur Herkunft**
+   Abschnitte von je bis zu 900 Tokens zerlegt (`app/chunking.py`): zuerst an
+   Markdown-Überschriften (`#`–`###`), innerhalb langer Kapitel mit etwas
+   Überlappung, damit an den Schnittstellen kein Sinn verloren geht. Jeder Chunk erhält zusätzlich **Metadaten zur Herkunft**
    (Quell-ID, Titel, Autor, Datum, URL, ggf. Zeitstempel/Seitenzahl).
 3. **Embedding erzeugen** – Für jeden Chunk wird ein Embedding berechnet
    (siehe Kasten unten) und zusammen mit dem Original-Text in **ChromaDB**
@@ -566,6 +576,7 @@ Commit-/Tag-Nachrichten in Git.
 
 | Version | Wesentliche Änderungen |
 |---|---|
+| v0.86.0 | **Bücher und Quellen werden an Kapiteln zerlegt** (Idee 8d1b69dd): Quellentext wird zuerst an Markdown-Überschriften (`#`–`###`, nicht in Codeblöcken) geteilt, dann je Abschnitt wie bisher mit höchstens 900 Tokens; kein Stück reicht mehr über eine Überschrift, Folgestücke tragen ihre Überschrift (auf 50 Tokens gekappt), kleine Nachbarabschnitte werden als ganze Abschnitte zusammengefasst, Texte ohne Überschrift bleiben unverändert. Neu: EPUB-Upload (Kapitel als `#`, Titel/Autor:in aus der Datei, „nur für Quellen-Pfleger“ vorbelegt, Schutz gegen Zip-Bomben, DRM und XML-Tricks) und Kapitel aus PDF-Lesezeichen. Bei geschützten Quellen sehen Nicht-Pfleger:innen im Auszug nur noch die Belegstelle (höchstens 2 × 300 Zeichen). Einmaliger Start-Reindex nur geänderter Quellen 120 s nach dem Start mit Prozess-Sperre (auch für den manuellen Reindex), im Produktivbestand 62 Quellen; Retrieval-Eval unverändert |
 | v0.85.3 | **Frage bleibt nach dem Absenden auf dem Handy sichtbar** (Idee b5bd431b): auf Touch-Geräten blieb nach dem Tippen auf Senden die Tastatur offen, iOS scrollte das fokussierte Eingabefeld erneut ins Bild und die gerade gestellte Frage verschwand aus dem sichtbaren Bereich. Jetzt verlässt das Feld auf Touch-Geräten (`pointer: coarse`, auch iPhone quer und iPad) den Fokus, die Tastatur schließt, und die Frage wird nach dem Schließen (visualViewport-resize, sonst nach 400 ms) genau einmal erneut oben verankert; am Desktop bleibt der Fokus fürs schnelle Nachfragen |
 | v0.85.2 | **Antwortsprache folgt zuverlässig der Frage** (Idee 785a3913): eine englische Frage bekam bei deutschen Quellen trotz Erinnerung eine deutsche Antwort, danach schaltete der Chat die Oberfläche auf Deutsch um. Der Server erkennt jetzt die Sprache der Frage selbst (Stoppwörter) und hängt einen ausdrücklichen Satz an („Answer exclusively in English.“ bzw. „Antworte ausschließlich auf Deutsch.“); bei unklarer Frage bleibt es wie bisher |
 | v0.85.1 | **Änderungslog mobil repariert:** auf dem Handy war die Seite rund 930 px breit (Tag-Spalte + Inhalt ohne Umbruch) und musste seitlich gescrollt werden. Jetzt gleicher schmaler Zeitstrahl wie im Fragen-Log (Linie links, Tag als Zwischenzeile, Uhrzeit oben), lange Titel, Links und Feldwerte brechen um, „Rückgängig“ und die Bestätigung sind Touch-Ziele ab 44 px |

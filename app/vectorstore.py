@@ -84,6 +84,13 @@ def query(
     )
 
 
+def get_source_chunk_texts(source_id: str) -> list[str]:
+    """Chunk-Texte einer Quelle in Positionsreihenfolge."""
+    res = _get_collection().get(where={"source_id": source_id})
+    order = sorted(range(len(res["ids"])), key=lambda i: res["metadatas"][i]["position"])
+    return [res["documents"][i] for i in order]
+
+
 def delete_source_chunks(source_id: str) -> None:
     collection = _get_collection()
     collection.delete(where={"source_id": source_id})

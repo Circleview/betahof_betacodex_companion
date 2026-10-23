@@ -166,6 +166,7 @@ def _run_ask(key: dict, question: str, lang: str) -> str:
         False,
         None,
         usage_meta,
+        users.has_role(key["email"], users.QUELLEN_PFLEGER),
     ):
         event = json.loads(line)
         if event["type"] == "answer":
