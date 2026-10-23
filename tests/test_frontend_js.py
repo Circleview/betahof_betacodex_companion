@@ -4424,3 +4424,43 @@ def test_touch_submit_blurs_input_before_scroll_and_desktop_keeps_focus():
     assert "rescrollAfterKeyboard(" in body
     assert body.count("questionInput.blur()") == 1
     assert body.count("questionInput.focus()") == 1
+
+
+# --- EPUB-Upload / Kapitelüberschrift im Auszug (Idee 8d1b69dd) --------------
+
+def _run_split_leading_heading(text):
+    js_source = (STATIC_DIR / "question.js").read_text()
+    match = re.search(r"function splitLeadingHeading.*?\n\}", js_source, re.S)
+    assert match, "splitLeadingHeading wurde in question.js nicht gefunden."
+    script = f"""
+{match.group(0)}
+console.log(JSON.stringify(splitLeadingHeading({json.dumps(text)})));
+"""
+    return _run_node(script)
+
+
+def test_split_leading_heading_extracts_markdown_heading():
+    assert _run_split_leading_heading("## Kapitel Zwei\nDer Rumpf.") == {"heading": "Kapitel Zwei", "body": "Der Rumpf."}
+
+
+def test_split_leading_heading_leaves_text_without_heading():
+    text = "Kein Titel hier.\n# nicht am Anfang"
+    assert _run_split_leading_heading(text) == {"heading": "", "body": text}
+
+
+def test_split_leading_heading_ignores_hash_without_space_and_level_four():
+    assert _run_split_leading_heading("#Tag und mehr")["heading"] == ""
+    assert _run_split_leading_heading("#### Zu tief\nText")["heading"] == ""
+
+
+def test_import_js_routes_epub_files_to_epub_endpoint():
+    source = (STATIC_DIR / "import.js").read_text()
+    assert "/api/extract-epub-upload" in source
+    assert "epub" in (STATIC_DIR / "import.html").read_text().lower()
+
+
+@pytest.mark.parametrize("lang", ["de", "en"])
+def test_import_file_labels_mention_epub(lang):
+    strings = json.loads((STATIC_DIR / "i18n" / f"{lang}.json").read_text())
+    assert "EPUB" in strings["import.fileFieldLabel"]
+    assert "EPUB" in strings["import.typeFileTitle"]
