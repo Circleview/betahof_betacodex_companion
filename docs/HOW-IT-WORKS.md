@@ -28,9 +28,10 @@ details that made the difference in practice.
 
 ## 2. The sources
 
-- **Import:** URL, PDF, YouTube, audio, or pasted text (`app/extraction.py`). The
-  text is split into overlapping chunks that end at sentence boundaries
-  (`app/chunking.py`). Each chunk carries title, authors, date, and URL. That is
+- **Import:** URL, PDF, EPUB, YouTube, audio, or pasted text (`app/extraction.py`).
+  The text is split by chapter (`app/chunking.py`): headings (`#` to `###`) bound
+  the chunks, small chapters are merged, long ones are split into overlapping
+  pieces that end at sentence boundaries. Each chunk carries title, authors, date, and URL. That is
   the only reason every answer can name its source.
 - **Local embeddings:** a multilingual model (`app/embeddings.py`) runs on our own
   server. Search costs nothing per request and works across languages: an English
@@ -206,8 +207,8 @@ welcome.
 | Model for the first creative draft | `claude-sonnet-5` | `app/llm.py: CREATIVE_FIRST_DRAFT_MODEL` |
 | Model for summaries and key terms on import | `claude-haiku-4-5-20251001` | `app/summarization.py: MODEL_NAME` |
 | Embedding model (local) | `intfloat/multilingual-e5-base` | `app/embeddings.py: MODEL_NAME` |
-| Characters per text chunk | `900` | `app/chunking.py: CHUNK_SIZE` |
-| Overlap between chunks (characters) | `130` | `app/chunking.py: CHUNK_OVERLAP` |
+| Tokens per text chunk | `900` | `app/chunking.py: CHUNK_SIZE` |
+| Overlap between chunks (tokens) | `130` | `app/chunking.py: CHUNK_OVERLAP` |
 | Excerpts per answer (conversation) | `5` | `app/models.py: QuestionIn.top_k` |
 | Candidate over-fetch factor before reranking | `3` | `app/main.py: RELEVANCE_OVERFETCH_MULTIPLIER` |
 | Max. influence of the relevance score (1–10) on distance | `0.15` | `app/main.py: RELEVANCE_MAX_ADJUSTMENT` |

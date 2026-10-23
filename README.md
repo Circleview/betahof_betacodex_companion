@@ -224,12 +224,22 @@ Andere MCP-Clients brauchen die Adresse `https://chat.betacodex.org/mcp`
 
 ### Quellen pflegen (Quellen-Pfleger:innen)
 
-- Import per Copy/Paste, URL/Blogpost, PDF-Upload, YouTube-Link oder
-  Audio-/Podcast-Datei (automatische Transkription, mit den bereits
+- Import per Copy/Paste, URL/Blogpost, PDF-Upload, EPUB-Upload (Kapitel
+  werden als `#`-Überschriften übernommen, Titel und Autor:in aus der Datei,
+  „eingeschränkt“ ist vorbelegt; die EPUB-Datei selbst wird nicht
+  gespeichert), YouTube-Link oder Audio-/Podcast-Datei (automatische Transkription, mit den bereits
   eingetragenen Autor:innen-Namen als Vokabular-Hinweis gegen
   wiederkehrende Fehlschreibungen prominenter Namen) – für jeden Typ gibt
   es einen manuellen Fallback, falls die automatische Extraktion
   scheitert.
+- **Zerlegung folgt Überschriften:** Zeilen mit `#`, `##` oder `###` im
+  Quelltext (auch PDF-Lesezeichen, EPUB-Kapitel, Webseiten-Überschriften)
+  begrenzen Textabschnitte; kleine Kapitel werden bis 900 Tokens
+  zusammengefasst, lange geteilt und mit der Überschrift vorangestellt. Beim
+  Start werden Quellen, deren Abschnitte nicht zum aktuellen Zuschnitt
+  passen, einmalig im Hintergrund neu indiziert.
+- Quellen mit „eingeschränkt“ zeigen Nicht-Pfleger:innen (auch anonym und
+  per MCP) nur die belegte Textstelle statt des ganzen Auszugs.
 - Größere Verarbeitungsschritte (z. B. Audio-Transkription) laufen im
   Hintergrund; ein Status-Icon zeigt den Fortschritt, mehrere Importe
   lassen sich parallel anstoßen.
@@ -355,14 +365,14 @@ Es gibt zwei getrennte Abläufe: Import (Quellen ins System bringen) und
 Fragen stellen (den Chat nutzen).
 
 **Phase A – Import**
-1. **Text holen** – URL, PDF, YouTube-Video oder Audiodatei werden
+1. **Text holen** – URL, PDF, EPUB, YouTube-Video oder Audiodatei werden
    angegeben; `app/extraction.py` holt sich den reinen Text daraus
    (Webseiten-Scraping, PDF-Textextraktion, YouTube-Transkript, oder bei
    Audio: Transkription über OpenAI).
 2. **Zerlegen (Chunking)** – Der Text wird in kleine, satzgrenzen-bewusste
-   Abschnitte von je ~900 Zeichen zerlegt (`app/chunking.py`), mit etwas
-   Überlappung zwischen den Stücken, damit an den Schnittstellen kein Sinn
-   verloren geht. Jeder Chunk erhält zusätzlich **Metadaten zur Herkunft**
+   Abschnitte von je bis zu 900 Tokens zerlegt (`app/chunking.py`): zuerst an
+   Markdown-Überschriften (`#`–`###`), innerhalb langer Kapitel mit etwas
+   Überlappung, damit an den Schnittstellen kein Sinn verloren geht. Jeder Chunk erhält zusätzlich **Metadaten zur Herkunft**
    (Quell-ID, Titel, Autor, Datum, URL, ggf. Zeitstempel/Seitenzahl).
 3. **Embedding erzeugen** – Für jeden Chunk wird ein Embedding berechnet
    (siehe Kasten unten) und zusammen mit dem Original-Text in **ChromaDB**
