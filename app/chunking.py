@@ -53,7 +53,10 @@ def _snap_to_sentence_boundary(tokens: list[int], start: int, target_end: int) -
     return best_end
 
 
-def chunk_text(text: str, chunk_size: int = CHUNK_SIZE, overlap: int = CHUNK_OVERLAP) -> list[str]:
+def _chunk_plain(text: str, chunk_size: int, overlap: int) -> list[str]:
+    """Token-Fenster mit Satzgrenzen-Einrasten (der Algorithmus ohne Struktur)."""
+    if chunk_size <= overlap:
+        raise ValueError("chunk_size muss größer als overlap sein")
     tokens = _encoding.encode(text)
     if not tokens:
         return []
@@ -70,4 +73,62 @@ def chunk_text(text: str, chunk_size: int = CHUNK_SIZE, overlap: int = CHUNK_OVE
         if end >= len(tokens):
             break
         start = end - overlap
+    return chunks
+
+
+_HEADING_RE = re.compile(r"#{1,3} \S")
+_PREFIX_MAX_TOKENS = 50
+
+
+def _section_starts(text: str) -> list[int]:
+    """Zeichenpositionen der Überschriftszeilen (# bis ###), Codeblöcke ausgenommen."""
+    starts, pos, in_code = [], 0, False
+    for line in text.splitlines(keepends=True):
+        if line.lstrip().startswith("```"):
+            in_code = not in_code
+        elif not in_code and _HEADING_RE.match(line):
+            starts.append(pos)
+        pos += len(line)
+    return starts
+
+
+def _split_long_section(section: str, chunk_size: int, overlap: int) -> list[str]:
+    """Abschnitt > chunk_size: Folge-Chunks bekommen die (gekappte) Überschrift."""
+    first_line = section.split("\n", 1)[0]
+    if not _HEADING_RE.match(first_line):  # Text vor der ersten Überschrift
+        return _chunk_plain(section, chunk_size, overlap)
+    heading = _encoding.decode(_encoding.encode(first_line)[:_PREFIX_MAX_TOKENS])
+    prefix = heading + "\n"
+    # 2 Tokens Reserve, weil Zusammensetzen Token-Grenzen verschieben kann
+    budget = max(overlap + 1, chunk_size - len(_encoding.encode(prefix)) - 2)
+    chunks = _chunk_plain(section, budget, overlap)
+    return chunks[:1] + [prefix + c for c in chunks[1:]]
+
+
+def chunk_text(text: str, chunk_size: int = CHUNK_SIZE, overlap: int = CHUNK_OVERLAP) -> list[str]:
+    """Zerlegt Text kapitelweise (Markdown-Überschriften # bis ###); ohne
+    Überschriften exakt das Token-Fenster-Verfahren."""
+    if chunk_size <= overlap:
+        raise ValueError("chunk_size muss größer als overlap sein")
+    starts = _section_starts(text)
+    if not starts:
+        return _chunk_plain(text, chunk_size, overlap)
+    bounds = ([0] if starts[0] > 0 else []) + starts + [len(text)]
+    sections = [(a, b) for a, b in zip(bounds, bounds[1:]) if text[a:b].strip()]
+
+    chunks: list[str] = []
+    cur: tuple[int, int] | None = None  # laufende Gruppe ganzer Abschnitte
+    for a, b in sections:
+        if cur and len(_encoding.encode(text[cur[0]:b].strip())) <= chunk_size:
+            cur = (cur[0], b)
+            continue
+        if cur:
+            chunks.append(text[cur[0]:cur[1]].strip())
+            cur = None
+        if len(_encoding.encode(text[a:b].strip())) <= chunk_size:
+            cur = (a, b)
+        else:
+            chunks.extend(_split_long_section(text[a:b].strip(), chunk_size, overlap))
+    if cur:
+        chunks.append(text[cur[0]:cur[1]].strip())
     return chunks

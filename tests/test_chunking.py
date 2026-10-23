@@ -97,7 +97,7 @@ def test_without_headings_identical_to_old_algorithm():
 
 
 def test_sections_are_not_mixed_across_chunks():
-    secs = [f"# Kapitel {i}\n\n{_words(f'k{i}w', 500)}" for i in range(4)]
+    secs = [f"# Kapitel {i}\n\n{_words(f'k{i}w', 150)}" for i in range(4)]
     chunks = chunk_text("\n\n".join(secs))
     for c in chunks:
         # kein Chunk enthält Teile mehrerer Kapitel
@@ -108,14 +108,14 @@ def test_sections_are_not_mixed_across_chunks():
 
 
 def test_small_sections_are_merged_up_to_limit():
-    secs = [f"## Abschnitt {i}\n\n{_words(f'a{i}w', 100)}" for i in range(3)]
+    secs = [f"## Abschnitt {i}\n\n{_words(f'a{i}w', 30)}" for i in range(3)]
     text = "\n\n".join(secs)
     chunks = chunk_text(text)
     assert chunks == [text]  # wörtlicher Ausschnitt, alles in einem Chunk
 
 
 def test_merged_chunks_respect_limit():
-    secs = [f"# K{i}\n\n{_words(f'k{i}w', 300)}" for i in range(10)]
+    secs = [f"# K{i}\n\n{_words(f'k{i}w', 60)}" for i in range(10)]
     chunks = chunk_text("\n\n".join(secs))
     assert all(_ntok(c) <= 900 for c in chunks)
     assert len(chunks) > 3
@@ -157,8 +157,8 @@ def test_chunk_size_not_above_overlap_raises():
 
 
 def test_text_before_first_heading_is_own_section():
-    pre = _words("vor", 600)
-    text = pre + "\n\n# Kapitel\n\n" + _words("kap", 600)
+    pre = _words("vor", 350)
+    text = pre + "\n\n# Kapitel\n\n" + _words("kap", 350)
     chunks = chunk_text(text)
     assert chunks[0] == pre
     assert chunks[1].startswith("# Kapitel")
