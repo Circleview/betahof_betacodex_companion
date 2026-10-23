@@ -8679,3 +8679,72 @@ def test_unrestricted_source_ask_keeps_full_chunk_for_anonymous(client, anon_cli
     response = anon_client.post("/api/ask", json={"question": "Frage?"})
     done = ask_result(response)["sources"][0]
     assert done["text"] == "Erster Satz. Zweiter Satz. Dritter Satz."
+
+
+def _ref(text, highlights):
+    from app.models import ChunkRef
+    return ChunkRef(chunk_id="c", source_id="s", title="T", position=0, text=text, highlighted_texts=highlights)
+
+
+def test_redact_restricted_refs_caps_length_without_sentence_punctuation():
+    chunk = " ".join(f"wort{i}" for i in range(2000))  # kein Satzzeichen: "ein Satz"
+    out = main_module._redact_restricted_refs([_ref(chunk, [chunk])], {"s": {"restricted": True}}, False)[0]
+    assert len(out.text) <= 301
+
+
+def test_redact_restricted_refs_keeps_at_most_two_passages():
+    hl = [f"Stelle {i}." for i in range(6)]
+    out = main_module._redact_restricted_refs([_ref("x " * 500, hl)], {"s": {"restricted": True}}, False)[0]
+    assert out.text == "Stelle 0. … Stelle 1."
+
+
+def test_redact_restricted_refs_cap_applies_per_passage():
+    hl = ["a" * 1000, "b" * 1000]
+    out = main_module._redact_restricted_refs([_ref("x", hl)], {"s": {"restricted": True}}, False)[0]
+    assert len(out.text) <= 2 * 301 + 3
+    assert out.text.count("a") == 300 and out.text.count("b") == 300
+
+
+def test_redact_restricted_refs_leaves_pfleger_and_open_sources_alone():
+    full = "Voller Chunk. " * 50
+    assert main_module._redact_restricted_refs([_ref(full, ["x"])], {"s": {"restricted": True}}, True)[0].text == full
+    assert main_module._redact_restricted_refs([_ref(full, ["x"])], {"s": {}}, False)[0].text == full
+
+
+def test_reindex_uses_current_metadata_when_title_changed_meanwhile(client, monkeypatch):
+    ids = _seed_sources(client, 1)
+
+    def embed_and_rename(texts):
+        sources = main_module._load_sources()
+        sources[ids[0]]["title"] = "Neuer Titel"
+        main_module._save_sources(sources)
+        return [[1.0, 0.0] for _ in texts]
+
+    monkeypatch.setattr(embeddings, "embed_passages", embed_and_rename)
+    main_module._reindex_all_sources()
+    metas = vectorstore._get_collection().get(where={"source_id": ids[0]})["metadatas"]
+    assert {m["title"] for m in metas} == {"Neuer Titel"}
+
+
+def test_manual_reindex_conflicts_when_lock_held(client, embed_calls, tmp_path):
+    import fcntl
+
+    _seed_sources(client, 1)
+    held = open(tmp_path / "reindex.lock", "w")
+    fcntl.flock(held, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    en = client.post("/api/admin/reindex-sources", headers={"X-Lang": "en"})
+    de = client.post("/api/admin/reindex-sources", headers={"X-Lang": "de"})
+    assert en.status_code == de.status_code == 409
+    assert en.json()["detail"] != de.json()["detail"]
+    held.close()
+    assert client.post("/api/admin/reindex-sources").status_code == 200
+
+
+def test_startup_reindex_logs_count_from_run(client, embed_calls, caplog):
+    import logging
+
+    ids = _seed_sources(client, 2)
+    vectorstore.delete_source_chunks(ids[0])
+    with caplog.at_level(logging.INFO):
+        main_module._startup_reindex(delay=0)
+    assert any("1 Quellen" in r.getMessage() for r in caplog.records)

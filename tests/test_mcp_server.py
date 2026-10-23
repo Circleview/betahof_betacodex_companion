@@ -265,7 +265,7 @@ def test_format_answer_makes_relative_links_absolute():
     assert "(https://chat.betacodex.org/import.html)" in text
 
 
-def test_ask_question_truncates_restricted_excerpt_for_non_pfleger(mcp_client, monkeypatch):
+def test_ask_question_output_contains_no_chunk_text(mcp_client, monkeypatch):
     from app.models import ChunkRef
 
     full = "Erster Satz des Buchs. Der geheime Belegsatz. Weiterer Buchtext."

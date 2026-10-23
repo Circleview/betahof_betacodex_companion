@@ -185,3 +185,11 @@ def test_no_boundary_in_code_block_or_invalid_heading():
 def test_heading_only_text_returns_chunk():
     assert chunk_text("# Nur Titel") == ["# Nur Titel"]
     assert chunk_text("   \n  ") == _old_chunk_text("   \n  ")
+
+
+def test_truncated_heading_prefix_has_no_broken_characters():
+    for heading in ("🎉" * 80, "✨" * 80, "🇩🇪" * 80):
+        text = "# " + heading + "\n\n" + _words("body", 3000)
+        chunks = chunk_text(text)
+        assert len(chunks) > 2
+        assert all("\ufffd" not in c for c in chunks)
