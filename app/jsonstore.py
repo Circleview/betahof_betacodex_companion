@@ -23,7 +23,7 @@ def load(path: Path, default, *, tolerant: bool = False):
         raise
 
 
-def save(path: Path, data) -> None:
+def save(path: Path, data, *, indent: int | None = 2) -> None:
     """Atomar schreiben (Temp-Datei + Rename statt direktem write_text):
     write_text() truncatet die Datei zuerst - liest ein anderer Thread
     währenddessen (z.B. _finish_synchronous_import parallel zum
@@ -35,8 +35,10 @@ def save(path: Path, data) -> None:
     denselben Temp-Pfad, konnte B den Temp-Inhalt von A überschreiben, BEVOR A
     umbenennt - A's replace() hätte dann B's (evtl. älteren) Datensatz
     "gewonnen". Das atomare Rename schützt nur vor kaputten Lesevorgängen,
-    nicht mehrere Schreiber voreinander."""
+    nicht mehrere Schreiber voreinander.
+
+    indent=None schreibt kompakt (große, selten von Hand gelesene Dateien)."""
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(f".json.{os.getpid()}.{threading.get_ident()}.tmp")
-    tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2))
+    tmp.write_text(json.dumps(data, ensure_ascii=False, indent=indent))
     tmp.replace(path)

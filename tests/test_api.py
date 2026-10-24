@@ -1840,6 +1840,7 @@ def test_ask_logs_first_question_with_conversation_id(client, monkeypatch):
 @pytest.mark.parametrize("bad_id", [None, "kein-uuid", "3F2A9C1E-5B7D-4E8A-9C3B-1A2B3C4D5E6F", "../etc/passwd", ""])
 def test_ask_logs_without_conversation_id_field_for_missing_or_invalid_id(client, monkeypatch, bad_id):
     monkeypatch.setattr(main_module, "IS_DEV_ENVIRONMENT", False)
+    client.post("/api/sources", json={"title": "Q", "text": "Text."})
     body = {"question": "Frage", "is_first_message": True}
     if bad_id is not None:
         body["conversation_id"] = bad_id
@@ -1879,7 +1880,7 @@ def test_ask_truncates_logged_question_text(client, monkeypatch):
 
 def test_ask_attaches_answers_to_the_right_entry_with_interleaved_conversations(client, monkeypatch):
     monkeypatch.setattr(main_module, "IS_DEV_ENVIRONMENT", False)
-    monkeypatch.setattr(llm, "stream_answer_question", lambda question, *a, **k: iter([f"Antwort auf {question}."]))
+    monkeypatch.setattr(llm, "stream_answer_question", lambda question, *a, **k: iter([f"Zu {question} gilt Folgendes."]))
     client.post("/api/sources", json={"title": "Q", "text": "Text."})
 
     for cid, q, first in [(CID, "A1", True), (CID2, "B1", True), (CID, "A2", False), (CID2, "B2", False)]:
@@ -1887,10 +1888,10 @@ def test_ask_attaches_answers_to_the_right_entry_with_interleaved_conversations(
 
     by_text = {e["text"]: e for e in question_log.list_entries()}
     assert {t: (e["conversation_id"], e["answer"]) for t, e in by_text.items()} == {
-        "A1": (CID, "Antwort auf A1."),
-        "A2": (CID, "Antwort auf A2."),
-        "B1": (CID2, "Antwort auf B1."),
-        "B2": (CID2, "Antwort auf B2."),
+        "A1": (CID, "Zu A1 gilt Folgendes."),
+        "A2": (CID, "Zu A2 gilt Folgendes."),
+        "B1": (CID2, "Zu B1 gilt Folgendes."),
+        "B2": (CID2, "Zu B2 gilt Folgendes."),
     }
 
 
