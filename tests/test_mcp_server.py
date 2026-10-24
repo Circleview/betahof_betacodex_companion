@@ -288,3 +288,13 @@ def test_ask_question_output_contains_no_chunk_text(mcp_client, monkeypatch):
     _call(mcp_client, secret, "ask_question", {"question": "Frage?"})
 
     assert seen["sources"][0]["text"] == "Der geheime Belegsatz."
+
+
+def test_ask_question_logs_no_follow_up_and_no_conversation_id(mcp_client, fake_ask):
+    _, secret = mcp_keys.create_key(OWNER, "Laptop")
+
+    _call(mcp_client, secret, "ask_question", {"question": "Wer entscheidet?"})
+
+    entries = question_log.list_entries()
+    assert [e["event_types"] for e in entries] == [["mcp"]]
+    assert "conversation_id" not in entries[0]

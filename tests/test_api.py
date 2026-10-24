@@ -8964,3 +8964,46 @@ def test_startup_reindex_logs_count_from_run(client, embed_calls, caplog):
     with caplog.at_level(logging.INFO):
         main_module._startup_reindex(delay=0)
     assert any("1 Quellen" in r.getMessage() for r in caplog.records)
+
+
+def test_ask_still_answers_when_question_log_cannot_be_written(client, monkeypatch):
+    monkeypatch.setattr(main_module, "IS_DEV_ENVIRONMENT", False)
+    monkeypatch.setattr(llm, "stream_answer_question", lambda *a, **k: iter(["Eine Antwort."]))
+
+    def full_disk(entries):
+        raise OSError("No space left on device")
+
+    monkeypatch.setattr(question_log, "_save", full_disk)
+    client.post("/api/sources", json={"title": "Q", "text": "Text."})
+
+    res = client.post("/api/ask", json={"question": "Frage?", "is_first_message": True, "conversation_id": CID})
+
+    assert res.status_code == 200
+    assert '"type": "answer"' in res.text or '"type":"answer"' in res.text
+    assert '"type": "error"' not in res.text and '"type":"error"' not in res.text
+
+
+def test_feedback_on_repeated_question_lands_in_entry_with_matching_answer(client, monkeypatch):
+    monkeypatch.setattr(main_module, "IS_DEV_ENVIRONMENT", False)
+    first = question_log.log_question("Gleiche Frage", CID)
+    question_log.set_answer(first, "Antwort eins.")
+    second = question_log.log_question("Gleiche Frage", CID, first=False)
+    question_log.set_answer(second, "Antwort zwei.")
+
+    client.post(
+        "/api/answer-feedback",
+        json={"question": "Gleiche Frage", "answer": "Antwort eins.", "feedback": "bad", "conversation_id": CID},
+    )
+
+    by_id = {e["id"]: e for e in question_log.list_entries()}
+    assert by_id[first]["feedback"] == "bad"
+    assert "feedback" not in by_id[second]
+
+
+def test_ask_does_not_log_system_admins_follow_up_with_conversation_id(anon_client, monkeypatch):
+    login(anon_client, "admin@test.local", users.SYSTEM_ADMIN)
+    monkeypatch.setattr(main_module, "IS_DEV_ENVIRONMENT", False)
+
+    anon_client.post("/api/ask", json={"question": "Folge des Admins", "is_first_message": False, "conversation_id": CID})
+
+    assert question_log.list_entries() == []
