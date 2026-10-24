@@ -1343,6 +1343,9 @@ function saveConversationId() {
 
 let conversationId = loadConversationId();
 saveConversationId();
+// Wurde in dieser Seitenansicht schon eine Frage dieser Konversation gesendet?
+// (Nach Reload mit Verlauf entscheidet conversationHistory.)
+let questionSentInConversation = false;
 
 // Backlog (2026-07-31): in zwei Schritte aufgeteilt, damit eine live
 // eintreffende Antwort den Vorlesen-Button schon anzeigen kann, sobald der
@@ -1564,6 +1567,12 @@ questionForm.addEventListener('submit', async (e) => {
   assistantBubble.appendChild(buildTypingIndicator());
   chatMessages.appendChild(assistantMessage);
 
+  // Vor dem ersten await lesen+setzen: zwei schnell nacheinander abgeschickte
+  // Fragen (die zweite, während die erste noch streamt - conversationHistory
+  // füllt sich erst nach "done") wären sonst beide "erste Frage".
+  const isFirstMessage = conversationHistory.length === 0 && !questionSentInConversation;
+  questionSentInConversation = true;
+
   try {
     const turnstileToken = await getTurnstileToken();
     const res = await fetchWithRetry('/api/ask', {
@@ -1573,7 +1582,7 @@ questionForm.addEventListener('submit', async (e) => {
         question,
         top_k: 5,
         turnstile_token: turnstileToken,
-        is_first_message: conversationHistory.length === 0,
+        is_first_message: isFirstMessage,
         conversation_id: conversationId,
         history: conversationHistory.slice(-ASK_HISTORY_MAX_TURNS).map(({ question, answer }) => ({
           question: question.slice(0, ASK_HISTORY_MAX_FIELD_CHARS),
