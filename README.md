@@ -166,7 +166,7 @@ Assistent das offen, statt zu spekulieren.
   bleibt über Reload erhalten). Das Feedback landet mit Anweisung und
   erzeugtem Text im Fragen-Log (Badge "Kreativ-Modus", der Link öffnet die
   Anweisung im Kreativ-Modus).
-- Fragen-Log (Quellen-Pfleger:innen): lädt schnell auch bei vielen Einträgen -
+- Fragen-Log (System-Admin): enthält alle Fragen und Antworten im Konversationsmodus, je Konversation über eine zufällige Kennung zusammengefasst (ohne IP-Adresse oder Konto); lädt schnell auch bei vielen Einträgen -
   die Liste kommt schlank ohne Antworttexte (jede Antwort erst beim
   Aufklappen), gerendert werden seitenweise 30 Einträge (Nachladen beim
   Scrollen), die Filter wirken trotzdem immer auf den gesamten Bestand.
@@ -303,7 +303,8 @@ Andere MCP-Clients brauchen die Adresse `https://chat.betacodex.org/mcp`
 - Jede Änderung an einer Quelle landet diff-basiert in einem
   Änderungs-Log (mit Rückgängig-Funktion) – sichtbar für alle
   Quellen-Pfleger:innen, nicht nur für die handelnde Person.
-- Anonymisierte Erstfragen neuer Konversationen werden separat
+- Alle Fragen und Antworten im Konversationsmodus werden je Konversation
+  über eine zufällige Kennung (ohne IP-Adresse oder Konto) separat
   protokolliert und helfen dabei, Lücken im Quellenbestand zu erkennen.
 - Öffentliche Quellenliste im Repo: [`docs/sources/QUELLEN.md`](docs/sources/QUELLEN.md)
   (DE), [`SOURCES.md`](docs/sources/SOURCES.md) (EN) und maschinenlesbar
@@ -451,10 +452,10 @@ sind gegen Bots über Rate-Limiting (`app/ratelimit.py`) und Cloudflare
 Turnstile (`app/captcha.py`) abgesichert, dazu eine pfadabhängige
 Content-Security-Policy (eigene, schlankere Variante für das eingebettete
 `/embed.html`). Änderungen an Quellen werden diff-basiert in einem
-Audit-Log protokolliert (`app/audit.py`, mit Revert-Endpunkt), erste
-Konversationsfragen anonymisiert in einem separaten Log
-(`app/question_log.py`) – beides nur für Quellen-Pfleger:innen/
-System-Admins einsehbar. Rechenintensive Hintergrund-Jobs
+Audit-Log protokolliert (`app/audit.py`, mit Revert-Endpunkt), Fragen und Antworten je Konversation ohne IP-Adresse oder Konto in einem
+separaten Log (`app/question_log.py`) – das Audit-Log für
+Quellen-Pfleger:innen/System-Admins, das Fragen-Log nur für System-Admins
+einsehbar. Rechenintensive Hintergrund-Jobs
 (Audio-Transkription) laufen über einen begrenzten Worker-Pool
 (`AUDIO_TRANSCRIPTION_WORKER_COUNT = 3`) statt unbegrenzt parallel.
 Sprachein-/-ausgabe läuft über einen serverseitigen Proxy zu Google Cloud
