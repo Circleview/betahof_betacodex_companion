@@ -4490,16 +4490,16 @@ def test_prepare_excerpt_strips_heading_from_highlight_too():
 def test_feedback_sends_conversation_id_only_when_given():
     js = (STATIC_DIR / "answer-feedback.js").read_text()
     assert "conversationId = null" in js
-    assert "conversation_id: conversationId" in js
+    assert "payload.conversation_id = conversationId" in js
     assert "if (conversationId)" in js
 
 
 def test_handoff_carries_conversation_id():
     js = (STATIC_DIR / "conversation-handoff.js").read_text()
     assert "export const CONVERSATION_ID_STORAGE_KEY" in js
-    assert "createConversationHandoffToken(history, conversationId)" in js
+    assert "createConversationHandoffToken(history, conversationId = null)" in js
     assert "conversation_id: conversationId" in js
-    assert "return { history: data.history, conversationId: data.conversation_id || null }" in js
+    assert "conversationId: data.conversation_id || null" in js
 
 
 def test_question_js_sends_conversation_id():
