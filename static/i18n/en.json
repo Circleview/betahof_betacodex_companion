@@ -336,7 +336,7 @@
   "questionLog.loading": "Loading questions …",
   "questionLog.loadFailed": "Could not load the question log.",
   "questionLog.empty": "No questions logged yet.",
-  "questionLog.noAccess": "This page is only accessible to source admins.",
+  "questionLog.noAccess": "This page is only accessible to system admins.",
   "questionLog.filter.firstQuestion": "1st question",
   "questionLog.filter.noAnswer": "No answer",
   "questionLog.filter.feedback": "Feedback",
@@ -510,5 +510,13 @@
   "creative.cooldownButtonTitle": "Too many requests – possible again in {time}",
   "creative.cooldownInfo": "Waiting time until the next request: to prevent overload, Creative Mode allows only a few requests within 10 minutes. It continues automatically afterwards.",
   "questionLog.filter.creative": "Creative mode",
-  "questionLog.eventType.section": "Section"
+  "questionLog.eventType.section": "Section",
+  "questionLog.filter.followUp": "Follow-up",
+  "questionLog.eventType.followUp": "Follow-up",
+  "questionLog.chatChip": "Chat {id} · {k}/{n}",
+  "questionLog.chatChipAria": "Chat {id}, question {k} of {n}: show only this chat or clear the filter",
+  "questionLog.chatFilterActive": "Chat {id} only",
+  "questionLog.deleteConversation": "Delete entire conversation",
+  "questionLog.deleteConversationConfirm": "Sure? Delete entire conversation",
+  "questionLog.deleteConversationFailed": "Deleting the conversation failed."
 }

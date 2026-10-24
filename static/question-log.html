@@ -33,6 +33,9 @@
       <button type="button" class="question-log-filter-btn active" aria-pressed="true" data-event-type="first_question">
         <span data-i18n="questionLog.filter.firstQuestion"></span>
       </button>
+      <button type="button" class="question-log-filter-btn active" aria-pressed="true" data-event-type="follow_up">
+        <span data-i18n="questionLog.filter.followUp"></span>
+      </button>
       <button type="button" class="question-log-filter-btn active" aria-pressed="true" data-event-type="no_answer">
         <span data-i18n="questionLog.filter.noAnswer"></span>
       </button>
@@ -47,6 +50,8 @@
       </button>
     </div>
   </div>
+  <!-- Nur bei aktivem Chat-Filter sichtbar (question-log.js: renderChatBar). -->
+  <div id="question-log-chat-bar" class="question-log-chat-bar hidden"></div>
   <p id="question-log-status" class="changelog-status" data-i18n="questionLog.loading"></p>
   <ul id="question-log-list" class="timeline-mode"></ul>
 </section>

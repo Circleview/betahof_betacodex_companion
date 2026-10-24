@@ -99,8 +99,8 @@ const EXPLORE_ICON =
   '<circle cx="12" cy="18.5" r="2.2" fill="var(--color-bg)"></circle>' +
   '</svg>';
 
-// gated: nur für Quellen-Pfleger:innen/System-Admins sichtbar (siehe
-// updateNavVisibility) - Konversation und Quellenverzeichnis bleiben für
+// gated: Rolle, ab der der Link sichtbar ist (siehe updateNavVisibility;
+// Fragen-Log nur System-Admins, Änderungslog Quellen-Pfleger:innen) - Konversation und Quellenverzeichnis bleiben für
 // alle Besucher:innen sichtbar.
 // badge: Backlog (2026-08-02) - Warn-Badge, falls mindestens eine Quelle
 // einen defekten Link hat (siehe updateBrokenLinksBadge unten), damit das
@@ -111,8 +111,8 @@ const NAV_LINKS = [
   { id: 'creative-link', href: '/creative.html', icon: CREATIVE_ICON, titleKey: 'index.viewCreative', gated: false },
   { id: 'explore-link', href: '/explore.html', icon: EXPLORE_ICON, titleKey: 'index.viewExplore', gated: false },
   { id: 'import-link', href: '/import.html', icon: IMPORT_ICON, titleKey: 'index.viewSources', gated: false, badge: true },
-  { id: 'question-log-link', href: '/question-log.html', icon: QUESTION_LOG_ICON, titleKey: 'index.viewQuestionLog', gated: true },
-  { id: 'changelog-link', href: '/changelog.html', icon: CHANGELOG_ICON, titleKey: 'index.viewChangelog', gated: true },
+  { id: 'question-log-link', href: '/question-log.html', icon: QUESTION_LOG_ICON, titleKey: 'index.viewQuestionLog', gated: 'system_admin' },
+  { id: 'changelog-link', href: '/changelog.html', icon: CHANGELOG_ICON, titleKey: 'index.viewChangelog', gated: 'quellen_pfleger' },
 ];
 
 // Gleiches Warndreieck-Motiv wie das bestehende Vorbild für fehlgeschlagene
@@ -176,11 +176,11 @@ function applyNavTexts() {
 }
 
 function updateNavVisibility() {
-  const visible = hasRole('quellen_pfleger');
-  NAV_LINKS.filter((link) => link.gated).forEach(({ id }) => {
-    document.getElementById(id)?.classList.toggle('hidden', !visible);
+  NAV_LINKS.filter((link) => link.gated).forEach(({ id, gated }) => {
+    document.getElementById(id)?.classList.toggle('hidden', !hasRole(gated));
   });
-  updateBrokenLinksBadge(visible);
+  // Das Badge der defekten Links bleibt bei Quellen-Pfleger:innen.
+  updateBrokenLinksBadge(hasRole('quellen_pfleger'));
 }
 
 function renderHeaderShell() {

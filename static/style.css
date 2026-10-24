@@ -2565,8 +2565,64 @@ button.send-button {
   grid-column: 3;
   position: relative;
   margin-left: -1.375rem;
-  padding: 0.85rem 0 0.85rem 1.375rem;
+  --qlog-pad-y: 0.85rem;
+  padding: var(--qlog-pad-y) 0 var(--qlog-pad-y) 1.375rem;
   border-bottom: 1px solid var(--color-border);
+}
+
+/* Idee 56580b6e: Blockbalken eines Chats. Liegt am Inhalt (nicht am li),
+   damit er nie auf Zeitleiste oder Punkt sitzt; die negativen Außenabstände
+   gleichen das Padding des li aus, so läuft er über alle Einträge des Blocks
+   durchgehend. Ohne Chat bleibt der Balken transparent (Platz bleibt gleich). */
+.question-log-entry-body {
+  margin-block: calc(-1 * var(--qlog-pad-y, 0.85rem)) calc(-1 * var(--qlog-pad-y, 0.85rem) - 1px);
+  padding-block: var(--qlog-pad-y, 0.85rem) calc(var(--qlog-pad-y, 0.85rem) + 1px);
+  padding-inline-start: 0.75rem;
+  border-inline-start: 3px solid transparent;
+}
+
+.question-log-entry--in-chat > .question-log-entry-body {
+  border-inline-start-color: var(--conversation-color);
+}
+
+/* Abstand zwischen Blöcken: am ersten Element des Blocks (Tagesmarker oder Eintrag). */
+#question-log-list .question-log-block-start {
+  margin-top: 1.5rem;
+}
+
+.question-log-chat-chip {
+  margin-left: 0.6rem;
+  padding: 0.05rem 0.5rem;
+  border: 1px solid var(--conversation-color, var(--color-border));
+  border-radius: 999px;
+  background: var(--color-bg);
+  color: var(--color-text-muted);
+  font: inherit;
+  font-size: 0.7rem;
+  font-weight: 700;
+  cursor: pointer;
+  vertical-align: middle;
+}
+
+.question-log-chat-chip:hover,
+.question-log-chat-chip[aria-pressed="true"] {
+  background: var(--conversation-color, var(--color-accent));
+  border-color: var(--conversation-color, var(--color-accent));
+  color: #fff;
+}
+
+.question-log-chat-bar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin: 0.5rem 0;
+  font-size: 0.85rem;
+  color: var(--color-text-muted);
+}
+
+.question-log-chat-bar.hidden {
+  display: none;
 }
 
 #question-log-list .question-log-entry::before {
@@ -2785,8 +2841,18 @@ button.send-button {
 
   #question-log-list .question-log-entry {
     grid-column: 2;
-    padding: 0.6rem 0 0.6rem calc(0.5rem + 0.625rem);
+    --qlog-pad-y: 0.6rem;
+    padding: var(--qlog-pad-y) 0 var(--qlog-pad-y) calc(0.5rem + 0.625rem);
     margin-left: calc(-1 * (0.5rem + 0.625rem));
+  }
+
+  .question-log-chat-chip {
+    min-height: 44px;
+    padding-inline: 0.75rem;
+  }
+
+  .question-log-entry-body {
+    min-width: 0;
   }
 
   .question-log-type-badge,
