@@ -42,7 +42,18 @@ const TITLE_KEYS = {
 // ein erneuter Versuch möglich ist. sent ('good'/'bad') stellt einen bereits
 // abgesendeten Zustand wieder her (Kreativ-Modus nach Reload), onSent(value)
 // meldet ein erfolgreiches Absenden nach außen.
-export function buildAnswerFeedback({ question, answer, mode = 'conversation', sent = null, onSent = () => {} }) {
+//
+// conversationId (nur Konversationsmodus, optional): ordnet das Feedback dem
+// Chat im Fragen-Log zu (siehe question.js). Fehlt sie, entfällt das Feld;
+// der Kreativ-Modus übergibt sie nicht.
+export function buildAnswerFeedback({
+  question,
+  answer,
+  mode = 'conversation',
+  sent = null,
+  onSent = () => {},
+  conversationId = null,
+}) {
   const wrap = document.createElement('span');
   wrap.className = 'answer-feedback';
   const buttons = [];
@@ -78,10 +89,12 @@ export function buildAnswerFeedback({ question, answer, mode = 'conversation', s
       lockButtons();
       let success = false;
       try {
+        const payload = { question, answer, feedback: value, mode };
+        if (conversationId) payload.conversation_id = conversationId;
         const res = await fetch('/api/answer-feedback', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ question, answer, feedback: value, mode }),
+          body: JSON.stringify(payload),
         });
         success = res.ok;
       } catch (err) {

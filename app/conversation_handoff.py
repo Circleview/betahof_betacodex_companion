@@ -13,7 +13,7 @@ import time
 # Konversations-Persistenz.
 TTL_SECONDS = 300
 
-_store: dict[str, tuple[float, list[dict]]] = {}
+_store: dict[str, tuple[float, list[dict], str | None]] = {}
 
 
 # Eigener Wrapper statt time.monotonic() direkt zu verwenden - Tests können
@@ -26,23 +26,24 @@ def _now() -> float:
 
 def _cleanup_expired() -> None:
     now = _now()
-    expired = [token for token, (expires_at, _) in _store.items() if expires_at < now]
+    expired = [token for token, (expires_at, _, _cid) in _store.items() if expires_at < now]
     for token in expired:
         del _store[token]
 
 
-def create(history: list[dict]) -> str:
+def create(history: list[dict], conversation_id: str | None = None) -> str:
     _cleanup_expired()
     token = secrets.token_urlsafe(24)
-    _store[token] = (_now() + TTL_SECONDS, history)
+    _store[token] = (_now() + TTL_SECONDS, history, conversation_id)
     return token
 
 
-def pop(token: str) -> list[dict] | None:
-    """Liefert die Historie und löscht den Eintrag sofort (Einmal-Abruf) -
-    None bei unbekanntem oder abgelaufenem Token."""
+def pop(token: str) -> tuple[list[dict], str | None] | None:
+    """Liefert (Historie, conversation_id) und löscht den Eintrag sofort
+    (Einmal-Abruf) - None bei unbekanntem oder abgelaufenem Token. Die ID
+    reist mit, damit die Zielseite im Fragen-Log denselben Chat fortsetzt."""
     _cleanup_expired()
     entry = _store.pop(token, None)
     if entry is None:
         return None
-    return entry[1]
+    return entry[1], entry[2]

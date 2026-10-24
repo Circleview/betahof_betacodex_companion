@@ -1,7 +1,11 @@
 import { initI18n, t, getLang } from '/i18n.js';
 import { renderMarkdown } from '/markdown.js';
 import { initAuth, hasRole, onAuthChange } from '/auth.js';
-import { CONVERSATION_STORAGE_KEY, consumeConversationHandoffToken } from '/conversation-handoff.js';
+import {
+  CONVERSATION_STORAGE_KEY,
+  CONVERSATION_ID_STORAGE_KEY,
+  consumeConversationHandoffToken,
+} from '/conversation-handoff.js';
 import { readNdjsonStream } from '/ndjson-stream.js';
 import {
   EXTERNAL_LINK_ICON,
@@ -3737,10 +3741,12 @@ await initAuth();
 // in denselben sessionStorage-Schlüssel wie question.js - ein späterer
 // Klick auf den "Konversation"-Link im gemeinsamen Header lädt sie dann im
 // selben Tab automatisch (unveränderte loadConversationHistory()).
-const handoffHistory = await consumeConversationHandoffToken();
-if (handoffHistory && handoffHistory.length) {
+const handoff = await consumeConversationHandoffToken();
+if (handoff && handoff.history.length) {
   try {
-    sessionStorage.setItem(CONVERSATION_STORAGE_KEY, JSON.stringify(handoffHistory));
+    sessionStorage.setItem(CONVERSATION_STORAGE_KEY, JSON.stringify(handoff.history));
+    // Dieselbe Chat-ID mitnehmen, sonst zerfiele das Gespräch im Fragen-Log.
+    if (handoff.conversationId) sessionStorage.setItem(CONVERSATION_ID_STORAGE_KEY, handoff.conversationId);
   } catch (err) {
     // z.B. sessionStorage voll oder deaktiviert - dann bleibt die
     // Konversation eben nur in diesem Tab unerreichbar, kein Absturz.

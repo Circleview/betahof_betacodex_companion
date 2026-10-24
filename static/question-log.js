@@ -1,5 +1,6 @@
 import { initI18n, t, getLang } from '/i18n.js';
 import { initAuth } from '/auth.js';
+import { buildBlocks, pageBlocks, shortId } from '/question-log-blocks.js';
 
 // Backlog #97, erweitert 2026-09-01: zeigt GET /api/question-log
 // chronologisch (neueste zuerst), nach Kalendertag gruppiert - gleiches
@@ -16,23 +17,31 @@ import { initAuth } from '/auth.js';
 // Frage öffnet (siehe question.js: consumeAskParam) - so lässt sich der
 // gemeldete Fall nachvollziehen und eine Quellenverbesserung direkt gegen
 // dieselbe Frage testen, ohne sie erneut abzutippen.
+//
+// Idee 56580b6e: jede Frage eines Chats wird geloggt (event_type "follow_up"
+// ab der zweiten). Die Liste zeigt deshalb Blöcke je conversation_id - die
+// reine Gruppierung steht in question-log-blocks.js (testbar ohne DOM).
 
 await initI18n();
 await initAuth();
 
 const listEl = document.getElementById('question-log-list');
 const statusEl = document.getElementById('question-log-status');
+const chatBarEl = document.getElementById('question-log-chat-bar');
 const filterButtons = Array.from(document.querySelectorAll('.question-log-filter-btn'));
 
 // Wie die Quellenliste (import.js: SOURCES_PAGE_SIZE): ALLE Einträge liegen als
 // schlanke Liste (ohne Antworttexte) vor - Filter wirken deshalb immer auf den
 // kompletten Bestand -, gerendert werden aber nur die ersten LOG_PAGE_SIZE
-// des gefilterten Ergebnisses; beim Erreichen des Listenendes (Sentinel +
+// des gefilterten Ergebnisses (Paging zählt BLÖCKE, kein Chat wird zerschnitten); beim Erreichen des Listenendes (Sentinel +
 // IntersectionObserver) kommt die nächste Seite dazu. Die Antwort eines
 // Eintrags wird erst beim Aufklappen einzeln nachgeladen und dann gemerkt.
 const LOG_PAGE_SIZE = 30;
 let allEntries = [];
-let filteredEntries = [];
+let filteredBlocks = [];
+// Chat-Filter (Klick auf den Chip) und zweistufiges "Ganzes Gespräch löschen".
+let activeConversationId = null;
+let deleteConversationPending = false;
 let visibleCount = LOG_PAGE_SIZE;
 let logObserver = null;
 const answerCache = new Map();
@@ -85,6 +94,7 @@ function buildDayMarker(label) {
 
 const EVENT_TYPE_LABEL_KEYS = {
   first_question: 'questionLog.eventType.firstQuestion',
+  follow_up: 'questionLog.eventType.followUp',
   no_answer: 'questionLog.eventType.noAnswer',
   feedback: 'questionLog.eventType.feedback',
   // 2026-09-24: jede Anfrage im Kreativ-Modus (Oberfläche) bzw. über MCP
@@ -187,8 +197,26 @@ async function loadAnswer(entry, answerEl) {
   }
 }
 
-function buildEntryElement(entry) {
-  const li = document.createElement('li');
+// Chip "Chat 3f2a · k/n": Button (textContent, kein innerHTML), schaltet den
+// Chat-Filter für diesen Chat ein/aus.
+function buildChatChip(cid, k, n) {
+  const chip = document.createElement('button');
+  chip.type = 'button';
+  chip.className = 'question-log-chat-chip';
+  const label = t('questionLog.chatChip', { id: shortId(cid), k, n });
+  chip.textContent = label;
+  chip.setAttribute('aria-label', t('questionLog.chatChipAria', { id: shortId(cid), k, n }));
+  chip.setAttribute('aria-pressed', String(activeConversationId === cid));
+  chip.addEventListener('click', () => {
+    activeConversationId = activeConversationId === cid ? null : cid;
+    deleteConversationPending = false;
+    applyFilter();
+  });
+  return chip;
+}
+
+function buildEntryElement(entry, k, n, blockStart) {
+  let li = document.createElement('li');
   // Fix (2026-09-14, gemeldeter Bug): eine Frage, auf die mehrere
   // Kriterien gleichzeitig zutreffen (z.B. "erste Frage" UND "keine
   // Antwort gefunden"), ist jetzt EIN Eintrag mit mehreren event_types
@@ -196,10 +224,24 @@ function buildEntryElement(entry) {
   // entsprechend mehrere Badges/Modifier-Klassen statt nur einer.
   li.className = ['question-log-entry', ...entry.event_types.map((et) => `question-log-entry--${et}`)].join(' ');
 
+  // Inhalt in .question-log-entry-body: trägt den Blockbalken (border-left in
+  // --conversation-color) - nie der li selbst, sonst läge er auf Zeitleiste/Punkt.
+  const body = document.createElement('div');
+  body.className = 'question-log-entry-body';
+  const mainLi = li;
+  li = body;
+
   const time = document.createElement('span');
   time.className = 'question-log-time';
-  time.textContent = formatTime(new Date(entry.timestamp));
+  const entryDate = new Date(entry.timestamp);
+  // Folgefrage an einem späteren Tag als der Blockstart: Datum mit anzeigen,
+  // sonst liest sie sich wie am Starttag (Tagesmarker) gestellt.
+  const dateHint = blockStart && !isSameDay(entryDate, new Date(blockStart))
+    ? `${entryDate.toLocaleDateString(getLang() === 'de' ? 'de-DE' : 'en-US', { day: '2-digit', month: '2-digit' })} `
+    : '';
+  time.textContent = dateHint + formatTime(entryDate);
   li.appendChild(time);
+  if (entry.conversation_id) li.appendChild(buildChatChip(entry.conversation_id, k, n));
 
   const badgeKeys = entry.event_types.map((et) => EVENT_TYPE_LABEL_KEYS[et] || EVENT_TYPE_LABEL_KEYS.first_question);
   if (entry.mode === 'creative' && !entry.event_types.includes('creative')) {
@@ -255,7 +297,8 @@ function buildEntryElement(entry) {
   deleteBtn.addEventListener('click', () => deleteEntry(entry));
   li.appendChild(deleteBtn);
 
-  return li;
+  mainLi.appendChild(body);
+  return mainLi;
 }
 
 // Nutzerwunsch (Livegang-Vorbereitung, 2026-09-10): löscht einen einzelnen
@@ -285,6 +328,49 @@ async function deleteEntry(entry) {
   }
 }
 
+// Leiste über der Liste: nur bei aktivem Chat-Filter sichtbar, mit
+// "Ganzes Gespräch löschen" (zweistufig wie deleteConfirmPendingIds).
+function renderChatBar() {
+  chatBarEl.replaceChildren();
+  chatBarEl.classList.toggle('hidden', !activeConversationId);
+  if (!activeConversationId) return;
+  const label = document.createElement('span');
+  label.className = 'question-log-chat-bar-label';
+  label.textContent = t('questionLog.chatFilterActive', { id: shortId(activeConversationId) });
+  const del = document.createElement('button');
+  del.type = 'button';
+  del.className = 'link-button question-log-delete-button question-log-delete-conversation';
+  del.textContent = t(deleteConversationPending ? 'questionLog.deleteConversationConfirm' : 'questionLog.deleteConversation');
+  del.addEventListener('click', deleteConversation);
+  chatBarEl.append(label, del);
+}
+
+// Löscht alle Einträge des aktiven Chats (DELETE /api/question-log/conversation/{cid}).
+async function deleteConversation() {
+  if (!deleteConversationPending) {
+    deleteConversationPending = true;
+    renderChatBar();
+    return;
+  }
+  const cid = activeConversationId;
+  try {
+    const res = await fetch(`/api/question-log/conversation/${encodeURIComponent(cid)}`, {
+      method: 'DELETE',
+      headers: { 'X-Lang': getLang() },
+    });
+    if (!res.ok) throw new Error();
+    allEntries = allEntries.filter((e) => e.conversation_id !== cid);
+    activeConversationId = null;
+    deleteConversationPending = false;
+    applyFilter({ resetPaging: false });
+  } catch (err) {
+    deleteConversationPending = false;
+    renderChatBar();
+    statusEl.textContent = t('questionLog.deleteConversationFailed');
+    statusEl.classList.remove('hidden');
+  }
+}
+
 function render() {
   // Bleibt über ein erneutes render() hinweg erhalten (z.B. beim Filtern) -
   // siehe Kommentar bei buildEntryElement/details.dataset.timestamp.
@@ -293,7 +379,8 @@ function render() {
   );
   logObserver?.disconnect();
   listEl.replaceChildren();
-  if (!filteredEntries.length) {
+  renderChatBar();
+  if (!filteredBlocks.length) {
     statusEl.textContent = t('questionLog.empty');
     statusEl.classList.remove('hidden');
     return;
@@ -302,20 +389,30 @@ function render() {
 
   let gridRow = 0;
   let lastDayKey = null;
-  filteredEntries.slice(0, visibleCount).forEach((entry) => {
-    const date = new Date(entry.timestamp);
+  pageBlocks(filteredBlocks, visibleCount).forEach((block, blockIndex) => {
+    // Tagesmarker richtet sich nach dem Blockstart: eine Folgefrage am
+    // nächsten Tag bleibt im Block unter dem Starttag.
+    const date = new Date(block.start);
     const key = dayKey(date);
+    let first = null;
     if (key !== lastDayKey) {
       lastDayKey = key;
       gridRow += 1;
-      const marker = buildDayMarker(formatDayLabel(date));
-      marker.style.gridRow = String(gridRow);
-      listEl.appendChild(marker);
+      first = buildDayMarker(formatDayLabel(date));
+      first.style.gridRow = String(gridRow);
+      listEl.appendChild(first);
     }
-    gridRow += 1;
-    const el = buildEntryElement(entry);
-    el.style.gridRow = String(gridRow);
-    listEl.appendChild(el);
+    block.items.forEach(({ entry, k, n }, i) => {
+      gridRow += 1;
+      const el = buildEntryElement(entry, k, n, block.start);
+      el.style.gridRow = String(gridRow);
+      if (block.color) el.style.setProperty('--conversation-color', block.color);
+      el.classList.toggle('question-log-entry--in-chat', Boolean(block.color));
+      if (i === 0) first = first || el;
+      listEl.appendChild(el);
+    });
+    // Abstand zwischen Blöcken (nicht vor dem ersten).
+    if (blockIndex > 0) first.classList.add('question-log-block-start');
   });
   listEl.querySelectorAll('details').forEach((d) => {
     if (openTimestamps.has(d.dataset.timestamp)) d.open = true;
@@ -323,9 +420,9 @@ function render() {
   listEl.style.setProperty('--timeline-row-end', String(gridRow + 1));
   requestAnimationFrame(runClampChecks);
 
-  // Noch nicht gerenderte Einträge übrig: unsichtbares Sentinel ans Ende, das
+  // Noch nicht gerenderte Blöcke übrig: unsichtbares Sentinel ans Ende, das
   // beim Scrollen die nächste Seite nachlädt (Daten liegen ja schon vor).
-  if (filteredEntries.length > visibleCount) {
+  if (filteredBlocks.length > visibleCount) {
     const sentinel = document.createElement('li');
     sentinel.className = 'question-log-sentinel';
     sentinel.style.gridRow = String(gridRow + 1);
@@ -349,7 +446,13 @@ function applyFilter({ resetPaging = true } = {}) {
   // event_types taucht auf, sobald MINDESTENS eines davon aktiv gefiltert
   // ist - auch wenn ein anderes ihrer Labels gerade ausgeblendet ist. Der
   // Filter läuft über ALLE Einträge, nicht nur über die gerade gerenderten.
-  filteredEntries = allEntries.filter((entry) => entry.event_types.some((et) => activeEventTypes.has(et)));
+  filteredBlocks = buildBlocks(allEntries, activeEventTypes, activeConversationId);
+  // Passt kein Eintrag des gewählten Chats mehr (Typ-Filter, Löschen): Chat-Filter zurück.
+  if (activeConversationId && !filteredBlocks.length) {
+    activeConversationId = null;
+    deleteConversationPending = false;
+    filteredBlocks = buildBlocks(allEntries, activeEventTypes, null);
+  }
   if (resetPaging) visibleCount = LOG_PAGE_SIZE;
   render();
 }

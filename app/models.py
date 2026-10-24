@@ -81,6 +81,10 @@ class QuestionIn(BaseModel):
     # app/main.py ask() - wird dort defensiv auf die letzten paar Turns
     # gekappt, unabhängig davon, wie viele das Frontend mitschickt).
     history: list[HistoryTurnIn] = Field(default_factory=list, max_length=50)
+    # Idee 56580b6e: zufällige Kennung der Konversation (crypto.randomUUID()
+    # im Browser), fasst die Einträge im Fragen-Log zu einem Chat zusammen.
+    # Der Server prüft das Format in app/main.py (_valid_conversation_id).
+    conversation_id: str | None = Field(None, max_length=64)
 
 
 class CreativeRequestIn(BaseModel):
@@ -130,6 +134,8 @@ class QuestionLogEntryOut(BaseModel):
     # nachgeladen (GET /api/question-log?include_answers=false liefert sie
     # nicht mit) - has_answer zeigt trotzdem an, ob es eine gibt.
     has_answer: bool = False
+    # Idee 56580b6e: Chat-Kennung; fehlt bei Altbestand, Kreativ, MCP.
+    conversation_id: str | None = None
     timestamp: str
 
 
@@ -151,6 +157,7 @@ class AnswerFeedbackIn(BaseModel):
     # Nutzerwunsch: dieselben Daumen gibt es auch im Kreativ-Modus - dort ist
     # "question" die Anweisung und "answer" der erzeugte Text.
     mode: str = "conversation"
+    conversation_id: str | None = Field(None, max_length=64)
 
 
 class ChunkRef(BaseModel):
@@ -201,6 +208,7 @@ class ConversationTurnIn(BaseModel):
 
 class ConversationHandoffIn(BaseModel):
     history: list[ConversationTurnIn]
+    conversation_id: str | None = Field(None, max_length=64)
 
 
 class RequestLinkIn(BaseModel):

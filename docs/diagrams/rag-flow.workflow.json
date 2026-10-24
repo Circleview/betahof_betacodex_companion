@@ -30,7 +30,7 @@
     { "id": "answer", "lane": "ui", "col": 5, "type": "frontend", "label": "Antwort im Chat", "sublabel": "[n] anklickbar", "width": 132 },
     { "id": "search", "lane": "retrieval", "col": 2, "type": "database", "label": "Vektorsuche", "sublabel": "ChromaDB + Web-Index", "width": 132 },
     { "id": "rerank", "lane": "retrieval", "col": 3, "type": "backend", "label": "Relevanz-Ranking", "sublabel": "Top-K Textausschnitte", "width": 132 },
-    { "id": "log", "lane": "retrieval", "col": 1, "type": "database", "label": "Fragen-Log", "sublabel": "1. Frage / keine Antwort", "width": 132 },
+    { "id": "log", "lane": "retrieval", "col": 1, "type": "database", "label": "Fragen-Log", "sublabel": "alle Fragen / keine Antwort", "width": 132 },
     { "id": "boost", "lane": "boost", "col": 2, "type": "backend", "label": "Autor:innen-Boost", "sublabel": "Nachname/Tippfehler-Abgleich", "tag": "Distanz-Rabatt", "width": 132 },
     { "id": "claude", "lane": "llm", "col": 4, "type": "cloud", "label": "Claude Haiku 4.5", "sublabel": "Antwort + verdeckte Zitate", "width": 132 },
     { "id": "quotes", "lane": "evidence", "col": 4, "type": "database", "label": "Zitat-Block", "sublabel": "woertliche Belege je [n]", "tag": "---QUOTES---", "width": 132 },
@@ -38,7 +38,7 @@
   ],
   "edges": [
     { "id": "ask", "from": "user", "to": "chat", "variant": "default" },
-    { "id": "log-question", "from": "chat", "to": "log", "label": "protokolliert 1. Frage", "variant": "dashed", "role": "branch" },
+    { "id": "log-question", "from": "chat", "to": "log", "label": "protokolliert alle Fragen", "variant": "dashed", "role": "branch" },
     { "id": "embed-search", "from": "chat", "to": "search", "label": "Frage embedden", "variant": "emphasis" },
     { "id": "author-check", "from": "search", "to": "boost", "label": "Autor:in erkannt?", "variant": "security", "role": "branch" },
     { "id": "boost-rerank", "from": "boost", "to": "rerank", "label": "Distanz-Rabatt", "variant": "dashed" },

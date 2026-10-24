@@ -489,6 +489,14 @@ def anon_client(client):
     return TestClient(main_module.app)
 
 
+@pytest.fixture
+def admin_client(anon_client):
+    # Fragen-Log-API: nur System-Admin (Idee 56580b6e) - der Admin selbst wird
+    # nie geloggt, die Einträge legen die Tests direkt über question_log an.
+    login(anon_client, "admin@test.local", users.SYSTEM_ADMIN)
+    return anon_client
+
+
 # Backlog #114: Early-Access-Passwort für die Produktivumgebung. Ohne
 # gesetztes EARLY_ACCESS_PASSWORD (Standardfall, entspricht Dev/Stabil) bleibt
 # die App komplett unangetastet - das deckt sich implizit mit ALLEN anderen
@@ -1751,6 +1759,20 @@ def test_conversation_handoff_rejects_after_rate_limit_exceeded(client):
     assert response.status_code == 429
 
 
+def test_conversation_handoff_returns_conversation_id(client):
+    token = client.post(
+        "/api/conversation-handoff", json={"history": [_HANDOFF_TURN], "conversation_id": CID}
+    ).json()["token"]
+
+    assert client.get(f"/api/conversation-handoff/{token}").json()["conversation_id"] == CID
+
+
+def test_conversation_handoff_conversation_id_is_null_when_missing_or_invalid(client):
+    for body in ({"history": [_HANDOFF_TURN]}, {"history": [_HANDOFF_TURN], "conversation_id": "kein-uuid"}):
+        token = client.post("/api/conversation-handoff", json=body).json()["token"]
+        assert client.get(f"/api/conversation-handoff/{token}").json()["conversation_id"] is None
+
+
 def test_conversation_handoff_expires_after_ttl(client, monkeypatch):
     fake_now = [0.0]
     monkeypatch.setattr(conversation_handoff, "_now", lambda: fake_now[0])
@@ -1789,12 +1811,174 @@ def test_ask_logs_first_message_outside_dev_environment(client, monkeypatch):
     assert entries[0]["timestamp"]
 
 
-def test_ask_does_not_log_follow_up_messages(client, monkeypatch):
+CID = "3f2a9c1e-5b7d-4e8a-9c3b-1a2b3c4d5e6f"
+CID2 = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee"
+
+
+def test_ask_logs_follow_up_with_conversation_id(client, monkeypatch):
     monkeypatch.setattr(main_module, "IS_DEV_ENVIRONMENT", False)
 
-    client.post("/api/ask", json={"question": "Folgefrage", "is_first_message": False})
+    client.post("/api/ask", json={"question": "Folgefrage", "is_first_message": False, "conversation_id": CID})
+
+    entries = question_log.list_entries()
+    assert len(entries) == 1
+    assert entries[0]["event_types"] == ["follow_up"]
+    assert entries[0]["conversation_id"] == CID
+    assert entries[0]["text"] == "Folgefrage"
+
+
+def test_ask_logs_first_question_with_conversation_id(client, monkeypatch):
+    monkeypatch.setattr(main_module, "IS_DEV_ENVIRONMENT", False)
+
+    client.post("/api/ask", json={"question": "Erste", "is_first_message": True, "conversation_id": CID})
+
+    entry = question_log.list_entries()[0]
+    assert entry["event_types"] == ["first_question"]
+    assert entry["conversation_id"] == CID
+
+
+@pytest.mark.parametrize("bad_id", [None, "kein-uuid", "3F2A9C1E-5B7D-4E8A-9C3B-1A2B3C4D5E6F", "../etc/passwd", ""])
+def test_ask_logs_without_conversation_id_field_for_missing_or_invalid_id(client, monkeypatch, bad_id):
+    monkeypatch.setattr(main_module, "IS_DEV_ENVIRONMENT", False)
+    client.post("/api/sources", json={"title": "Q", "text": "Text."})
+    body = {"question": "Frage", "is_first_message": True}
+    if bad_id is not None:
+        body["conversation_id"] = bad_id
+
+    res = client.post("/api/ask", json=body)
+
+    assert res.status_code == 200
+    entries = question_log.list_entries()
+    assert len(entries) == 1
+    assert "conversation_id" not in entries[0]
+
+
+def test_ask_rejects_conversation_id_over_64_chars(client, monkeypatch):
+    monkeypatch.setattr(main_module, "IS_DEV_ENVIRONMENT", False)
+
+    res = client.post("/api/ask", json={"question": "Frage", "conversation_id": "a" * 65})
+
+    assert res.status_code == 422
+    assert question_log.list_entries() == []
+
+
+def test_ask_does_not_log_in_dev_environment_even_for_follow_ups(client):
+    client.post("/api/ask", json={"question": "Folgefrage", "conversation_id": CID})
 
     assert question_log.list_entries() == []
+
+
+def test_ask_truncates_logged_question_text(client, monkeypatch):
+    monkeypatch.setattr(main_module, "IS_DEV_ENVIRONMENT", False)
+    limit = main_module.ANSWER_FEEDBACK_MAX_QUESTION_CHARS
+
+    client.post("/api/ask", json={"question": "q" * (limit + 50), "conversation_id": CID})
+
+    text = question_log.list_entries()[0]["text"]
+    assert text == "q" * (limit - 1) + "…"
+
+
+def test_ask_attaches_answers_to_the_right_entry_with_interleaved_conversations(client, monkeypatch):
+    monkeypatch.setattr(main_module, "IS_DEV_ENVIRONMENT", False)
+    monkeypatch.setattr(llm, "stream_answer_question", lambda question, *a, **k: iter([f"Zu {question} gilt Folgendes."]))
+    client.post("/api/sources", json={"title": "Q", "text": "Text."})
+
+    for cid, q, first in [(CID, "A1", True), (CID2, "B1", True), (CID, "A2", False), (CID2, "B2", False)]:
+        client.post("/api/ask", json={"question": q, "is_first_message": first, "conversation_id": cid})
+
+    by_text = {e["text"]: e for e in question_log.list_entries()}
+    assert {t: (e["conversation_id"], e["answer"]) for t, e in by_text.items()} == {
+        "A1": (CID, "Zu A1 gilt Folgendes."),
+        "A2": (CID, "Zu A2 gilt Folgendes."),
+        "B1": (CID2, "Zu B1 gilt Folgendes."),
+        "B2": (CID2, "Zu B2 gilt Folgendes."),
+    }
+
+
+def test_ask_logs_no_answer_on_follow_up_as_one_entry_with_two_labels(client, monkeypatch):
+    monkeypatch.setattr(main_module, "IS_DEV_ENVIRONMENT", False)
+    monkeypatch.setattr(
+        llm, "stream_answer_question", lambda *a, **k: iter(["Die vorliegende Quellenlage gibt darauf keine Antwort."])
+    )
+    client.post("/api/sources", json={"title": "Q", "text": "Text."})
+
+    client.post("/api/ask", json={"question": "Folge ohne Antwort", "is_first_message": False, "conversation_id": CID})
+
+    entries = question_log.list_entries()
+    assert len(entries) == 1
+    assert entries[0]["event_types"] == ["follow_up", "no_answer"]
+
+
+def test_feedback_on_no_answer_with_same_id_and_question_lands_in_that_entry(client, monkeypatch):
+    # Der Log-Eintrag trägt den kurzen Absage-Satz, das Frontend schickt die
+    # lange Erklärung als answer - der Abgleich läuft deshalb über ID + Frage.
+    monkeypatch.setattr(main_module, "IS_DEV_ENVIRONMENT", False)
+    monkeypatch.setattr(
+        llm, "stream_answer_question", lambda *a, **k: iter(["Die vorliegende Quellenlage gibt darauf keine Antwort."])
+    )
+    client.post("/api/sources", json={"title": "Q", "text": "Text."})
+    client.post("/api/ask", json={"question": "Absage?", "is_first_message": True, "conversation_id": CID})
+
+    client.post(
+        "/api/answer-feedback",
+        json={
+            "question": "Absage?",
+            "answer": main_module.NO_ANSWER_EXPLANATIONS["de"],
+            "feedback": "bad",
+            "conversation_id": CID,
+        },
+    )
+
+    entries = question_log.list_entries()
+    assert len(entries) == 1
+    assert entries[0]["feedback"] == "bad"
+    assert "feedback" in entries[0]["event_types"] and "no_answer" in entries[0]["event_types"]
+
+
+def test_feedback_with_same_id_but_other_question_creates_new_entry_with_id(client, monkeypatch):
+    monkeypatch.setattr(main_module, "IS_DEV_ENVIRONMENT", False)
+    question_log.log_question("Erste Frage", CID)
+
+    client.post(
+        "/api/answer-feedback",
+        json={"question": "Ganz andere Frage", "answer": "Antwort.", "feedback": "good", "conversation_id": CID},
+    )
+
+    entries = {e["text"]: e for e in question_log.list_entries()}
+    assert "feedback" not in entries["Erste Frage"]
+    assert entries["Ganz andere Frage"]["conversation_id"] == CID
+    assert entries["Ganz andere Frage"]["feedback"] == "good"
+
+
+def test_feedback_without_id_keeps_old_text_and_answer_matching(client, monkeypatch):
+    monkeypatch.setattr(main_module, "IS_DEV_ENVIRONMENT", False)
+    entry_id = question_log.log_question("Frage", CID)
+    question_log.set_answer(entry_id, "Die Antwort.")
+
+    client.post("/api/answer-feedback", json={"question": "Frage", "answer": "Die Antwort.", "feedback": "good"})
+
+    entries = question_log.list_entries()
+    assert len(entries) == 1 and entries[0]["feedback"] == "good"
+
+
+def test_answer_feedback_rejects_conversation_id_over_64_chars(client):
+    res = client.post(
+        "/api/answer-feedback",
+        json={"question": "F", "answer": "A", "feedback": "good", "conversation_id": "a" * 65},
+    )
+    assert res.status_code == 422
+
+
+def test_ask_still_answers_and_keeps_a_broken_log_file_untouched(client, monkeypatch):
+    monkeypatch.setattr(main_module, "IS_DEV_ENVIRONMENT", False)
+    question_log.QUESTION_LOG_FILE.write_bytes(b"[{kaputt")
+    client.post("/api/sources", json={"title": "Q", "text": "Text."})
+
+    res = client.post("/api/ask", json={"question": "Frage", "is_first_message": True, "conversation_id": CID})
+
+    events = [json.loads(line) for line in res.text.splitlines()]
+    assert res.status_code == 200 and events[-1]["type"] == "done"
+    assert question_log.QUESTION_LOG_FILE.read_bytes() == b"[{kaputt"
 
 
 def test_ask_does_not_log_system_admins_own_questions(anon_client, monkeypatch):
@@ -1844,71 +2028,102 @@ def test_x_robots_tag_absent_outside_dev_environment(client, monkeypatch):
     assert "x-robots-tag" not in response.headers
 
 
-def test_get_question_log_requires_pfleger_role(anon_client):
+def test_get_question_log_requires_login(anon_client):
     response = anon_client.get("/api/question-log")
     assert response.status_code == 403
 
 
-def test_get_question_log_returns_entries_for_pfleger(client, monkeypatch):
-    monkeypatch.setattr(main_module, "IS_DEV_ENVIRONMENT", False)
-    client.post("/api/ask", json={"question": "Frage einer Pflegerin", "is_first_message": True})
+def test_question_log_endpoints_reject_quellen_pfleger(client):
+    # Idee 56580b6e: das Log enthält jetzt jede Frage - nur System-Admin.
+    assert client.get("/api/question-log").status_code == 403
+    assert client.get("/api/question-log/some-id").status_code == 403
+    assert client.delete("/api/question-log/some-id").status_code == 403
+    assert client.delete(f"/api/question-log/conversation/{CID}").status_code == 403
 
-    response = client.get("/api/question-log")
+
+def test_get_question_log_returns_entries_for_admin_with_conversation_id(admin_client):
+    question_log.log_question("Frage mit Chat", CID)
+    question_log.log_question("Altbestand-artig")
+
+    response = admin_client.get("/api/question-log")
 
     assert response.status_code == 200
-    texts = [entry["text"] for entry in response.json()]
-    assert "Frage einer Pflegerin" in texts
+    by_text = {e["text"]: e for e in response.json()}
+    assert by_text["Frage mit Chat"]["conversation_id"] == CID
+    assert by_text["Altbestand-artig"]["conversation_id"] is None
 
 
-def test_get_question_log_can_omit_answers_and_flag_which_entries_have_one(client, monkeypatch):
-    monkeypatch.setattr(main_module, "IS_DEV_ENVIRONMENT", False)
-    client.post("/api/answer-feedback", json={"question": "Mit Antwort?", "answer": "Ja, hier.", "feedback": "good"})
-    question_log.log_question("Ohne Antwort")
+def test_get_question_log_can_omit_answers_and_flag_which_entries_have_one(admin_client):
+    entry_id = question_log.log_question("Mit Antwort?", CID)
+    question_log.set_answer(entry_id, "Ja, hier.")
+    question_log.log_question("Ohne Antwort", CID)
 
-    lean = {e["text"]: e for e in client.get("/api/question-log?include_answers=false").json()}
-    full = {e["text"]: e for e in client.get("/api/question-log").json()}
+    lean = {e["text"]: e for e in admin_client.get("/api/question-log?include_answers=false").json()}
+    full = {e["text"]: e for e in admin_client.get("/api/question-log").json()}
 
     assert lean["Mit Antwort?"]["answer"] is None and lean["Mit Antwort?"]["has_answer"] is True
+    assert lean["Mit Antwort?"]["conversation_id"] == CID
     assert lean["Ohne Antwort"]["has_answer"] is False
     assert full["Mit Antwort?"]["answer"] == "Ja, hier."
 
 
-def test_get_single_question_log_entry_returns_answer_or_404(client, monkeypatch):
-    monkeypatch.setattr(main_module, "IS_DEV_ENVIRONMENT", False)
-    client.post("/api/answer-feedback", json={"question": "Frage?", "answer": "Volle Antwort.", "feedback": "bad"})
-    entry_id = question_log.list_entries()[0]["id"]
+def test_get_single_question_log_entry_returns_answer_or_404(admin_client):
+    entry_id = question_log.log_question("Frage?")
+    question_log.set_answer(entry_id, "Volle Antwort.")
 
-    ok = client.get(f"/api/question-log/{entry_id}")
-    missing = client.get("/api/question-log/does-not-exist")
+    ok = admin_client.get(f"/api/question-log/{entry_id}")
+    missing = admin_client.get("/api/question-log/does-not-exist")
 
     assert ok.status_code == 200 and ok.json()["answer"] == "Volle Antwort."
     assert missing.status_code == 404
 
 
-def test_get_single_question_log_entry_requires_pfleger_role(anon_client):
+def test_get_single_question_log_entry_requires_login(anon_client):
     assert anon_client.get("/api/question-log/some-id").status_code == 403
 
 
-def test_delete_question_log_entry_requires_pfleger_role(anon_client):
+def test_delete_question_log_entry_requires_login(anon_client):
     response = anon_client.delete("/api/question-log/some-id")
     assert response.status_code == 403
 
 
-def test_delete_question_log_entry_returns_404_for_unknown_id(client, monkeypatch):
-    monkeypatch.setattr(main_module, "IS_DEV_ENVIRONMENT", False)
-    response = client.delete("/api/question-log/does-not-exist")
+def test_delete_question_log_entry_returns_404_for_unknown_id(admin_client):
+    response = admin_client.delete("/api/question-log/does-not-exist")
     assert response.status_code == 404
 
 
-def test_delete_question_log_entry_removes_it(client, monkeypatch):
-    monkeypatch.setattr(main_module, "IS_DEV_ENVIRONMENT", False)
-    client.post("/api/ask", json={"question": "Frage einer Pflegerin", "is_first_message": True})
-    entry_id = question_log.list_entries()[0]["id"]
+def test_delete_question_log_entry_removes_it(admin_client):
+    entry_id = question_log.log_question("Frage einer Pflegerin")
 
-    response = client.delete(f"/api/question-log/{entry_id}")
+    response = admin_client.delete(f"/api/question-log/{entry_id}")
 
     assert response.status_code == 200
     assert question_log.list_entries() == []
+
+
+def test_delete_conversation_removes_only_entries_of_that_id(admin_client):
+    question_log.log_question("A1", CID)
+    question_log.log_question("A2", CID, first=False)
+    question_log.log_question("B1", CID2)
+    question_log.log_question("Alt")
+
+    response = admin_client.delete(f"/api/question-log/conversation/{CID}")
+
+    assert response.status_code == 200 and response.json()["detail"]
+    assert sorted(e["text"] for e in question_log.list_entries()) == ["Alt", "B1"]
+
+
+def test_delete_conversation_returns_404_for_unknown_id(admin_client):
+    question_log.log_question("A1", CID)
+
+    response = admin_client.delete(f"/api/question-log/conversation/{CID2}")
+
+    assert response.status_code == 404
+    assert len(question_log.list_entries()) == 1
+
+
+def test_delete_conversation_requires_login(anon_client):
+    assert anon_client.delete(f"/api/question-log/conversation/{CID}").status_code == 403
 
 
 def test_question_log_entries_have_first_question_event_type(client, monkeypatch):
@@ -1970,6 +2185,7 @@ def test_ask_logs_no_answer_event_when_model_says_it_cannot_answer(client, monke
     entries = question_log.list_entries()
     no_answer_entries = [e for e in entries if "no_answer" in e["event_types"]]
     assert len(no_answer_entries) == 1
+    assert no_answer_entries[0]["event_types"] == ["follow_up", "no_answer"]
     assert no_answer_entries[0]["text"] == "Was ist Andreas Schlegels Sicht auf Zeitorientierung?"
     assert no_answer_entries[0]["answer"] == "Die vorliegende Quellenlage gibt darauf keine Antwort."
 
@@ -8748,3 +8964,46 @@ def test_startup_reindex_logs_count_from_run(client, embed_calls, caplog):
     with caplog.at_level(logging.INFO):
         main_module._startup_reindex(delay=0)
     assert any("1 Quellen" in r.getMessage() for r in caplog.records)
+
+
+def test_ask_still_answers_when_question_log_cannot_be_written(client, monkeypatch):
+    monkeypatch.setattr(main_module, "IS_DEV_ENVIRONMENT", False)
+    monkeypatch.setattr(llm, "stream_answer_question", lambda *a, **k: iter(["Eine Antwort."]))
+
+    def full_disk(entries):
+        raise OSError("No space left on device")
+
+    monkeypatch.setattr(question_log, "_save", full_disk)
+    client.post("/api/sources", json={"title": "Q", "text": "Text."})
+
+    res = client.post("/api/ask", json={"question": "Frage?", "is_first_message": True, "conversation_id": CID})
+
+    assert res.status_code == 200
+    assert '"type": "answer"' in res.text or '"type":"answer"' in res.text
+    assert '"type": "error"' not in res.text and '"type":"error"' not in res.text
+
+
+def test_feedback_on_repeated_question_lands_in_entry_with_matching_answer(client, monkeypatch):
+    monkeypatch.setattr(main_module, "IS_DEV_ENVIRONMENT", False)
+    first = question_log.log_question("Gleiche Frage", CID)
+    question_log.set_answer(first, "Antwort eins.")
+    second = question_log.log_question("Gleiche Frage", CID, first=False)
+    question_log.set_answer(second, "Antwort zwei.")
+
+    client.post(
+        "/api/answer-feedback",
+        json={"question": "Gleiche Frage", "answer": "Antwort eins.", "feedback": "bad", "conversation_id": CID},
+    )
+
+    by_id = {e["id"]: e for e in question_log.list_entries()}
+    assert by_id[first]["feedback"] == "bad"
+    assert "feedback" not in by_id[second]
+
+
+def test_ask_does_not_log_system_admins_follow_up_with_conversation_id(anon_client, monkeypatch):
+    login(anon_client, "admin@test.local", users.SYSTEM_ADMIN)
+    monkeypatch.setattr(main_module, "IS_DEV_ENVIRONMENT", False)
+
+    anon_client.post("/api/ask", json={"question": "Folge des Admins", "is_first_message": False, "conversation_id": CID})
+
+    assert question_log.list_entries() == []

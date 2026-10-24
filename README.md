@@ -166,7 +166,7 @@ Assistent das offen, statt zu spekulieren.
   bleibt über Reload erhalten). Das Feedback landet mit Anweisung und
   erzeugtem Text im Fragen-Log (Badge "Kreativ-Modus", der Link öffnet die
   Anweisung im Kreativ-Modus).
-- Fragen-Log (Quellen-Pfleger:innen): lädt schnell auch bei vielen Einträgen -
+- Fragen-Log (System-Admin): enthält alle Fragen und Antworten im Konversationsmodus, je Konversation über eine zufällige Kennung zusammengefasst (ohne IP-Adresse oder Konto); lädt schnell auch bei vielen Einträgen -
   die Liste kommt schlank ohne Antworttexte (jede Antwort erst beim
   Aufklappen), gerendert werden seitenweise 30 Einträge (Nachladen beim
   Scrollen), die Filter wirken trotzdem immer auf den gesamten Bestand.
@@ -303,7 +303,8 @@ Andere MCP-Clients brauchen die Adresse `https://chat.betacodex.org/mcp`
 - Jede Änderung an einer Quelle landet diff-basiert in einem
   Änderungs-Log (mit Rückgängig-Funktion) – sichtbar für alle
   Quellen-Pfleger:innen, nicht nur für die handelnde Person.
-- Anonymisierte Erstfragen neuer Konversationen werden separat
+- Alle Fragen und Antworten im Konversationsmodus werden je Konversation
+  über eine zufällige Kennung (ohne IP-Adresse oder Konto) separat
   protokolliert und helfen dabei, Lücken im Quellenbestand zu erkennen.
 - Öffentliche Quellenliste im Repo: [`docs/sources/QUELLEN.md`](docs/sources/QUELLEN.md)
   (DE), [`SOURCES.md`](docs/sources/SOURCES.md) (EN) und maschinenlesbar
@@ -451,10 +452,10 @@ sind gegen Bots über Rate-Limiting (`app/ratelimit.py`) und Cloudflare
 Turnstile (`app/captcha.py`) abgesichert, dazu eine pfadabhängige
 Content-Security-Policy (eigene, schlankere Variante für das eingebettete
 `/embed.html`). Änderungen an Quellen werden diff-basiert in einem
-Audit-Log protokolliert (`app/audit.py`, mit Revert-Endpunkt), erste
-Konversationsfragen anonymisiert in einem separaten Log
-(`app/question_log.py`) – beides nur für Quellen-Pfleger:innen/
-System-Admins einsehbar. Rechenintensive Hintergrund-Jobs
+Audit-Log protokolliert (`app/audit.py`, mit Revert-Endpunkt), Fragen und Antworten je Konversation ohne IP-Adresse oder Konto in einem
+separaten Log (`app/question_log.py`) – das Audit-Log für
+Quellen-Pfleger:innen/System-Admins, das Fragen-Log nur für System-Admins
+einsehbar. Rechenintensive Hintergrund-Jobs
 (Audio-Transkription) laufen über einen begrenzten Worker-Pool
 (`AUDIO_TRANSCRIPTION_WORKER_COUNT = 3`) statt unbegrenzt parallel.
 Sprachein-/-ausgabe läuft über einen serverseitigen Proxy zu Google Cloud
@@ -576,6 +577,7 @@ Commit-/Tag-Nachrichten in Git.
 
 | Version | Wesentliche Änderungen |
 |---|---|
+| v0.87.0 | **Fragen-Log zeigt ganze Konversationen** (Idee 56580b6e): jede Frage im Konversationsmodus wird mit Antwort protokolliert (bisher nur die erste), zusammengehalten über eine zufällige Kennung je Konversation (auch über Reload und den Wechsel aus der Einbettung in einen neuen Tab), ohne Verknüpfung mit IP-Adresse oder Konto. Das Fragen-Log zeigt jeden Chat als eigenen Block mit farbigem Balken, geordnet nach der ersten Anfrage (parallele Chats mischen sich nicht), Fragen darin von 1/n bis n/n, Folgefrage an einem späteren Tag mit Datum. Neuer Filter „Folgefrage“, Klick auf „Chat xxxx“ zeigt nur diesen Chat, dort „Ganzes Gespräch löschen“. Daumen-Feedback landet auch bei Absagen und Folgefragen am richtigen Eintrag. Das Log sehen nur noch System-Admins. Robuster: eine unlesbare Log-Datei wird nie mehr überschrieben, Schreibfehler unterbrechen den Chat nicht. Datenschutzerklärung DE/EN angepasst. CI läuft auf Node 22 und führt `node --test` aus |
 | v0.86.0 | **Bücher und Quellen werden an Kapiteln zerlegt** (Idee 8d1b69dd): Quellentext wird zuerst an Markdown-Überschriften (`#`–`###`, nicht in Codeblöcken) geteilt, dann je Abschnitt wie bisher mit höchstens 900 Tokens; kein Stück reicht mehr über eine Überschrift, Folgestücke tragen ihre Überschrift (auf 50 Tokens gekappt), kleine Nachbarabschnitte werden als ganze Abschnitte zusammengefasst, Texte ohne Überschrift bleiben unverändert. Neu: EPUB-Upload (Kapitel als `#`, Titel/Autor:in aus der Datei, „nur für Quellen-Pfleger“ vorbelegt, Schutz gegen Zip-Bomben, DRM und XML-Tricks) und Kapitel aus PDF-Lesezeichen. Bei geschützten Quellen sehen Nicht-Pfleger:innen im Auszug nur noch die Belegstelle (höchstens 2 × 300 Zeichen). Einmaliger Start-Reindex nur geänderter Quellen 120 s nach dem Start mit Prozess-Sperre (auch für den manuellen Reindex), im Produktivbestand 62 Quellen; Retrieval-Eval unverändert |
 | v0.85.3 | **Frage bleibt nach dem Absenden auf dem Handy sichtbar** (Idee b5bd431b): auf Touch-Geräten blieb nach dem Tippen auf Senden die Tastatur offen, iOS scrollte das fokussierte Eingabefeld erneut ins Bild und die gerade gestellte Frage verschwand aus dem sichtbaren Bereich. Jetzt verlässt das Feld auf Touch-Geräten (`pointer: coarse`, auch iPhone quer und iPad) den Fokus, die Tastatur schließt, und die Frage wird nach dem Schließen (visualViewport-resize, sonst nach 400 ms) genau einmal erneut oben verankert; am Desktop bleibt der Fokus fürs schnelle Nachfragen |
 | v0.85.2 | **Antwortsprache folgt zuverlässig der Frage** (Idee 785a3913): eine englische Frage bekam bei deutschen Quellen trotz Erinnerung eine deutsche Antwort, danach schaltete der Chat die Oberfläche auf Deutsch um. Der Server erkennt jetzt die Sprache der Frage selbst (Stoppwörter) und hängt einen ausdrücklichen Satz an („Answer exclusively in English.“ bzw. „Antworte ausschließlich auf Deutsch.“); bei unklarer Frage bleibt es wie bisher |

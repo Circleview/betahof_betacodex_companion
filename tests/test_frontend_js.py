@@ -3552,7 +3552,8 @@ def test_attach_feedback_buttons_sends_question_answer_and_value():
     assert match, "buildAnswerFeedback wurde in answer-feedback.js nicht gefunden."
     func_source = match.group(0)
     assert "/api/answer-feedback" in func_source
-    assert "JSON.stringify({ question, answer, feedback: value, mode })" in func_source
+    assert "JSON.stringify({ question, answer, feedback: value, mode })" not in func_source
+    assert "feedback: value, mode" in func_source
     assert "buildButton('good', THUMBS_UP_ICON)" in func_source
     assert "buildButton('bad', THUMBS_DOWN_ICON)" in func_source
     assert "index.feedbackGoodTitle" in js_source and "creative.feedbackGoodTitle" in js_source
@@ -3993,14 +3994,14 @@ def test_question_log_loads_lean_list_and_fetches_answer_only_when_opened():
 def test_question_log_filter_runs_over_all_entries_and_paging_only_limits_rendering():
     js_source = (STATIC_DIR / "question-log.js").read_text()
     apply_filter = re.search(r"function applyFilter\(.*?\n\}", js_source, re.S).group(0)
-    assert "allEntries.filter(" in apply_filter  # Filter über den kompletten Bestand
+    assert "buildBlocks(allEntries," in apply_filter  # Filter über den kompletten Bestand (Blöcke)
     assert "visibleCount = LOG_PAGE_SIZE" in apply_filter  # neuer Filter -> wieder ab Seite 1
     render = re.search(r"function render\(\) \{.*?\n\}", js_source, re.S).group(0)
-    assert "filteredEntries.slice(0, visibleCount)" in render
+    assert "pageBlocks(filteredBlocks, visibleCount)" in render  # Paging zählt Blöcke
     assert "new IntersectionObserver" in render
     assert "visibleCount += LOG_PAGE_SIZE" in render
     # Löschen darf den Scroll-Stand (bereits geladene Seiten) nicht zurücksetzen.
-    assert js_source.count("applyFilter({ resetPaging: false })") == 2
+    assert js_source.count("applyFilter({ resetPaging: false })") == 3
 
 
 def _run_term_overview(entries, sources, lang):
@@ -4236,7 +4237,7 @@ def test_question_log_text_wraps_long_words_and_clamps():
 def test_question_log_filter_buttons_start_with_aria_pressed_true():
     html = (STATIC_DIR / "question-log.html").read_text()
     buttons = re.findall(r"<button[^>]*question-log-filter-btn[^>]*>", html)
-    assert len(buttons) == 5
+    assert len(buttons) == 6  # inkl. Folgefrage (Idee 56580b6e)
     assert all('aria-pressed="true"' in b for b in buttons)
 
 
@@ -4481,3 +4482,37 @@ def test_prepare_excerpt_strips_heading_from_highlight_too():
     out = _run_node(script)
     assert out["heading"] == "Kapitel"
     assert out["range"] == [0, len("Erster Satz.")]
+
+
+# --- conversation_id im Chat-Client (Idee 56580b6e) ---
+
+
+def test_feedback_sends_conversation_id_only_when_given():
+    js = (STATIC_DIR / "answer-feedback.js").read_text()
+    assert "conversationId = null" in js
+    assert "payload.conversation_id = conversationId" in js
+    assert "if (conversationId)" in js
+
+
+def test_handoff_carries_conversation_id():
+    js = (STATIC_DIR / "conversation-handoff.js").read_text()
+    assert "export const CONVERSATION_ID_STORAGE_KEY" in js
+    assert "createConversationHandoffToken(history, conversationId = null)" in js
+    assert "conversation_id: conversationId" in js
+    assert "conversationId: data.conversation_id || null" in js
+
+
+def test_question_js_sends_conversation_id():
+    js = (STATIC_DIR / "question.js").read_text()
+    assert "crypto.randomUUID()" in js
+    assert "let conversationId" in js
+    assert "conversation_id: conversationId" in js
+    assert "conversationId })" in js  # buildAnswerFeedback
+    assert "createConversationHandoffToken(conversationHistory, conversationId)" in js
+    assert "handoff.conversationId" in js
+
+
+def test_import_js_stores_handoff_conversation_id():
+    js = (STATIC_DIR / "import.js").read_text()
+    assert "CONVERSATION_ID_STORAGE_KEY" in js
+    assert "handoff.conversationId" in js

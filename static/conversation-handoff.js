@@ -8,17 +8,20 @@
 // von question.js UND import.js gemeinsam genutztes Modul, damit der
 // sessionStorage-Schlüssel nur an einer Stelle definiert ist.
 export const CONVERSATION_STORAGE_KEY = 'conversationHistory';
+// Kennung der Konversation fürs Fragen-Log (conversation_id, siehe
+// question.js); sessionStorage ist nur die Kopie der Modul-Variable dort.
+export const CONVERSATION_ID_STORAGE_KEY = 'conversationId';
 
 // Holt ein kurzlebiges Einmal-Token für die übergebene Konversation - null
 // bei leerer Historie oder fehlgeschlagenem Request (Aufrufer entscheidet
 // selbst über den Fallback, z.B. trotzdem ohne Token navigieren).
-export async function createConversationHandoffToken(history) {
+export async function createConversationHandoffToken(history, conversationId = null) {
   if (!history || history.length === 0) return null;
   try {
     const res = await fetch('/api/conversation-handoff', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ history }),
+      body: JSON.stringify(conversationId ? { history, conversation_id: conversationId } : { history }),
     });
     if (!res.ok) return null;
     const data = await res.json();
@@ -38,7 +41,8 @@ export async function createConversationHandoffToken(history) {
 // ?edit=<id> beim "Quelle bearbeiten"-Klick aus der Konversationsansicht,
 // noch bevor import.js es weiter unten lesen konnte (deepLinkEditId blieb
 // dadurch immer leer). Liefert null, wenn kein Token vorhanden war oder der
-// Abruf fehlschlägt (z.B. abgelaufen/bereits verwendet).
+// Abruf fehlschlägt (z.B. abgelaufen/bereits verwendet). Sonst {history,
+// conversationId} - conversationId ist null, wenn das Token keine trug.
 export async function consumeConversationHandoffToken() {
   const params = new URLSearchParams(window.location.search);
   const token = params.get('handoff');
@@ -50,7 +54,8 @@ export async function consumeConversationHandoffToken() {
     const res = await fetch(`/api/conversation-handoff/${encodeURIComponent(token)}`);
     if (!res.ok) return null;
     const data = await res.json();
-    return Array.isArray(data.history) ? data.history : null;
+    if (!Array.isArray(data.history)) return null;
+    return { history: data.history, conversationId: data.conversation_id || null };
   } catch (err) {
     return null;
   }

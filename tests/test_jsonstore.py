@@ -25,3 +25,12 @@ def test_corrupt_file_raises_by_default_but_returns_default_when_tolerant(tmp_pa
     with pytest.raises(json.JSONDecodeError):
         jsonstore.load(path, {})
     assert jsonstore.load(path, {}, tolerant=True) == {}
+
+
+def test_save_indent_defaults_to_2_and_can_be_disabled(tmp_path):
+    path = tmp_path / "d.json"
+    jsonstore.save(path, {"a": 1})
+    assert path.read_text() == '{\n  "a": 1\n}'
+
+    jsonstore.save(path, {"a": 1}, indent=None)
+    assert path.read_text() == '{"a": 1}'

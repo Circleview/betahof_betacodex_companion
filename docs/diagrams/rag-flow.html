@@ -5199,7 +5199,7 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
         <path data-edge-from="rerank" data-edge-to="claude" data-edge-label="Top-K Kontext" data-edge-key="5" data-edge-id="context-claude" data-composition-points="622,272;622,361;742,361;742,480" d="M 622 272 L 622 361 L 742 361 L 742 480" class="a-emphasis" data-animate="edge" style="--step:3" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
         <path data-edge-from="chat" data-edge-to="search" data-edge-label="Frage embedden" data-edge-key="6" data-edge-id="embed-search" data-composition-points="340,120;414,120;414,220" d="M 340 120 L 414 120 L 414 220" class="a-emphasis" data-animate="edge" style="--step:1" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
         <path data-edge-from="highlight" data-edge-to="answer" data-edge-label="Highlights je Quelle" data-edge-key="7" data-edge-id="highlight-answer" data-composition-points="968,639;1070,639;1070,120;968,120" d="M 968 639 L 1070 639 L 1070 120 L 968 120" class="a-emphasis" data-animate="edge" style="--step:12" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
-        <path data-edge-from="chat" data-edge-to="log" data-edge-label="protokolliert 1. Frage" data-edge-key="8" data-edge-id="log-question" data-composition-points="274,146;274,168;192,168;192,246;208,246" d="M 274 146 L 274 168 L 192 168 L 192 246 L 208 246" class="a-dashed" data-animate="edge" style="--step:12" stroke-width="1.4" marker-end="url(#arrowhead-dashed)"/>
+        <path data-edge-from="chat" data-edge-to="log" data-edge-label="protokolliert alle Fragen" data-edge-key="8" data-edge-id="log-question" data-composition-points="274,146;274,168;192,168;192,246;208,246" d="M 274 146 L 274 168 L 192 168 L 192 246 L 208 246" class="a-dashed" data-animate="edge" style="--step:12" stroke-width="1.4" marker-end="url(#arrowhead-dashed)"/>
         <path data-edge-from="quotes" data-edge-to="highlight" data-edge-key="9" data-edge-id="quotes-highlight" data-composition-points="808,639;836,639" d="M 808 639 L 836 639" class="a-default" data-animate="edge" style="--step:12" stroke-width="1.4" marker-end="url(#arrowhead)"/>
         <path data-edge-from="search" data-edge-to="rerank" data-edge-key="10" data-edge-id="search-rerank" data-composition-points="480,246;556,246" d="M 480 246 L 556 246" class="a-default" data-animate="edge" style="--step:2" stroke-width="1.4" marker-end="url(#arrowhead)"/>
 
@@ -5244,8 +5244,8 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
           <text data-detail="context" x="902" y="132" class="t-muted" font-size="8" text-anchor="middle">[n] anklickbar</text>
         </g>
 
-        <g id="node-log" data-node-id="log" data-node-label="Fragen-Log" tabindex="0" role="button" aria-label="Focus Fragen-Log, 1. Frage / keine Antwort, Quellen-Suche › Frage stellen" aria-pressed="false" data-node-kind="database" data-node-sublabel="1. Frage / keine Antwort" data-node-context="Quellen-Suche › Frage stellen">
-          <title>Fragen-Log · 1. Frage / keine Antwort · Quellen-Suche › Frage stellen</title>
+        <g id="node-log" data-node-id="log" data-node-label="Fragen-Log" tabindex="0" role="button" aria-label="Focus Fragen-Log, alle Fragen / keine Antwort, Quellen-Suche › Frage stellen" aria-pressed="false" data-node-kind="database" data-node-sublabel="alle Fragen / keine Antwort" data-node-context="Quellen-Suche › Frage stellen">
+          <title>Fragen-Log · alle Fragen / keine Antwort · Quellen-Suche › Frage stellen</title>
           <rect x="208" y="220" width="132" height="52" rx="6" class="c-mask"/>
           <rect x="208" y="220" width="132" height="52" rx="6" class="c-database" data-animate="node" style="--step:9" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="database" class="semantic-sigil s-database" transform="translate(214 226) scale(0.6875)">
@@ -5253,7 +5253,7 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
             <path d="M3 4v8c0 1.1 2.2 2 5 2s5-.9 5-2V4M3 8c0 1.1 2.2 2 5 2s5-.9 5-2"/>
           </g>
           <text data-node-label="" data-detail-anchor="" x="274" y="241" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Fragen-Log</text>
-          <text data-detail="context" x="274" y="258" class="t-muted" font-size="8" text-anchor="middle">1. Frage / keine Antwort</text>
+          <text data-detail="context" x="274" y="258" class="t-muted" font-size="8" text-anchor="middle">alle Fragen / keine Antwort</text>
         </g>
 
         <g id="node-search" data-node-id="search" data-node-label="Vektorsuche" tabindex="0" role="button" aria-label="Focus Vektorsuche, ChromaDB + Web-Index, Quellen-Suche › Quellen finden" aria-pressed="false" data-node-kind="database" data-node-sublabel="ChromaDB + Web-Index" data-node-context="Quellen-Suche › Quellen finden">
@@ -5356,9 +5356,9 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
           <rect x="966" y="619" width="106" height="14" rx="3" class="c-mask"/>
           <text x="1019" y="629" class="t-backend" font-size="8" text-anchor="middle">Highlights je Quelle</text>
         </g>
-        <g data-detail="context" data-edge-from="chat" data-edge-to="log" data-edge-label="protokolliert 1. Frage" data-edge-key="8" data-edge-id="log-question">
+        <g data-detail="context" data-edge-from="chat" data-edge-to="log" data-edge-label="protokolliert alle Fragen" data-edge-key="8" data-edge-id="log-question">
           <rect x="175.2" y="148" width="115.6" height="14" rx="3" class="c-mask"/>
-          <text x="233" y="158" class="t-database" font-size="8" text-anchor="middle">protokolliert 1. Frage</text>
+          <text x="233" y="158" class="t-database" font-size="8" text-anchor="middle">protokolliert alle Fragen</text>
         </g>
 
 

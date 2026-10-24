@@ -2982,7 +2982,7 @@ def get_audit_log(_user: str = Depends(require_role(users.QUELLEN_PFLEGER))):
 
 @app.get("/api/question-log", response_model=list[QuestionLogEntryOut])
 def get_question_log(
-    include_answers: bool = True, _user: str = Depends(require_role(users.QUELLEN_PFLEGER))
+    include_answers: bool = True, _user: str = Depends(require_role(users.SYSTEM_ADMIN))
 ):
     # include_answers=false (Fragen-Log-Seite): die Antworttexte sind der
     # Löwenanteil der Datenmenge - die Liste kommt ohne sie (has_answer zeigt
@@ -2993,6 +2993,7 @@ def get_question_log(
         {
             **{k: v for k, v in entry.items() if include_answers or k != "answer"},
             "has_answer": bool(entry.get("answer")),
+            "conversation_id": entry.get("conversation_id"),
         }
         for entry in question_log.list_entries()
     ]
@@ -3000,7 +3001,7 @@ def get_question_log(
 
 @app.get("/api/question-log/{entry_id}", response_model=QuestionLogEntryOut)
 def get_question_log_entry(
-    entry_id: str, x_lang: str = Header(default=i18n.DEFAULT_LANG), _user: str = Depends(require_role(users.QUELLEN_PFLEGER))
+    entry_id: str, x_lang: str = Header(default=i18n.DEFAULT_LANG), _user: str = Depends(require_role(users.SYSTEM_ADMIN))
 ):
     entry = question_log.get_entry(entry_id)
     if entry is None:
@@ -3012,15 +3013,29 @@ def get_question_log_entry(
 # Fragen-Log-Eintrag unwiderruflich (jeden event_type - erste Frage,
 # unbeantwortete Frage, Feedback) - deckt das in der Datenschutzerklärung
 # (Abschnitt 5/11) beschriebene, zuvor nur manuelle Löschen tatsächlich als
-# Funktion ab. Dieselbe Rolle wie beim Lesen (QUELLEN_PFLEGER), keine
-# strengere Sonderregel für diesen Endpoint.
+# Funktion ab. Dieselbe Rolle wie beim Lesen (SYSTEM_ADMIN, seit Idee
+# 56580b6e - das Log enthält jetzt jede Frage), keine Sonderregel.
 @app.delete("/api/question-log/{entry_id}", response_model=MessageOut)
 def delete_question_log_entry(
-    entry_id: str, x_lang: str = Header(default=i18n.DEFAULT_LANG), _user: str = Depends(require_role(users.QUELLEN_PFLEGER))
+    entry_id: str, x_lang: str = Header(default=i18n.DEFAULT_LANG), _user: str = Depends(require_role(users.SYSTEM_ADMIN))
 ):
     if not question_log.delete_entry(entry_id):
         raise HTTPException(404, i18n.get_message("question_log_entry_not_found", x_lang))
     return MessageOut(detail=i18n.get_message("question_log_entry_deleted", x_lang))
+
+
+# Idee 56580b6e: ein ganzes Gespräch (alle Einträge mit dieser
+# conversation_id) auf einmal löschen. Der Pfad hat mehr Segmente als
+# /api/question-log/{entry_id} und kollidiert deshalb nicht damit.
+@app.delete("/api/question-log/conversation/{conversation_id}", response_model=MessageOut)
+def delete_question_log_conversation(
+    conversation_id: str,
+    x_lang: str = Header(default=i18n.DEFAULT_LANG),
+    _user: str = Depends(require_role(users.SYSTEM_ADMIN)),
+):
+    if not question_log.delete_conversation(conversation_id):
+        raise HTTPException(404, i18n.get_message("question_log_conversation_not_found", x_lang))
+    return MessageOut(detail=i18n.get_message("question_log_conversation_deleted", x_lang))
 
 
 ANSWER_FEEDBACK_VALUES = {"good", "bad"}
@@ -3037,6 +3052,16 @@ ANSWER_FEEDBACK_MAX_ANSWER_CHARS = 20000
 
 def _truncate_for_log(text: str, limit: int) -> str:
     return text if len(text) <= limit else text[: limit - 1] + "…"
+
+
+# Idee 56580b6e: kanonische UUID (Kleinbuchstaben) wie crypto.randomUUID() -
+# uuid.UUID() allein ließe auch andere Schreibweisen zu. Ungültig -> None,
+# der Chat läuft ohne Zuordnung weiter.
+_CONVERSATION_ID_RE = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
+
+
+def _valid_conversation_id(value: str | None) -> str | None:
+    return value if value and _CONVERSATION_ID_RE.fullmatch(value) else None
 
 
 @app.post("/api/answer-feedback", response_model=MessageOut)
@@ -3063,6 +3088,7 @@ def submit_answer_feedback(
             _truncate_for_log(payload.answer, ANSWER_FEEDBACK_MAX_ANSWER_CHARS),
             payload.feedback,
             payload.mode,
+            _valid_conversation_id(payload.conversation_id),
         )
 
     return MessageOut(detail=i18n.get_message("feedback_sent", x_lang))
@@ -4259,7 +4285,7 @@ def _ask_event_stream(
     query_embedding,
     history,
     should_log_question_events,
-    first_question_log_id,
+    log_id,
     usage=None,
     can_view_full_text=True,
 ):
@@ -4361,28 +4387,24 @@ def _ask_event_stream(
 
     # Nutzerwunsch (2026-09-01): "no_answer"-Ereignis im Fragen-Log, siehe
     # NO_ANSWER_PHRASES oben - erst hier möglich, da answer_text erst jetzt
-    # feststeht. Dieselben Ausschlüsse wie beim first_question-Ereignis
-    # (siehe _should_log_question_event), von ask() vorberechnet
-    # übergeben, da ein Generator keinen direkten Zugriff auf request hat.
-    # Fix (2026-09-14, gemeldeter Bug): ist dieselbe Frage bereits als
-    # first_question geloggt (first_question_log_id bekannt), wird
-    # "no_answer" dort ERGÄNZT statt einen zweiten, doppelten Eintrag mit
-    # identischem Text anzulegen (siehe question_log.add_event_type).
+    # feststeht. log_id ist die vorab von ask() geloggte Frage (None bei
+    # Dev/System-Admin/MCP/nicht lesbarem Log, da ein Generator keinen
+    # Zugriff auf request hat). Seit Idee 56580b6e wird jede Frage geloggt,
+    # "no_answer" ergänzt deshalb immer diesen Eintrag (Fix 2026-09-14: kein
+    # zweiter, doppelter Eintrag, siehe question_log.add_event_type).
     # Reine Absage: ins Fragen-Log der kurze Satz statt der langen Erklärung.
     log_answer = raw_answer_text.strip() if answer_text in NO_ANSWER_EXPLANATIONS.values() else answer_text
+    log_answer = _truncate_for_log(log_answer, ANSWER_FEEDBACK_MAX_ANSWER_CHARS)
     # Der Satz kommt in der Sprache der Frage, nicht zwingend der Oberfläche.
-    if should_log_question_events and any(p in raw_answer_text for p in NO_ANSWER_PHRASES.values()):
-        if first_question_log_id:
-            question_log.add_event_type(first_question_log_id, "no_answer")
-        else:
-            question_log.log_no_answer(question_text, log_answer)
+    if log_id and should_log_question_events and any(p in raw_answer_text for p in NO_ANSWER_PHRASES.values()):
+        question_log.add_event_type(log_id, "no_answer")
 
-    # Nutzerwunsch (Livegang-Vorbereitung, 2026-09-10): die Antwort zur
-    # ersten Frage soll ebenfalls im Fragen-Log stehen - log_question() oben
-    # in ask() konnte sie noch nicht kennen (lief bewusst VOR der Suche,
-    # siehe dortiger Kommentar), wird hier nachgetragen.
-    if first_question_log_id:
-        question_log.set_answer(first_question_log_id, log_answer)
+    # Nutzerwunsch (Livegang-Vorbereitung, 2026-09-10): die Antwort soll
+    # ebenfalls im Fragen-Log stehen - log_question() oben in ask() konnte
+    # sie noch nicht kennen (lief bewusst VOR der Suche, siehe dortiger
+    # Kommentar), wird hier nachgetragen.
+    if log_id:
+        question_log.set_answer(log_id, log_answer)
 
     # Backlog (2026-07-31, ergaenzt 2026-08-03): der fertige Antworttext
     # steht hier bereits fest - die folgende Highlight-Berechnung (lokales
@@ -4614,7 +4636,7 @@ def ask(question: QuestionIn, request: Request, x_lang: str = Header(default=i18
     if not captcha.verify_turnstile_token(question.turnstile_token, client_ip):
         raise HTTPException(400, i18n.get_message("captcha_failed", x_lang))
 
-    # Backlog #97: anonymisiertes Log der ersten Frage einer Konversation -
+    # Backlog #97 (seit Idee 56580b6e: jede Frage): anonymisiertes Log -
     # bewusst schon hier, VOR der eigentlichen RAG-Suche, damit auch Fragen
     # ohne Treffer erfasst werden (gerade die sind für die Lücken-Analyse
     # interessant). Ausschlüsse siehe _should_log_question_event(). Die id
@@ -4622,9 +4644,13 @@ def ask(question: QuestionIn, request: Request, x_lang: str = Header(default=i18
     # nachträgt, sobald sie feststeht (Nutzerwunsch, Livegang-Vorbereitung
     # 2026-09-10, siehe question_log.set_answer).
     should_log_question_events = _should_log_question_event(request)
-    first_question_log_id = None
-    if question.is_first_message and should_log_question_events:
-        first_question_log_id = question_log.log_question(question.question)
+    log_id = None
+    if should_log_question_events:
+        log_id = question_log.log_question(
+            _truncate_for_log(question.question, ANSWER_FEEDBACK_MAX_QUESTION_CHARS),
+            _valid_conversation_id(question.conversation_id),
+            first=question.is_first_message,
+        )
 
     history = _trim_history([turn.model_dump() for turn in question.history])
     llm_chunks, chunk_refs, author_bios, query_embedding = _ask_context(
@@ -4643,7 +4669,7 @@ def ask(question: QuestionIn, request: Request, x_lang: str = Header(default=i18
             query_embedding,
             history,
             should_log_question_events,
-            first_question_log_id,
+            log_id,
             {"channel": "ask", "email": _get_current_user_email(request)},
             users.has_role(_get_current_user_email(request), users.QUELLEN_PFLEGER),
         ),
@@ -4894,7 +4920,9 @@ def create_conversation_handoff(
     ) > CONVERSATION_HANDOFF_MAX_BYTES:
         raise HTTPException(400, i18n.get_message("conversation_handoff_too_large", x_lang))
 
-    token = conversation_handoff.create([turn.model_dump() for turn in payload.history])
+    token = conversation_handoff.create(
+        [turn.model_dump() for turn in payload.history], _valid_conversation_id(payload.conversation_id)
+    )
     return {"token": token}
 
 
@@ -4907,10 +4935,11 @@ def get_conversation_handoff(token: str, request: Request, x_lang: str = Header(
         window_seconds=CONVERSATION_HANDOFF_RATE_LIMIT_WINDOW_SECONDS,
     ):
         raise HTTPException(429, i18n.get_message("rate_limited", x_lang))
-    history = conversation_handoff.pop(token)
-    if history is None:
+    handoff = conversation_handoff.pop(token)
+    if handoff is None:
         raise HTTPException(404, i18n.get_message("conversation_handoff_not_found", x_lang))
-    return {"history": history}
+    history, conversation_id = handoff
+    return {"history": history, "conversation_id": conversation_id}
 
 
 @app.post("/api/speech")

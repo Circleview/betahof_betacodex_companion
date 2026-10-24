@@ -7,6 +7,7 @@ import { readNdjsonStream } from '/ndjson-stream.js';
 import { buildAnswerFeedback } from '/answer-feedback.js';
 import {
   CONVERSATION_STORAGE_KEY,
+  CONVERSATION_ID_STORAGE_KEY,
   createConversationHandoffToken,
   consumeConversationHandoffToken,
 } from '/conversation-handoff.js';
@@ -108,7 +109,7 @@ function hasPflegerRole() {
 // "Konversation"-Link im gemeinsamen Header lädt sie dann im selben Tab.
 function attachConversationHandoff(anchor) {
   if (conversationHistory.length === 0) return;
-  createConversationHandoffToken(conversationHistory).then((token) => {
+  createConversationHandoffToken(conversationHistory, conversationId).then((token) => {
     if (!token) return;
     const url = new URL(anchor.href, window.location.origin);
     url.searchParams.set('handoff', token);
@@ -1166,7 +1167,7 @@ function attachSpeedButton() {
 
 // Daumen-hoch/-runter je Antwort - Komponente siehe answer-feedback.js.
 function attachFeedbackButtons(bubble, question, answer) {
-  bubble.appendChild(buildAnswerFeedback({ question, answer }));
+  bubble.appendChild(buildAnswerFeedback({ question, answer, conversationId }));
 }
 
 // Nutzerwunsch (2026-09-24): Antwort in die Zwischenablage - formatiert
@@ -1315,6 +1316,34 @@ function saveConversationHistory() {
 
 const conversationHistory = loadConversationHistory();
 
+// Kennung dieser Konversation fürs Fragen-Log (conversation_id in /api/ask,
+// /api/answer-feedback und Handoff). Die Modul-Variable ist maßgeblich,
+// sessionStorage nur die Kopie für Reload/Seitenwechsel. Neue ID nur beim
+// Laden, wenn kein Verlauf da ist (neuer Tab, Marken-Klick leert den Verlauf
+// in header.js) - eine vorhandene Konversation behält ihre ID.
+// Akzeptiert: Ein Fehler vor der ersten erfolgreichen Antwort ergibt zwei
+// first_question mit derselben ID; ein duplizierter Tab teilt die ID.
+function loadConversationId() {
+  try {
+    const stored = sessionStorage.getItem(CONVERSATION_ID_STORAGE_KEY);
+    if (stored && conversationHistory.length > 0) return stored;
+  } catch (err) {
+    // sessionStorage nicht lesbar - dann eben eine frische ID.
+  }
+  return crypto.randomUUID();
+}
+
+function saveConversationId() {
+  try {
+    sessionStorage.setItem(CONVERSATION_ID_STORAGE_KEY, conversationId);
+  } catch (err) {
+    // wie saveConversationHistory: nur für die laufende Seitenansicht.
+  }
+}
+
+let conversationId = loadConversationId();
+saveConversationId();
+
 // Backlog (2026-07-31): in zwei Schritte aufgeteilt, damit eine live
 // eintreffende Antwort den Vorlesen-Button schon anzeigen kann, sobald der
 // Antworttext feststeht ("answer"-Event) - ohne auf die u.U. spürbar
@@ -1385,11 +1414,15 @@ function restoreConversationHistory() {
 // Historie DIESES neuen Tabs, bevor sie gerendert wird. Kein Token
 // vorhanden oder abgelaufen/bereits verwendet: conversationHistory bleibt
 // unverändert (bisheriger sessionStorage-Stand dieses Tabs).
-const handoffHistory = await consumeConversationHandoffToken();
-if (handoffHistory && handoffHistory.length) {
+const handoff = await consumeConversationHandoffToken();
+if (handoff && handoff.history.length) {
   conversationHistory.length = 0;
-  conversationHistory.push(...handoffHistory);
+  conversationHistory.push(...handoff.history);
   saveConversationHistory();
+  if (handoff.conversationId) {
+    conversationId = handoff.conversationId;
+    saveConversationId();
+  }
 }
 
 restoreConversationHistory();
@@ -1435,7 +1468,7 @@ if (embedExpandButton) {
     }
     const newTab = window.open('', '_blank');
     embedExpandButton.disabled = true;
-    const token = await createConversationHandoffToken(conversationHistory);
+    const token = await createConversationHandoffToken(conversationHistory, conversationId);
     const query = token ? `handoff=${encodeURIComponent(token)}&${langParam}` : langParam;
     if (newTab) newTab.location.href = `/?${query}`;
     embedExpandButton.disabled = false;
@@ -1541,6 +1574,7 @@ questionForm.addEventListener('submit', async (e) => {
         top_k: 5,
         turnstile_token: turnstileToken,
         is_first_message: conversationHistory.length === 0,
+        conversation_id: conversationId,
         history: conversationHistory.slice(-ASK_HISTORY_MAX_TURNS).map(({ question, answer }) => ({
           question: question.slice(0, ASK_HISTORY_MAX_FIELD_CHARS),
           answer: answer.slice(0, ASK_HISTORY_MAX_FIELD_CHARS),
