@@ -4516,3 +4516,14 @@ def test_import_js_stores_handoff_conversation_id():
     js = (STATIC_DIR / "import.js").read_text()
     assert "CONVERSATION_ID_STORAGE_KEY" in js
     assert "handoff.conversationId" in js
+
+
+def test_question_js_first_message_counts_sent_not_answered_questions():
+    # Live-Befund v0.87.0: eine zweite Frage, abgeschickt während die erste
+    # noch streamt (conversationHistory erst nach "done" gefüllt), ging als
+    # is_first_message=true raus - zwei "erste Fragen" im selben Chat-Block.
+    # Maßgeblich ist, ob in dieser Konversation schon eine Frage gesendet wurde.
+    js = (STATIC_DIR / "question.js").read_text()
+    assert "const isFirstMessage = conversationHistory.length === 0 && !questionSentInConversation" in js
+    assert "is_first_message: isFirstMessage" in js
+    assert "questionSentInConversation = true" in js
