@@ -215,7 +215,7 @@ function buildChatChip(cid, k, n) {
   return chip;
 }
 
-function buildEntryElement(entry, k, n) {
+function buildEntryElement(entry, k, n, blockStart) {
   let li = document.createElement('li');
   // Fix (2026-09-14, gemeldeter Bug): eine Frage, auf die mehrere
   // Kriterien gleichzeitig zutreffen (z.B. "erste Frage" UND "keine
@@ -233,7 +233,13 @@ function buildEntryElement(entry, k, n) {
 
   const time = document.createElement('span');
   time.className = 'question-log-time';
-  time.textContent = formatTime(new Date(entry.timestamp));
+  const entryDate = new Date(entry.timestamp);
+  // Folgefrage an einem späteren Tag als der Blockstart: Datum mit anzeigen,
+  // sonst liest sie sich wie am Starttag (Tagesmarker) gestellt.
+  const dateHint = blockStart && !isSameDay(entryDate, new Date(blockStart))
+    ? `${entryDate.toLocaleDateString(getLang() === 'de' ? 'de-DE' : 'en-US', { day: '2-digit', month: '2-digit' })} `
+    : '';
+  time.textContent = dateHint + formatTime(entryDate);
   li.appendChild(time);
   if (entry.conversation_id) li.appendChild(buildChatChip(entry.conversation_id, k, n));
 
@@ -398,7 +404,7 @@ function render() {
     }
     block.items.forEach(({ entry, k, n }, i) => {
       gridRow += 1;
-      const el = buildEntryElement(entry, k, n);
+      const el = buildEntryElement(entry, k, n, block.start);
       el.style.gridRow = String(gridRow);
       if (block.color) el.style.setProperty('--conversation-color', block.color);
       el.classList.toggle('question-log-entry--in-chat', Boolean(block.color));
