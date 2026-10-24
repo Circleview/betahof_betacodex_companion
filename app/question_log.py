@@ -56,6 +56,17 @@ def _writable() -> list[dict] | None:
         return None
 
 
+def _try_save(entries: list[dict]) -> bool:
+    """Für die Logging-Schreibwege: ein Schreibfehler (z.B. Platte voll) darf
+    den Chat nicht abbrechen. Löschwege rufen _save() direkt auf."""
+    try:
+        _save(entries)
+        return True
+    except Exception:
+        logger.exception("Fragen-Log nicht schreibbar")
+        return False
+
+
 def _append(entry: dict) -> str | None:
     """Gibt die vergebene id zurück - log_question() reicht sie weiter, damit
     app/main.py die Antwort nachträglich per set_answer() ergänzen kann,
@@ -67,8 +78,7 @@ def _append(entry: dict) -> str | None:
             return None
         entry_id = uuid.uuid4().hex
         entries.append({**entry, "id": entry_id, "timestamp": datetime.now(timezone.utc).isoformat()})
-        _save(entries)
-        return entry_id
+        return entry_id if _try_save(entries) else None
 
 
 def log_question(text: str, conversation_id: str | None = None, first: bool = True) -> str | None:
@@ -95,7 +105,7 @@ def set_answer(entry_id: str, answer: str) -> None:
         for entry in entries:
             if entry.get("id") == entry_id:
                 entry["answer"] = answer
-                _save(entries)
+                _try_save(entries)
                 return
 
 
@@ -119,7 +129,7 @@ def add_event_type(entry_id: str, event_type: str) -> bool:
                 event_types = entry.setdefault("event_types", [])
                 if event_type not in event_types:
                     event_types.append(event_type)
-                    _save(entries)
+                    return _try_save(entries)
                 return True
         return False
 
@@ -129,11 +139,12 @@ def log_feedback(
 ) -> None:
     """Feedback kommt über einen eigenen, späteren Request ohne Bezug zu
     einer evtl. schon geloggten id (siehe /api/answer-feedback). Abgleich:
-    1. Mit conversation_id: neuester Eintrag mit gleicher ID UND gleichem
-       Fragetext (die ID allein reicht nie - sonst landete das Feedback bei
-       einer anderen Frage des Chats). Die Antwort zählt hier nicht: bei
-       einer Absage steht im Log der kurze Satz, das Frontend schickt die
-       lange Erklärung.
+    1. Mit conversation_id: neuester Eintrag mit gleicher ID, gleichem
+       Fragetext UND gleicher Antwort, sonst der neueste mit ID + Text (die
+       ID allein reicht nie - sonst landete das Feedback bei einer anderen
+       Frage des Chats). Die Antwort ist nur Vorrang, kein Muss: bei einer
+       Absage steht im Log der kurze Satz, das Frontend schickt die lange
+       Erklärung.
     2. Sonst (und ohne Treffer) wie bisher über den exakten Frage- UND
        Antworttext: eine identische Kombination ist praktisch immer
        derselbe reale Konversations-Turn (Antworten sind frei generierter
@@ -150,10 +161,8 @@ def log_feedback(
             return
         match = None
         if conversation_id:
-            match = next(
-                (e for e in reversed(entries) if e.get("conversation_id") == conversation_id and e.get("text") == question),
-                None,
-            )
+            same = [e for e in reversed(entries) if e.get("conversation_id") == conversation_id and e.get("text") == question]
+            match = next((e for e in same if e.get("answer") == answer), same[0] if same else None)
         if match is None:
             match = next(
                 (e for e in reversed(entries) if e.get("text") == question and e.get("answer") == answer), None
@@ -164,7 +173,7 @@ def log_feedback(
                 event_types.append("feedback")
             match["feedback"] = feedback
             match.update(extra)
-            _save(entries)
+            _try_save(entries)
             return
     new_entry = {"event_types": ["feedback"], "text": question, "answer": answer, "feedback": feedback, **extra}
     if conversation_id:
