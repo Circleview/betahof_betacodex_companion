@@ -1461,8 +1461,24 @@ function attachAnswerSources(bubble, sources) {
   cited.forEach((s) => {
     conversationCitedSources.set(s.source_id, s);
   });
+  refreshImageStrip(bubble, cited);
+}
+
+// Ersetzt die Bildleiste der Bubble (nie zwei Leisten; ohne Bilder keine).
+function refreshImageStrip(bubble, cited) {
+  bubble.querySelectorAll('.source-image-strip').forEach((el) => el.remove());
   const strip = buildImageStrip(cited);
   if (strip) bubble.appendChild(strip);
+}
+
+// done-Event: das Backend wählt das Bild einer geschützten Quelle am
+// tatsächlich zitierten Chunk - die Bilder des frühen sources-Events
+// ersetzen (gleiche Objekte wie in der gespeicherten Konversation).
+function applyDoneImages(bubble, earlySources, doneSources) {
+  doneSources.forEach((s, i) => {
+    if (earlySources[i]) earlySources[i].images = s.images;
+  });
+  refreshImageStrip(bubble, extractCitedSources(bubble, earlySources));
 }
 
 // Gemeinsame Rendering-Logik für eine Antwort-Bubble beim Wiederherstellen
@@ -1765,6 +1781,7 @@ questionForm.addEventListener('submit', async (e) => {
       doneEvent.sources.forEach((s, i) => {
         if (earlySources[i]) earlySources[i].highlighted_texts = s.highlighted_texts;
       });
+      applyDoneImages(assistantBubble, earlySources, doneEvent.sources);
     } else {
       // Fallback, falls das "sources"-Event wider Erwarten nie ankam.
       attachAnswerSources(assistantBubble, doneEvent.sources);
