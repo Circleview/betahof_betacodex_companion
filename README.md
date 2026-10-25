@@ -61,9 +61,12 @@ Assistent das offen, statt zu spekulieren.
 - Fett hervorgehobene Fachbegriffe in einer Antwort sind anklickbar – ein
   Klick vertieft genau diesen Begriff als Folgefrage, im Kontext der
   laufenden Konversation.
-- Gesprächsgedächtnis: die letzten 10 Frage-Antwort-Paare (höchstens 30.000
-  Zeichen, je Frage/Antwort max. 8.000, max. 50 Paare pro Anfrage) gehen mit
-  an das Modell; die Suchanfrage wird nur aus den letzten 3 umformuliert.
+- Gesprächsgedächtnis: bis zu 50 Frage-Antwort-Paare (höchstens 200.000 Bytes,
+  je Frage/Antwort max. 8.000 Zeichen; Kürzung in 10er-Blöcken) gehen mit an
+  das Modell; die Suchanfrage wird nur aus den letzten 3 umformuliert. Prompt-
+  Caching hält die Kosten niedrig: ca. 1,4 ct je Frage bei 50 Runden mit Cache,
+  ohne Cache ca. 4,7 ct. Eingaben sind begrenzt (Frage max. 8.000 Zeichen,
+  top_k 1-10).
 - Jede Antwort lässt sich per Icon in die Zwischenablage kopieren
   (formatiert und als Klartext, ohne die `[n]`-Verweise).
 - Antwortet in der Sprache, in der gefragt wurde – Oberfläche und

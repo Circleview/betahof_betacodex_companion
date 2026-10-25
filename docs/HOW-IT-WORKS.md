@@ -215,8 +215,8 @@ welcome.
 | Distance factor for sources of a mentioned author | `0.5` | `app/main.py: AUTHOR_MENTION_DISTANCE_FACTOR` |
 | … if a key term of the source also appears in the question | `0.05` | `app/main.py: AUTHOR_MENTION_KEYWORD_MATCH_FACTOR` |
 | Terms per question with a guaranteed excerpt (hybrid search) | `3` | `app/main.py: LEXICAL_MAX_TERMS` |
-| Previous conversation turns in the prompt | `10` | `app/main.py: ASK_HISTORY_MAX_TURNS` |
-| Character budget for the conversation history in the prompt | `30000` | `app/main.py: ASK_HISTORY_MAX_CHARS` |
+| Previous conversation turns in the prompt | `50` | `app/main.py: ASK_HISTORY_MAX_TURNS` |
+| Byte budget (UTF-8) for the conversation history in the prompt (trimmed in blocks of 10 so the prompt cache hits) | `200000` | `app/main.py: ASK_HISTORY_MAX_BYTES` |
 | Conversation turns used to rewrite the search query | `3` | `app/main.py: ASK_REWRITE_HISTORY_TURNS` |
 | Excerpts as Beta context in creative mode | `6` | `app/main.py: CREATIVE_TOP_K` |
 | Max. web searches per creative request | `3` | `app/llm.py: CREATIVE_MAX_SEARCH_USES` |
