@@ -1927,7 +1927,6 @@ def _finish_synchronous_import(
     text: str,
     outcome: dict,
     done_event: threading.Event,
-    images: list[dict] | None = None,
 ) -> None:
     """Läuft immer in einem eigenen Thread (siehe add_source): embedded und
     speichert eine Quelle, deren Text bereits vollständig vorliegt (normaler
@@ -1951,6 +1950,12 @@ def _finish_synchronous_import(
             _save_sources(sources)
 
         try:
+            # Bilder erst hier (nicht im Request): PDF-Datei liegt seit add_source vor.
+            try:
+                images = _import_images(source_id, source)
+            except Exception:
+                logging.getLogger(__name__).exception("Bild-Import von Quelle %s fehlgeschlagen", source_id)
+                images = None
             chunk_embeddings = embeddings.embed_passages(chunks)
             with _vectorstore_write_lock:
                 chunk_count = _store_chunks(source_id, source, chunks, chunk_embeddings, images)
@@ -2001,7 +2006,8 @@ def _import_images(source_id: str, source: SourceIn) -> list[dict] | None:
     if pdf_file is not None:
         return _store_pdf_images(source_id, pdf_file.read_bytes())
     if source.image_token and source.url:
-        return source_images.take_staged_web_images(IMAGE_STAGING_DIR, source.image_token, source.url) or None
+        # [] (Seite geprüft, keine Bilder) zählt als geprüft; None = ungültiger Token.
+        return source_images.take_staged_web_images(IMAGE_STAGING_DIR, source.image_token, source.url)
     return None
 
 
@@ -2070,7 +2076,6 @@ def add_source(
         _consume_pdf_upload(source_id, source.pdf_upload_id)
     else:
         _sync_pdf_file_from_url(source_id, source.url)
-    images = None if deferred else _import_images(source_id, source)
 
     slow_import = False
     if not deferred:
@@ -2078,7 +2083,7 @@ def add_source(
         done_event = threading.Event()
         threading.Thread(
             target=_finish_synchronous_import,
-            args=(source_id, source, chunks, text, outcome, done_event, images),
+            args=(source_id, source, chunks, text, outcome, done_event),
             daemon=True,
         ).start()
         finished = done_event.wait(SLOW_IMPORT_TIMEOUT_SECONDS)
@@ -2166,6 +2171,13 @@ def update_source(
         before = dict(sources[source_id])
 
         metadata_only = bool(sources[source_id].get("restricted")) and not source.text.strip()
+
+        # Neue PDF-Datei oder neue URL: die alten Bilder gehören nicht mehr dazu
+        # (Dateien weg, Eintrag leer -> der Admin-Reindex holt sie neu nach).
+        if not metadata_only and (source.pdf_upload_id or (source.url or None) != (before.get("url") or None)):
+            source_images.delete_source_images(SOURCE_IMAGES_DIR, source_id)
+            sources[source_id].pop("images", None)
+            sources[source_id].pop("images_checked_at", None)
 
         if not metadata_only:
             chunks, chunk_embeddings = _prepare_chunks(source, x_lang)
@@ -3914,8 +3926,8 @@ def extract_url(payload: UrlIn, _user: str = Depends(require_role(users.QUELLEN_
     # Idee ff895248: Web-Bilder der Vorschau liegen serverseitig im Staging;
     # der Client bekommt nur den Token und schickt ihn beim Anlegen zurück.
     token = (
-        source_images.stage_web_images(IMAGE_STAGING_DIR, extraction.strip_tracking_params(payload.url), images)
-        if images
+        source_images.stage_web_images(IMAGE_STAGING_DIR, extraction.strip_tracking_params(payload.url), images or [])
+        if result.get("extracted") and not (is_audio or is_pdf)
         else None
     )
     return ExtractedSource(**result, is_audio=is_audio, is_pdf=is_pdf, image_token=token)
@@ -4420,18 +4432,34 @@ def _chunk_images(meta: dict, is_web_fallback: bool = False) -> list[ImageRef]:
     return result
 
 
-def _apply_chunk_images(refs: list, metas: list[dict], sources: dict) -> None:
+def _apply_chunk_images(refs: list, metas: list[dict]) -> None:
     """Setzt `images` je ChunkRef aus den Chunk-Metadaten (nie aus Client-
-    Angaben). Je restricted-Quelle höchstens 1 Bild über alle Refs."""
-    restricted_used: set[str] = set()
+    Angaben). Die restricted-Grenze folgt separat in _limit_restricted_images."""
     for ref, meta in zip(refs, metas):
-        images = _chunk_images(meta, ref.is_web_fallback)
-        source_id = meta.get("source_id") or ref.source_id
-        if images and sources.get(source_id, {}).get("restricted"):
-            images = [] if source_id in restricted_used else images[:1]
-            if images:
-                restricted_used.add(source_id)
-        ref.images = images
+        ref.images = _chunk_images(meta, ref.is_web_fallback)
+
+
+def _limit_restricted_images(refs: list, sources: dict, priority: list[int] | None = None) -> list[list]:
+    """Je restricted-Quelle höchstens 1 Bild über ALLE übergebenen Refs.
+    Das Bild geht an den ersten Ref der Quelle in `priority`-Reihenfolge
+    (danach Rangfolge). Liefert die Bildlisten je Ref, ändert die Refs nicht."""
+    order = list(dict.fromkeys(priority or [])) + [i for i in range(len(refs)) if i not in set(priority or [])]
+    result: list[list] = [list(ref.images) for ref in refs]
+    used: set[str] = set()
+    for i in order:
+        source_id = refs[i].source_id
+        if not result[i] or not sources.get(source_id, {}).get("restricted"):
+            continue
+        if source_id in used:
+            result[i] = []
+        else:
+            result[i] = result[i][:1]
+            used.add(source_id)
+    return result
+
+
+def _with_images(refs: list, image_lists: list[list]) -> list:
+    return [ref.model_copy(update={"images": images}) for ref, images in zip(refs, image_lists)]
 
 
 def _redact_restricted_refs(refs, sources: dict, can_view_full_text: bool) -> list:
@@ -4485,7 +4513,14 @@ def _ask_event_stream(
     yield json.dumps(
         {
             "type": "sources",
-            "sources": [r.model_dump() for r in _redact_restricted_refs(chunk_refs, sources_by_id, can_view_full_text)],
+            "sources": [
+                r.model_dump()
+                for r in _redact_restricted_refs(
+                    _with_images(chunk_refs, _limit_restricted_images(chunk_refs, sources_by_id)),
+                    sources_by_id,
+                    can_view_full_text,
+                )
+            ],
         }
     ) + "\n"
 
@@ -4613,10 +4648,13 @@ def _ask_event_stream(
         local_highlight = _best_local_sentence(chunk_docs[i], query_embedding)
         chunk_ref.highlighted_texts = [local_highlight] if local_highlight else []
 
+    # Das eine restricted-Bild gehört an den ersten ZITIERTEN Ref der Quelle.
+    cited = [int(n) - 1 for n in _CITATION_NUMBER_RE.findall(answer_text) if 0 < int(n) <= len(chunk_refs)]
+    done_refs = _with_images(chunk_refs, _limit_restricted_images(chunk_refs, sources_by_id, cited))
     yield json.dumps(
         {
             "type": "done",
-            "sources": [r.model_dump() for r in _redact_restricted_refs(chunk_refs, sources_by_id, can_view_full_text)],
+            "sources": [r.model_dump() for r in _redact_restricted_refs(done_refs, sources_by_id, can_view_full_text)],
         }
     ) + "\n"
 
@@ -4789,7 +4827,7 @@ def _ask_context(question_text: str, history: list[dict], x_lang: str, top_k: in
             }
         )
 
-    _apply_chunk_images(chunk_refs, metadatas, sources)
+    _apply_chunk_images(chunk_refs, metadatas)
 
     # Backlog (2026-07-29): rein chunk-basierte Suche findet für biografische
     # Fragen ("Wer ist X?") keine passenden Textausschnitte, da Autor:innen-
@@ -5105,12 +5143,22 @@ def create_conversation_handoff(
     all_sources = _load_sources()
     for turn in payload.history:
         metas_by_id = vectorstore.get_chunk_metadatas([ref.chunk_id for ref in turn.sources])
-        _apply_chunk_images(turn.sources, [metas_by_id.get(ref.chunk_id, {}) for ref in turn.sources], all_sources)
+        # Nur Chunks, deren Quelle zum Ref passt (erfundene chunk_ids zählen nicht).
+        metas = [
+            meta if (meta := metas_by_id.get(ref.chunk_id, {})).get("source_id") == ref.source_id else {}
+            for ref in turn.sources
+        ]
+        _apply_chunk_images(turn.sources, metas)
         for ref in turn.sources:
             ref.url = ref.url if ref.url and ref.url.lower().startswith(("http://", "https://")) else None
             ref.listen_url = (
                 ref.listen_url if ref.listen_url and ref.listen_url.lower().startswith(("http://", "https://")) else None
             )
+
+    # restricted-Grenze über ALLE Turns gemeinsam, nicht je Turn.
+    flat = [ref for turn in payload.history for ref in turn.sources]
+    for ref, images in zip(flat, _limit_restricted_images(flat, all_sources)):
+        ref.images = images
 
     token = conversation_handoff.create(
         [turn.model_dump() for turn in payload.history], _valid_conversation_id(payload.conversation_id)

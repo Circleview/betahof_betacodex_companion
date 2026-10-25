@@ -1157,10 +1157,21 @@ def extract_web_images(html, base_url: str, text: str) -> list[dict]:
         return []
 
 
+_MAX_PDF_IMAGE_PIXELS = 25_000_000
+
+
+def _pdf_anchor_candidates(raw_text: str) -> list[str]:
+    """Anker-Kandidaten einer Seite: 80 Zeichen ab Zeile 1, 2, 3 ..."""
+    lines = [" ".join(line.split()) for line in raw_text.splitlines() if line.strip()]
+    return [" ".join(lines[k:])[:_ANCHOR_CHARS] for k in range(len(lines))]
+
+
 def extract_pdf_images(data: bytes, max_images: int = MAX_IMAGES_PER_SOURCE) -> list[dict]:
     """Eingebettete Bilder eines PDFs als {data, page (1-basiert), anchor}.
-    Verworfen: unter 200 px, auf >= 3 Seiten wiederholt (Logos/Kopfzeilen),
-    >= 90 % der Seite (Scans), Seiten ohne Text (kein Anker). Fehler -> []."""
+    Verworfen: unter 200 px, über 25 Megapixel, auf >= 3 Seiten wiederholt
+    (Logos/Kopfzeilen), >= 90 % der Seite (Scans), Seiten ohne Text (kein
+    Anker). Seitentext wird nur für Seiten mit Bildern gelesen; der Anker
+    ist je Bildseite eindeutig (sonst weiter unten auf der Seite). Fehler -> []."""
     try:
         import fitz
 
@@ -1169,40 +1180,49 @@ def extract_pdf_images(data: bytes, max_images: int = MAX_IMAGES_PER_SOURCE) -> 
     except Exception:
         return []
     try:
+        image_pages: dict[int, list] = {}
         pages_of: dict[int, set[int]] = {}
         for index, page in enumerate(doc):
-            for img in page.get_images():
+            listed = page.get_images()
+            if listed:
+                image_pages[index] = listed
+            for img in listed:
                 pages_of.setdefault(img[0], set()).add(index)
-        result = []
-        for index, page in enumerate(doc):
+        candidates: dict[int, list[str]] = {}
+        for index in image_pages:
             try:
-                page_text = " ".join((reader.pages[index].extract_text() or "").split())
+                candidates[index] = _pdf_anchor_candidates(reader.pages[index].extract_text() or "")
             except Exception:
                 continue
-            if not page_text:
+        result, seen_xrefs = [], set()
+        for index, listed in image_pages.items():
+            if not candidates.get(index):
                 continue
+            others = {
+                norm_anchor(c) for other, cands in candidates.items() if other != index for c in cands
+            }
+            anchor = next((c for c in candidates[index] if norm_anchor(c) not in others), candidates[index][0])
+            page = doc[index]
             page_area = page.rect.get_area() or 1
-            for img in page.get_images():
+            for img in listed:
                 xref = img[0]
-                if len(pages_of[xref]) >= 3 or any(r["xref"] == xref for r in result):
+                if len(pages_of[xref]) >= 3 or xref in seen_xrefs:
+                    continue
+                if img[2] * img[3] > _MAX_PDF_IMAGE_PIXELS or min(img[2], img[3]) < _MIN_PDF_IMAGE_PX:
                     continue
                 try:
-                    rects = page.get_image_rects(xref)
-                    if any(r.get_area() / page_area >= 0.9 for r in rects):
+                    if any(r.get_area() / page_area >= 0.9 for r in page.get_image_rects(xref)):
                         continue
                     info = doc.extract_image(xref)
                 except Exception:
                     continue
-                if not info or min(info["width"], info["height"]) < _MIN_PDF_IMAGE_PX:
+                if not info:
                     continue
-                result.append(
-                    {"xref": xref, "data": info["image"], "page": index + 1, "anchor": page_text[:_ANCHOR_CHARS]}
-                )
+                seen_xrefs.add(xref)
+                result.append({"data": info["image"], "page": index + 1, "anchor": anchor})
                 if len(result) >= max_images:
-                    break
-            if len(result) >= max_images:
-                break
-        return [{k: v for k, v in r.items() if k != "xref"} for r in result]
+                    return result
+        return result
     except Exception:
         return []
     finally:

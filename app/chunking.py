@@ -154,7 +154,9 @@ def assign_images(chunks: list[str], images: list[dict]) -> list[list[dict]]:
         if not anchor:
             continue
         for i, chunk in enumerate(normalized):
-            if anchor in chunk and len(result[i]) < MAX_IMAGES_PER_CHUNK:
+            if anchor in chunk:
+                if len(result[i]) >= MAX_IMAGES_PER_CHUNK:
+                    break  # voller Chunk: Bild entfällt, wandert nicht weiter
                 ref = {"kind": image["kind"], "alt": image.get("alt") or "", "page": image.get("page")}
                 ref["url" if image["kind"] == "url" else "file"] = image.get("url" if image["kind"] == "url" else "file")
                 result[i].append(ref)

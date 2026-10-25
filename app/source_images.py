@@ -20,6 +20,7 @@ from PIL import Image
 MAX_IMAGES_PER_SOURCE = 30
 MAX_BYTES_PER_SOURCE = 5 * 1024 * 1024
 MAX_SIDE_PX = 800
+MAX_PIXELS = 25_000_000  # Schutz vor Dekompressionsbomben
 ALT_MAX = 300
 STAGING_MAX_AGE_SECONDS = 24 * 3600
 
@@ -37,9 +38,11 @@ def store_images(base_dir: Path, source_id: str, items: list[dict]) -> list[dict
             break
         try:
             image = Image.open(BytesIO(item["data"]))
-            image.load()
-            image = image.convert("RGBA" if "A" in image.getbands() else "RGB")
+            if image.width * image.height > MAX_PIXELS:
+                continue
+            image.draft("RGB", (MAX_SIDE_PX, MAX_SIDE_PX))  # JPEG: gleich verkleinert dekodieren
             image.thumbnail((MAX_SIDE_PX, MAX_SIDE_PX))
+            image = image.convert("RGBA" if "A" in image.getbands() else "RGB")
             buf = BytesIO()
             image.save(buf, format="WEBP", quality=80)
         except Exception:
@@ -106,16 +109,17 @@ def stage_web_images(staging_dir: Path, url: str, images: list[dict]) -> str:
     return token
 
 
-def take_staged_web_images(staging_dir: Path, token: str, url: str) -> list[dict]:
-    """Bilder zum Token - nur bei exakt gleicher URL; sonst []."""
+def take_staged_web_images(staging_dir: Path, token: str, url: str) -> list[dict] | None:
+    """Bilder zum Token - nur bei exakt gleicher URL; sonst None (ungültig).
+    [] heißt: Seite geprüft, keine Bilder."""
     if not _TOKEN_RE.match(token or ""):
-        return []
+        return None
     path = Path(staging_dir) / f"{token}.json"
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
-        return []
+        return None
     if data.get("url") != url:
-        return []
+        return None
     path.unlink(missing_ok=True)
     return sanitize_web_images(data.get("images"))
