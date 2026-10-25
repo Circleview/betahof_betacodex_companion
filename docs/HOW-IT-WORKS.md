@@ -224,7 +224,7 @@ welcome.
 
 This table is generated from the code. If prompts or settings change, `tests/test_how_it_works_doc.py` fails until the text above has been reviewed and `python scripts/how_it_works.py --write` has been run.
 
-<!-- fingerprint: 9884d015076b -->
+<!-- fingerprint: 54cc50946bd4 -->
 <!-- END generiert -->
 
 ## How this document stays current
