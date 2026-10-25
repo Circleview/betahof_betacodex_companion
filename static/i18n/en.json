@@ -53,6 +53,8 @@
   "index.termFollowUpQuestion": "Tell me more about {term}.",
   "index.termFollowUpTitle": "Learn more about \"{term}\"",
   "index.usedSourcesHeading": "Sources used",
+  "index.sourceImageTooltip": "Image from the source – click to open the source",
+  "index.sourceImagePage": "p. {n}",
   "index.autoLangSwitchNotice": "Automatically switched to English because the question was asked in English.",
 
   "auth.iconTitle": "Account",

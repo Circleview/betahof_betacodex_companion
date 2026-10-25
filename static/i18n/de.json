@@ -53,6 +53,8 @@
   "index.termFollowUpQuestion": "Erzähl mir mehr über {term}.",
   "index.termFollowUpTitle": "Mehr zu „{term}“ erfahren",
   "index.usedSourcesHeading": "Verwendete Quellen",
+  "index.sourceImageTooltip": "Abbildung aus der Quelle – Klick öffnet die Quelle",
+  "index.sourceImagePage": "S. {n}",
   "index.autoLangSwitchNotice": "Sprache automatisch auf Deutsch umgestellt, weil die Frage auf Deutsch gestellt wurde.",
 
   "auth.iconTitle": "Konto",
