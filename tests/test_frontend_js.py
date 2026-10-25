@@ -4814,3 +4814,57 @@ def test_question_js_uses_safe_http_url_for_every_citation_url():
     js = (STATIC_DIR / "question.js").read_text()
     raw = re.findall(r"=\s*s\.url_reachable === false \? null : s\.listen_url \|\| s\.url;", js)
     assert raw == [], "Quellen-URLs müssen durch safeHttpUrl() laufen."
+
+
+def _run_refresh(body: str):
+    return _run_question_js(
+        f"{_STRIP_SUMMARY_JS}\n"
+        "function bubbleWith(text) { const b = new FakeNode('element', 'div'); const p = document.createElement('p');"
+        " b.appendChild(p); p.appendChild(document.createTextNode(text)); return b; }\n"
+        "function strips(b) { return b.querySelectorAll('.source-image-strip'); }\n" + body,
+        "makeCitationsClickable", "extractCitedSources", *_STRIP_FUNCS, "refreshImageStrip", "applyDoneImages",
+    )
+
+
+def test_done_event_images_replace_early_images_in_single_strip():
+    # sources-Event: Bild am Chunk 1; done-Event: Bild am (zitierten) Chunk 2 derselben Quelle.
+    early = [_source(1, [{"src": _src(1), "alt": "", "page": None}]), _source(2, [])]
+    done = [_source(1, []), _source(2, [{"src": _src(2), "alt": "", "page": None}])]
+    result = _run_refresh(f"""
+const early = {json.dumps(early)}; const done = {json.dumps(done)};
+const b = bubbleWith('A [1] B [2]');
+makeCitationsClickable(b, early);
+refreshImageStrip(b, extractCitedSources(b, early));
+const before = strips(b).map((s) => summarize(s).figures.map((f) => f.img.src));
+applyDoneImages(b, early, done);
+applyDoneImages(b, early, done);
+console.log(JSON.stringify({{before, after: strips(b).map((s) => summarize(s).figures.map((f) => f.img.src)),
+  stored: early.map((s) => s.images.length)}}));
+""")
+    assert result == {"before": [[_src(1)]], "after": [[_src(2)]], "stored": [0, 1]}
+
+
+def test_done_event_without_images_removes_strip():
+    early = [_source(1, [{"src": _src(1), "alt": "", "page": None}])]
+    done = [_source(1, [])]
+    result = _run_refresh(f"""
+const early = {json.dumps(early)}; const done = {json.dumps(done)};
+const b = bubbleWith('A [1]');
+makeCitationsClickable(b, early);
+refreshImageStrip(b, extractCitedSources(b, early));
+applyDoneImages(b, early, done);
+console.log(JSON.stringify(strips(b).length));
+""")
+    assert result == 0
+
+
+def test_refresh_image_strip_never_creates_two_strips():
+    early = [_source(1, [{"src": _src(1), "alt": "", "page": None}])]
+    result = _run_refresh(f"""
+const early = {json.dumps(early)};
+const b = bubbleWith('A [1]');
+makeCitationsClickable(b, early);
+for (let i = 0; i < 3; i += 1) refreshImageStrip(b, extractCitedSources(b, early));
+console.log(JSON.stringify(strips(b).length));
+""")
+    assert result == 1
