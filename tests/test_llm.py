@@ -605,3 +605,12 @@ def test_stream_creative_response_appends_cached_humanizer_guide():
     assert guide["cache_control"] == {"type": "ephemeral"}
     assert guide["text"].startswith(llm._HUMANIZER_BRIDGES["en"])
     assert "### 1. Not X but Y" in guide["text"]
+
+
+def test_imperative_questions_are_detected():
+    """Bug (2026-10-25, Screenshot): "Show me a Cell Structure design" traf kein
+    Stoppwort -> keine explizite Sprachzeile -> Antwort auf Deutsch."""
+    assert llm._question_language("Show me a Cell Structure design") == "en"
+    assert llm._question_language("Give me an example of a peach model") == "en"
+    assert llm._question_language("Zeig mir ein Beispiel für Cell Structure") == "de"
+    assert llm._question_language("Nenne mir Beispiele") == "de"
