@@ -111,7 +111,8 @@ def get_chunk_metadatas(ids: list[str]) -> dict[str, dict]:
     """Metadaten der Chunks mit diesen IDs (unbekannte fehlen im Ergebnis)."""
     if not ids:
         return {}
-    res = _get_collection().get(ids=list(ids), include=["metadatas"])
+    # Doppelte IDs (derselbe Chunk mehrfach im Handoff) lehnt Chroma ab.
+    res = _get_collection().get(ids=list(dict.fromkeys(ids)), include=["metadatas"])
     return dict(zip(res["ids"], res["metadatas"]))
 
 

@@ -144,7 +144,13 @@ def test_answer_question_includes_history_as_prior_messages():
     assert messages[0] == {"role": "user", "content": "Was ist der BetaCodex?"}
     assert messages[1] == {"role": "assistant", "content": "Ein Prinzipien-Set [1]."}
     assert messages[2] == {"role": "user", "content": "Wer hat ihn entwickelt?"}
-    assert messages[3] == {"role": "assistant", "content": "Niels Pfläging [1]."}
+    # Idee 2070893d: nur die LETZTE assistant-Nachricht trägt den Cache-Marker.
+    assert messages[3] == {
+        "role": "assistant",
+        "content": [
+            {"type": "text", "text": "Niels Pfläging [1].", "cache_control": {"type": "ephemeral"}}
+        ],
+    }
     assert messages[4]["role"] == "user"
     assert "Frage: Und was ist mit Vertrauen?" in messages[4]["content"]
     assert len(messages) == 5
@@ -158,6 +164,7 @@ def test_answer_question_without_history_has_only_the_current_message():
     messages = client.messages.stream.call_args.kwargs["messages"]
     assert len(messages) == 1
     assert messages[0]["role"] == "user"
+    assert "cache_control" not in str(messages)  # Idee 2070893d: ohne Verlauf kein Cache-Marker
 
 
 def _fake_create_client(response_text):
@@ -616,3 +623,100 @@ def test_imperative_questions_are_detected():
     assert llm._question_language("Give me an example of a peach model") == "en"
     assert llm._question_language("Zeig mir ein Beispiel für Cell Structure") == "de"
     assert llm._question_language("Nenne mir Beispiele") == "de"
+
+
+def _stream_messages(history, question="Weiter?"):
+    client = _fake_client("Antwort")
+    with patch.object(llm, "_get_client", return_value=client):
+        llm.answer_question(question, [{"title": "T", "author": "A", "date": "D", "text": "Text"}], history=history)
+    return client.messages.stream.call_args.kwargs["messages"]
+
+
+def _strip_cache_marker(message):
+    if isinstance(message["content"], list):
+        return {"role": message["role"], "content": message["content"][0]["text"]}
+    return message
+
+
+def test_consecutive_requests_share_an_identical_prefix_for_prompt_caching():
+    """Idee 2070893d: Cache-Treffer setzt voraus, dass Folgefrage n+1 bis zur
+    vorletzten Nachricht byte-gleich zu Folgefrage n ist (ohne Marker)."""
+    turns = [{"question": f"F{i}?", "answer": f"A{i}."} for i in range(4)]
+    first = _stream_messages(turns[:3])
+    second = _stream_messages(turns)
+    # first: 3 Turns + aktuelle Frage; second: 4 Turns + aktuelle Frage.
+    assert [_strip_cache_marker(m) for m in first[:-1]] == [_strip_cache_marker(m) for m in second[: len(first) - 1]]
+    # Der alte Marker steckt nur in der vorherigen Anfrage, in der neuen sitzt er auf Turn 4.
+    assert second[len(first) - 2]["content"] == "A2."
+
+
+def test_only_last_assistant_message_has_cache_control():
+    messages = _stream_messages([{"question": f"F{i}?", "answer": f"A{i}."} for i in range(3)])
+    marked = [m for m in messages if isinstance(m["content"], list)]
+    assert len(marked) == 1
+    assert messages[-2] is marked[0]
+
+
+def test_stream_usage_is_recorded_when_consumer_aborts_after_first_delta():
+    """Idee 2070893d (F5): Abbruch des Generators nach dem ersten Delta darf den
+    Verbrauch nicht verlieren - es zählt der Snapshot der laufenden Message."""
+    client = MagicMock()
+    stream = client.messages.stream.return_value.__enter__.return_value
+    stream.text_stream = iter(["Erstes", "Zweites"])
+    stream.current_message_snapshot.usage = "SNAPSHOT-USAGE"
+    with patch.object(llm, "_get_client", return_value=client), patch.object(
+        llm.usage_log, "track_anthropic"
+    ) as track:
+        gen = llm.stream_answer_question("Frage?", [], usage={"channel": "ask"})
+        assert next(gen) == "Erstes"
+        gen.close()
+
+    track.assert_called_once()
+    assert track.call_args.args[1] == "SNAPSHOT-USAGE"
+    assert track.call_args.kwargs["channel"] == "ask"
+
+
+def test_stream_usage_recording_failure_never_breaks_the_answer():
+    client = _fake_client("Antwort")
+    with patch.object(llm, "_get_client", return_value=client), patch.object(
+        llm.usage_log, "track_anthropic_stream", side_effect=RuntimeError("kaputt")
+    ):
+        assert "".join(llm.stream_answer_question("Frage?", [])) == "Antwort"
+
+
+def test_stream_usage_recorded_once_from_snapshot_when_text_stream_raises():
+    client = MagicMock()
+    stream = client.messages.stream.return_value.__enter__.return_value
+
+    def broken():
+        yield "Erstes"
+        raise RuntimeError("Verbindung weg")
+
+    stream.text_stream = broken()
+    stream.current_message_snapshot.usage = "SNAPSHOT-USAGE"
+    with patch.object(llm, "_get_client", return_value=client), patch.object(
+        llm.usage_log, "track_anthropic"
+    ) as track, patch.object(llm.usage_log, "track_anthropic_stream") as track_stream:
+        gen = llm.stream_answer_question("Frage?", [])
+        assert next(gen) == "Erstes"
+        with pytest.raises(RuntimeError, match="Verbindung weg"):
+            next(gen)
+
+    track.assert_called_once()
+    assert track.call_args.args[1] == "SNAPSHOT-USAGE"
+    track_stream.assert_not_called()
+
+
+def test_stream_abort_before_message_start_is_skipped_silently(caplog):
+    """current_message_snapshot wirft AssertionError, solange message_start fehlt."""
+    client = MagicMock()
+    stream = client.messages.stream.return_value.__enter__.return_value
+    stream.text_stream = iter(["Erstes"])
+    type(stream).current_message_snapshot = property(lambda self: (_ for _ in ()).throw(AssertionError("no snapshot")))
+    with patch.object(llm, "_get_client", return_value=client), patch.object(llm.usage_log, "track_anthropic") as track:
+        gen = llm.stream_answer_question("Frage?", [])
+        next(gen)
+        gen.close()
+
+    track.assert_not_called()
+    assert "Kostenmessung" not in caplog.text

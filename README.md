@@ -68,9 +68,12 @@ Assistent das offen, statt zu spekulieren.
 - Fett hervorgehobene Fachbegriffe in einer Antwort sind anklickbar – ein
   Klick vertieft genau diesen Begriff als Folgefrage, im Kontext der
   laufenden Konversation.
-- Gesprächsgedächtnis: die letzten 10 Frage-Antwort-Paare (höchstens 30.000
-  Zeichen, je Frage/Antwort max. 8.000, max. 50 Paare pro Anfrage) gehen mit
-  an das Modell; die Suchanfrage wird nur aus den letzten 3 umformuliert.
+- Gesprächsgedächtnis: bis zu 50 Frage-Antwort-Paare (höchstens 200.000 Bytes,
+  je Frage/Antwort max. 8.000 Zeichen; Kürzung in 10er-Blöcken) gehen mit an
+  das Modell; die Suchanfrage wird nur aus den letzten 3 umformuliert. Prompt-
+  Caching hält die Kosten niedrig: ca. 1,4 ct je Frage bei 50 Runden mit Cache,
+  ohne Cache ca. 4,7 ct. Eingaben sind begrenzt (Frage max. 8.000 Zeichen,
+  top_k 1-10).
 - Jede Antwort lässt sich per Icon in die Zwischenablage kopieren
   (formatiert und als Klartext, ohne die `[n]`-Verweise).
 - Antwortet in der Sprache, in der gefragt wurde – Oberfläche und
@@ -584,6 +587,7 @@ Commit-/Tag-Nachrichten in Git.
 
 | Version | Wesentliche Änderungen |
 |---|---|
+| v0.88.0 | **Chat merkt sich die ganze Konversation** (Idee 2070893d): statt der letzten 10 Fragen gehen bis zu 50 Fragen und Antworten (bis 200 KB Text) als Kontext mit, wie bei einem normalen ChatBot; darüber fallen die ältesten in Zehnerblöcken weg. Prompt-Caching hält die Kosten auch bei langen Gesprächen bei rund 1,4 ct je Frage (ohne Cache wären es bis 4,7 ct). „In neuem Tab öffnen“ funktioniert jetzt auch bei langen Chats (brach vorher ab ca. 20 Runden still ab). Schärfere Grenzen gegen Missbrauch: Frage höchstens 8000 Zeichen, Trefferzahl höchstens 10, Budget in Bytes, Obergrenze für den Zwischenspeicher beim Tab-Wechsel. Verbrauch wird auch bei abgebrochener Antwort erfasst |
 | v0.87.2 | **Sicherheits-Updates:** Pillow 12.3.0 → 13.0.0 und pypdf 6.16.1 → 6.21.2 schließen 56 Dependabot-Warnungen (u. a. 5 kritische bei Pillow). Die 4 chromadb-Warnungen betreffen nur den HTTP-Server-Modus, den der Chat nicht nutzt (eingebetteter PersistentClient, siehe requirements.txt); für sie gibt es keinen Fix |
 | v0.87.1 | **Fix: Folgefrage während laufender Antwort** (Idee 56580b6e, Live-Befund): eine Frage, die abgeschickt wird, während die vorige Antwort noch läuft, zählt nicht mehr als „erste Frage“ – im Fragen-Log entsteht kein zweiter Chat-Anfang im selben Block |
 | v0.87.0 | **Fragen-Log zeigt ganze Konversationen** (Idee 56580b6e): jede Frage im Konversationsmodus wird mit Antwort protokolliert (bisher nur die erste), zusammengehalten über eine zufällige Kennung je Konversation (auch über Reload und den Wechsel aus der Einbettung in einen neuen Tab), ohne Verknüpfung mit IP-Adresse oder Konto. Das Fragen-Log zeigt jeden Chat als eigenen Block mit farbigem Balken, geordnet nach der ersten Anfrage (parallele Chats mischen sich nicht), Fragen darin von 1/n bis n/n, Folgefrage an einem späteren Tag mit Datum. Neuer Filter „Folgefrage“, Klick auf „Chat xxxx“ zeigt nur diesen Chat, dort „Ganzes Gespräch löschen“. Daumen-Feedback landet auch bei Absagen und Folgefragen am richtigen Eintrag. Das Log sehen nur noch System-Admins. Robuster: eine unlesbare Log-Datei wird nie mehr überschrieben, Schreibfehler unterbrechen den Chat nicht. Datenschutzerklärung DE/EN angepasst. CI läuft auf Node 22 und führt `node --test` aus |

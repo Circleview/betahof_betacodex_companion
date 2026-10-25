@@ -298,3 +298,23 @@ def test_ask_question_logs_no_follow_up_and_no_conversation_id(mcp_client, fake_
     entries = question_log.list_entries()
     assert [e["event_types"] for e in entries] == [["mcp"]]
     assert "conversation_id" not in entries[0]
+
+
+def test_ask_question_sends_no_cache_control_without_history(mcp_client, monkeypatch):
+    """Idee 2070893d: MCP ask_question kennt keinen Verlauf -> kein Cache-Marker."""
+    from unittest.mock import MagicMock
+    from app.models import ChunkRef
+
+    ref = ChunkRef(chunk_id="c1", source_id="s1", title="T", authors=[], date=None, url=None, position=0, text="Text.")
+    monkeypatch.setattr(main_module, "_ask_context", lambda *a, **k: ([{"title": "T", "author": "A", "date": "D", "text": "Text."}], [ref], [], [0.1]))
+    monkeypatch.setattr(main_module, "_compute_occurrence_highlights", lambda answer, docs, quotes: [[]])
+    monkeypatch.setattr(main_module, "_best_local_sentence", lambda doc, emb: None)
+    client = MagicMock()
+    client.messages.stream.return_value.__enter__.return_value.text_stream = iter(["Antwort [1]."])
+    monkeypatch.setattr(llm, "_get_client", lambda: client)
+    _, secret = mcp_keys.create_key(OWNER, "Laptop")
+
+    _call(mcp_client, secret, "ask_question", {"question": "Frage?"})
+
+    messages = client.messages.stream.call_args.kwargs["messages"]
+    assert len(messages) == 1 and "cache_control" not in str(messages)

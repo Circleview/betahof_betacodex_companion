@@ -71,8 +71,10 @@ class HistoryTurnIn(BaseModel):
 
 
 class QuestionIn(BaseModel):
-    question: str
-    top_k: int = 5
+    # Idee 2070893d: Eingabegrenzen (Kosten/Missbrauch) - Frage wie die
+    # Verlaufsfelder max. 8000 Zeichen, top_k höchstens 10 Treffer.
+    question: str = Field(max_length=8000)
+    top_k: int = Field(5, ge=1, le=10)
     turnstile_token: str = ""
     # Backlog #97: vom Frontend gesetzt (conversationHistory.length === 0
     # zum Zeitpunkt des Absendens) - der Server kennt sonst keine
@@ -80,8 +82,9 @@ class QuestionIn(BaseModel):
     is_first_message: bool = False
     # Backlog (2026-08-03): vorherige Turns der laufenden Konversation, damit
     # das Modell nicht bei jeder Folgefrage bei null anfängt (siehe
-    # app/main.py ask() - wird dort defensiv auf die letzten paar Turns
-    # gekappt, unabhängig davon, wie viele das Frontend mitschickt).
+    # app/main.py ask() - wird dort defensiv blockweise gekappt (Turn- und
+    # Byte-Grenze, siehe _trim_history). Idee 2070893d: max_length = ASK_HISTORY_MAX_TURNS,
+    # 51 Turns ergeben 422).
     history: list[HistoryTurnIn] = Field(default_factory=list, max_length=50)
     # Idee 56580b6e: zufällige Kennung der Konversation (crypto.randomUUID()
     # im Browser), fasst die Einträge im Fragen-Log zu einem Chat zusammen.

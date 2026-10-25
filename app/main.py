@@ -4160,23 +4160,46 @@ AUTHOR_MENTION_KEYWORD_MATCH_FACTOR = 0.05
 # davon, wie viele Turns das Frontend mitschickt (QuestionIn.history) - hält
 # den Prompt schlank und begrenzt den Schaden eines manipulierten Requests
 # ohne UI.
-# Idee 24907bf2: 10 Turns, zusätzlich ein Zeichenbudget; muss zu
-# ASK_HISTORY_MAX_TURNS in static/question.js passen. Invariante: die
-# Feldgrenzen in models.HistoryTurnIn (je 8000) garantieren, dass ein Turn
-# (2 x 8000) immer unter MAX_CHARS bleibt - ein Kürzungszweig ist unnötig.
-ASK_HISTORY_MAX_TURNS = 10
-ASK_HISTORY_MAX_CHARS = 30_000
+# Idee 24907bf2: 10 Turns, zusätzlich ein Zeichenbudget. Idee 2070893d: 50
+# Turns und ein Budget von 200.000 UTF-8-Bytes (ca. 60k Tokens bei Haiku 4.5,
+# Kontextfenster 200k); muss zu ASK_HISTORY_MAX_TURNS/ASK_HISTORY_MAX_BYTES in
+# static/question.js passen (Test in tests/test_api.py). Invariante: die
+# Feldgrenzen in models.HistoryTurnIn (je 8000 Zeichen) garantieren, dass ein
+# Turn (2 x 8000 Zeichen x 4 Bytes = 64 KB) immer unter MAX_BYTES bleibt.
+ASK_HISTORY_MAX_TURNS = 50
+ASK_HISTORY_MAX_BYTES = 200_000
+# Gekürzt wird in Blöcken von 10 Turns (zustandslos, Vielfaches von 10 als
+# Startindex), damit der Anfang des Verlaufs über viele Folgefragen
+# byte-gleich bleibt und der Prompt-Cache (llm.py) trifft.
+ASK_HISTORY_CUT_BLOCK = 10
 # Die Umformulierung der Suchanfrage braucht nur den jüngsten Kontext.
 ASK_REWRITE_HISTORY_TURNS = 3
 
 
+def _history_bytes(turns: list[dict]) -> int:
+    return sum(len(t["question"].encode("utf-8")) + len(t["answer"].encode("utf-8")) for t in turns)
+
+
 def _trim_history(turns: list[dict]) -> list[dict]:
     """Leere Fragen und Antworten verwerfen (Anthropic lehnt leere assistant-Inhalte
-    ab), letzte MAX_TURNS behalten, älteste entfernen bis MAX_CHARS passt."""
-    turns = [t for t in turns if t["question"].strip() and t["answer"].strip()][-ASK_HISTORY_MAX_TURNS:]
-    while sum(len(t["question"]) + len(t["answer"]) for t in turns) > ASK_HISTORY_MAX_CHARS:
-        turns = turns[1:]
-    return turns
+    ab), dann den Anfang blockweise kappen: erst für die Turn-Grenze, dann solange
+    das Byte-Budget überschritten ist (je 10 Turns, höchstens bis zum letzten Turn,
+    danach einzeln). Gleiche Regel wie buildAskHistory in static/question.js.
+
+    Bekanntes, bewusst akzeptiertes Risiko (Idee 2070893d, Bestand): der Client
+    liefert auch die assistant-Turns, ein manipulierter Request kann also
+    erfundene Antworten einschleusen (Prompt-Injection). Option bei Bedarf:
+    HMAC-Signatur je Antwort, die der Server beim Streamen mitgibt und hier prüft."""
+    turns = [t for t in turns if t["question"].strip() and t["answer"].strip()]
+    n = len(turns)
+    start = -(-(n - ASK_HISTORY_MAX_TURNS) // ASK_HISTORY_CUT_BLOCK) * ASK_HISTORY_CUT_BLOCK if n > ASK_HISTORY_MAX_TURNS else 0
+    start = min(start, max(n - 1, 0))
+    while start < n - 1 and _history_bytes(turns[start:]) > ASK_HISTORY_MAX_BYTES:
+        start = min(start + ASK_HISTORY_CUT_BLOCK, n - 1)
+    while start < n and _history_bytes(turns[start:]) > ASK_HISTORY_MAX_BYTES:
+        start += 1
+    return turns[start:]
+
 
 # Nutzerwunsch (2026-08-26): Kreativ-Modus (siehe app/llm.py:
 # stream_creative_response) - eigene, deutlich engere Rate-Grenze als
@@ -5115,7 +5138,11 @@ def creative(payload: CreativeRequestIn, request: Request, x_lang: str = Header(
 # also so oder so leeren Storage. Kurzlebiges, einmal abrufbares
 # Server-Handoff statt dessen - kein dauerhafter Konversations-Speicher.
 CONVERSATION_HANDOFF_MAX_TURNS = 100
-CONVERSATION_HANDOFF_MAX_BYTES = 200_000
+# Idee 2070893d: unter REQUEST_BODY_DEFAULT_LIMIT (1 MiB), gemessen in UTF-8-Bytes
+# von model_dump_json(); das Frontend kürzt auf < 800_000 (conversation-handoff.js)
+# und lässt so Marge für Default-Felder. ponytail: In-Memory-Store; bei Missbrauch
+# globale Byte-Obergrenze im Store (conversation_handoff.MAX_TOTAL_BYTES, 503).
+CONVERSATION_HANDOFF_MAX_BYTES = 900_000
 CONVERSATION_HANDOFF_RATE_LIMIT_MAX_REQUESTS = 20
 CONVERSATION_HANDOFF_RATE_LIMIT_WINDOW_SECONDS = 600
 
@@ -5133,9 +5160,8 @@ def create_conversation_handoff(
         raise HTTPException(429, i18n.get_message("rate_limited", x_lang))
     if not payload.history:
         raise HTTPException(400, i18n.get_message("conversation_handoff_empty", x_lang))
-    if len(payload.history) > CONVERSATION_HANDOFF_MAX_TURNS or len(
-        payload.model_dump_json()
-    ) > CONVERSATION_HANDOFF_MAX_BYTES:
+    size = len(payload.model_dump_json().encode("utf-8"))
+    if len(payload.history) > CONVERSATION_HANDOFF_MAX_TURNS or size > CONVERSATION_HANDOFF_MAX_BYTES:
         raise HTTPException(400, i18n.get_message("conversation_handoff_too_large", x_lang))
 
     # Idee ff895248: der Endpunkt ist anonym - Bilder und Links der Quellen
@@ -5159,10 +5185,15 @@ def create_conversation_handoff(
     flat = [ref for turn in payload.history for ref in turn.sources]
     for ref, images in zip(flat, _limit_restricted_images(flat, all_sources)):
         ref.images = images
+    # Größe für das Speicher-Budget erst nach dem Neusetzen der Bilder messen.
+    size = len(payload.model_dump_json().encode("utf-8"))
 
-    token = conversation_handoff.create(
-        [turn.model_dump() for turn in payload.history], _valid_conversation_id(payload.conversation_id)
-    )
+    try:
+        token = conversation_handoff.create(
+            [turn.model_dump() for turn in payload.history], _valid_conversation_id(payload.conversation_id), size
+        )
+    except conversation_handoff.StoreFull:
+        raise HTTPException(503, i18n.get_message("conversation_handoff_store_full", x_lang))
     return {"token": token}
 
 

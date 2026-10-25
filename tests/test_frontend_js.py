@@ -4890,3 +4890,137 @@ console.log(JSON.stringify(results));
         {"text": "Zu viele Anfragen", "button": "index.retry", "type": "button", "retried": 1},
         {"text": "index.askFailed", "button": "index.retry", "type": "button", "retried": 1},
     ]
+
+
+# --- Idee 2070893d: Gesprächsgedächtnis 50 Turns / 200.000 Bytes ---
+
+
+def _run_node_stdin(script: str):
+    # Große Eingaben passen nicht in die Argumentliste (node -e) - Skript per stdin.
+    result = subprocess.run(["node", "-"], input=script, capture_output=True, text=True, check=True)
+    return json.loads(result.stdout)
+
+
+def _run_build_ask_history(turns):
+    js = (STATIC_DIR / "question.js").read_text()
+    consts = "\n".join(re.findall(r"^const ASK_HISTORY_[A-Z_]+ = [^;]+;$", js, flags=re.M))
+    func = re.search(r"^function buildAskHistory\(.*?^}\n", js, flags=re.M | re.S).group(0)
+    script = f"{consts}\n{func}\nconsole.log(JSON.stringify(buildAskHistory({json.dumps(turns)})));"
+    return _run_node_stdin(script)
+
+
+def _js_turns(n, size=10):
+    return [{"question": f"F{i:03d}" + "q" * size, "answer": f"A{i:03d}" + "a" * size} for i in range(n)]
+
+
+def _js_sized(n, per_turn_bytes):
+    half = per_turn_bytes // 2
+    return [
+        {"question": f"F{i:03d}".ljust(half, "q"), "answer": f"A{i:03d}".ljust(per_turn_bytes - half, "a")}
+        for i in range(n)
+    ]
+
+
+def test_build_ask_history_sends_all_turns_up_to_fifty():
+    assert _run_build_ask_history(_js_turns(12)) == _js_turns(12)
+    assert _run_build_ask_history(_js_turns(50)) == _js_turns(50)
+
+
+def test_build_ask_history_block_cut_is_stable_for_51_to_60_and_jumps_at_61():
+    firsts = {_run_build_ask_history(_js_turns(n))[0]["question"] for n in range(51, 61)}
+    assert len(firsts) == 1
+    assert _run_build_ask_history(_js_turns(51)) == _js_turns(51)[10:]
+    assert _run_build_ask_history(_js_turns(61)) == _js_turns(61)[20:]
+
+
+def test_build_ask_history_budget_in_utf8_bytes_with_block_cut():
+    turns = _js_sized(50, 4000)  # genau 200.000 Bytes -> alle bleiben
+    assert _run_build_ask_history(turns) == turns
+    turns[-1]["answer"] += "x"
+    assert _run_build_ask_history(turns) == turns[10:]
+    umlauts = [{"question": "ä" * 2000, "answer": "ä" * 2000} for _ in range(26)]  # 208.000 Bytes, 104.000 Zeichen
+    assert _run_build_ask_history(umlauts) == umlauts[10:]
+
+
+def test_build_ask_history_truncates_fields_and_drops_blank_turns():
+    turns = [{"question": " ", "answer": "A"}, {"question": "q" * 8100, "answer": "a" * 8100}]
+    result = _run_build_ask_history(turns)
+    assert result == [{"question": "q" * 8000, "answer": "a" * 8000}]
+
+
+def test_build_ask_history_block_jump_stops_at_last_turn():
+    turns = [{"question": "ä" * 8000, "answer": "ä" * 8000}] * 7  # 7 x 32.000 = 224.000 Bytes
+    assert len(_run_build_ask_history(turns)) == 1  # Block (10) springt höchstens bis zum letzten Turn
+
+
+def test_question_js_uses_build_ask_history_in_request_body():
+    js = (STATIC_DIR / "question.js").read_text()
+    assert "history: buildAskHistory(conversationHistory)," in js
+    assert "top_k: 5," in js
+
+
+def _run_handoff(history, fetch_ok=True):
+    js = re.sub(r"^export ", "", (STATIC_DIR / "conversation-handoff.js").read_text(), flags=re.M)
+    script = f"""
+{js}
+let posted = null;
+global.fetch = async (url, opts) => {{ posted = JSON.parse(opts.body); return {{ ok: true, json: async () => ({{ token: 't' }}) }}; }};
+(async () => {{
+  const token = await createConversationHandoffToken({json.dumps(history)}, 'cid');
+  console.log(JSON.stringify({{ token, posted }}));
+}})();
+"""
+    return _run_node_stdin(script)
+
+
+def test_handoff_frontend_trims_oldest_turns_to_max_turns():
+    turn = {"question": "F", "answer": "A", "sources": []}
+    history = [dict(turn, question=f"F{i}") for i in range(130)]
+    result = _run_handoff(history)
+    assert result["token"] == "t"
+    assert [t["question"] for t in result["posted"]["history"]] == [f"F{i}" for i in range(30, 130)]
+    assert result["posted"]["conversation_id"] == "cid"
+
+
+def test_handoff_frontend_trims_to_below_800kb_with_realistic_sources():
+    source = {
+        "chunk_id": "c", "source_id": "s", "title": "T", "authors": ["A"], "date": "2021-01-01", "url": "u",
+        "listen_url": None, "position": 1, "text": "t" * 3000, "summary": "s" * 300, "summary_ai_generated": True,
+        "highlighted_texts": ["h" * 200], "is_web_fallback": False, "allowlist_entry_id": None,
+    }
+    history = [{"question": f"F{i}", "answer": "A" * 3500, "sources": [source] * 5} for i in range(100)]
+    result = _run_handoff(history)
+    sent = result["posted"]["history"]
+    assert 0 < len(sent) < 100
+    assert sent[-1]["question"] == "F99"  # neueste bleiben, älteste fallen weg
+    assert len(json.dumps(result["posted"], separators=(",", ":")).encode()) < 800_000
+    # eine weitere ältere Runde hätte das Limit gesprengt (Kürzung nicht übertrieben)
+    one_more = [history[100 - len(sent) - 1]] + sent
+    assert len(json.dumps({"history": one_more, "conversation_id": "cid"}, separators=(",", ":")).encode()) >= 800_000
+
+
+def test_handoff_frontend_limits_match_backend():
+    from app import main as main_module
+
+    js = (STATIC_DIR / "conversation-handoff.js").read_text()
+    turns = int(re.search(r"const CONVERSATION_HANDOFF_MAX_TURNS = ([\d_]+);", js).group(1).replace("_", ""))
+    max_bytes = int(re.search(r"const CONVERSATION_HANDOFF_MAX_BYTES = ([\d_]+);", js).group(1).replace("_", ""))
+    assert turns == main_module.CONVERSATION_HANDOFF_MAX_TURNS
+    assert max_bytes == 800_000 < main_module.CONVERSATION_HANDOFF_MAX_BYTES
+
+
+@pytest.mark.parametrize("name", ["index.html", "embed.html"])
+def test_question_textarea_has_maxlength_8000(name):
+    html = (STATIC_DIR / name).read_text()
+    tag = re.search(r'<textarea id="question"[^>]*>', html).group(0)
+    assert 'maxlength="8000"' in tag
+
+
+def test_question_js_truncates_question_and_handles_list_detail():
+    js = (STATIC_DIR / "question.js").read_text()
+    # Sprachdiktat setzt value per Code (maxlength greift nicht)
+    assert re.search(r"const question = questionInput\.value\.trim\(\)\.slice\(0, ASK_QUESTION_MAX_CHARS\);", js)
+    assert re.search(r"const ASK_QUESTION_MAX_CHARS = 8000;", js)
+    # 422 liefert detail als Liste -> allgemeine Fehlermeldung statt [object Object]
+    assert "typeof err.detail === 'string' ? err.detail : t('index.askFailed')" in js
+    assert "throw new Error(err.detail || t('index.askError'))" not in js
