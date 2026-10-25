@@ -1301,6 +1301,9 @@ const ASK_HISTORY_CUT_BLOCK = 10;
 // Feldgrenze je Frage/Antwort im Verlauf (muss zu app/models.py passen) -
 // sonst scheitert jede Folgefrage mit 422, wenn eine frühere Frage länger ist.
 const ASK_HISTORY_MAX_FIELD_CHARS = 8000;
+// Frage-Grenze (app/models.py QuestionIn.question); das Sprachdiktat setzt value
+// per Code, dort greift maxlength nicht.
+const ASK_QUESTION_MAX_CHARS = 8000;
 
 // Gleiche Regel wie _trim_history in app/main.py: leere Turns raus, Felder
 // kürzen, Anfang blockweise kappen (Turn-Grenze, dann Byte-Budget; höchstens
@@ -1550,7 +1553,7 @@ async function readAskStream(response, onDelta, onAnswer, onSources) {
 
 questionForm.addEventListener('submit', async (e) => {
   e.preventDefault();
-  const question = questionInput.value.trim();
+  const question = questionInput.value.trim().slice(0, ASK_QUESTION_MAX_CHARS);
   if (!question) return;
 
   // Sofort lesen+zurücksetzen (nicht erst nach der Antwort) - eine neue,
@@ -1623,7 +1626,8 @@ questionForm.addEventListener('submit', async (e) => {
     resetTurnstile();
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
-      throw new Error(err.detail || t('index.askError'));
+      // 422 liefert detail als Liste von Objekten - dann allgemeine Meldung.
+      throw new Error(typeof err.detail === 'string' ? err.detail : t('index.askError'));
     }
 
     // Erstes Text-Fragment: Tippindikator durch die (noch unfertige)

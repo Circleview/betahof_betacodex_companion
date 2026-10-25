@@ -376,13 +376,18 @@ def stream_answer_question(
             # Idee 2070893d: auch bei Abbruch (Nutzer schließt den Tab) wird
             # der bisherige Verbrauch erfasst - dann aus dem Snapshot, denn
             # get_final_message() würde den Rest des Streams noch lesen.
+            # Im Snapshot stehen nur Input-Verbrauch und Cache; output_tokens
+            # steht erst am Ende fest (Abbruch-Erfassung ist daher eine Untergrenze).
             # Fehler hier dürfen die Antwort nie stören.
             usage_kwargs = {"channel": "ask", **(usage or {})}
             try:
                 if completed:
                     usage_log.track_anthropic_stream(MODEL_NAME, stream, **usage_kwargs)
                 else:
-                    snapshot_usage = getattr(getattr(stream, "current_message_snapshot", None), "usage", None)
+                    try:
+                        snapshot_usage = stream.current_message_snapshot.usage
+                    except AssertionError:
+                        snapshot_usage = None  # message_start fehlt noch: nichts zu erfassen
                     if snapshot_usage is not None:
                         usage_log.track_anthropic(MODEL_NAME, snapshot_usage, **usage_kwargs)
             except Exception:

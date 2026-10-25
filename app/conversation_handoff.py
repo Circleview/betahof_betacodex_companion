@@ -1,4 +1,5 @@
 import secrets
+import threading
 import time
 
 # Nutzerwunsch (2026-08-30): Konversations-Übergabe vom Embed-Widget (oder
@@ -15,7 +16,12 @@ TTL_SECONDS = 300
 
 # Idee 2070893d: globale Obergrenze (Summe der Roh-Bytes aller offenen Einträge),
 # damit viele große Handoffs den Speicher des Prozesses nicht füllen.
-MAX_TOTAL_BYTES = 50_000_000
+# Der RAM-Bedarf liegt etwa beim 2,3-Fachen der JSON-Bytes (Python-Objekte).
+MAX_TOTAL_BYTES = 20_000_000
+
+# Die Endpunkte laufen im Threadpool: ein Lock schützt Dict-Iteration und die
+# Prüfung der Obergrenze (sonst RuntimeError bzw. nicht atomare Prüfung).
+_lock = threading.RLock()
 
 
 class StoreFull(Exception):
@@ -35,27 +41,30 @@ def _now() -> float:
 
 
 def _cleanup_expired() -> None:
-    now = _now()
-    expired = [token for token, (expires_at, _, _cid, _size) in _store.items() if expires_at < now]
-    for token in expired:
-        del _store[token]
+    with _lock:
+        now = _now()
+        expired = [token for token, (expires_at, _, _cid, _size) in _store.items() if expires_at < now]
+        for token in expired:
+            del _store[token]
 
 
 def create(history: list[dict], conversation_id: str | None = None, size: int = 0) -> str:
-    _cleanup_expired()
-    if sum(entry[3] for entry in _store.values()) + size > MAX_TOTAL_BYTES:
-        raise StoreFull
-    token = secrets.token_urlsafe(24)
-    _store[token] = (_now() + TTL_SECONDS, history, conversation_id, size)
-    return token
+    with _lock:
+        _cleanup_expired()
+        if sum(entry[3] for entry in _store.values()) + size > MAX_TOTAL_BYTES:
+            raise StoreFull
+        token = secrets.token_urlsafe(24)
+        _store[token] = (_now() + TTL_SECONDS, history, conversation_id, size)
+        return token
 
 
 def pop(token: str) -> tuple[list[dict], str | None] | None:
     """Liefert (Historie, conversation_id) und löscht den Eintrag sofort
     (Einmal-Abruf) - None bei unbekanntem oder abgelaufenem Token. Die ID
     reist mit, damit die Zielseite im Fragen-Log denselben Chat fortsetzt."""
-    _cleanup_expired()
-    entry = _store.pop(token, None)
+    with _lock:
+        _cleanup_expired()
+        entry = _store.pop(token, None)
     if entry is None:
         return None
     return entry[1], entry[2]
