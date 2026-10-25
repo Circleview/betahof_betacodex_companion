@@ -47,6 +47,7 @@ from app import (
     question_log,
     ratelimit,
     source_discovery,
+    source_images,
     source_suggestions,
     summarization,
     terms,
@@ -61,6 +62,7 @@ from app import (
     web_index,
 )
 from app.models import (
+    ImageRef,
     AdminUserOut,
     AnswerFeedbackIn,
     AuditLogEntryOut,
@@ -152,6 +154,8 @@ STATIC_DIR = BASE_DIR / "static"
 PDF_DIR = DATA_DIR / "pdfs"
 PDF_UPLOAD_STAGING_DIR = DATA_DIR / "pdf_uploads"
 AUDIO_DIR = DATA_DIR / "audio"
+SOURCE_IMAGES_DIR = DATA_DIR / "source_images"
+IMAGE_STAGING_DIR = DATA_DIR / "image_staging"
 AUDIO_UPLOAD_STAGING_DIR = DATA_DIR / "audio_uploads"
 
 DATA_DIR.mkdir(exist_ok=True)
@@ -633,9 +637,17 @@ _AUDIO_MEDIA_TYPES = {
 
 
 def _store_chunks(
-    source_id: str, source: SourceIn, chunks: list[str], chunk_embeddings: list[list[float]]
+    source_id: str,
+    source: SourceIn,
+    chunks: list[str],
+    chunk_embeddings: list[list[float]],
+    images: list[dict] | None = None,
 ) -> int:
+    # Idee ff895248: `images` sind die Bild-Einträge der Quelle (entry["images"]);
+    # jeder Aufrufer, der Chunks neu schreibt, übergibt sie, sonst gingen die
+    # Bilder an den Chunks verloren.
     chunk_ids = [f"{source_id}::{i}" for i in range(len(chunks))]
+    images_per_chunk = chunking.assign_images(chunks, images or [])
     metadatas = []
     for i in range(len(chunks)):
         metadata = {
@@ -650,6 +662,8 @@ def _store_chunks(
         # den Schlüssel ganz weglassen statt "authors": [].
         if source.authors:
             metadata["authors"] = source.authors
+        if images_per_chunk[i]:
+            metadata["images_json"] = json.dumps(images_per_chunk[i], ensure_ascii=False)
         metadatas.append(metadata)
     vectorstore.add_chunks(chunk_ids, chunks, chunk_embeddings, metadatas)
     return len(chunks)
@@ -983,7 +997,7 @@ def _finalize_extracted_text(source_id: str, lang: str, text: str, failure_i18n_
 
         with _vectorstore_write_lock:
             vectorstore.delete_source_chunks(source_id)
-            chunk_count = _store_chunks(source_id, source_stub, chunks, chunk_embeddings)
+            chunk_count = _store_chunks(source_id, source_stub, chunks, chunk_embeddings, entry.get("images"))
 
             sources = _load_sources()
             if source_id not in sources:
@@ -1732,12 +1746,60 @@ def _reindex_one_source(source_id: str, data: dict, only_changed: bool) -> bool:
         source = _source_in_from_entry(current)  # aktuelle Metadaten, nicht den Stand vor dem Einbetten
         with _vectorstore_write_lock:
             vectorstore.delete_source_chunks(source_id)
-            current["chunk_count"] = _store_chunks(source_id, source, new_chunks, chunk_embeddings)
+            current["chunk_count"] = _store_chunks(
+                source_id, source, new_chunks, chunk_embeddings, current.get("images")
+            )
         _save_sources(sources)
     return True
 
 
-def _reindex_all_sources(only_changed: bool = False) -> int:
+def _is_audio_or_video_source(source_id: str, url: str) -> bool:
+    return (
+        extraction._is_youtube_url(url)
+        or _existing_audio_file(source_id) is not None
+        or url.lower().split("?")[0].endswith(extraction.AUDIO_EXTENSIONS)
+    )
+
+
+def _backfill_images(source_id: str) -> bool:
+    """Holt Bilder für eine ältere Quelle nach (Idee ff895248, nur über den
+    Admin-Reindex). Schreibt unter Sperre NUR `images`/`images_checked_at` und
+    die Bild-Metadaten der vorhandenen Chunks - Text, Zusammenfassung,
+    Schlagworte und KI-Flags bleiben unberührt, es gibt keinen KI-Aufruf.
+    Ein Fehlschlag setzt nichts (nächster Lauf versucht es erneut).
+    Gibt True zurück, wenn die Quelle nun als geprüft gilt."""
+    entry = _load_sources().get(source_id)
+    if not entry or entry.get("deleted_at") or entry.get("images_checked_at"):
+        return False
+    url = entry.get("url") or ""
+    pdf_file = _existing_pdf_file(source_id)
+    if pdf_file is not None:
+        images = _store_pdf_images(source_id, pdf_file.read_bytes())
+    elif url and not _is_audio_or_video_source(source_id, url) and not url.lower().split("?")[0].endswith(".pdf"):
+        result = extraction.extract_from_url(url)
+        if not result.get("extracted"):
+            return False
+        images = source_images.sanitize_web_images(result.get("images"))
+    else:
+        return False
+    with _sources_write_lock:
+        sources = _load_sources()
+        current = sources.get(source_id)
+        if current is None or current.get("deleted_at"):
+            source_images.delete_source_images(SOURCE_IMAGES_DIR, source_id)
+            return False
+        current["images"] = images
+        current["images_checked_at"] = datetime.now(timezone.utc).isoformat()
+        with _vectorstore_write_lock:
+            ids, docs, metas = vectorstore.get_source_chunks(source_id)
+            for meta, chunk_images in zip(metas, chunking.assign_images(docs, images)):
+                meta["images_json"] = json.dumps(chunk_images, ensure_ascii=False)
+            vectorstore.update_chunk_metadatas(ids, metas)
+        _save_sources(sources)
+    return True
+
+
+def _reindex_all_sources(only_changed: bool = False, fetch_missing_images: bool = False) -> int:
     """Chunked/embedded Quellen neu (z.B. nach einer Änderung an
     `chunking.chunk_text()`) - `sources.json` bleibt bis auf `chunk_count`
     unangetastet. Mit only_changed werden Quellen übersprungen, deren
@@ -1745,13 +1807,25 @@ def _reindex_all_sources(only_changed: bool = False) -> int:
     Pro Quelle gekapselt, damit ein defekter Datensatz nicht den Lauf
     abbricht. Liefert die Zahl neu indizierter Quellen."""
     count = 0
+    fetches = failures = 0
+    log = logging.getLogger(__name__)
     for source_id, data in _load_sources().items():
         if data.get("deleted_at"):
             continue
         try:
             count += _reindex_one_source(source_id, data, only_changed)
         except Exception:
-            logging.getLogger(__name__).exception("Reindex von Quelle %s fehlgeschlagen", source_id)
+            log.exception("Reindex von Quelle %s fehlgeschlagen", source_id)
+        if fetch_missing_images and not data.get("images_checked_at"):
+            fetches += 1
+            try:
+                if not _backfill_images(source_id):
+                    failures += 1
+            except Exception:
+                failures += 1
+                log.exception("Bild-Nachladen von Quelle %s fehlgeschlagen", source_id)
+    if fetch_missing_images:
+        log.info("Bild-Nachladen: %d Versuche, %d ohne Ergebnis", fetches, failures)
     return count
 
 
@@ -1793,9 +1867,9 @@ def _startup_reindex(delay: float = STARTUP_REINDEX_DELAY_SECONDS) -> None:
         log.exception("Start-Reindex fehlgeschlagen")
 
 
-def _reindex_holding_lock(lock_file, only_changed: bool = False) -> None:
+def _reindex_holding_lock(lock_file, only_changed: bool = False, fetch_missing_images: bool = False) -> None:
     with lock_file:
-        _reindex_all_sources(only_changed=only_changed)
+        _reindex_all_sources(only_changed=only_changed, fetch_missing_images=fetch_missing_images)
 
 
 @app.post("/api/admin/reindex-sources", response_model=MessageOut)
@@ -1807,7 +1881,7 @@ def reindex_sources(
     lock_file = _acquire_reindex_lock()
     if lock_file is None:
         raise HTTPException(409, i18n.get_message("reindex_running", x_lang))
-    background_tasks.add_task(_reindex_holding_lock, lock_file)
+    background_tasks.add_task(_reindex_holding_lock, lock_file, fetch_missing_images=True)
     return MessageOut(detail=i18n.get_message("reindex_started", x_lang))
 
 
@@ -1876,9 +1950,15 @@ def _finish_synchronous_import(
             _save_sources(sources)
 
         try:
+            # Bilder erst hier (nicht im Request): PDF-Datei liegt seit add_source vor.
+            try:
+                images = _import_images(source_id, source)
+            except Exception:
+                logging.getLogger(__name__).exception("Bild-Import von Quelle %s fehlgeschlagen", source_id)
+                images = None
             chunk_embeddings = embeddings.embed_passages(chunks)
             with _vectorstore_write_lock:
-                chunk_count = _store_chunks(source_id, source, chunks, chunk_embeddings)
+                chunk_count = _store_chunks(source_id, source, chunks, chunk_embeddings, images)
         except Exception as exc:
             outcome["error"] = exc
             with _sources_write_lock:
@@ -1897,6 +1977,9 @@ def _finish_synchronous_import(
             if source_id in sources:
                 sources[source_id]["text"] = text
                 sources[source_id]["chunk_count"] = chunk_count
+                if images is not None:
+                    sources[source_id]["images"] = images
+                    sources[source_id]["images_checked_at"] = datetime.now(timezone.utc).isoformat()
                 # processing_status bleibt bewusst "running" - erst
                 # _generate_summary_background setzt ihn zurück, siehe dort.
                 sources[source_id]["processing_error"] = None
@@ -1908,6 +1991,24 @@ def _finish_synchronous_import(
         # weiter (aber weiterhin unter _track_background_job, siehe oben).
         done_event.set()
         _generate_summary_background(source_id, text)
+
+
+def _store_pdf_images(source_id: str, data: bytes) -> list[dict]:
+    return source_images.store_images(SOURCE_IMAGES_DIR, source_id, extraction.extract_pdf_images(data))
+
+
+def _import_images(source_id: str, source: SourceIn) -> list[dict] | None:
+    """Bilder für eine neue Quelle (Idee ff895248): aus der gespeicherten
+    PDF-Datei oder aus dem Staging der URL-Vorschau (nur bei exakt gleicher
+    URL, vom Server erneut gefiltert). Der Client schickt nie Bilder selbst.
+    None = nichts versucht/gefunden (kein `images_checked_at`)."""
+    pdf_file = _existing_pdf_file(source_id)
+    if pdf_file is not None:
+        return _store_pdf_images(source_id, pdf_file.read_bytes())
+    if source.image_token and source.url:
+        # [] (Seite geprüft, keine Bilder) zählt als geprüft; None = ungültiger Token.
+        return source_images.take_staged_web_images(IMAGE_STAGING_DIR, source.image_token, source.url)
+    return None
 
 
 @app.post("/api/sources", response_model=SourceOut)
@@ -1969,6 +2070,13 @@ def add_source(
     imported_at = datetime.now(timezone.utc).isoformat()
     _create_pending_source(source_id, source, imported_at)
 
+    # Idee ff895248: die PDF-Datei muss vor dem Chunk-Speichern vorliegen, damit
+    # die PDF-Bilder gleich den Chunks zugeordnet werden können.
+    if source.pdf_upload_id:
+        _consume_pdf_upload(source_id, source.pdf_upload_id)
+    else:
+        _sync_pdf_file_from_url(source_id, source.url)
+
     slow_import = False
     if not deferred:
         outcome: dict = {}
@@ -1988,11 +2096,6 @@ def add_source(
         authors.register_author(name, source_id)
         if is_new_author:
             background_tasks.add_task(_generate_author_bio_background, name)
-
-    if source.pdf_upload_id:
-        _consume_pdf_upload(source_id, source.pdf_upload_id)
-    else:
-        _sync_pdf_file_from_url(source_id, source.url)
 
     if not source.url and source.audio_upload_id:
         _consume_audio_upload(source_id, source.audio_upload_id)
@@ -2069,11 +2172,20 @@ def update_source(
 
         metadata_only = bool(sources[source_id].get("restricted")) and not source.text.strip()
 
+        # Neue PDF-Datei oder neue URL: die alten Bilder gehören nicht mehr dazu
+        # (Dateien weg, Eintrag leer -> der Admin-Reindex holt sie neu nach).
+        if not metadata_only and (source.pdf_upload_id or (source.url or None) != (before.get("url") or None)):
+            source_images.delete_source_images(SOURCE_IMAGES_DIR, source_id)
+            sources[source_id].pop("images", None)
+            sources[source_id].pop("images_checked_at", None)
+
         if not metadata_only:
             chunks, chunk_embeddings = _prepare_chunks(source, x_lang)
             with _vectorstore_write_lock:
                 vectorstore.delete_source_chunks(source_id)
-                chunk_count = _store_chunks(source_id, source, chunks, chunk_embeddings)
+                chunk_count = _store_chunks(
+                    source_id, source, chunks, chunk_embeddings, sources[source_id].get("images")
+                )
             sources[source_id]["text"] = source.text.strip()
             sources[source_id]["chunk_count"] = chunk_count
             # Nutzerwunsch (2026-08-03): ein manueller Edit ist die Reparatur
@@ -2225,6 +2337,22 @@ def delete_source(
     )
     authors.unregister_source(source_id)
     terms.unregister_source(source_id)
+
+
+@app.get("/api/sources/{source_id}/images/{name}")
+def get_source_image(source_id: str, name: str, x_lang: str = Header(default=i18n.DEFAULT_LANG)):
+    # Öffentlich wie die Autorenfotos (Idee ff895248). Der Zufallsname im
+    # Pfad ist die Zugriffsgrenze; der Pfad entsteht nur aus geprüften Teilen.
+    # ponytail: bei restricted-Quellen genügt der unratbare Name, kein Ablauf -
+    # Ausbaustufe wäre eine signierte URL mit Ablaufzeit.
+    path = source_images.image_path(SOURCE_IMAGES_DIR, source_id, name)
+    if path is None or _source_is_missing(_load_sources(), source_id):
+        raise HTTPException(404, i18n.get_message("source_not_found", x_lang))
+    return FileResponse(
+        path,
+        media_type="image/webp",
+        headers={"Cache-Control": "private, max-age=604800", "X-Content-Type-Options": "nosniff"},
+    )
 
 
 @app.get("/api/sources", response_model=list[SourceOut])
@@ -3109,7 +3237,9 @@ def _restore_deleted_source(source_id: str, x_lang: str) -> None:
         source_in = _source_in_from_entry(entry)
         chunks, chunk_embeddings = _prepare_chunks(source_in, x_lang)
         with _vectorstore_write_lock:
-            entry["chunk_count"] = _store_chunks(source_id, source_in, chunks, chunk_embeddings)
+            entry["chunk_count"] = _store_chunks(
+                source_id, source_in, chunks, chunk_embeddings, entry.get("images")
+            )
         _save_sources(sources)
     for name in entry.get("authors") or []:
         authors.register_author(name, source_id)
@@ -3129,7 +3259,9 @@ def _revert_source_changes(source_id: str, changes: dict, x_lang: str) -> None:
             chunks, chunk_embeddings = _prepare_chunks(source_in, x_lang)
             with _vectorstore_write_lock:
                 vectorstore.delete_source_chunks(source_id)
-                entry["chunk_count"] = _store_chunks(source_id, source_in, chunks, chunk_embeddings)
+                entry["chunk_count"] = _store_chunks(
+                    source_id, source_in, chunks, chunk_embeddings, entry.get("images")
+                )
         _save_sources(sources)
     if "authors" in changes:
         authors.unregister_source(source_id)
@@ -3788,9 +3920,17 @@ def extract_audio_upload(
 @app.post("/api/extract-url", response_model=ExtractedSource)
 def extract_url(payload: UrlIn, _user: str = Depends(require_role(users.QUELLEN_PFLEGER))):
     result = extraction.extract_from_url(payload.url)
+    images = result.pop("images", None)
     is_audio = extraction.looks_like_audio(payload.url)
     is_pdf = extraction.looks_like_pdf(payload.url)
-    return ExtractedSource(**result, is_audio=is_audio, is_pdf=is_pdf)
+    # Idee ff895248: Web-Bilder der Vorschau liegen serverseitig im Staging;
+    # der Client bekommt nur den Token und schickt ihn beim Anlegen zurück.
+    token = (
+        source_images.stage_web_images(IMAGE_STAGING_DIR, extraction.strip_tracking_params(payload.url), images or [])
+        if result.get("extracted") and not (is_audio or is_pdf)
+        else None
+    )
+    return ExtractedSource(**result, is_audio=is_audio, is_pdf=is_pdf, image_token=token)
 
 
 # Fix (2026-08-20, per Screenshot gemeldet): das "wörtliche" Zitat des LLM
@@ -4279,6 +4419,72 @@ RESTRICTED_EXCERPT_MAX_PASSAGES = 2
 RESTRICTED_EXCERPT_MAX_CHARS = 300
 
 
+def _chunk_images(meta: dict, is_web_fallback: bool = False) -> list[ImageRef]:
+    """Bilder eines Chunks aus seinen Metadaten (Idee ff895248). Nur https-
+    `url` oder gültiger `file`-Name; alles Kaputte ergibt []. Web-Fallback-
+    Chunks bekommen nie Bilder."""
+    if is_web_fallback:
+        return []
+    try:
+        items = json.loads(meta.get("images_json") or "[]")
+    except (ValueError, TypeError):
+        return []
+    result = []
+    for item in items if isinstance(items, list) else []:
+        if not isinstance(item, dict):
+            continue
+        if item.get("kind") == "url" and source_images.is_safe_https(item.get("url")):
+            src = item["url"]
+        elif (
+            item.get("kind") == "file"
+            and isinstance(item.get("file"), str)
+            and source_images.IMAGE_NAME_RE.match(item["file"])
+            and meta.get("source_id")
+        ):
+            src = f"/api/sources/{meta['source_id']}/images/{item['file']}"
+        else:
+            continue
+        page = item.get("page")
+        result.append(
+            ImageRef(
+                src=src,
+                alt=str(item.get("alt") or "")[: source_images.ALT_MAX],
+                page=page if isinstance(page, int) and not isinstance(page, bool) else None,
+            )
+        )
+    return result
+
+
+def _apply_chunk_images(refs: list, metas: list[dict]) -> None:
+    """Setzt `images` je ChunkRef aus den Chunk-Metadaten (nie aus Client-
+    Angaben). Die restricted-Grenze folgt separat in _limit_restricted_images."""
+    for ref, meta in zip(refs, metas):
+        ref.images = _chunk_images(meta, ref.is_web_fallback)
+
+
+def _limit_restricted_images(refs: list, sources: dict, priority: list[int] | None = None) -> list[list]:
+    """Je restricted-Quelle höchstens 1 Bild über ALLE übergebenen Refs.
+    Das Bild geht an den ersten Ref der Quelle in `priority`-Reihenfolge
+    (danach Rangfolge). Liefert die Bildlisten je Ref, ändert die Refs nicht."""
+    order = list(dict.fromkeys(priority or [])) + [i for i in range(len(refs)) if i not in set(priority or [])]
+    result: list[list] = [list(ref.images) for ref in refs]
+    used: set[str] = set()
+    for i in order:
+        source_id = refs[i].source_id
+        if not result[i] or not sources.get(source_id, {}).get("restricted"):
+            continue
+        if source_id in used:
+            result[i] = []
+        else:
+            result[i] = result[i][:1]
+            used.add(source_id)
+    return result
+
+
+def _with_images(refs: list, image_lists: list[list]) -> list:
+    return [ref.model_copy(update={"images": images}) for ref, images in zip(refs, image_lists)]
+
+
 def _redact_restricted_refs(refs, sources: dict, can_view_full_text: bool) -> list:
     """Geschützte (restricted) Quellen verbergen nicht nur den Volltext,
     sondern auch Chunk-Auszüge: für Nicht-Pfleger:innen bleibt nur die
@@ -4330,7 +4536,14 @@ def _ask_event_stream(
     yield json.dumps(
         {
             "type": "sources",
-            "sources": [r.model_dump() for r in _redact_restricted_refs(chunk_refs, sources_by_id, can_view_full_text)],
+            "sources": [
+                r.model_dump()
+                for r in _redact_restricted_refs(
+                    _with_images(chunk_refs, _limit_restricted_images(chunk_refs, sources_by_id)),
+                    sources_by_id,
+                    can_view_full_text,
+                )
+            ],
         }
     ) + "\n"
 
@@ -4458,10 +4671,13 @@ def _ask_event_stream(
         local_highlight = _best_local_sentence(chunk_docs[i], query_embedding)
         chunk_ref.highlighted_texts = [local_highlight] if local_highlight else []
 
+    # Das eine restricted-Bild gehört an den ersten ZITIERTEN Ref der Quelle.
+    cited = [int(n) - 1 for n in _CITATION_NUMBER_RE.findall(answer_text) if 0 < int(n) <= len(chunk_refs)]
+    done_refs = _with_images(chunk_refs, _limit_restricted_images(chunk_refs, sources_by_id, cited))
     yield json.dumps(
         {
             "type": "done",
-            "sources": [r.model_dump() for r in _redact_restricted_refs(chunk_refs, sources_by_id, can_view_full_text)],
+            "sources": [r.model_dump() for r in _redact_restricted_refs(done_refs, sources_by_id, can_view_full_text)],
         }
     ) + "\n"
 
@@ -4633,6 +4849,8 @@ def _ask_context(question_text: str, history: list[dict], x_lang: str, top_k: in
                 "text": doc,
             }
         )
+
+    _apply_chunk_images(chunk_refs, metadatas)
 
     # Backlog (2026-07-29): rein chunk-basierte Suche findet für biografische
     # Fragen ("Wer ist X?") keine passenden Textausschnitte, da Autor:innen-
@@ -4945,6 +5163,30 @@ def create_conversation_handoff(
     size = len(payload.model_dump_json().encode("utf-8"))
     if len(payload.history) > CONVERSATION_HANDOFF_MAX_TURNS or size > CONVERSATION_HANDOFF_MAX_BYTES:
         raise HTTPException(400, i18n.get_message("conversation_handoff_too_large", x_lang))
+
+    # Idee ff895248: der Endpunkt ist anonym - Bilder und Links der Quellen
+    # kommen nie vom Client, sondern werden per chunk_id neu gesetzt.
+    all_sources = _load_sources()
+    for turn in payload.history:
+        metas_by_id = vectorstore.get_chunk_metadatas([ref.chunk_id for ref in turn.sources])
+        # Nur Chunks, deren Quelle zum Ref passt (erfundene chunk_ids zählen nicht).
+        metas = [
+            meta if (meta := metas_by_id.get(ref.chunk_id, {})).get("source_id") == ref.source_id else {}
+            for ref in turn.sources
+        ]
+        _apply_chunk_images(turn.sources, metas)
+        for ref in turn.sources:
+            ref.url = ref.url if ref.url and ref.url.lower().startswith(("http://", "https://")) else None
+            ref.listen_url = (
+                ref.listen_url if ref.listen_url and ref.listen_url.lower().startswith(("http://", "https://")) else None
+            )
+
+    # restricted-Grenze über ALLE Turns gemeinsam, nicht je Turn.
+    flat = [ref for turn in payload.history for ref in turn.sources]
+    for ref, images in zip(flat, _limit_restricted_images(flat, all_sources)):
+        ref.images = images
+    # Größe für das Speicher-Budget erst nach dem Neusetzen der Bilder messen.
+    size = len(payload.model_dump_json().encode("utf-8"))
 
     try:
         token = conversation_handoff.create(

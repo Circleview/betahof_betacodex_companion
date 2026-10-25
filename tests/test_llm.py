@@ -102,10 +102,12 @@ def test_german_question_with_english_ui_gets_german_sentence():
     assert content.rstrip().endswith("Antworte ausschließlich auf Deutsch.")
 
 
-def test_ambiguous_question_gets_no_explicit_sentence():
-    content = _user_content("Scrum?", "en")
-    assert "exclusively" not in content and "ausschließlich auf Deutsch" not in content
-    assert content.rstrip().endswith(llm._LANGUAGE_REMINDERS["en"])
+def test_ambiguous_question_defaults_to_english():
+    """Nutzerwunsch (2026-10-25): unklare Fragesprache -> Englisch, auch bei
+    deutscher UI und deutschen Quellen."""
+    for ui in ("en", "de"):
+        content = _user_content("Scrum?", ui)
+        assert content.rstrip().endswith("Answer exclusively in English.")
 
 
 def test_question_language_detection():
@@ -612,6 +614,15 @@ def test_stream_creative_response_appends_cached_humanizer_guide():
     assert guide["cache_control"] == {"type": "ephemeral"}
     assert guide["text"].startswith(llm._HUMANIZER_BRIDGES["en"])
     assert "### 1. Not X but Y" in guide["text"]
+
+
+def test_imperative_questions_are_detected():
+    """Bug (2026-10-25, Screenshot): "Show me a Cell Structure design" traf kein
+    Stoppwort -> keine explizite Sprachzeile -> Antwort auf Deutsch."""
+    assert llm._question_language("Show me a Cell Structure design") == "en"
+    assert llm._question_language("Give me an example of a peach model") == "en"
+    assert llm._question_language("Zeig mir ein Beispiel für Cell Structure") == "de"
+    assert llm._question_language("Nenne mir Beispiele") == "de"
 
 
 def _stream_messages(history, question="Weiter?"):

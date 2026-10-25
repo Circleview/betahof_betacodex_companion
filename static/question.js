@@ -206,7 +206,7 @@ function buildSourceReader(s) {
   meta.className = 'source-reader-meta';
   const year = s.date ? s.date.split('-')[0] : null;
   meta.textContent = [(s.authors || []).join(', '), year].filter(Boolean).join(' · ');
-  const url = s.url_reachable === false ? null : s.listen_url || s.url;
+  const url = safeHttpUrl(s.url_reachable === false ? null : s.listen_url || s.url);
   if (url) {
     const a = document.createElement('a');
     a.href = url;
@@ -472,7 +472,7 @@ function appendTitleText(container, s) {
     container.appendChild(span);
     return;
   }
-  const citationUrl = s.url_reachable === false ? null : s.listen_url || s.url;
+  const citationUrl = safeHttpUrl(s.url_reachable === false ? null : s.listen_url || s.url);
   if (!citationUrl) {
     container.appendChild(document.createTextNode(s.title));
     return;
@@ -643,7 +643,7 @@ function buildSourceInfo(s, highlight) {
   // Nutzerwunsch (2026-09-23): eine Quelle mit erkanntem defektem Link soll
   // nirgendwo mehr verlinkt werden, auch nicht hier am Ende des Chunk-
   // Ausschnitts.
-  const citationUrl = s.url_reachable === false ? null : s.listen_url || s.url;
+  const citationUrl = safeHttpUrl(s.url_reachable === false ? null : s.listen_url || s.url);
   if (citationUrl) {
     const a = document.createElement('a');
     a.href = citationUrl;
@@ -702,7 +702,7 @@ function buildSourcesList(sources) {
     // Nutzerwunsch (2026-09-23): eine Quelle mit erkanntem defektem Link
     // soll nirgendwo mehr verlinkt werden, auch nicht hier in der
     // Sidebar-Quellenliste.
-    const citationUrl = s.url_reachable === false ? null : s.listen_url || s.url;
+    const citationUrl = safeHttpUrl(s.url_reachable === false ? null : s.listen_url || s.url);
     if (citationUrl) {
       const a = document.createElement('a');
       a.href = citationUrl;
@@ -791,6 +791,8 @@ function makeCitationsClickable(container, sources) {
         const btn = document.createElement('button');
         btn.type = 'button';
         btn.className = 'citation-ref';
+        // Echter Index in sources (btn.textContent zählt dagegen fortlaufend).
+        btn.dataset.sourceIndex = String(index);
         btn.textContent = `[${displayNumber}]`;
         // Bug (2026-08-03): source.highlighted_texts wurde bisher SCHON HIER
         // beim Bauen des Buttons gelesen und als "highlight" fest in den
@@ -966,18 +968,96 @@ function rescrollAfterKeyboard(viewport, setTimeoutFn, scrollFn) {
 
 // Nur Quellen, die im gerenderten Antworttext tatsächlich per "[n]" zitiert
 // werden, sollen in der Sidebar auftauchen - data.sources enthält auch
-// Top-K-Treffer, die die KI am Ende gar nicht zitiert hat.
+// Top-K-Treffer, die die KI am Ende gar nicht zitiert hat. Liest den echten
+// Index aus data-source-index der Zitat-Buttons (der sichtbare Text zählt
+// fortlaufend und stimmt nicht mit dem Quellen-Index überein).
 function extractCitedSources(container, sources) {
-  const matches = container.textContent.match(/\[(\d+)\]/g) || [];
   const cited = [];
   const seen = new Set();
-  matches.forEach((m) => {
-    const index = parseInt(m.slice(1, -1), 10) - 1;
+  container.querySelectorAll('.citation-ref').forEach((btn) => {
+    const index = parseInt(btn.dataset.sourceIndex, 10);
     if (seen.has(index) || !sources[index]) return;
     seen.add(index);
     cited.push(sources[index]);
   });
   return cited;
+}
+
+// Nur http(s)-URLs werden verlinkt (verhindert javascript:-Links aus
+// manipulierten Quellendaten, z.B. über den anonymen Handoff).
+function safeHttpUrl(value) {
+  if (!value) return null;
+  try {
+    const u = new URL(value);
+    return u.protocol === 'https:' || u.protocol === 'http:' ? u.href : null;
+  } catch {
+    return null;
+  }
+}
+
+// Bild-URLs: https oder der eigene Bildendpunkt (relativer Pfad).
+function safeImageSrc(value) {
+  if (typeof value !== 'string') return null;
+  if (/^\/api\/sources\/[^/?#\\]+\/images\/[0-9a-f]{32}\.webp$/.test(value)) return value;
+  try {
+    const u = new URL(value);
+    return u.protocol === 'https:' ? u.href : null;
+  } catch {
+    return null;
+  }
+}
+
+// Bildleiste unter der Antwort: Bilder der zitierten Quellen, entdoppelt,
+// höchstens 6. Ohne darstellbare Bilder: null (kein Element).
+function buildImageStrip(sources) {
+  const seen = new Set();
+  const items = [];
+  sources.forEach((s) => {
+    (Array.isArray(s.images) ? s.images : []).forEach((img) => {
+      const src = safeImageSrc(img && img.src);
+      if (!src || seen.has(src) || items.length >= 6) return;
+      seen.add(src);
+      items.push({ src, alt: img.alt || '', page: Number.isInteger(img.page) ? img.page : null, source: s });
+    });
+  });
+  if (!items.length) return null;
+
+  const strip = document.createElement('div');
+  strip.className = 'source-image-strip';
+  items.forEach(({ src, alt, page, source }) => {
+    const figure = document.createElement('figure');
+    figure.className = 'source-image';
+    const img = document.createElement('img');
+    img.src = src;
+    img.alt = alt;
+    img.loading = 'lazy';
+    img.referrerPolicy = 'no-referrer';
+    img.addEventListener('error', () => {
+      figure.remove();
+      if (!strip.querySelectorAll('.source-image').length) strip.remove();
+    });
+    const caption = document.createElement('figcaption');
+    caption.textContent =
+      page === null ? source.title : `${source.title} · ${t('index.sourceImagePage', { n: page })}`;
+
+    let href = safeHttpUrl(source.url_reachable === false ? null : source.listen_url || source.url);
+    if (href && page !== null && /\.pdf$/i.test(new URL(href).pathname) && !new URL(href).hash) {
+      href += `#page=${page}`;
+    }
+    let host = figure;
+    if (href) {
+      host = document.createElement('a');
+      host.href = href;
+      host.target = '_blank';
+      host.rel = 'noopener noreferrer';
+      host.title = t('index.sourceImageTooltip');
+      figure.appendChild(host);
+    }
+    host.appendChild(img);
+    host.appendChild(caption);
+    strip.appendChild(figure);
+  });
+  return strip;
 }
 
 await initI18n();
@@ -1410,9 +1490,28 @@ function attachAnswerSources(bubble, sources) {
   // Chunk-Ausschnitte bleiben trotzdem weiterhin je [n]-Verweis eigenständig
   // aufklappbar (siehe makeCitationsClickable oben, das unabhängig davon
   // pro Chunk+Highlight arbeitet).
-  extractCitedSources(bubble, sources).forEach((s) => {
+  const cited = extractCitedSources(bubble, sources);
+  cited.forEach((s) => {
     conversationCitedSources.set(s.source_id, s);
   });
+  refreshImageStrip(bubble, cited);
+}
+
+// Ersetzt die Bildleiste der Bubble (nie zwei Leisten; ohne Bilder keine).
+function refreshImageStrip(bubble, cited) {
+  bubble.querySelectorAll('.source-image-strip').forEach((el) => el.remove());
+  const strip = buildImageStrip(cited);
+  if (strip) bubble.appendChild(strip);
+}
+
+// done-Event: das Backend wählt das Bild einer geschützten Quelle am
+// tatsächlich zitierten Chunk - die Bilder des frühen sources-Events
+// ersetzen (gleiche Objekte wie in der gespeicherten Konversation).
+function applyDoneImages(bubble, earlySources, doneSources) {
+  doneSources.forEach((s, i) => {
+    if (earlySources[i]) earlySources[i].images = s.images;
+  });
+  refreshImageStrip(bubble, extractCitedSources(bubble, earlySources));
 }
 
 // Gemeinsame Rendering-Logik für eine Antwort-Bubble beim Wiederherstellen
@@ -1539,6 +1638,28 @@ async function fetchWithRetry(url, options, retries = 1, delayMs = 600) {
 // Hervorhebungen, siehe Backlog 2026-07-31/2026-08-03); löst am Ende mit
 // dem "done"-Event auf (bzw. wirft bei einem "error"-Event oder wenn der
 // Stream ohne "done" endet - z.B. abgebrochene Verbindung).
+// Nutzerwunsch (2026-10-25): verständliche Meldung statt "Failed to fetch".
+// fetch wirft bei Netzwerkfehlern einen TypeError (Safari: "Load failed").
+function askErrorText(err) {
+  if (err instanceof TypeError) return t('index.askErrorNetwork');
+  return err.message || t('index.askFailed');
+}
+
+// Fehler in der Antwort-Bubble mit Button, der dieselbe Frage erneut stellt.
+function renderAskError(bubble, err, onRetry) {
+  bubble.textContent = '';
+  const text = document.createElement('p');
+  text.textContent = askErrorText(err);
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'retry-button link-button';
+  button.textContent = t('index.retry');
+  button.title = t('index.retryTooltip');
+  button.addEventListener('click', onRetry);
+  bubble.appendChild(text);
+  bubble.appendChild(button);
+}
+
 async function readAskStream(response, onDelta, onAnswer, onSources) {
   return readNdjsonStream(
     response,
@@ -1547,7 +1668,7 @@ async function readAskStream(response, onDelta, onAnswer, onSources) {
       answer: (event) => onAnswer(event.answer),
       sources: (event) => onSources?.(event.sources),
     },
-    t('index.askError')
+    t('index.askFailed')
   );
 }
 
@@ -1627,7 +1748,7 @@ questionForm.addEventListener('submit', async (e) => {
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
       // 422 liefert detail als Liste von Objekten - dann allgemeine Meldung.
-      throw new Error(typeof err.detail === 'string' ? err.detail : t('index.askError'));
+      throw new Error(typeof err.detail === 'string' ? err.detail : t('index.askFailed'));
     }
 
     // Erstes Text-Fragment: Tippindikator durch die (noch unfertige)
@@ -1713,6 +1834,7 @@ questionForm.addEventListener('submit', async (e) => {
       doneEvent.sources.forEach((s, i) => {
         if (earlySources[i]) earlySources[i].highlighted_texts = s.highlighted_texts;
       });
+      applyDoneImages(assistantBubble, earlySources, doneEvent.sources);
     } else {
       // Fallback, falls das "sources"-Event wider Erwarten nie ankam.
       attachAnswerSources(assistantBubble, doneEvent.sources);
@@ -1732,7 +1854,13 @@ questionForm.addEventListener('submit', async (e) => {
     // conversationHistory behebt das.
     renderSidebarSources();
   } catch (err) {
-    assistantBubble.textContent = t('common.errorPrefix') + err.message;
+    renderAskError(assistantBubble, err, () => {
+      userMessage.remove();
+      assistantMessage.remove();
+      questionSentInConversation = conversationHistory.length > 0;
+      questionInput.value = question;
+      questionForm.requestSubmit();
+    });
   }
 });
 

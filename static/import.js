@@ -125,6 +125,8 @@ function isActiveEditRow(s) {
 }
 let pendingUploadId = null;
 let pendingUploadType = null; // 'pdf' | 'audio' (EPUB: null, kein Staging)
+// Idee ff895248: Token der in /api/extract-url vorgemerkten Web-Bilder; gilt nur für die URL der Vorschau.
+let pendingImageToken = null;
 let currentSortMode = 'author';
 // Backlog #94: kein Popover (auf Mobile unpraktikabel, siehe git-Historie)
 // - stattdessen klappt dieser Bereich unterhalb der Icon-Leiste auf und
@@ -433,6 +435,7 @@ function hideForm() {
   importBereich.classList.add('hidden');
   pendingUploadId = null;
   pendingUploadType = null;
+  pendingImageToken = null;
   document.getElementById('import-status').textContent = '';
 }
 
@@ -520,6 +523,7 @@ document.getElementById('typ-text').addEventListener('click', () => {
   }
   pendingUploadId = null;
   pendingUploadType = null;
+  pendingImageToken = null;
   fillForm({});
   showForm();
 });
@@ -990,6 +994,7 @@ async function extractAndFillFromUrl(url) {
     const data = await res.json();
     pendingUploadId = null;
     pendingUploadType = null;
+    pendingImageToken = null;
     if (!data.extracted) {
       if (data.is_audio) {
         status.textContent = t('import.audioTranscriptionPending');
@@ -1028,6 +1033,7 @@ async function extractAndFillFromUrl(url) {
       return;
     }
     fillForm({ title: data.title, authors: data.authors, date: data.date, url, text: data.text });
+    pendingImageToken = data.image_token || null;
     showForm();
     setListenUrlFieldVisible(data.is_audio || data.is_pdf);
   } catch (err) {
@@ -1040,6 +1046,11 @@ async function extractAndFillFromUrl(url) {
 
 document.getElementById('popover-load').addEventListener('click', () => {
   extractAndFillFromUrl(document.getElementById('popover-url').value.trim());
+});
+
+// URL im Formular geändert: die vorgemerkten Bilder gehören zur alten URL.
+document.getElementById('url').addEventListener('input', () => {
+  pendingImageToken = null;
 });
 
 const AUDIO_UPLOAD_EXTENSIONS = ['.mp3', '.wav', '.m4a', '.ogg', '.flac', '.aac', '.mp4', '.mpeg', '.mpga', '.webm'];
@@ -1090,6 +1101,7 @@ document.getElementById('popover-upload').addEventListener('click', async () => 
     const data = await res.json();
     pendingUploadId = data.upload_id;
     pendingUploadType = isEpub ? null : isAudio ? 'audio' : 'pdf';
+    pendingImageToken = null;
     if (!data.extracted && isEpub) {
       pendingUploadId = null;
       status.textContent = t('import.epubNoText');
@@ -3622,6 +3634,7 @@ document.getElementById('source-form').addEventListener('submit', async (e) => {
     restricted: document.getElementById('restricted').checked,
     pdf_upload_id: pendingUploadType === 'pdf' ? pendingUploadId : null,
     audio_upload_id: pendingUploadType === 'audio' ? pendingUploadId : null,
+    image_token: pendingImageToken,
   };
   const status = document.getElementById('import-status');
   if (payload.url) {
@@ -3669,6 +3682,7 @@ document.getElementById('source-form').addEventListener('submit', async (e) => {
     renderCreateAuthorDateRow([], '');
     pendingUploadId = null;
     pendingUploadType = null;
+    pendingImageToken = null;
     setTextFieldPending(false, null);
     setListenUrlFieldVisible(false);
     importBereich.classList.add('hidden');

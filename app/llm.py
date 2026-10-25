@@ -186,12 +186,16 @@ _DE_WORDS = {
     "wieso", "kann", "welche", "für", "mit", "sich", "auf", "sind", "hat",
     "wird", "oder", "aber", "wenn", "wo", "wann", "du", "ich", "wir", "eine",
     "einen", "dass", "bitte", "auch", "über", "zum", "zur", "im", "beim",
+    # Imperative ohne Fragewort (Bug 2026-10-25, "Show me a ...")
+    "zeig", "zeige", "mir", "gib", "ein", "nenne", "erkläre", "erklär",
+    "beschreibe", "beispiel", "beispiele",
 }
 _EN_WORDS = {
     "the", "is", "and", "not", "how", "what", "who", "why", "can", "which",
     "for", "with", "does", "do", "are", "has", "have", "will", "but", "if",
     "where", "when", "this", "that", "you", "we", "they", "should", "please",
     "about", "to", "of", "describe", "explain", "tell",
+    "show", "me", "give", "list", "a", "my", "example", "examples",
 }
 _EXPLICIT_LANGUAGE = {
     "de": "Antworte ausschließlich auf Deutsch.",
@@ -347,14 +351,16 @@ def stream_answer_question(
         messages[-1]["content"] = [
             {"type": "text", "text": messages[-1]["content"], "cache_control": {"type": "ephemeral"}}
         ]
-    explicit = _EXPLICIT_LANGUAGE.get(_question_language(question))
+    # Nutzerwunsch (2026-10-25): unklare Fragesprache -> Englisch, auch bei
+    # deutschen Quellen und deutscher UI.
+    explicit = _EXPLICIT_LANGUAGE[_question_language(question) or "en"]
     messages.append(
         {
             "role": "user",
             "content": (
                 f"Kontext-Textausschnitte:\n\n{context}\n\nFrage: {question}\n\n"
                 f"{_PARTIAL_ANSWER_REMINDERS[lang]}\n{_LANGUAGE_REMINDERS[lang]}"
-                + (f"\n{explicit}" if explicit else "")
+                + f"\n{explicit}"
             ),
         }
     )

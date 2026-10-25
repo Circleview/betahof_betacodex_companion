@@ -129,7 +129,7 @@ def _run_append_title_text(source_obj):
     js_source = (STATIC_DIR / "question.js").read_text()
     match = re.search(r"function appendTitleText.*?\n\}", js_source, re.S)
     assert match, "appendTitleText wurde in question.js nicht gefunden."
-    func_source = match.group(0)
+    func_source = _question_js_funcs("safeHttpUrl") + "\n" + match.group(0)
     script = f"""
 function t(key) {{ return key; }}
 const EXTERNAL_LINK_ICON = '<svg></svg>';
@@ -227,6 +227,7 @@ class FakeNode {{
     this.className = '';
     this.disabled = false;
     this.listeners = {{}};
+    this.dataset = {{}};
     this.classList = {{ add: (cls) => {{ this.className += ' ' + cls; }} }};
   }}
   appendChild(child) {{ this.children.push(child); return child; }}
@@ -275,6 +276,7 @@ class FakeNode {{
     this.className = '';
     this.textContent = '';
     this.listeners = {{}};
+    this.dataset = {{}};
   }}
   appendChild(child) {{ child.parentNode = this; this.children.push(child); return child; }}
   removeChildNode(child) {{
@@ -385,6 +387,7 @@ class FakeNode {{
     this.className = '';
     this.textContent = '';
     this.listeners = {{}};
+    this.dataset = {{}};
   }}
   appendChild(child) {{ child.parentNode = this; this.children.push(child); return child; }}
   removeChildNode(child) {{
@@ -497,6 +500,7 @@ class FakeNode {{
     this.className = '';
     this.textContent = '';
     this.listeners = {{}};
+    this.dataset = {{}};
   }}
   appendChild(child) {{ child.parentNode = this; this.children.push(child); return child; }}
   removeChildNode(child) {{
@@ -1668,6 +1672,7 @@ class FakeNode {{
     this.textContent = '';
     this.disabled = false;
     this.listeners = {{}};
+    this.dataset = {{}};
     this.classList = {{
       add: (cls) => {{ this.className += ' ' + cls; }},
       toggle: (cls, force) => {{}},
@@ -1773,6 +1778,7 @@ class FakeNode {{
     this.textContent = '';
     this.disabled = false;
     this.listeners = {{}};
+    this.dataset = {{}};
   }}
   set innerHTML(v) {{ this.children = []; }}
   appendChild(child) {{ this.children.push(child); return child; }}
@@ -2727,6 +2733,7 @@ class FakeNode {{
     this.className = '';
     this.textContent = '';
     this.listeners = {{}};
+    this.dataset = {{}};
   }}
   appendChild(child) {{ child.parentNode = this; this.children.push(child); return child; }}
   replaceChild(newNode, oldNode) {{
@@ -4529,6 +4536,362 @@ def test_question_js_first_message_counts_sent_not_answered_questions():
     assert "questionSentInConversation = true" in js
 
 
+# ---------------------------------------------------------------------------
+# Idee ff895248: Bildleiste aus Quellen-Bildern (static/question.js)
+# ---------------------------------------------------------------------------
+
+_FAKE_DOM_JS = """
+class FakeNode {
+  constructor(nodeType, tag) {
+    this.nodeType = nodeType;
+    this.tag = tag || null;
+    this.children = [];
+    this.parentNode = null;
+    this.className = '';
+    this._text = '';
+    this.listeners = {};
+    this.dataset = {};
+    this.attrs = {};
+  }
+  get textContent() {
+    return this._text + this.children.map((c) => c.textContent).join('');
+  }
+  set textContent(v) { this._text = v; this.children = []; }
+  appendChild(child) { child.parentNode = this; this.children.push(child); return child; }
+  removeChildNode(child) {
+    const i = this.children.indexOf(child);
+    if (i !== -1) this.children.splice(i, 1);
+  }
+  remove() { if (this.parentNode) this.parentNode.removeChildNode(this); this.parentNode = null; }
+  closest(tag) {
+    let n = this;
+    while (n) { if (n.tag === tag) return n; n = n.parentNode; }
+    return null;
+  }
+  insertAdjacentElement(where, el) {
+    if (!this.parentNode) return;
+    const siblings = this.parentNode.children;
+    const i = siblings.indexOf(this);
+    el.parentNode = this.parentNode;
+    siblings.splice(where === 'afterend' ? i + 1 : i, 0, el);
+  }
+  replaceChild(newNode, oldNode) {
+    const i = this.children.indexOf(oldNode);
+    if (i === -1) return;
+    const replacement = newNode.nodeType === 'fragment' ? newNode.children : [newNode];
+    replacement.forEach((c) => { c.parentNode = this; });
+    this.children.splice(i, 1, ...replacement);
+  }
+  addEventListener(evt, fn) { this.listeners[evt] = fn; }
+  setAttribute(k, v) { this.attrs[k] = String(v); this[k] = String(v); }
+  querySelectorAll(sel) {
+    const cls = sel.split('.').pop();
+    const acc = [];
+    (function walk(n) {
+      n.children.forEach((c) => {
+        if (c.nodeType !== 'text' && (' ' + c.className + ' ').includes(' ' + cls + ' ')) acc.push(c);
+        walk(c);
+      });
+    })(this);
+    return acc;
+  }
+}
+const document = {
+  createElement: (tag) => new FakeNode('element', tag),
+  createTextNode: (text) => { const n = new FakeNode('text'); n._text = text; return n; },
+  createDocumentFragment: () => new FakeNode('fragment'),
+  createTreeWalker: (root) => {
+    const stack = [];
+    (function collect(node) {
+      node.children.forEach((child) => {
+        if (child.nodeType === 'text') stack.push(child);
+        else collect(child);
+      });
+    })(root);
+    let i = 0;
+    return { nextNode: () => (i < stack.length ? stack[i++] : null) };
+  },
+};
+const NodeFilter = { SHOW_TEXT: 4 };
+function t(key, vars = {}) {
+  let s = ({ 'index.sourceImagePage': 'S. {n}' })[key] || key;
+  for (const [k, v] of Object.entries(vars)) s = s.replaceAll('{' + k + '}', v);
+  return s;
+}
+const CLOSE_ICON = '<svg></svg>';
+const EXTERNAL_LINK_ICON = '<svg></svg>';
+"""
+
+
+def _question_js_funcs(*names: str) -> str:
+    js_source = (STATIC_DIR / "question.js").read_text()
+    parts = []
+    for name in names:
+        match = re.search(rf"function {name}\b.*?\n\}}", js_source, re.S)
+        assert match, f"{name} wurde in question.js nicht gefunden."
+        parts.append(match.group(0))
+    return "\n\n".join(parts)
+
+
+def _run_question_js(body: str, *funcs: str):
+    script = f"{_FAKE_DOM_JS}\n{_question_js_funcs(*funcs)}\n{body}"
+    return _run_node(script)
+
+
+_STRIP_SUMMARY_JS = """
+function findAll(node, pred, acc = []) {
+  node.children.forEach((c) => { if (pred(c)) acc.push(c); findAll(c, pred, acc); });
+  return acc;
+}
+function summarize(strip) {
+  if (!strip) return null;
+  return {
+    cls: strip.className,
+    figures: findAll(strip, (n) => n.tag === 'figure').map((f) => ({
+      img: findAll(f, (n) => n.tag === 'img').map((i) => ({
+        src: i.src, alt: i.alt, loading: i.loading, referrerPolicy: i.referrerPolicy,
+      }))[0],
+      caption: findAll(f, (n) => n.tag === 'figcaption').map((c) => c.textContent)[0],
+      links: findAll(f, (n) => n.tag === 'a').map((a) => ({
+        href: a.href, target: a.target, rel: a.rel,
+      })),
+    })),
+  };
+}
+"""
+
+_STRIP_FUNCS = ("safeHttpUrl", "safeImageSrc", "buildImageStrip")
+
+
+def _src(i):
+    return f"https://img.example/{i}.jpg"
+
+
+def _source(i, images, **extra):
+    return {
+        "source_id": f"s{i}", "chunk_id": f"c{i}", "title": f"Titel {i}",
+        "url": f"https://example.org/{i}", "images": images, **extra,
+    }
+
+
+def _run_strip(sources):
+    return _run_question_js(
+        f"{_STRIP_SUMMARY_JS}\nconsole.log(JSON.stringify(summarize(buildImageStrip({json.dumps(sources)}))));",
+        *_STRIP_FUNCS,
+    )
+
+
+def test_image_strip_shows_title_and_page_in_caption_and_safe_attributes():
+    sources = [_source(1, [{"src": _src(1), "alt": "Grafik", "page": 7}])]
+    strip = _run_strip(sources)
+    assert len(strip["figures"]) == 1
+    fig = strip["figures"][0]
+    assert fig["caption"] == "Titel 1 · S. 7"
+    assert fig["img"] == {"src": _src(1), "alt": "Grafik", "loading": "lazy", "referrerPolicy": "no-referrer"}
+    assert fig["links"] == [
+        {"href": "https://example.org/1", "target": "_blank", "rel": "noopener noreferrer"}
+    ]
+
+
+def test_image_strip_caption_has_no_page_for_web_images_and_links_are_not_pdf_anchored():
+    strip = _run_strip([_source(1, [{"src": _src(1), "alt": "", "page": None}])])
+    assert strip["figures"][0]["caption"] == "Titel 1"
+
+
+def test_image_strip_links_pdf_url_with_page_anchor():
+    src = _source(1, [{"src": "/api/sources/abc/images/" + "a" * 32 + ".webp", "alt": "x", "page": 3}],
+                  url="https://example.org/doc.pdf")
+    strip = _run_strip([src])
+    assert strip["figures"][0]["links"][0]["href"] == "https://example.org/doc.pdf#page=3"
+    assert strip["figures"][0]["img"]["src"] == "/api/sources/abc/images/" + "a" * 32 + ".webp"
+
+
+def test_image_strip_has_no_link_without_usable_url():
+    for extra in ({"url": None}, {"url": "javascript:alert(1)"}, {"url_reachable": False}):
+        strip = _run_strip([_source(1, [{"src": _src(1), "alt": "a", "page": None}], **extra)])
+        assert strip["figures"][0]["links"] == [], extra
+        assert strip["figures"][0]["caption"] == "Titel 1", extra
+
+
+def test_image_strip_caps_at_six_and_dedupes_by_src():
+    images = [{"src": _src(i % 8), "alt": "", "page": None} for i in range(12)]  # 8 verschiedene
+    strip = _run_strip([_source(1, images)])
+    assert [f["img"]["src"] for f in strip["figures"]] == [_src(i) for i in range(6)]
+
+
+def test_image_strip_is_absent_without_images():
+    for images in ([], None):
+        assert _run_strip([_source(1, images)]) is None
+    assert _run_strip([{"source_id": "s", "chunk_id": "c", "title": "T"}]) is None  # Feld fehlt (alte Daten)
+    assert _run_strip([]) is None
+
+
+def test_image_strip_drops_unsafe_image_sources():
+    bad = ["http://img.example/a.jpg", "javascript:alert(1)", "data:image/png;base64,AAAA",
+           "//evil.example/a.jpg", "/api/sources/../x.webp", "/other/path.webp", ""]
+    images = [{"src": s, "alt": "", "page": None} for s in bad]
+    assert _run_strip([_source(1, images)]) is None
+
+
+def test_image_strip_alt_with_script_markup_stays_plain_text():
+    alt = "<script>alert(1)</script>"
+    strip = _run_strip([_source(1, [{"src": _src(1), "alt": alt, "page": None}], title=alt)])
+    fig = strip["figures"][0]
+    assert fig["img"]["alt"] == alt  # nur als Attribut/Text, nie als HTML
+    assert fig["caption"] == alt
+
+
+def test_image_strip_error_removes_image_and_empties_strip():
+    script = f"""
+{_STRIP_SUMMARY_JS}
+const host = new FakeNode('element', 'div');
+const strip = buildImageStrip({json.dumps([_source(1, [
+    {"src": _src(1), "alt": "", "page": None}, {"src": _src(2), "alt": "", "page": None}])])});
+host.appendChild(strip);
+const imgs = findAll(strip, (n) => n.tag === 'img');
+imgs[0].listeners.error();
+const afterFirst = findAll(strip, (n) => n.tag === 'figure').length;
+const stripStillThere = host.children.length;
+imgs[1].listeners.error();
+console.log(JSON.stringify({{afterFirst, stripStillThere, hostChildren: host.children.length}}));
+"""
+    assert _run_question_js(script, *_STRIP_FUNCS) == {"afterFirst": 1, "stripStillThere": 1, "hostChildren": 0}
+
+
+def test_cited_sources_use_real_source_index_not_display_number():
+    # Antwort zitiert [2] und [4]; die Buttons zeigen fortlaufend [1] und [2].
+    sources = [_source(i, [{"src": _src(i), "alt": "", "page": None}]) for i in range(1, 6)]
+    script = f"""
+{_STRIP_SUMMARY_JS}
+const container = new FakeNode('element', 'div');
+const p = document.createElement('p');
+container.appendChild(p);
+p.appendChild(document.createTextNode('Erst [2] dann [4].'));
+const sources = {json.dumps(sources)};
+makeCitationsClickable(container, sources);
+const cited = extractCitedSources(container, sources);
+const strip = buildImageStrip(cited);
+console.log(JSON.stringify({{
+  cited: cited.map((s) => s.source_id),
+  imgs: summarize(strip).figures.map((f) => f.img.src),
+}}));
+"""
+    result = _run_question_js(script, "makeCitationsClickable", "extractCitedSources", *_STRIP_FUNCS)
+    assert result == {"cited": ["s2", "s4"], "imgs": [_src(2), _src(4)]}
+
+
+def test_cited_sources_ignore_duplicate_citations():
+    sources = [_source(i, []) for i in range(1, 4)]
+    script = f"""
+const container = new FakeNode('element', 'div');
+const p = document.createElement('p');
+container.appendChild(p);
+p.appendChild(document.createTextNode('A [3] B [3] C [1] D [9]'));
+const sources = {json.dumps(sources)};
+makeCitationsClickable(container, sources);
+console.log(JSON.stringify(extractCitedSources(container, sources).map((s) => s.source_id)));
+"""
+    assert _run_question_js(script, "makeCitationsClickable", "extractCitedSources") == ["s3", "s1"]
+
+
+def test_safe_http_url_accepts_only_http_and_https():
+    script = """
+console.log(JSON.stringify(['https://a.example/x', 'http://a.example/', 'javascript:alert(1)',
+  'data:text/html,x', '/relativ', '', null, undefined].map(safeHttpUrl)));
+"""
+    assert _run_question_js(script, "safeHttpUrl") == [
+        "https://a.example/x", "http://a.example/", None, None, None, None, None, None
+    ]
+
+
+def test_append_title_text_does_not_link_javascript_url():
+    result = _run_append_title_text({"title": "T", "url": "javascript:alert(1)"})
+    assert all(not c["href"] for c in result)
+    assert result[0]["value"] == "T"
+
+
+def test_question_js_uses_safe_http_url_for_every_citation_url():
+    js = (STATIC_DIR / "question.js").read_text()
+    raw = re.findall(r"=\s*s\.url_reachable === false \? null : s\.listen_url \|\| s\.url;", js)
+    assert raw == [], "Quellen-URLs müssen durch safeHttpUrl() laufen."
+
+
+def _run_refresh(body: str):
+    return _run_question_js(
+        f"{_STRIP_SUMMARY_JS}\n"
+        "function bubbleWith(text) { const b = new FakeNode('element', 'div'); const p = document.createElement('p');"
+        " b.appendChild(p); p.appendChild(document.createTextNode(text)); return b; }\n"
+        "function strips(b) { return b.querySelectorAll('.source-image-strip'); }\n" + body,
+        "makeCitationsClickable", "extractCitedSources", *_STRIP_FUNCS, "refreshImageStrip", "applyDoneImages",
+    )
+
+
+def test_done_event_images_replace_early_images_in_single_strip():
+    # sources-Event: Bild am Chunk 1; done-Event: Bild am (zitierten) Chunk 2 derselben Quelle.
+    early = [_source(1, [{"src": _src(1), "alt": "", "page": None}]), _source(2, [])]
+    done = [_source(1, []), _source(2, [{"src": _src(2), "alt": "", "page": None}])]
+    result = _run_refresh(f"""
+const early = {json.dumps(early)}; const done = {json.dumps(done)};
+const b = bubbleWith('A [1] B [2]');
+makeCitationsClickable(b, early);
+refreshImageStrip(b, extractCitedSources(b, early));
+const before = strips(b).map((s) => summarize(s).figures.map((f) => f.img.src));
+applyDoneImages(b, early, done);
+applyDoneImages(b, early, done);
+console.log(JSON.stringify({{before, after: strips(b).map((s) => summarize(s).figures.map((f) => f.img.src)),
+  stored: early.map((s) => s.images.length)}}));
+""")
+    assert result == {"before": [[_src(1)]], "after": [[_src(2)]], "stored": [0, 1]}
+
+
+def test_done_event_without_images_removes_strip():
+    early = [_source(1, [{"src": _src(1), "alt": "", "page": None}])]
+    done = [_source(1, [])]
+    result = _run_refresh(f"""
+const early = {json.dumps(early)}; const done = {json.dumps(done)};
+const b = bubbleWith('A [1]');
+makeCitationsClickable(b, early);
+refreshImageStrip(b, extractCitedSources(b, early));
+applyDoneImages(b, early, done);
+console.log(JSON.stringify(strips(b).length));
+""")
+    assert result == 0
+
+
+def test_refresh_image_strip_never_creates_two_strips():
+    early = [_source(1, [{"src": _src(1), "alt": "", "page": None}])]
+    result = _run_refresh(f"""
+const early = {json.dumps(early)};
+const b = bubbleWith('A [1]');
+makeCitationsClickable(b, early);
+for (let i = 0; i < 3; i += 1) refreshImageStrip(b, extractCitedSources(b, early));
+console.log(JSON.stringify(strips(b).length));
+""")
+    assert result == 1
+
+
+def test_ask_error_shows_speaking_message_and_retry_button():
+    """Nutzerwunsch (2026-10-25): statt "Error: Failed to fetch" eine
+    verständliche Meldung (DE/EN) und ein Button, der dieselbe Frage erneut
+    stellt."""
+    script = """
+const results = [new TypeError('Failed to fetch'), new Error('Zu viele Anfragen'), new Error('')].map((err) => {
+  const bubble = document.createElement('div');
+  let retried = 0;
+  renderAskError(bubble, err, () => { retried += 1; });
+  const btn = bubble.querySelectorAll('.retry-button')[0];
+  btn.listeners.click();
+  return { text: bubble.children[0].textContent, button: btn.textContent, type: btn.type, retried };
+});
+console.log(JSON.stringify(results));
+"""
+    assert _run_question_js(script, "askErrorText", "renderAskError") == [
+        {"text": "index.askErrorNetwork", "button": "index.retry", "type": "button", "retried": 1},
+        {"text": "Zu viele Anfragen", "button": "index.retry", "type": "button", "retried": 1},
+        {"text": "index.askFailed", "button": "index.retry", "type": "button", "retried": 1},
+    ]
+
+
 # --- Idee 2070893d: Gesprächsgedächtnis 50 Turns / 200.000 Bytes ---
 
 
@@ -4659,5 +5022,5 @@ def test_question_js_truncates_question_and_handles_list_detail():
     assert re.search(r"const question = questionInput\.value\.trim\(\)\.slice\(0, ASK_QUESTION_MAX_CHARS\);", js)
     assert re.search(r"const ASK_QUESTION_MAX_CHARS = 8000;", js)
     # 422 liefert detail als Liste -> allgemeine Fehlermeldung statt [object Object]
-    assert "typeof err.detail === 'string' ? err.detail : t('index.askError')" in js
+    assert "typeof err.detail === 'string' ? err.detail : t('index.askFailed')" in js
     assert "throw new Error(err.detail || t('index.askError'))" not in js
