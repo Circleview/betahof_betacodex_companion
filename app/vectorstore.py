@@ -91,6 +91,30 @@ def get_source_chunk_texts(source_id: str) -> list[str]:
     return [res["documents"][i] for i in order]
 
 
+def get_source_chunks(source_id: str) -> tuple[list[str], list[str], list[dict]]:
+    """(ids, Texte, Metadaten) einer Quelle in Positionsreihenfolge."""
+    res = _get_collection().get(where={"source_id": source_id})
+    order = sorted(range(len(res["ids"])), key=lambda i: res["metadatas"][i]["position"])
+    return (
+        [res["ids"][i] for i in order],
+        [res["documents"][i] for i in order],
+        [res["metadatas"][i] for i in order],
+    )
+
+
+def update_chunk_metadatas(ids: list[str], metadatas: list[dict]) -> None:
+    if ids:
+        _get_collection().update(ids=ids, metadatas=metadatas)
+
+
+def get_chunk_metadatas(ids: list[str]) -> dict[str, dict]:
+    """Metadaten der Chunks mit diesen IDs (unbekannte fehlen im Ergebnis)."""
+    if not ids:
+        return {}
+    res = _get_collection().get(ids=list(ids), include=["metadatas"])
+    return dict(zip(res["ids"], res["metadatas"]))
+
+
 def delete_source_chunks(source_id: str) -> None:
     collection = _get_collection()
     collection.delete(where={"source_id": source_id})

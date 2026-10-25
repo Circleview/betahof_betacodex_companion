@@ -67,7 +67,7 @@ def delete_source_images(base_dir: Path, source_id: str) -> None:
         shutil.rmtree(Path(base_dir) / source_id, ignore_errors=True)
 
 
-def _safe_https(url) -> bool:
+def is_safe_https(url) -> bool:
     try:
         parts = urlparse(url)
     except (ValueError, TypeError):
@@ -79,7 +79,7 @@ def sanitize_web_images(items) -> list[dict]:
     """Erneuter Server-Filter für Web-Bilder: nur https-`url`-Einträge."""
     out = []
     for item in items if isinstance(items, list) else []:
-        if isinstance(item, dict) and item.get("kind") == "url" and _safe_https(item.get("url")):
+        if isinstance(item, dict) and item.get("kind") == "url" and is_safe_https(item.get("url")):
             out.append(
                 {
                     "kind": "url",

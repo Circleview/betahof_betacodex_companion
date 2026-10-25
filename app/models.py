@@ -16,6 +16,8 @@ class SourceIn(BaseModel):
     summary: Optional[str] = None
     key_terms: Optional[list[str]] = None
     relevance_score: Optional[int] = None
+    # Idee ff895248: Token aus /api/extract-url (Web-Bilder der Vorschau).
+    image_token: Optional[str] = None
 
 
 class SourceOut(BaseModel):
@@ -160,6 +162,15 @@ class AnswerFeedbackIn(BaseModel):
     conversation_id: str | None = Field(None, max_length=64)
 
 
+class ImageRef(BaseModel):
+    """Ein Bild zu einem Chunk (Idee ff895248): https-URL der Web-Quelle oder
+    /api/sources/<id>/images/<32hex>.webp (verkleinerte PDF-Grafik)."""
+
+    src: str
+    alt: str = Field("", max_length=300)
+    page: Optional[int] = None
+
+
 class ChunkRef(BaseModel):
     chunk_id: str
     source_id: str
@@ -192,6 +203,8 @@ class ChunkRef(BaseModel):
     # (aktuell) als erreichbar gilt. None (nie geprüft) und True (erreichbar)
     # verhalten sich fürs Frontend gleich - nur False blendet den Link aus.
     url_reachable: Optional[bool] = None
+    # Idee ff895248: Bildleiste - kommt aus den Chunk-Metadaten, nie vom Client.
+    images: list[ImageRef] = []
 
 
 class ConversationTurnIn(BaseModel):
@@ -380,6 +393,7 @@ class ExtractedSource(BaseModel):
     extracted: bool
     is_audio: bool = False
     is_pdf: bool = False
+    image_token: Optional[str] = None
 
 
 class ExtractedUpload(ExtractedSource):
