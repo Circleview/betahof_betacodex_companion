@@ -4888,5 +4888,5 @@ console.log(JSON.stringify(results));
     assert _run_question_js(script, "askErrorText", "renderAskError") == [
         {"text": "index.askErrorNetwork", "button": "index.retry", "type": "button", "retried": 1},
         {"text": "Zu viele Anfragen", "button": "index.retry", "type": "button", "retried": 1},
-        {"text": "index.askError", "button": "index.retry", "type": "button", "retried": 1},
+        {"text": "index.askFailed", "button": "index.retry", "type": "button", "retried": 1},
     ]

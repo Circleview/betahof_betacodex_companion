@@ -1605,6 +1605,28 @@ async function fetchWithRetry(url, options, retries = 1, delayMs = 600) {
 // Hervorhebungen, siehe Backlog 2026-07-31/2026-08-03); löst am Ende mit
 // dem "done"-Event auf (bzw. wirft bei einem "error"-Event oder wenn der
 // Stream ohne "done" endet - z.B. abgebrochene Verbindung).
+// Nutzerwunsch (2026-10-25): verständliche Meldung statt "Failed to fetch".
+// fetch wirft bei Netzwerkfehlern einen TypeError (Safari: "Load failed").
+function askErrorText(err) {
+  if (err instanceof TypeError) return t('index.askErrorNetwork');
+  return err.message || t('index.askFailed');
+}
+
+// Fehler in der Antwort-Bubble mit Button, der dieselbe Frage erneut stellt.
+function renderAskError(bubble, err, onRetry) {
+  bubble.textContent = '';
+  const text = document.createElement('p');
+  text.textContent = askErrorText(err);
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'retry-button link-button';
+  button.textContent = t('index.retry');
+  button.title = t('index.retryTooltip');
+  button.addEventListener('click', onRetry);
+  bubble.appendChild(text);
+  bubble.appendChild(button);
+}
+
 async function readAskStream(response, onDelta, onAnswer, onSources) {
   return readNdjsonStream(
     response,
@@ -1613,7 +1635,7 @@ async function readAskStream(response, onDelta, onAnswer, onSources) {
       answer: (event) => onAnswer(event.answer),
       sources: (event) => onSources?.(event.sources),
     },
-    t('index.askError')
+    t('index.askFailed')
   );
 }
 
@@ -1695,7 +1717,7 @@ questionForm.addEventListener('submit', async (e) => {
     resetTurnstile();
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
-      throw new Error(err.detail || t('index.askError'));
+      throw new Error(err.detail || t('index.askFailed'));
     }
 
     // Erstes Text-Fragment: Tippindikator durch die (noch unfertige)
@@ -1801,7 +1823,13 @@ questionForm.addEventListener('submit', async (e) => {
     // conversationHistory behebt das.
     renderSidebarSources();
   } catch (err) {
-    assistantBubble.textContent = t('common.errorPrefix') + err.message;
+    renderAskError(assistantBubble, err, () => {
+      userMessage.remove();
+      assistantMessage.remove();
+      questionSentInConversation = conversationHistory.length > 0;
+      questionInput.value = question;
+      questionForm.requestSubmit();
+    });
   }
 });
 
