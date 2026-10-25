@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "f2d4f4f7-b162-4b47-9f0a-fd0313cedb0c",
+  "status": "current",
+  "command": "deliver",
+  "type": "workflow",
+  "input": "/Users/stefan.willuda/Development/Beta-Kodex - Wissenspartner-idee-ff895248/docs/diagrams/rag-flow.workflow.json",
+  "output": "/Users/stefan.willuda/Development/Beta-Kodex - Wissenspartner-idee-ff895248/docs/diagrams/rag-flow.html",
+  "specification": {
+    "sha256": "2e22edb7ad063b418c1387031a9e0177a015922fd6c10cf6e9e8c4fda58a60e2",
+    "bytes": 4674
+  },
+  "artifact": {
+    "sha256": "110859f5b7e07aa3e2bf291df920aa652205e31fdb6558e7106948dfd81c7b7e",
+    "bytes": 765456
+  }
+}

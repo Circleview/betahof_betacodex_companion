@@ -2,10 +2,11 @@
   "schema_version": 2,
   "diagram_type": "workflow",
   "meta": {
+    "output": "docs/diagrams/rag-flow.html",
     "title": "BetaCodex Chat: RAG-Antwortfluss",
     "animation": "trace",
     "visual_preset": "signal-flow",
-    "quality_profile": "showcase"
+    "quality_profile": "standard"
   },
   "lanes": [
     { "id": "ui", "label": "Chat-Oberflaeche" },
@@ -55,7 +56,8 @@
       "title": "Strikte Quellenbindung",
       "items": [
         "Claude antwortet nur aus den Top-K Textausschnitten",
-        "Kein Treffer: Modell sagt das woertlich statt zu erfinden"
+        "Kein Treffer: Modell sagt das woertlich statt zu erfinden",
+        "Bilder je Chunk (Metadaten) gehen nur ans Frontend, nie ans Modell"
       ]
     },
     {

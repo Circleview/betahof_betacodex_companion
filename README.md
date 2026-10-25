@@ -53,6 +53,13 @@ Assistent das offen, statt zu spekulieren.
   tatsächlich verwendete Textstelle – ein Klick springt zur passierten
   Original-Quelle und hebt die exakte Textpassage hervor, bei
   Video/Audio-Quellen inklusive Zeitstempel.
+- Bildleiste: Zitiert eine Antwort Quellen mit Bildern, zeigt der Chat bis zu
+  6 davon (Bildunterschrift = Quelle, bei PDFs mit Seite, Klick öffnet die
+  Quelle). Web-Bilder bleiben Links auf den Server der Quelle, PDF-Grafiken
+  liegen verkleinert (WebP, ohne Metadaten) auf dem eigenen Server; bei
+  eingeschränkten Quellen höchstens 1 Bild je Antwort. Ältere Quellen holt der
+  Admin-Reindex (`/api/admin/reindex-sources`) nach, ohne Text, Zusammenfassung
+  oder Schlagworte zu ändern.
 - Eine "Verwendete Quellen"-Sidebar baut sich über die gesamte
   Konversation auf, nicht nur pro Antwort. Das Auge-Icon öffnet eine
   Quelle als Lese-Dialog direkt in der Konversation.

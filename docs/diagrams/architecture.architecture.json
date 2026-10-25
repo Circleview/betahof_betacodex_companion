@@ -2,6 +2,7 @@
   "schema_version": 1,
   "diagram_type": "architecture",
   "meta": {
+    "output": "docs/diagrams/architecture.html",
     "title": "BetaCodex Chat: Produktions-Architektur",
     "visual_preset": "blueprint",
     "animation": "trace",
@@ -97,7 +98,7 @@
       "id": "shared_data",
       "type": "database",
       "label": "shared/data + .env",
-      "sublabel": "JSON, ChromaDB, Verbrauch",
+      "sublabel": "JSON, ChromaDB, Bilder, Verbrauch",
       "tag": "Symlink",
       "pos": [
         480,
@@ -202,7 +203,8 @@
       "title": "Blue-Green statt Downtime",
       "items": [
         "Zwei Instanzen (Port 8000/8001), Caddy routet auf die jeweils aktive",
-        "shared/data + .env per Symlink geteilt, nicht dupliziert"
+        "shared/data + .env per Symlink geteilt, nicht dupliziert",
+        "Bildspeicher: PDF-Grafiken als WebP unter data/source_images, Auslieferung ueber /api/sources/{id}/images"
       ]
     },
     {
