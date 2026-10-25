@@ -193,3 +193,67 @@ def test_truncated_heading_prefix_has_no_broken_characters():
         chunks = chunk_text(text)
         assert len(chunks) > 2
         assert all("\ufffd" not in c for c in chunks)
+
+
+# --- Bild-Zuordnung (Idee ff895248) -------------------------------------------
+
+
+def _img(anchor, name="a"):
+    return {"kind": "url", "url": f"https://img.example.org/{name}.jpg", "alt": "Alt", "anchor": anchor}
+
+
+def test_assign_images_puts_image_into_chunk_with_its_anchor():
+    from app.chunking import assign_images
+
+    chunks = ["Erster Chunk über Budgets und Steuerung.", "Zweiter Chunk über die Selbstorganisation von Teams."]
+
+    result = assign_images(chunks, [_img("Zweiter Chunk über die Selbstorganisation")])
+
+    assert result[0] == []
+    assert result[1] == [{"kind": "url", "url": "https://img.example.org/a.jpg", "alt": "Alt", "page": None}]
+
+
+def test_assign_images_matches_despite_markdown_and_whitespace_differences():
+    from app.chunking import assign_images
+
+    chunks = ["Einleitung.", "Statt **Kontrolle** und\nBürokratie: Ansätze für Teams."]
+
+    result = assign_images(chunks, [_img("Statt Kontrolle und Bürokratie: Ansätze für Teams.")])
+
+    assert len(result[1]) == 1
+
+
+def test_assign_images_discards_image_with_unknown_anchor():
+    from app.chunking import assign_images
+
+    assert assign_images(["Nur dieser Text."], [_img("Ein ganz anderer Satz, der nirgends steht.")]) == [[]]
+
+
+def test_assign_images_takes_first_chunk_that_contains_anchor():
+    from app.chunking import assign_images
+
+    chunks = ["Gemeinsamer Satz im Überlapp.", "Gemeinsamer Satz im Überlapp. Und mehr."]
+
+    result = assign_images(chunks, [_img("Gemeinsamer Satz im Überlapp.")])
+
+    assert [len(r) for r in result] == [1, 0]
+
+
+def test_assign_images_allows_at_most_three_per_chunk():
+    from app.chunking import assign_images
+
+    images = [_img("Gemeinsamer Anker Satz", name=f"i{i}") for i in range(5)]
+
+    result = assign_images(["Gemeinsamer Anker Satz steht hier."], images)
+
+    assert len(result[0]) == 3
+
+
+def test_assign_images_keeps_file_images_with_page_and_drops_anchor():
+    from app.chunking import assign_images
+
+    image = {"kind": "file", "file": "a" * 32 + ".webp", "page": 7, "anchor": "Seitentext der siebten Seite"}
+
+    result = assign_images(["Seitentext der siebten Seite und mehr."], [image])
+
+    assert result == [[{"kind": "file", "file": "a" * 32 + ".webp", "alt": "", "page": 7}]]
