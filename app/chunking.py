@@ -132,3 +132,31 @@ def chunk_text(text: str, chunk_size: int = CHUNK_SIZE, overlap: int = CHUNK_OVE
     if cur:
         chunks.append(text[cur[0]:cur[1]].strip())
     return chunks
+
+
+MAX_IMAGES_PER_CHUNK = 3
+
+
+def norm_anchor(text: str) -> str:
+    """Vergleichsform für Bild-Anker: nur Buchstaben/Ziffern, klein - robust
+    gegen Markdown-Zeichen, Zeilenumbrüche und Leerraum."""
+    return re.sub(r"\W+", "", text.lower())
+
+
+def assign_images(chunks: list[str], images: list[dict]) -> list[list[dict]]:
+    """Ordnet jedem Chunk seine Bilder zu: ein Bild kommt in den ersten Chunk,
+    der seinen Anker enthält (höchstens 3 je Chunk). Unbekannter Anker oder
+    voller Chunk -> das Bild entfällt. Ergebnis ohne Anker: {kind, url|file, alt, page}."""
+    normalized = [norm_anchor(c) for c in chunks]
+    result: list[list[dict]] = [[] for _ in chunks]
+    for image in images:
+        anchor = norm_anchor(image.get("anchor") or "")
+        if not anchor:
+            continue
+        for i, chunk in enumerate(normalized):
+            if anchor in chunk and len(result[i]) < MAX_IMAGES_PER_CHUNK:
+                ref = {"kind": image["kind"], "alt": image.get("alt") or "", "page": image.get("page")}
+                ref["url" if image["kind"] == "url" else "file"] = image.get("url" if image["kind"] == "url" else "file")
+                result[i].append(ref)
+                break
+    return result

@@ -24,6 +24,7 @@ from pypdf import PdfReader
 from youtube_transcript_api import YouTubeTranscriptApi
 
 from app import usage as usage_log
+from app.chunking import norm_anchor
 
 # Manche Server (Bot-/Hotlink-Schutz, z.B. bei WordPress-gehosteten Podcast-
 # Medien) lehnen Requests ohne "Accept"-Header mit HTTP 406 ab, selbst mit
@@ -1034,12 +1035,6 @@ _URL_SIZE_HINTS = (
 )
 
 
-def _norm(text: str) -> str:
-    """Vergleichsform für Anker: nur Buchstaben/Ziffern, klein - robust gegen
-    Markdown-Zeichen und Leerraum im extrahierten Text."""
-    return re.sub(r"\W+", "", text.lower())
-
-
 def _px(value: str | None) -> int | None:
     match = re.match(r"\s*(\d+)", value or "")
     return int(match.group(1)) if match else None
@@ -1139,7 +1134,7 @@ def extract_web_images(html, base_url: str, text: str) -> list[dict]:
         collector.feed(html)
         collector.close()
         events = collector.events
-        text_norm = _norm(text)
+        text_norm = norm_anchor(text)
         images, seen = [], set()
         for index, (kind, payload) in enumerate(events):
             if kind != "img":
@@ -1151,7 +1146,7 @@ def extract_web_images(html, base_url: str, text: str) -> list[dict]:
             preceding = [e[1] for e in reversed(events[:index]) if e[0] == "text"][:1]
             for node in following + preceding:
                 anchor = node[:_ANCHOR_CHARS]
-                if _norm(anchor) and _norm(anchor) in text_norm:
+                if norm_anchor(anchor) and norm_anchor(anchor) in text_norm:
                     seen.add(candidate[0])
                     images.append({"kind": "url", "url": candidate[0], "alt": candidate[1], "anchor": anchor})
                     break
