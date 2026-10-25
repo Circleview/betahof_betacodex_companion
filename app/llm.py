@@ -185,12 +185,16 @@ _DE_WORDS = {
     "wieso", "kann", "welche", "für", "mit", "sich", "auf", "sind", "hat",
     "wird", "oder", "aber", "wenn", "wo", "wann", "du", "ich", "wir", "eine",
     "einen", "dass", "bitte", "auch", "über", "zum", "zur", "im", "beim",
+    # Imperative ohne Fragewort (Bug 2026-10-25, "Show me a ...")
+    "zeig", "zeige", "mir", "gib", "ein", "nenne", "erkläre", "erklär",
+    "beschreibe", "beispiel", "beispiele",
 }
 _EN_WORDS = {
     "the", "is", "and", "not", "how", "what", "who", "why", "can", "which",
     "for", "with", "does", "do", "are", "has", "have", "will", "but", "if",
     "where", "when", "this", "that", "you", "we", "they", "should", "please",
     "about", "to", "of", "describe", "explain", "tell",
+    "show", "me", "give", "list", "a", "my", "example", "examples",
 }
 _EXPLICIT_LANGUAGE = {
     "de": "Antworte ausschließlich auf Deutsch.",
