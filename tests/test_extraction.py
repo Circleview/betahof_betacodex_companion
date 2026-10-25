@@ -1757,3 +1757,36 @@ def test_pdf_images_use_distinct_anchors_when_pages_share_a_long_header():
     assert len(result) == 2
     assert result[0]["anchor"] != result[1]["anchor"]
     assert "Seite" in result[0]["anchor"] and "Seite" in result[1]["anchor"]
+
+
+def test_web_images_drop_cdn_thumbnails_and_banner_logos():
+    """Bug (2026-10-25, Screenshot DEV): Substack-Kopf mit 40x40-Avatar
+    (w_40,h_40 im CDN-Pfad, Original 1280x1280) und Schriftzug-Banner
+    (Original 1600x334) landeten in der Bildleiste."""
+    cdn = "https://substackcdn.com/image/fetch/$s_!x!,{params}/https%3A%2F%2Fs3.amazonaws.com%2Fimages%2F{name}"
+    body = "".join(
+        f'<img src="{cdn.format(params=p, name=n)}" alt="News from the Beta World">'
+        for p, n in (
+            ("w_40,h_40,c_fill,f_auto", "a_1280x1280.png"),
+            ("h_206,c_limit,f_auto", "b_1600x334.png"),
+            ("w_2400,c_limit,f_auto", "c_2000x1261.jpeg"),
+        )
+    )
+    assert [img["url"].split("%2F")[-1] for img in _web_images(body)] == ["c_2000x1261.jpeg"]
+
+
+def test_web_images_drop_banner_by_attributes():
+    assert _web_images('<img src="/band.jpg" width="1600" height="300" alt="Schriftzug der Seite">') == []
+
+
+def test_web_images_drop_video_previews():
+    """Nutzerwunsch (2026-10-25): YouTube-Vorschauen stiften keinen Wert -
+    Bild mit Link auf ein Video oder von einem Video-Bildserver fällt weg."""
+    body = (
+        '<a href="https://www.youtube.com/watch?v=E1ugSiDZ4ec"><img src="/vorschau.jpg" width="800" height="450" alt="Video zur Struktur"></a>'
+        '<a href="https://youtu.be/abc"><img src="/vorschau2.jpg" width="800" height="450" alt="Video zur Struktur"></a>'
+        '<img src="https://i.ytimg.com/vi/abc/maxresdefault.jpg" width="800" height="450" alt="Video zur Struktur">'
+        '<a href="https://vimeo.com/123"><img src="/vorschau3.jpg" width="800" height="450" alt="Video zur Struktur"></a>'
+        '<a href="/bilder/gross.jpg"><img src="/gut.jpg" width="800" height="450" alt="Foto zur Struktur"></a>'
+    )
+    assert [img["url"] for img in _web_images(body)] == ["https://example.org/gut.jpg"]
