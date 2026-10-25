@@ -5733,7 +5733,9 @@ details a {
   gap: 0.6rem;
   margin-top: 0.8rem;
   overflow-x: auto;
+  padding-bottom: 0.4rem;
   scroll-snap-type: x proximity;
+  overscroll-behavior-x: contain;
   -webkit-overflow-scrolling: touch;
 }
 
@@ -5758,11 +5760,23 @@ details a {
   background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: var(--radius);
+  transition: border-color 0.15s ease;
 }
 
-.source-image a:hover img,
-.source-image a:focus-visible img {
+.source-image a:hover img {
   border-color: var(--color-accent);
+}
+
+.source-image a:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+  border-radius: var(--radius);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .source-image img {
+    transition: none;
+  }
 }
 
 .source-image figcaption {
@@ -5771,4 +5785,12 @@ details a {
   line-height: 1.3;
   color: var(--color-text-muted);
   overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.source-image a:hover figcaption {
+  color: var(--color-text);
 }
