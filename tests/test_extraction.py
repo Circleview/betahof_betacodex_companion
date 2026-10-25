@@ -1438,3 +1438,263 @@ def test_extract_epub_rejects_utf16_opf_with_entity(encoding):
         z.writestr("OEBPS/content.opf", opf.encode(encoding))
         z.writestr("OEBPS/a.xhtml", _xhtml("<p>hallo</p>"))
     assert extract_epub(buf.getvalue())["extracted"] is False
+
+
+# --- Bilder aus Web-Seiten (Idee ff895248) ------------------------------------
+
+_P1 = "Der erste Absatz erzählt von der Dezentralisierung der Führung im Unternehmen."
+_P2 = "Der zweite Absatz beschreibt, wie Teams ihre Budgets selbst verantworten dürfen."
+_ARTICLE_TEXT = f"# Titel\n\n{_P1}\n\n{_P2}"
+
+
+def _html(body: str) -> str:
+    return f"<html><body><article><h1>Titel</h1><p>{_P1}</p>{body}<p>{_P2}</p></article></body></html>"
+
+
+def _web_images(body: str, text: str = _ARTICLE_TEXT, base="https://example.org/blog/artikel"):
+    from app.extraction import extract_web_images
+
+    return extract_web_images(_html(body), base, text)
+
+
+def test_web_images_resolves_relative_url_and_sets_alt_and_anchor():
+    result = _web_images('<img src="../bilder/foto.jpg" width="800" height="600" alt="Ein Foto vom Hof">')
+
+    assert result == [
+        {
+            "kind": "url",
+            "url": "https://example.org/bilder/foto.jpg",
+            "alt": "Ein Foto vom Hof",
+            "anchor": _P2,
+        }
+    ]
+
+
+def test_web_images_uses_data_src_for_lazy_loading():
+    result = _web_images(
+        '<img src="data:image/gif;base64,R0lGOD" data-src="/lazy.jpg" width="640" height="480" alt="Lazy Bild">'
+    )
+
+    assert [img["url"] for img in result] == ["https://example.org/lazy.jpg"]
+
+
+def test_web_images_drops_unsafe_schemes_and_credentials():
+    body = "".join(
+        f'<img src="{src}" width="800" height="600" alt="Bild mit langem Alt-Text">'
+        for src in (
+            "http://example.org/a.jpg",
+            "data:image/png;base64,AAAA",
+            "javascript:alert(1)",
+            "https://user:pw@example.org/b.jpg",
+        )
+    )
+    assert _web_images(body) == []
+
+
+def test_web_images_drops_svg_gif_logos_and_small_images():
+    body = "".join(
+        f'<img src="{src}" width="{w}" height="{h}" alt="Beschreibung des Bildes">'
+        for src, w, h in (
+            ("/a.svg", 800, 600),
+            ("/b.gif", 800, 600),
+            ("/firmen-logo.png", 800, 600),
+            ("/icons/pfeil.png", 800, 600),
+            ("/avatar-jane.jpg", 800, 600),
+            ("/klein.jpg", 100, 600),
+            ("/klein2.jpg", 800, 80),
+            ("/gut.jpg", 800, 600),
+        )
+    )
+    assert [img["url"] for img in _web_images(body)] == ["https://example.org/gut.jpg"]
+
+
+def test_web_images_without_size_keep_only_figure_or_long_alt():
+    body = (
+        '<img src="/ohne-alt.jpg">'
+        '<img src="/kurz.jpg" alt="Foto">'
+        '<img src="/lang.jpg" alt="Ein Diagramm der Kreisstruktur">'
+        '<figure><img src="/figur.jpg"><figcaption>Unterschrift</figcaption></figure>'
+    )
+    assert [img["url"] for img in _web_images(body)] == [
+        "https://example.org/lang.jpg",
+        "https://example.org/figur.jpg",
+    ]
+
+
+def test_web_images_infer_size_from_url_hint_when_attributes_missing():
+    # Beobachtet im Spike (betahof.de): weder width/height noch alt, aber die
+    # URL nennt die Größe.
+    body = (
+        '<img src="/u/abc/l0,t104,w1920,h798/image.jpg">'
+        '<img src="/u/def/image-64x64.jpg">'
+    )
+    assert [img["url"] for img in _web_images(body)] == ["https://example.org/u/abc/l0,t104,w1920,h798/image.jpg"]
+
+
+def test_web_images_keep_closing_bracket_in_alt_text():
+    result = _web_images('<img src="/x.jpg" width="800" height="600" alt="Abbildung [1] zur Struktur ]">')
+
+    assert result[0]["alt"] == "Abbildung [1] zur Struktur ]"
+
+
+def test_web_images_drop_images_in_navigation_header_footer_aside():
+    chrome = "".join(
+        f'<{tag}><img src="/{tag}.jpg" width="800" height="600" alt="Bild im Seitenrahmen"></{tag}>'
+        for tag in ("nav", "header", "footer", "aside")
+    )
+    html = f"<html><body>{chrome}<article><p>{_P1}</p><img src='/ok.jpg' width='800' height='600' alt='Bild im Artikel'><p>{_P2}</p></article></body></html>"
+    from app.extraction import extract_web_images
+
+    result = extract_web_images(html, "https://example.org/", _ARTICLE_TEXT)
+
+    assert [img["url"] for img in result] == ["https://example.org/ok.jpg"]
+
+
+def test_web_images_drop_image_whose_anchor_is_not_in_text():
+    body = '<img src="/x.jpg" width="800" height="600" alt="Bild ohne Textbezug">'
+    html = _html(body)
+    from app.extraction import extract_web_images
+
+    assert extract_web_images(html, "https://example.org/", "# Titel\n\nGanz anderer Text, der nichts enthält.") == []
+
+
+def test_web_images_dedupe_by_url_and_limit_to_30():
+    same = '<img src="/same.jpg" width="800" height="600" alt="Immer dasselbe Bild">' * 3
+    many = "".join(f'<img src="/b{i}.jpg" width="800" height="600" alt="Bild Nummer {i}">' for i in range(40))
+
+    assert len(_web_images(same)) == 1
+    assert len(_web_images(many)) == 30
+
+
+def test_web_images_broken_html_returns_empty_list():
+    from app.extraction import extract_web_images
+
+    assert extract_web_images("<img src=", "https://example.org/", "Text") == []
+    assert extract_web_images(b"\xff\xfe<<<>>>", "https://example.org/", "Text") == []
+    assert extract_web_images("", "https://example.org/", "Text") == []
+
+
+def test_extract_from_url_text_is_identical_with_and_without_images():
+    plain = _html("")
+    with_img = _html('<img src="/x.jpg" width="800" height="600" alt="Ein Bild im Artikel">')
+    results = []
+    for html in (plain, with_img):
+        with patch("app.extraction._fetch_html", return_value=html.encode()):
+            results.append(extract_from_url("https://example.org/blog/artikel"))
+
+    assert results[0]["text"] == results[1]["text"]
+    assert "images" not in results[0]
+    assert [img["url"] for img in results[1].get("images", [])] == ["https://example.org/x.jpg"]
+
+
+# --- Bilder aus PDFs (Idee ff895248) ------------------------------------------
+
+
+def _png(size, color=(200, 60, 60)) -> bytes:
+    import io as _io
+
+    from PIL import Image
+
+    buf = _io.BytesIO()
+    Image.new("RGB", size, color).save(buf, format="PNG")
+    return buf.getvalue()
+
+
+def _pdf_with_images(pages) -> bytes:
+    """pages: Liste von (Text oder None, [(png_bytes, Rechteck-Größe (w, h)) | ("xref", Index, (w, h))])."""
+    import fitz
+
+    doc = fitz.open()
+    xrefs = {}
+    for text, images in pages:
+        page = doc.new_page(width=595, height=842)
+        if text:
+            page.insert_text((50, 50), text, fontsize=11)
+        y = 100
+        for item in images:
+            if item[0] == "xref":
+                rect = fitz.Rect(50, y, 50 + item[2][0], y + item[2][1])
+                page.insert_image(rect, xref=xrefs[item[1]])
+            else:
+                data, (w, h) = item
+                rect = fitz.Rect(50, y, 50 + w, y + h)
+                xref = page.insert_image(rect, stream=data)
+                xrefs[len(xrefs)] = xref
+            y += 5
+    return doc.tobytes()
+
+
+_PAGE_TEXT = "Kapitel eins handelt von der Selbstorganisation in kleinen Teams."
+
+
+def test_pdf_images_keeps_large_image_with_page_and_anchor():
+    from app.extraction import extract_pdf_images
+
+    data = _pdf_with_images([(None, []), (_PAGE_TEXT, [(_png((400, 300)), (200, 150))])])
+
+    result = extract_pdf_images(data)
+
+    assert len(result) == 1
+    assert result[0]["page"] == 2
+    assert result[0]["anchor"] == _PAGE_TEXT
+    from io import BytesIO
+
+    from PIL import Image
+
+    assert Image.open(BytesIO(result[0]["data"])).size == (400, 300)
+
+
+def test_pdf_images_drops_small_images():
+    from app.extraction import extract_pdf_images
+
+    data = _pdf_with_images([(_PAGE_TEXT, [(_png((150, 400)), (100, 100)), (_png((400, 150), (1, 2, 3)), (100, 100))])])
+
+    assert extract_pdf_images(data) == []
+
+
+def test_pdf_images_drops_image_repeated_on_three_pages_but_keeps_on_two():
+    from app.extraction import extract_pdf_images
+
+    logo = _png((300, 300), (10, 10, 10))
+    three = _pdf_with_images(
+        [(_PAGE_TEXT, [(logo, (100, 100))])] + [(_PAGE_TEXT, [("xref", 0, (100, 100))]) for _ in range(2)]
+    )
+    two = _pdf_with_images([(_PAGE_TEXT, [(logo, (100, 100))]), (_PAGE_TEXT, [("xref", 0, (100, 100))])])
+
+    assert extract_pdf_images(three) == []
+    assert len(extract_pdf_images(two)) == 1
+
+
+def test_pdf_images_drops_full_page_scan():
+    from app.extraction import extract_pdf_images
+
+    data = _pdf_with_images([(_PAGE_TEXT, [(_png((1190, 1684)), (595, 842))])])
+
+    assert extract_pdf_images(data) == []
+
+
+def test_pdf_images_returns_empty_for_pdf_without_text_layer():
+    from app.extraction import extract_pdf_images
+
+    data = _pdf_with_images([(None, [(_png((400, 300)), (200, 150))])])
+
+    assert extract_pdf_images(data) == []
+
+
+def test_pdf_images_returns_empty_for_corrupt_pdf():
+    from app.extraction import extract_pdf_images
+
+    assert extract_pdf_images(b"%PDF-1.4 kaputt") == []
+    assert extract_pdf_images(b"") == []
+
+
+def test_pdf_images_respects_max_images():
+    from app.extraction import extract_pdf_images
+
+    pages = [
+        (_PAGE_TEXT, [(_png((300, 300), (i, 50, 50)), (100, 100))]) for i in range(5)
+    ]
+    data = _pdf_with_images(pages)
+
+    assert len(extract_pdf_images(data, max_images=3)) == 3
+    assert len(extract_pdf_images(data)) == 5

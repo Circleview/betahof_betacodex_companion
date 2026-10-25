@@ -1013,3 +1013,11 @@ def extract_epub(data: bytes) -> dict:
         return {"title": title, "authors": authors, "date": "", "text": text, "extracted": bool(text)}
     except Exception:
         return empty
+
+
+def extract_web_images(html, base_url: str, text: str) -> list[dict]:
+    return []
+
+
+def extract_pdf_images(data: bytes, max_images: int = 30) -> list[dict]:
+    return []
