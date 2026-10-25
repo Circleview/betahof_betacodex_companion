@@ -1119,8 +1119,8 @@ class _ImageCollector(HTMLParser):
 
 
 def _image_candidate(attrs: dict, base_url: str) -> tuple[str, str] | None:
-    src = attrs.get("data-src") or attrs.get("data-lazy-src") or attrs.get("src") or ""
-    url = _safe_https_url(src, base_url)
+    src = (attrs.get("data-src") or attrs.get("data-lazy-src") or attrs.get("src") or "").strip()
+    url = _safe_https_url(src, base_url) if src else None
     if not url or attrs.get("_video_link") or _VIDEO_HOST_RE.match(url):
         return None
     path = urlparse(url).path
