@@ -1790,3 +1790,10 @@ def test_web_images_drop_video_previews():
         '<a href="/bilder/gross.jpg"><img src="/gut.jpg" width="800" height="450" alt="Foto zur Struktur"></a>'
     )
     assert [img["url"] for img in _web_images(body)] == ["https://example.org/gut.jpg"]
+
+
+def test_web_images_ignore_img_without_src():
+    """Bug (2026-10-25): leeres src wurde per urljoin zur Seiten-URL und
+    landete als "Bild" in der Leiste (LinkedIn-Artikel)."""
+    body = '<figure><img src="" data-delayed-url="/x.jpg" width="800" height="600" alt="Bild ohne src"></figure>'
+    assert _web_images(body) == []
