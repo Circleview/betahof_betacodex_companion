@@ -172,6 +172,8 @@ def client(tmp_path, monkeypatch):
     monkeypatch.setattr(main_module, "PDF_UPLOAD_STAGING_DIR", tmp_path / "pdf_uploads")
     monkeypatch.setattr(main_module, "AUDIO_DIR", tmp_path / "audio")
     monkeypatch.setattr(main_module, "AUDIO_UPLOAD_STAGING_DIR", tmp_path / "audio_uploads")
+    monkeypatch.setattr(main_module, "SOURCE_IMAGES_DIR", tmp_path / "source_images")
+    monkeypatch.setattr(main_module, "IMAGE_STAGING_DIR", tmp_path / "image_staging")
 
     # Fix (2026-08-25): Isolation zwischen Tests jetzt über einen pro Test
     # eindeutigen Collection-Namen statt über einen eigenen DB_PATH/Client
@@ -9007,3 +9009,501 @@ def test_ask_does_not_log_system_admins_follow_up_with_conversation_id(anon_clie
     anon_client.post("/api/ask", json={"question": "Folge des Admins", "is_first_message": False, "conversation_id": CID})
 
     assert question_log.list_entries() == []
+
+
+# --- Bildleiste aus Web- und PDF-Quellen (Idee ff895248) -----------------------
+
+_IMG_TEXT = "# Titel\n\nDer erste Absatz handelt vom Hof.\n\nDer zweite Absatz handelt von Teams."
+_IMG_ANCHOR = "Der zweite Absatz handelt von Teams."
+_IMG_WEB = {"kind": "url", "url": "https://img.example.org/a.jpg", "alt": "Ein Bild", "anchor": _IMG_ANCHOR}
+
+
+def _chunk_image_lists(source_id):
+    metas = vectorstore._get_collection().get(where={"source_id": source_id})["metadatas"]
+    metas = sorted(metas, key=lambda m: m["position"])
+    return [json.loads(m["images_json"]) if m.get("images_json") else [] for m in metas]
+
+
+def _import_web_with_images(client, monkeypatch, url="https://example.org/artikel", images=None, text=_IMG_TEXT, **extra):
+    images = [_IMG_WEB] if images is None else images
+    monkeypatch.setattr(
+        extraction,
+        "extract_from_url",
+        lambda u: {"title": "T", "authors": [], "date": "", "text": text, "extracted": True, "images": images},
+    )
+    monkeypatch.setattr(extraction, "looks_like_audio", lambda u: False)
+    monkeypatch.setattr(extraction, "looks_like_pdf", lambda u: False)
+    token = client.post("/api/extract-url", json={"url": url}).json().get("image_token")
+    body = {"title": "T", "text": text, "url": url, "image_token": token, **extra}
+    response = client.post("/api/sources", json=body)
+    assert response.status_code == 200, response.text
+    return response.json()["id"], token
+
+
+def test_extract_url_stages_web_images_and_returns_token(client, monkeypatch, tmp_path):
+    monkeypatch.setattr(
+        extraction,
+        "extract_from_url",
+        lambda u: {"title": "T", "authors": [], "date": "", "text": _IMG_TEXT, "extracted": True, "images": [_IMG_WEB]},
+    )
+    monkeypatch.setattr(extraction, "looks_like_audio", lambda u: False)
+    monkeypatch.setattr(extraction, "looks_like_pdf", lambda u: False)
+
+    data = client.post("/api/extract-url", json={"url": "https://example.org/artikel"}).json()
+
+    assert "images" not in data
+    staged = json.loads((tmp_path / "image_staging" / f"{data['image_token']}.json").read_text())
+    assert staged == {"url": "https://example.org/artikel", "images": [_IMG_WEB]}
+
+
+def test_extract_url_without_images_has_no_token(client, monkeypatch):
+    monkeypatch.setattr(
+        extraction,
+        "extract_from_url",
+        lambda u: {"title": "T", "authors": [], "date": "", "text": "Text.", "extracted": True},
+    )
+    monkeypatch.setattr(extraction, "looks_like_audio", lambda u: False)
+
+    assert client.post("/api/extract-url", json={"url": "https://example.org/x"}).json().get("image_token") is None
+
+
+def test_add_source_stores_staged_images_in_entry_and_chunk_metadata(client, monkeypatch):
+    source_id, _ = _import_web_with_images(client, monkeypatch)
+
+    entry = main_module._load_sources()[source_id]
+    assert [i["url"] for i in entry["images"]] == ["https://img.example.org/a.jpg"]
+    assert entry["images_checked_at"]
+    assert _chunk_image_lists(source_id) == [
+        [{"kind": "url", "url": "https://img.example.org/a.jpg", "alt": "Ein Bild", "page": None}]
+    ]
+
+
+def test_add_source_ignores_staged_images_of_other_url(client, monkeypatch):
+    monkeypatch.setattr(
+        extraction,
+        "extract_from_url",
+        lambda u: {"title": "T", "authors": [], "date": "", "text": _IMG_TEXT, "extracted": True, "images": [_IMG_WEB]},
+    )
+    monkeypatch.setattr(extraction, "looks_like_audio", lambda u: False)
+    monkeypatch.setattr(extraction, "looks_like_pdf", lambda u: False)
+    token = client.post("/api/extract-url", json={"url": "https://example.org/artikel"}).json()["image_token"]
+
+    response = client.post(
+        "/api/sources",
+        json={"title": "T", "text": _IMG_TEXT, "url": "https://example.org/andere-seite", "image_token": token},
+    )
+
+    entry = main_module._load_sources()[response.json()["id"]]
+    assert not entry.get("images")
+    assert _chunk_image_lists(entry["id"]) == [[]]
+
+
+def test_add_source_ignores_images_sent_in_body(client):
+    body = {"title": "T", "text": _IMG_TEXT, "url": "https://example.org/x", "images": [_IMG_WEB]}
+    response = client.post("/api/sources", json=body)
+
+    entry = main_module._load_sources()[response.json()["id"]]
+    assert not entry.get("images")
+    assert _chunk_image_lists(entry["id"]) == [[]]
+
+
+def test_add_source_pdf_upload_creates_local_webp_images(client, monkeypatch, tmp_path):
+    from tests.test_extraction import _PAGE_TEXT, _pdf_with_images, _png
+
+    pdf = _pdf_with_images([(_PAGE_TEXT, [(_png((1200, 900)), (200, 150))])])
+    (tmp_path / "pdf_uploads").mkdir()
+    upload_id = str(uuid.uuid4())
+    (tmp_path / "pdf_uploads" / f"{upload_id}.pdf").write_bytes(pdf)
+
+    response = client.post("/api/sources", json={"title": "PDF", "text": _PAGE_TEXT, "pdf_upload_id": upload_id})
+
+    source_id = response.json()["id"]
+    entry = main_module._load_sources()[source_id]
+    assert len(entry["images"]) == 1 and entry["images"][0]["kind"] == "file" and entry["images"][0]["page"] == 1
+    assert (tmp_path / "source_images" / source_id / entry["images"][0]["file"]).is_file()
+    chunk_images = _chunk_image_lists(source_id)[0]
+    assert chunk_images == [{"kind": "file", "file": entry["images"][0]["file"], "alt": "", "page": 1}]
+
+
+def _put_image(tmp_path, source_id):
+    from PIL import Image
+
+    from app import source_images
+
+    buf = __import__("io").BytesIO()
+    Image.new("RGB", (40, 30), (1, 2, 3)).save(buf, format="PNG")
+    return source_images.store_images(tmp_path / "source_images", source_id, [{"data": buf.getvalue(), "page": 1, "anchor": "x"}])[0]["file"]
+
+
+def test_image_endpoint_serves_webp_with_headers(client, anon_client, tmp_path):
+    source_id = client.post("/api/sources", json={"title": "T", "text": "Text."}).json()["id"]
+    name = _put_image(tmp_path, source_id)
+
+    response = anon_client.get(f"/api/sources/{source_id}/images/{name}")
+
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "image/webp"
+    assert response.headers["x-content-type-options"] == "nosniff"
+    assert "private" in response.headers["cache-control"] and "max-age=604800" in response.headers["cache-control"]
+
+
+def test_image_endpoint_rejects_traversal_bad_names_and_unknown_sources(client, anon_client, tmp_path):
+    source_id = client.post("/api/sources", json={"title": "T", "text": "Text."}).json()["id"]
+    name = _put_image(tmp_path, source_id)
+
+    for path in (
+        f"/api/sources/x/images/../pdfs/x.pdf",
+        f"/api/sources/{source_id}/images/..%2Fpdfs%2Fx.pdf",
+        f"/api/sources/{source_id}/images/{'0' * 32}.webp",
+        f"/api/sources/{source_id}/images/{name[:-5]}.png",
+        f"/api/sources/{source_id}/images/{name.upper()}",
+        f"/api/sources/..%2F{source_id}/images/{name}",
+        f"/api/sources/{uuid.uuid4()}/images/{name}",
+    ):
+        assert anon_client.get(path).status_code == 404, path
+
+
+def test_image_endpoint_404_for_deleted_source(client, anon_client, tmp_path):
+    source_id = client.post("/api/sources", json={"title": "T", "text": "Text."}).json()["id"]
+    name = _put_image(tmp_path, source_id)
+    client.delete(f"/api/sources/{source_id}")
+
+    assert anon_client.get(f"/api/sources/{source_id}/images/{name}").status_code == 404
+
+
+def test_edit_keeps_images_in_entry_and_chunks(client, monkeypatch):
+    source_id, _ = _import_web_with_images(client, monkeypatch)
+    before = main_module._load_sources()[source_id]["images"]
+
+    client.put(f"/api/sources/{source_id}", json={"title": "Neuer Titel", "text": _IMG_TEXT, "url": "https://example.org/artikel"})
+
+    assert main_module._load_sources()[source_id]["images"] == before
+    assert _chunk_image_lists(source_id)[0][0]["url"] == "https://img.example.org/a.jpg"
+
+
+def test_revert_text_change_keeps_images(client, monkeypatch):
+    source_id, _ = _import_web_with_images(client, monkeypatch)
+    client.put(f"/api/sources/{source_id}", json={"title": "T", "text": _IMG_TEXT + " Mehr.", "url": "https://example.org/artikel"})
+    entry = next(e for e in client.get("/api/audit-log").json() if e["action"] == "source_updated")
+
+    assert client.post(f"/api/audit-log/{entry['id']}/revert").status_code == 200
+
+    assert main_module._load_sources()[source_id]["images"][0]["url"] == "https://img.example.org/a.jpg"
+    assert _chunk_image_lists(source_id)[0][0]["url"] == "https://img.example.org/a.jpg"
+
+
+def test_restore_deleted_source_keeps_images(client, monkeypatch):
+    source_id, _ = _import_web_with_images(client, monkeypatch)
+    client.delete(f"/api/sources/{source_id}")
+    entry = next(e for e in client.get("/api/audit-log").json() if e["action"] == "source_deleted")
+
+    assert client.post(f"/api/audit-log/{entry['id']}/revert").status_code == 200
+
+    assert _chunk_image_lists(source_id)[0][0]["url"] == "https://img.example.org/a.jpg"
+
+
+def test_reindex_keeps_images(client, monkeypatch):
+    source_id, _ = _import_web_with_images(client, monkeypatch)
+    vectorstore.delete_source_chunks(source_id)
+
+    main_module._reindex_all_sources()
+
+    assert _chunk_image_lists(source_id)[0][0]["url"] == "https://img.example.org/a.jpg"
+
+
+# --- Bilder nachladen ---
+
+
+def _hand_curated(source_id, url="https://example.org/alt"):
+    sources = main_module._load_sources()
+    sources[source_id].update(
+        {
+            "url": url,
+            "summary_de": "Von Hand geschrieben.",
+            "summary_ai_generated_de": False,
+            "key_terms_de": ["Hand"],
+            "key_terms_ai_generated_de": False,
+        }
+    )
+    main_module._save_sources(sources)
+
+
+def _forbid_ai(monkeypatch):
+    def boom(*a, **k):
+        raise AssertionError("KI-Aufruf beim Bild-Nachladen")
+
+    monkeypatch.setattr(summarization, "generate_bilingual_summary", boom)
+    monkeypatch.setattr(main_module, "_generate_summary_with_retries", boom)
+    monkeypatch.setattr(main_module, "_register_all_terms", boom)
+
+
+def test_backfill_images_leaves_text_summary_terms_and_flags_untouched(client, monkeypatch):
+    source_id = client.post("/api/sources", json={"title": "Alt", "text": _IMG_TEXT}).json()["id"]
+    _hand_curated(source_id)
+    before = main_module._load_sources()[source_id]
+    monkeypatch.setattr(
+        extraction,
+        "extract_from_url",
+        lambda u: {"title": "x", "authors": [], "date": "", "text": _IMG_TEXT, "extracted": True, "images": [_IMG_WEB]},
+    )
+    _forbid_ai(monkeypatch)
+
+    assert main_module._backfill_images(source_id) is True
+
+    after = main_module._load_sources()[source_id]
+    assert [i["url"] for i in after["images"]] == ["https://img.example.org/a.jpg"]
+    assert after["images_checked_at"]
+    changed = {k for k in set(before) | set(after) if before.get(k) != after.get(k)}
+    assert changed == {"images", "images_checked_at"}
+    assert json.dumps(after["text"]) == json.dumps(before["text"])
+    assert _chunk_image_lists(source_id)[0][0]["url"] == "https://img.example.org/a.jpg"
+
+
+def test_reindex_without_parameter_fetches_nothing(client, monkeypatch):
+    source_id = client.post("/api/sources", json={"title": "Alt", "text": _IMG_TEXT}).json()["id"]
+    _hand_curated(source_id)
+
+    def boom(u):
+        raise AssertionError("Abruf ohne fetch_missing_images")
+
+    monkeypatch.setattr(extraction, "extract_from_url", boom)
+
+    main_module._reindex_all_sources()
+    main_module._reindex_all_sources(only_changed=True)
+
+    assert "images_checked_at" not in main_module._load_sources()[source_id]
+
+
+def test_reindex_with_fetch_missing_images_backfills_once(client, monkeypatch):
+    source_id = client.post("/api/sources", json={"title": "Alt", "text": _IMG_TEXT}).json()["id"]
+    _hand_curated(source_id)
+    calls = []
+
+    def fake(u):
+        calls.append(u)
+        return {"title": "x", "authors": [], "date": "", "text": _IMG_TEXT, "extracted": True, "images": [_IMG_WEB]}
+
+    monkeypatch.setattr(extraction, "extract_from_url", fake)
+    _forbid_ai(monkeypatch)
+
+    main_module._reindex_all_sources(fetch_missing_images=True)
+    main_module._reindex_all_sources(fetch_missing_images=True)
+
+    assert calls == ["https://example.org/alt"]
+    assert _chunk_image_lists(source_id)[0][0]["url"] == "https://img.example.org/a.jpg"
+
+
+def test_backfill_failure_sets_nothing_and_next_run_retries(client, monkeypatch):
+    source_id = client.post("/api/sources", json={"title": "Alt", "text": _IMG_TEXT}).json()["id"]
+    _hand_curated(source_id)
+    monkeypatch.setattr(
+        extraction, "extract_from_url", lambda u: {"title": "", "authors": [], "date": "", "text": "", "extracted": False}
+    )
+
+    assert main_module._backfill_images(source_id) is False
+
+    entry = main_module._load_sources()[source_id]
+    assert "images_checked_at" not in entry and not entry.get("images")
+    monkeypatch.setattr(
+        extraction,
+        "extract_from_url",
+        lambda u: {"title": "x", "authors": [], "date": "", "text": _IMG_TEXT, "extracted": True, "images": []},
+    )
+    assert main_module._backfill_images(source_id) is True
+    assert main_module._load_sources()[source_id]["images_checked_at"]
+
+
+def test_backfill_reads_pdf_file_instead_of_url(client, monkeypatch, tmp_path):
+    from tests.test_extraction import _PAGE_TEXT, _pdf_with_images, _png
+
+    source_id = client.post("/api/sources", json={"title": "PDF", "text": _PAGE_TEXT}).json()["id"]
+    _hand_curated(source_id, url="https://example.org/buch.pdf")
+    (tmp_path / "pdfs").mkdir(exist_ok=True)
+    (tmp_path / "pdfs" / f"{source_id}.pdf").write_bytes(_pdf_with_images([(_PAGE_TEXT, [(_png((1200, 900)), (200, 150))])]))
+
+    def boom(u):
+        raise AssertionError("URL abgerufen, obwohl PDF-Datei vorliegt")
+
+    monkeypatch.setattr(extraction, "extract_from_url", boom)
+    _forbid_ai(monkeypatch)
+
+    assert main_module._backfill_images(source_id) is True
+
+    entry = main_module._load_sources()[source_id]
+    assert entry["images"][0]["kind"] == "file" and entry["images"][0]["page"] == 1
+    assert (tmp_path / "source_images" / source_id / entry["images"][0]["file"]).is_file()
+
+
+def test_backfill_skips_youtube_and_audio(client, monkeypatch):
+    yt = client.post("/api/sources", json={"title": "YT", "text": "Transkript."}).json()["id"]
+    _hand_curated(yt, url="https://www.youtube.com/watch?v=abcdefghijk")
+
+    def boom(u):
+        raise AssertionError("Abruf")
+
+    monkeypatch.setattr(extraction, "extract_from_url", boom)
+    monkeypatch.setattr(extraction, "looks_like_audio", lambda u: False)
+
+    assert main_module._backfill_images(yt) is False
+
+
+def test_admin_reindex_endpoint_enables_image_backfill(client, monkeypatch):
+    calls = []
+    monkeypatch.setattr(main_module, "_reindex_all_sources", lambda **kw: calls.append(kw))
+
+    assert client.post("/api/admin/reindex-sources").status_code == 200
+
+    assert calls == [{"only_changed": False, "fetch_missing_images": True}]
+
+
+def test_startup_reindex_does_not_fetch_images(client, monkeypatch):
+    calls = []
+    monkeypatch.setattr(main_module, "_reindex_all_sources", lambda **kw: calls.append(kw) or 0)
+
+    main_module._startup_reindex(delay=0)
+
+    assert calls and not any(c.get("fetch_missing_images") for c in calls)
+
+
+# --- Antwort: ChunkRef.images ---
+
+
+def _seed_image_chunks(client, images_per_chunk, restricted=False, title="Q"):
+    """Legt eine Quelle mit einem Chunk je Eintrag an; Bilder je Chunk als images_json."""
+    source_id = client.post("/api/sources", json={"title": title, "text": "x.", "restricted": restricted}).json()["id"]
+    vectorstore.delete_source_chunks(source_id)
+    ids = [f"{source_id}::{i}" for i in range(len(images_per_chunk))]
+    metas = []
+    for i, imgs in enumerate(images_per_chunk):
+        meta = {"source_id": source_id, "title": title, "date": "", "url": "https://example.org/q", "listen_url": "", "position": i}
+        if imgs is not None:
+            meta["images_json"] = imgs if isinstance(imgs, str) else json.dumps(imgs)
+        metas.append(meta)
+    vectorstore.add_chunks(ids, [f"Chunk {i}" for i in range(len(ids))], [[1.0, 0.0]] * len(ids), metas)
+    return source_id
+
+
+def _ask_events(client, monkeypatch, **kw):
+    monkeypatch.setattr(llm, "stream_answer_question", lambda *a, **k: iter(["Antwort [1]."]))
+    response = client.post("/api/ask", json={"question": "Frage?", **kw})
+    return [json.loads(line) for line in response.text.split("\n") if line.strip()]
+
+
+def test_ask_returns_images_in_sources_and_done_events(client, monkeypatch):
+    name = "a" * 32 + ".webp"
+    source_id = _seed_image_chunks(
+        client,
+        [[
+            {"kind": "url", "url": "https://img.example.org/a.jpg", "alt": "Web", "page": None},
+            {"kind": "file", "file": name, "alt": "", "page": 4},
+        ]],
+    )
+
+    events = _ask_events(client, monkeypatch)
+
+    expected = [
+        {"src": "https://img.example.org/a.jpg", "alt": "Web", "page": None},
+        {"src": f"/api/sources/{source_id}/images/{name}", "alt": "", "page": 4},
+    ]
+    assert next(e for e in events if e["type"] == "sources")["sources"][0]["images"] == expected
+    assert next(e for e in events if e["type"] == "done")["sources"][0]["images"] == expected
+
+
+def test_ask_missing_or_broken_images_field_gives_empty_list(client, monkeypatch):
+    _seed_image_chunks(client, [None, "{kaputt", json.dumps([{"kind": "url", "url": "javascript:alert(1)"}, {"kind": "file", "file": "../x"}, 5, {"kind": "x"}])])
+
+    events = _ask_events(client, monkeypatch, top_k=5)
+
+    refs = next(e for e in events if e["type"] == "done")["sources"]
+    assert len(refs) == 3 and all(r["images"] == [] for r in refs)
+
+
+def test_ask_restricted_source_returns_exactly_one_image_over_all_refs(client, monkeypatch):
+    imgs = lambda n: [{"kind": "url", "url": f"https://img.example.org/{n}-{k}.jpg", "alt": "", "page": None} for k in range(2)]
+    _seed_image_chunks(client, [imgs(0), imgs(1), imgs(2)], restricted=True)
+
+    events = _ask_events(client, monkeypatch, top_k=5)
+
+    refs = next(e for e in events if e["type"] == "done")["sources"]
+    assert len(refs) == 3
+    assert sum(len(r["images"]) for r in refs) == 1
+
+
+def test_ask_open_source_keeps_all_images(client, monkeypatch):
+    imgs = lambda n: [{"kind": "url", "url": f"https://img.example.org/{n}.jpg", "alt": "", "page": None}]
+    _seed_image_chunks(client, [imgs(0), imgs(1), imgs(2)])
+
+    refs = next(e for e in _ask_events(client, monkeypatch, top_k=5) if e["type"] == "done")["sources"]
+
+    assert sum(len(r["images"]) for r in refs) == 3
+
+
+def test_ask_web_fallback_refs_have_no_images():
+    from app.models import ChunkRef
+
+    ref = ChunkRef(chunk_id="w", source_id="p", title="T", position=0, text="t", is_web_fallback=True)
+    main_module._apply_chunk_images([ref], [{"source_id": "p", "images_json": json.dumps([{"kind": "url", "url": "https://i.example.org/a.jpg"}])}], {})
+
+    assert ref.images == []
+
+
+def test_ask_prompt_contains_no_image_url(client, monkeypatch):
+    _seed_image_chunks(client, [[{"kind": "url", "url": "https://img.example.org/geheim-bild.jpg", "alt": "Bildtext", "page": None}]])
+    captured = []
+
+    def fake_stream(*args, **kwargs):
+        captured.append(repr((args, kwargs)))
+        return iter(["Antwort [1]."])
+
+    monkeypatch.setattr(llm, "stream_answer_question", fake_stream)
+    client.post("/api/ask", json={"question": "Frage?"})
+
+    assert captured and "geheim-bild" not in captured[0] and "Bildtext" not in captured[0]
+
+
+# --- Handoff ---
+
+
+def test_handoff_replaces_injected_images_by_chunk_id(client, monkeypatch):
+    source_id = _seed_image_chunks(client, [[{"kind": "url", "url": "https://img.example.org/echt.jpg", "alt": "Echt", "page": None}]])
+    turn = {
+        "question": "F?",
+        "answer": "A.",
+        "sources": [
+            {
+                "chunk_id": f"{source_id}::0", "source_id": source_id, "title": "Q", "position": 0, "text": "Chunk 0",
+                "images": [{"src": "https://boese.example.net/x.png", "alt": "Böse", "page": None}],
+            },
+            {
+                "chunk_id": "erfunden::0", "source_id": "erfunden", "title": "Fake", "position": 0, "text": "t",
+                "images": [{"src": "https://boese.example.net/y.png", "alt": "Böse", "page": None}],
+            },
+        ],
+    }
+    token = client.post("/api/conversation-handoff", json={"history": [turn]}).json()["token"]
+
+    sources = client.get(f"/api/conversation-handoff/{token}").json()["history"][0]["sources"]
+
+    assert sources[0]["images"] == [{"src": "https://img.example.org/echt.jpg", "alt": "Echt", "page": None}]
+    assert sources[1]["images"] == []
+
+
+def test_handoff_applies_restricted_limit_and_sanitizes_urls(client, monkeypatch):
+    imgs = lambda n: [{"kind": "url", "url": f"https://img.example.org/{n}.jpg", "alt": "", "page": None}]
+    source_id = _seed_image_chunks(client, [imgs(0), imgs(1)], restricted=True)
+    base = {"source_id": source_id, "title": "Q", "text": "t", "images": []}
+    turn = {
+        "question": "F?",
+        "answer": "A.",
+        "sources": [
+            {**base, "chunk_id": f"{source_id}::0", "position": 0, "url": "javascript:alert(1)", "listen_url": "data:text/html,x"},
+            {**base, "chunk_id": f"{source_id}::1", "position": 1, "url": "https://example.org/ok"},
+        ],
+    }
+    token = client.post("/api/conversation-handoff", json={"history": [turn]}).json()["token"]
+
+    sources = client.get(f"/api/conversation-handoff/{token}").json()["history"][0]["sources"]
+
+    assert sum(len(s["images"]) for s in sources) == 1
+    assert sources[0]["url"] is None and sources[0]["listen_url"] is None
+    assert sources[1]["url"] == "https://example.org/ok"
