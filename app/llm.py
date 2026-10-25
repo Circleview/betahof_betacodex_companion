@@ -342,14 +342,16 @@ def stream_answer_question(
     for turn in history or []:
         messages.append({"role": "user", "content": turn["question"]})
         messages.append({"role": "assistant", "content": turn["answer"]})
-    explicit = _EXPLICIT_LANGUAGE.get(_question_language(question))
+    # Nutzerwunsch (2026-10-25): unklare Fragesprache -> Englisch, auch bei
+    # deutschen Quellen und deutscher UI.
+    explicit = _EXPLICIT_LANGUAGE[_question_language(question) or "en"]
     messages.append(
         {
             "role": "user",
             "content": (
                 f"Kontext-Textausschnitte:\n\n{context}\n\nFrage: {question}\n\n"
                 f"{_PARTIAL_ANSWER_REMINDERS[lang]}\n{_LANGUAGE_REMINDERS[lang]}"
-                + (f"\n{explicit}" if explicit else "")
+                + f"\n{explicit}"
             ),
         }
     )
