@@ -4868,3 +4868,25 @@ for (let i = 0; i < 3; i += 1) refreshImageStrip(b, extractCitedSources(b, early
 console.log(JSON.stringify(strips(b).length));
 """)
     assert result == 1
+
+
+def test_ask_error_shows_speaking_message_and_retry_button():
+    """Nutzerwunsch (2026-10-25): statt "Error: Failed to fetch" eine
+    verständliche Meldung (DE/EN) und ein Button, der dieselbe Frage erneut
+    stellt."""
+    script = """
+const results = [new TypeError('Failed to fetch'), new Error('Zu viele Anfragen'), new Error('')].map((err) => {
+  const bubble = document.createElement('div');
+  let retried = 0;
+  renderAskError(bubble, err, () => { retried += 1; });
+  const btn = bubble.querySelectorAll('.retry-button')[0];
+  btn.listeners.click();
+  return { text: bubble.children[0].textContent, button: btn.textContent, type: btn.type, retried };
+});
+console.log(JSON.stringify(results));
+"""
+    assert _run_question_js(script, "askErrorText", "renderAskError") == [
+        {"text": "index.askErrorNetwork", "button": "index.retry", "type": "button", "retried": 1},
+        {"text": "Zu viele Anfragen", "button": "index.retry", "type": "button", "retried": 1},
+        {"text": "index.askError", "button": "index.retry", "type": "button", "retried": 1},
+    ]
