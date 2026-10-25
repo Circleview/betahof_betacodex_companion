@@ -15,7 +15,7 @@ import time
 import urllib.request
 from pathlib import Path
 from typing import Callable
-from urllib.parse import parse_qs, parse_qsl, urlencode, urljoin, urlparse, urlunparse
+from urllib.parse import parse_qs, parse_qsl, unquote, urlencode, urljoin, urlparse, urlunparse
 
 import openai
 import trafilatura
@@ -1033,6 +1033,14 @@ _URL_SIZE_HINTS = (
     re.compile(r"w(\d{2,5}),h(\d{2,5})"),
     re.compile(r"(\d{2,5})x(\d{2,5})(?=\.\w+$|[?#]|$)"),
 )
+# CDN-Transformationen (Cloudinary/Substack: w_40,h_40) nennen die
+# angezeigte Größe - sie zählen vor der Originalgröße im Dateinamen.
+_CDN_W_RE = re.compile(r"(?:^|[,/])w_(\d{2,5})(?=[,/])")
+_CDN_H_RE = re.compile(r"(?:^|[,/])h_(\d{2,5})(?=[,/])")
+# Breiter/höher als 4:1 = Schriftzug-Banner oder Trennlinie, keine Grafik.
+_MAX_IMAGE_ASPECT = 4
+# Nutzerwunsch (2026-10-25): Video-Vorschauen stiften keinen Wert.
+_VIDEO_HOST_RE = re.compile(r"^https?://([^/]*\.)?(youtube\.com|youtu\.be|youtube-nocookie\.com|ytimg\.com|vimeo\.com|vimeocdn\.com)(/|$)", re.IGNORECASE)
 
 
 def _px(value: str | None) -> int | None:
@@ -1040,10 +1048,13 @@ def _px(value: str | None) -> int | None:
     return int(match.group(1)) if match else None
 
 
-def _size_hint(url: str, srcset: str) -> tuple[int, int | None] | None:
+def _size_hint(url: str, srcset: str) -> tuple[int | None, int | None] | None:
     """Größe aus URL-Muster (w1920,h798 / -1366x1366) oder dem größten
     srcset-Deskriptor; None, wenn nichts erkennbar."""
-    path = urlparse(url).path
+    path = unquote(urlparse(url).path)
+    cdn_w, cdn_h = _CDN_W_RE.search(path), _CDN_H_RE.search(path)
+    if cdn_w or cdn_h:
+        return (int(cdn_w.group(1)) if cdn_w else None, int(cdn_h.group(1)) if cdn_h else None)
     for pattern in _URL_SIZE_HINTS:
         match = pattern.search(path)
         if match:
@@ -1073,8 +1084,11 @@ class _ImageCollector(HTMLParser):
         self._chrome = 0
         self._figure = 0
         self._ignore = 0
+        self._link = ""
 
     def handle_starttag(self, tag, attrs):
+        if tag == "a":
+            self._link = dict(attrs).get("href") or ""
         if tag in _CHROME_TAGS:
             self._chrome += 1
         elif tag == "figure":
@@ -1082,9 +1096,13 @@ class _ImageCollector(HTMLParser):
         elif tag in ("script", "style"):
             self._ignore += 1
         elif tag == "img" and not self._chrome:
-            self.events.append(("img", {**dict(attrs), "_in_figure": bool(self._figure)}))
+            self.events.append(
+                ("img", {**dict(attrs), "_in_figure": bool(self._figure), "_video_link": bool(_VIDEO_HOST_RE.match(self._link))})
+            )
 
     def handle_endtag(self, tag):
+        if tag == "a":
+            self._link = ""
         if tag in _CHROME_TAGS:
             self._chrome = max(0, self._chrome - 1)
         elif tag == "figure":
@@ -1103,7 +1121,7 @@ class _ImageCollector(HTMLParser):
 def _image_candidate(attrs: dict, base_url: str) -> tuple[str, str] | None:
     src = attrs.get("data-src") or attrs.get("data-lazy-src") or attrs.get("src") or ""
     url = _safe_https_url(src, base_url)
-    if not url:
+    if not url or attrs.get("_video_link") or _VIDEO_HOST_RE.match(url):
         return None
     path = urlparse(url).path
     if _SKIP_IMAGE_EXT_RE.search(path) or _SKIP_IMAGE_NAME_RE.search(path):
@@ -1118,6 +1136,11 @@ def _image_candidate(attrs: dict, base_url: str) -> tuple[str, str] | None:
         if not attrs["_in_figure"] and len(alt) < 10:
             return None
     elif min(v for v in (width, height) if v is not None) < _MIN_WEB_IMAGE_PX:
+        return None
+    if not (width and height):
+        original = _URL_SIZE_HINTS[1].search(unquote(path))
+        width, height = (int(original.group(1)), int(original.group(2))) if original else (width, height)
+    if width and height and max(width, height) > _MAX_IMAGE_ASPECT * min(width, height):
         return None
     return url, alt
 
