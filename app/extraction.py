@@ -15,7 +15,7 @@ import time
 import urllib.request
 from pathlib import Path
 from typing import Callable
-from urllib.parse import parse_qs, parse_qsl, urlencode, urlparse, urlunparse
+from urllib.parse import parse_qs, parse_qsl, urlencode, urljoin, urlparse, urlunparse
 
 import openai
 import trafilatura
@@ -888,13 +888,17 @@ def extract_from_url(url: str) -> dict:
 
     parsed = _parse_markdown_extraction(markdown_result)
     text = parsed["text"].strip()
-    return {
+    result = {
         "title": parsed["title"],
         "authors": parsed["authors"],
         "date": parsed["date"],
         "text": text,
         "extracted": bool(text),
     }
+    images = extract_web_images(downloaded, url, text) if text else []
+    if images:
+        result["images"] = images
+    return result
 
 
 
@@ -1015,9 +1019,196 @@ def extract_epub(data: bytes) -> dict:
         return empty
 
 
+# --- Bilder (Idee ff895248) ---------------------------------------------------
+MAX_IMAGES_PER_SOURCE = 30
+_MIN_WEB_IMAGE_PX = 120
+_MIN_PDF_IMAGE_PX = 200
+_IMAGE_ALT_MAX = 300
+_ANCHOR_CHARS = 80
+_SKIP_IMAGE_NAME_RE = re.compile(r"logo|icon|avatar|sprite|pixel|badge|emoji|gravatar", re.IGNORECASE)
+_SKIP_IMAGE_EXT_RE = re.compile(r"\.(svg|ico|gif)$", re.IGNORECASE)
+_CHROME_TAGS = {"nav", "header", "footer", "aside"}
+_URL_SIZE_HINTS = (
+    re.compile(r"w(\d{2,5}),h(\d{2,5})"),
+    re.compile(r"(\d{2,5})x(\d{2,5})(?=\.\w+$|[?#]|$)"),
+)
+
+
+def _norm(text: str) -> str:
+    """Vergleichsform für Anker: nur Buchstaben/Ziffern, klein - robust gegen
+    Markdown-Zeichen und Leerraum im extrahierten Text."""
+    return re.sub(r"\W+", "", text.lower())
+
+
+def _px(value: str | None) -> int | None:
+    match = re.match(r"\s*(\d+)", value or "")
+    return int(match.group(1)) if match else None
+
+
+def _size_hint(url: str, srcset: str) -> tuple[int, int | None] | None:
+    """Größe aus URL-Muster (w1920,h798 / -1366x1366) oder dem größten
+    srcset-Deskriptor; None, wenn nichts erkennbar."""
+    path = urlparse(url).path
+    for pattern in _URL_SIZE_HINTS:
+        match = pattern.search(path)
+        if match:
+            return int(match.group(1)), int(match.group(2))
+    widths = [int(m) for m in re.findall(r"\s(\d+)w\b", srcset or "")]
+    return (max(widths), None) if widths else None
+
+
+def _safe_https_url(raw: str, base_url: str) -> str | None:
+    try:
+        url = urljoin(base_url, (raw or "").strip())
+        parts = urlparse(url)
+    except ValueError:
+        return None
+    if parts.scheme != "https" or not parts.hostname or parts.username or parts.password:
+        return None
+    return url
+
+
+class _ImageCollector(HTMLParser):
+    """Zweiter Durchlauf neben trafilatura: sammelt <img> samt Kontext und die
+    Textknoten, aus denen später der Anker gewählt wird."""
+
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.events: list[tuple[str, object]] = []  # ("text", str) | ("img", dict)
+        self._chrome = 0
+        self._figure = 0
+        self._ignore = 0
+
+    def handle_starttag(self, tag, attrs):
+        if tag in _CHROME_TAGS:
+            self._chrome += 1
+        elif tag == "figure":
+            self._figure += 1
+        elif tag in ("script", "style"):
+            self._ignore += 1
+        elif tag == "img" and not self._chrome:
+            self.events.append(("img", {**dict(attrs), "_in_figure": bool(self._figure)}))
+
+    def handle_endtag(self, tag):
+        if tag in _CHROME_TAGS:
+            self._chrome = max(0, self._chrome - 1)
+        elif tag == "figure":
+            self._figure = max(0, self._figure - 1)
+        elif tag in ("script", "style"):
+            self._ignore = max(0, self._ignore - 1)
+
+    def handle_data(self, data):
+        if self._chrome or self._ignore:
+            return
+        collapsed = " ".join(data.split())
+        if len(collapsed) >= 20:
+            self.events.append(("text", collapsed))
+
+
+def _image_candidate(attrs: dict, base_url: str) -> tuple[str, str] | None:
+    src = attrs.get("data-src") or attrs.get("data-lazy-src") or attrs.get("src") or ""
+    url = _safe_https_url(src, base_url)
+    if not url:
+        return None
+    path = urlparse(url).path
+    if _SKIP_IMAGE_EXT_RE.search(path) or _SKIP_IMAGE_NAME_RE.search(path):
+        return None
+    alt = " ".join((attrs.get("alt") or "").split())[:_IMAGE_ALT_MAX]
+    width, height = _px(attrs.get("width")), _px(attrs.get("height"))
+    if width is None and height is None:
+        hint = _size_hint(url, attrs.get("srcset") or attrs.get("data-srcset") or "")
+        if hint:
+            width, height = hint
+    if width is None and height is None:
+        if not attrs["_in_figure"] and len(alt) < 10:
+            return None
+    elif min(v for v in (width, height) if v is not None) < _MIN_WEB_IMAGE_PX:
+        return None
+    return url, alt
+
+
 def extract_web_images(html, base_url: str, text: str) -> list[dict]:
-    return []
+    """Bilder einer Web-Seite als {kind:"url", url, alt, anchor}. Nur https,
+    ohne Logos/Icons/Navigation; der Anker (80 Zeichen des nächsten
+    Textknotens) muss im extrahierten Text stehen, sonst fällt das Bild weg.
+    Fehler -> []."""
+    try:
+        if isinstance(html, bytes):
+            html = html.decode("utf-8", errors="replace")
+        collector = _ImageCollector()
+        collector.feed(html)
+        collector.close()
+        events = collector.events
+        text_norm = _norm(text)
+        images, seen = [], set()
+        for index, (kind, payload) in enumerate(events):
+            if kind != "img":
+                continue
+            candidate = _image_candidate(payload, base_url)
+            if not candidate or candidate[0] in seen:
+                continue
+            following = [e[1] for e in events[index + 1 :] if e[0] == "text"][:8]
+            preceding = [e[1] for e in reversed(events[:index]) if e[0] == "text"][:1]
+            for node in following + preceding:
+                anchor = node[:_ANCHOR_CHARS]
+                if _norm(anchor) and _norm(anchor) in text_norm:
+                    seen.add(candidate[0])
+                    images.append({"kind": "url", "url": candidate[0], "alt": candidate[1], "anchor": anchor})
+                    break
+            if len(images) >= MAX_IMAGES_PER_SOURCE:
+                break
+        return images
+    except Exception:
+        return []
 
 
-def extract_pdf_images(data: bytes, max_images: int = 30) -> list[dict]:
-    return []
+def extract_pdf_images(data: bytes, max_images: int = MAX_IMAGES_PER_SOURCE) -> list[dict]:
+    """Eingebettete Bilder eines PDFs als {data, page (1-basiert), anchor}.
+    Verworfen: unter 200 px, auf >= 3 Seiten wiederholt (Logos/Kopfzeilen),
+    >= 90 % der Seite (Scans), Seiten ohne Text (kein Anker). Fehler -> []."""
+    try:
+        import fitz
+
+        reader = PdfReader(io.BytesIO(data))
+        doc = fitz.open(stream=data, filetype="pdf")
+    except Exception:
+        return []
+    try:
+        pages_of: dict[int, set[int]] = {}
+        for index, page in enumerate(doc):
+            for img in page.get_images():
+                pages_of.setdefault(img[0], set()).add(index)
+        result = []
+        for index, page in enumerate(doc):
+            try:
+                page_text = " ".join((reader.pages[index].extract_text() or "").split())
+            except Exception:
+                continue
+            if not page_text:
+                continue
+            page_area = page.rect.get_area() or 1
+            for img in page.get_images():
+                xref = img[0]
+                if len(pages_of[xref]) >= 3 or any(r["xref"] == xref for r in result):
+                    continue
+                try:
+                    rects = page.get_image_rects(xref)
+                    if any(r.get_area() / page_area >= 0.9 for r in rects):
+                        continue
+                    info = doc.extract_image(xref)
+                except Exception:
+                    continue
+                if not info or min(info["width"], info["height"]) < _MIN_PDF_IMAGE_PX:
+                    continue
+                result.append(
+                    {"xref": xref, "data": info["image"], "page": index + 1, "anchor": page_text[:_ANCHOR_CHARS]}
+                )
+                if len(result) >= max_images:
+                    break
+            if len(result) >= max_images:
+                break
+        return [{k: v for k, v in r.items() if k != "xref"} for r in result]
+    except Exception:
+        return []
+    finally:
+        doc.close()
