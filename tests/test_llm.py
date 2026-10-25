@@ -102,10 +102,12 @@ def test_german_question_with_english_ui_gets_german_sentence():
     assert content.rstrip().endswith("Antworte ausschließlich auf Deutsch.")
 
 
-def test_ambiguous_question_gets_no_explicit_sentence():
-    content = _user_content("Scrum?", "en")
-    assert "exclusively" not in content and "ausschließlich auf Deutsch" not in content
-    assert content.rstrip().endswith(llm._LANGUAGE_REMINDERS["en"])
+def test_ambiguous_question_defaults_to_english():
+    """Nutzerwunsch (2026-10-25): unklare Fragesprache -> Englisch, auch bei
+    deutscher UI und deutschen Quellen."""
+    for ui in ("en", "de"):
+        content = _user_content("Scrum?", ui)
+        assert content.rstrip().endswith("Answer exclusively in English.")
 
 
 def test_question_language_detection():
