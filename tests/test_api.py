@@ -9169,3 +9169,23 @@ def test_ask_does_not_log_system_admins_follow_up_with_conversation_id(anon_clie
     anon_client.post("/api/ask", json={"question": "Folge des Admins", "is_first_message": False, "conversation_id": CID})
 
     assert question_log.list_entries() == []
+
+
+def test_conversation_handoff_store_is_thread_safe_and_keeps_cap(monkeypatch):
+    from concurrent.futures import ThreadPoolExecutor
+
+    monkeypatch.setattr(conversation_handoff, "_store", {})
+    monkeypatch.setattr(conversation_handoff, "MAX_TOTAL_BYTES", 1000)
+
+    def attempt(_):
+        try:
+            conversation_handoff.create([{"question": "q", "answer": "a"}], None, 100)
+            return True
+        except conversation_handoff.StoreFull:
+            return False
+
+    with ThreadPoolExecutor(max_workers=32) as pool:
+        results = list(pool.map(attempt, range(400)))  # wirft ein RuntimeError, schlägt der Test fehl
+
+    assert sum(results) == 10  # 10 x 100 Bytes = Obergrenze, nie mehr
+    assert sum(e[3] for e in conversation_handoff._store.values()) == 1000

@@ -671,3 +671,41 @@ def test_stream_usage_recording_failure_never_breaks_the_answer():
         llm.usage_log, "track_anthropic_stream", side_effect=RuntimeError("kaputt")
     ):
         assert "".join(llm.stream_answer_question("Frage?", [])) == "Antwort"
+
+
+def test_stream_usage_recorded_once_from_snapshot_when_text_stream_raises():
+    client = MagicMock()
+    stream = client.messages.stream.return_value.__enter__.return_value
+
+    def broken():
+        yield "Erstes"
+        raise RuntimeError("Verbindung weg")
+
+    stream.text_stream = broken()
+    stream.current_message_snapshot.usage = "SNAPSHOT-USAGE"
+    with patch.object(llm, "_get_client", return_value=client), patch.object(
+        llm.usage_log, "track_anthropic"
+    ) as track, patch.object(llm.usage_log, "track_anthropic_stream") as track_stream:
+        gen = llm.stream_answer_question("Frage?", [])
+        assert next(gen) == "Erstes"
+        with pytest.raises(RuntimeError, match="Verbindung weg"):
+            next(gen)
+
+    track.assert_called_once()
+    assert track.call_args.args[1] == "SNAPSHOT-USAGE"
+    track_stream.assert_not_called()
+
+
+def test_stream_abort_before_message_start_is_skipped_silently(caplog):
+    """current_message_snapshot wirft AssertionError, solange message_start fehlt."""
+    client = MagicMock()
+    stream = client.messages.stream.return_value.__enter__.return_value
+    stream.text_stream = iter(["Erstes"])
+    type(stream).current_message_snapshot = property(lambda self: (_ for _ in ()).throw(AssertionError("no snapshot")))
+    with patch.object(llm, "_get_client", return_value=client), patch.object(llm.usage_log, "track_anthropic") as track:
+        gen = llm.stream_answer_question("Frage?", [])
+        next(gen)
+        gen.close()
+
+    track.assert_not_called()
+    assert "Kostenmessung" not in caplog.text

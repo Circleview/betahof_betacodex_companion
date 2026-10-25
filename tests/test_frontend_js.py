@@ -4651,3 +4651,13 @@ def test_question_textarea_has_maxlength_8000(name):
     html = (STATIC_DIR / name).read_text()
     tag = re.search(r'<textarea id="question"[^>]*>', html).group(0)
     assert 'maxlength="8000"' in tag
+
+
+def test_question_js_truncates_question_and_handles_list_detail():
+    js = (STATIC_DIR / "question.js").read_text()
+    # Sprachdiktat setzt value per Code (maxlength greift nicht)
+    assert re.search(r"const question = questionInput\.value\.trim\(\)\.slice\(0, ASK_QUESTION_MAX_CHARS\);", js)
+    assert re.search(r"const ASK_QUESTION_MAX_CHARS = 8000;", js)
+    # 422 liefert detail als Liste -> allgemeine Fehlermeldung statt [object Object]
+    assert "typeof err.detail === 'string' ? err.detail : t('index.askError')" in js
+    assert "throw new Error(err.detail || t('index.askError'))" not in js
