@@ -1467,6 +1467,8 @@ button.send-button {
      zweite - genau das war der gemeldete Anzeigefehler beim leeren Chat. */
   #chat-column {
     grid-column: 2;
+    /* Grid-Kind mit min-width:auto wuchs auf die Inhaltsbreite der Bildleiste. */
+    min-width: 0;
   }
 
   /* Vor der ersten beantworteten Frage ist die Liste leer - dann auch die
