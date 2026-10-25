@@ -1,3 +1,4 @@
+import logging
 import re
 from pathlib import Path
 
@@ -338,6 +339,14 @@ def stream_answer_question(
     for turn in history or []:
         messages.append({"role": "user", "content": turn["question"]})
         messages.append({"role": "assistant", "content": turn["answer"]})
+    if history:
+        # Idee 2070893d: Prompt-Caching - der Marker auf der letzten
+        # assistant-Nachricht macht system + Verlauf zum Cache-Prefix; die
+        # nächste Folgefrage hängt nur Neues an (Cache-Lesen kostet 10 %).
+        # Unter 4096 Tokens (Haiku 4.5) cached die API nicht, ohne Mehrkosten.
+        messages[-1]["content"] = [
+            {"type": "text", "text": messages[-1]["content"], "cache_control": {"type": "ephemeral"}}
+        ]
     explicit = _EXPLICIT_LANGUAGE.get(_question_language(question))
     messages.append(
         {
@@ -357,10 +366,27 @@ def stream_answer_question(
         system=SYSTEM_PROMPTS[lang],
         messages=messages,
     ) as stream:
-        yield from stream.text_stream
-        # usage: Kostenzuordnung {"channel", "email", "key_id"} - Chat:
-        # Kanal "ask" mit angemeldetem Konto, MCP: "mcp_ask" mit Schlüssel.
-        usage_log.track_anthropic_stream(MODEL_NAME, stream, **{"channel": "ask", **(usage or {})})
+        completed = False
+        try:
+            yield from stream.text_stream
+            completed = True
+        finally:
+            # usage: Kostenzuordnung {"channel", "email", "key_id"} - Chat:
+            # Kanal "ask" mit angemeldetem Konto, MCP: "mcp_ask" mit Schlüssel.
+            # Idee 2070893d: auch bei Abbruch (Nutzer schließt den Tab) wird
+            # der bisherige Verbrauch erfasst - dann aus dem Snapshot, denn
+            # get_final_message() würde den Rest des Streams noch lesen.
+            # Fehler hier dürfen die Antwort nie stören.
+            usage_kwargs = {"channel": "ask", **(usage or {})}
+            try:
+                if completed:
+                    usage_log.track_anthropic_stream(MODEL_NAME, stream, **usage_kwargs)
+                else:
+                    snapshot_usage = getattr(getattr(stream, "current_message_snapshot", None), "usage", None)
+                    if snapshot_usage is not None:
+                        usage_log.track_anthropic(MODEL_NAME, snapshot_usage, **usage_kwargs)
+            except Exception:
+                logging.getLogger(__name__).exception("Kostenmessung (ask) fehlgeschlagen")
 
 
 def answer_question(

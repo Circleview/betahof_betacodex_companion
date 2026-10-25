@@ -12,6 +12,22 @@ export const CONVERSATION_STORAGE_KEY = 'conversationHistory';
 // question.js); sessionStorage ist nur die Kopie der Modul-Variable dort.
 export const CONVERSATION_ID_STORAGE_KEY = 'conversationId';
 
+// Idee 2070893d: Grenzen wie auf dem Server (app/main.py), das Byte-Limit hier
+// bewusst darunter (Server 900.000), damit Default-Felder Marge haben.
+const CONVERSATION_HANDOFF_MAX_TURNS = 100;
+const CONVERSATION_HANDOFF_MAX_BYTES = 800000;
+
+// Älteste Turns entfernen, bis Turn-Zahl und Body-Größe passen - sonst
+// lehnt der Server lange Konversationen mit 400 ab und der neue Tab bleibt leer.
+function trimHandoffBody(history, conversationId) {
+  let turns = history.slice(-CONVERSATION_HANDOFF_MAX_TURNS);
+  const build = () => (conversationId ? { history: turns, conversation_id: conversationId } : { history: turns });
+  while (turns.length > 1 && new Blob([JSON.stringify(build())]).size >= CONVERSATION_HANDOFF_MAX_BYTES) {
+    turns = turns.slice(1);
+  }
+  return build();
+}
+
 // Holt ein kurzlebiges Einmal-Token für die übergebene Konversation - null
 // bei leerer Historie oder fehlgeschlagenem Request (Aufrufer entscheidet
 // selbst über den Fallback, z.B. trotzdem ohne Token navigieren).
@@ -21,7 +37,7 @@ export async function createConversationHandoffToken(history, conversationId = n
     const res = await fetch('/api/conversation-handoff', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(conversationId ? { history, conversation_id: conversationId } : { history }),
+      body: JSON.stringify(trimHandoffBody(history, conversationId)),
     });
     if (!res.ok) return null;
     const data = await res.json();

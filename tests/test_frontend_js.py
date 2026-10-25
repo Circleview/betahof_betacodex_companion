@@ -4532,12 +4532,18 @@ def test_question_js_first_message_counts_sent_not_answered_questions():
 # --- Idee 2070893d: Gesprächsgedächtnis 50 Turns / 200.000 Bytes ---
 
 
+def _run_node_stdin(script: str):
+    # Große Eingaben passen nicht in die Argumentliste (node -e) - Skript per stdin.
+    result = subprocess.run(["node", "-"], input=script, capture_output=True, text=True, check=True)
+    return json.loads(result.stdout)
+
+
 def _run_build_ask_history(turns):
     js = (STATIC_DIR / "question.js").read_text()
     consts = "\n".join(re.findall(r"^const ASK_HISTORY_[A-Z_]+ = [^;]+;$", js, flags=re.M))
     func = re.search(r"^function buildAskHistory\(.*?^}\n", js, flags=re.M | re.S).group(0)
     script = f"{consts}\n{func}\nconsole.log(JSON.stringify(buildAskHistory({json.dumps(turns)})));"
-    return _run_node(script)
+    return _run_node_stdin(script)
 
 
 def _js_turns(n, size=10):
@@ -4579,9 +4585,9 @@ def test_build_ask_history_truncates_fields_and_drops_blank_turns():
     assert result == [{"question": "q" * 8000, "answer": "a" * 8000}]
 
 
-def test_build_ask_history_removes_single_turns_when_blocks_are_not_enough():
+def test_build_ask_history_block_jump_stops_at_last_turn():
     turns = [{"question": "ä" * 8000, "answer": "ä" * 8000}] * 7  # 7 x 32.000 = 224.000 Bytes
-    assert len(_run_build_ask_history(turns)) == 6  # start springt auf den letzten Turn, dann einzeln
+    assert len(_run_build_ask_history(turns)) == 1  # Block (10) springt höchstens bis zum letzten Turn
 
 
 def test_question_js_uses_build_ask_history_in_request_body():
@@ -4601,7 +4607,7 @@ global.fetch = async (url, opts) => {{ posted = JSON.parse(opts.body); return {{
   console.log(JSON.stringify({{ token, posted }}));
 }})();
 """
-    return _run_node(script)
+    return _run_node_stdin(script)
 
 
 def test_handoff_frontend_trims_oldest_turns_to_max_turns():

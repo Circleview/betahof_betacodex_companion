@@ -13,7 +13,17 @@ import time
 # Konversations-Persistenz.
 TTL_SECONDS = 300
 
-_store: dict[str, tuple[float, list[dict], str | None]] = {}
+# Idee 2070893d: globale Obergrenze (Summe der Roh-Bytes aller offenen Einträge),
+# damit viele große Handoffs den Speicher des Prozesses nicht füllen.
+MAX_TOTAL_BYTES = 50_000_000
+
+
+class StoreFull(Exception):
+    pass
+
+
+# token -> (Ablauf, Historie, conversation_id, Rohgröße in Bytes)
+_store: dict[str, tuple[float, list[dict], str | None, int]] = {}
 
 
 # Eigener Wrapper statt time.monotonic() direkt zu verwenden - Tests können
@@ -26,15 +36,17 @@ def _now() -> float:
 
 def _cleanup_expired() -> None:
     now = _now()
-    expired = [token for token, (expires_at, _, _cid) in _store.items() if expires_at < now]
+    expired = [token for token, (expires_at, _, _cid, _size) in _store.items() if expires_at < now]
     for token in expired:
         del _store[token]
 
 
-def create(history: list[dict], conversation_id: str | None = None) -> str:
+def create(history: list[dict], conversation_id: str | None = None, size: int = 0) -> str:
     _cleanup_expired()
+    if sum(entry[3] for entry in _store.values()) + size > MAX_TOTAL_BYTES:
+        raise StoreFull
     token = secrets.token_urlsafe(24)
-    _store[token] = (_now() + TTL_SECONDS, history, conversation_id)
+    _store[token] = (_now() + TTL_SECONDS, history, conversation_id, size)
     return token
 
 

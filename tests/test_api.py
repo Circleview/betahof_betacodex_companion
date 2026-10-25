@@ -1803,7 +1803,7 @@ def test_conversation_handoff_rejects_max_turns_plus_one_but_accepts_max_turns(c
 
 def test_conversation_handoff_store_rejects_when_global_byte_cap_reached(client, monkeypatch):
     body = {"history": [_HANDOFF_TURN]}
-    one = len(json.dumps(body).encode())
+    one = len(main_module.ConversationHandoffIn(**body).model_dump_json().encode())
     monkeypatch.setattr(conversation_handoff, "MAX_TOTAL_BYTES", one * 2 + 10)
     assert client.post("/api/conversation-handoff", json=body).status_code == 200
     assert client.post("/api/conversation-handoff", json=body).status_code == 200
@@ -1819,7 +1819,7 @@ def test_conversation_handoff_store_frees_space_on_pop_and_expiry(client, monkey
     fake_now = [0.0]
     monkeypatch.setattr(conversation_handoff, "_now", lambda: fake_now[0])
     body = {"history": [_HANDOFF_TURN]}
-    one = len(json.dumps(body).encode())
+    one = len(main_module.ConversationHandoffIn(**body).model_dump_json().encode())
     monkeypatch.setattr(conversation_handoff, "MAX_TOTAL_BYTES", one + 10)
     token = client.post("/api/conversation-handoff", json=body).json()["token"]
     assert client.post("/api/conversation-handoff", json=body).status_code == 503
@@ -3188,6 +3188,7 @@ def test_ask_history_drops_oversize_blocks_via_http_with_fewer_turns(client, mon
 
 
 def test_ask_rejects_question_over_8000_chars_without_llm_call(client, monkeypatch):
+    client.post("/api/sources", json={"title": "Q", "text": "Der BetaCodex beschreibt Prinzipien."})
     called = []
     monkeypatch.setattr(llm, "stream_answer_question", lambda *a, **k: called.append(1) or iter(["x"]))
     monkeypatch.setattr(llm, "rewrite_followup_query", lambda *a, **k: called.append(1))
@@ -3200,6 +3201,7 @@ def test_ask_rejects_question_over_8000_chars_without_llm_call(client, monkeypat
 
 
 def test_ask_top_k_must_be_between_1_and_10(client, monkeypatch):
+    client.post("/api/sources", json={"title": "Q", "text": "Der BetaCodex beschreibt Prinzipien."})
     called = []
     monkeypatch.setattr(llm, "stream_answer_question", lambda *a, **k: called.append(1) or iter(["x"]))
     for bad in (0, 11):

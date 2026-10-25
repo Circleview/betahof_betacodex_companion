@@ -1290,10 +1290,40 @@ onAuthChange(() => {
 // mit, das reicht dem Modell für die Konversation und hält den Request
 // klein; app/main.py kappt serverseitig defensiv nochmal auf dieselbe
 // Anzahl (muss zu app/main.py passen).
-const ASK_HISTORY_MAX_TURNS = 10;
+// Idee 2070893d: 50 Turns und 200.000 UTF-8-Bytes (muss zu app/main.py passen,
+// Test in tests/test_api.py) - das Frontend kürzt selbst, damit der Body
+// unter dem Request-Limit bleibt (sonst 413 bei Extremfällen).
+const ASK_HISTORY_MAX_TURNS = 50;
+const ASK_HISTORY_MAX_BYTES = 200000;
+// Gekürzt wird in Blöcken von 10 Turns (zustandsloser Startindex), damit der
+// Verlaufsanfang über viele Folgefragen gleich bleibt (Prompt-Cache, llm.py).
+const ASK_HISTORY_CUT_BLOCK = 10;
 // Feldgrenze je Frage/Antwort im Verlauf (muss zu app/models.py passen) -
 // sonst scheitert jede Folgefrage mit 422, wenn eine frühere Frage länger ist.
 const ASK_HISTORY_MAX_FIELD_CHARS = 8000;
+
+// Gleiche Regel wie _trim_history in app/main.py: leere Turns raus, Felder
+// kürzen, Anfang blockweise kappen (Turn-Grenze, dann Byte-Budget; höchstens
+// bis zum letzten Turn, danach einzeln).
+function buildAskHistory(turns) {
+  const encoder = new TextEncoder();
+  const kept = turns
+    .map(({ question, answer }) => ({
+      question: question.slice(0, ASK_HISTORY_MAX_FIELD_CHARS),
+      answer: answer.slice(0, ASK_HISTORY_MAX_FIELD_CHARS),
+    }))
+    .filter((t) => t.question.trim() && t.answer.trim());
+  const n = kept.length;
+  const sizes = kept.map((t) => encoder.encode(t.question).length + encoder.encode(t.answer).length);
+  const bytesFrom = (from) => sizes.slice(from).reduce((a, b) => a + b, 0);
+  let start = n > ASK_HISTORY_MAX_TURNS ? Math.ceil((n - ASK_HISTORY_MAX_TURNS) / ASK_HISTORY_CUT_BLOCK) * ASK_HISTORY_CUT_BLOCK : 0;
+  start = Math.min(start, Math.max(n - 1, 0));
+  while (start < n - 1 && bytesFrom(start) > ASK_HISTORY_MAX_BYTES) {
+    start = Math.min(start + ASK_HISTORY_CUT_BLOCK, n - 1);
+  }
+  while (start < n && bytesFrom(start) > ASK_HISTORY_MAX_BYTES) start += 1;
+  return kept.slice(start);
+}
 
 function loadConversationHistory() {
   try {
@@ -1584,10 +1614,7 @@ questionForm.addEventListener('submit', async (e) => {
         turnstile_token: turnstileToken,
         is_first_message: isFirstMessage,
         conversation_id: conversationId,
-        history: conversationHistory.slice(-ASK_HISTORY_MAX_TURNS).map(({ question, answer }) => ({
-          question: question.slice(0, ASK_HISTORY_MAX_FIELD_CHARS),
-          answer: answer.slice(0, ASK_HISTORY_MAX_FIELD_CHARS),
-        })),
+        history: buildAskHistory(conversationHistory),
       }),
     });
     // Turnstile-Tokens sind Einweg-Token - nach jedem Versuch (egal ob
