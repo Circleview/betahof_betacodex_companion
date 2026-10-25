@@ -1749,6 +1749,86 @@ def test_conversation_handoff_rejects_too_many_turns(client):
     assert response.status_code == 400
 
 
+def _realistic_turn(i, text_chars=2000):
+    source = {
+        "chunk_id": f"c{i}", "source_id": f"s{i}", "title": "Titel " * 5, "authors": ["A B", "C D"],
+        "date": "2021-01-01", "url": "https://example.org/x", "listen_url": "https://example.org/y",
+        "position": i, "text": "t" * text_chars, "summary": "s" * 300, "summary_ai_generated": True,
+        "highlighted_texts": ["h" * 200], "is_web_fallback": False, "allowlist_entry_id": None,
+    }
+    return {"question": "F" * 500, "answer": "A" * 3500, "sources": [source] * 5}
+
+
+def test_conversation_handoff_accepts_about_500kb_payload(client):
+    history = [_realistic_turn(i) for i in range(30)]
+    size = len(json.dumps(history).encode())
+    assert 400_000 < size < 650_000
+    response = client.post("/api/conversation-handoff", json={"history": history})
+    assert response.status_code == 200
+    assert response.json()["token"]
+
+
+def test_conversation_handoff_accepts_payload_just_below_frontend_limit(client):
+    # Frontend kürzt auf < 800_000 Bytes; der Server (900_000) lässt Marge für Default-Felder.
+    history = [_realistic_turn(i, text_chars=3000) for i in range(100)]
+    while len(json.dumps({"history": history}).encode()) >= 800_000:
+        history = history[1:]
+    assert len(json.dumps({"history": history}).encode()) > 600_000
+    response = client.post("/api/conversation-handoff", json={"history": history})
+    assert response.status_code == 200
+
+
+def test_conversation_handoff_rejects_over_max_bytes(client):
+    turn = {"question": "F", "answer": "a" * 480_000, "sources": []}
+    response = client.post("/api/conversation-handoff", json={"history": [turn, turn]})
+    assert main_module.CONVERSATION_HANDOFF_MAX_BYTES == 900_000
+    assert response.status_code == 400
+
+
+def test_conversation_handoff_limit_counts_utf8_bytes(client):
+    # 460_000 x "ä" = 920_000 Bytes (> 900_000), aber nur ca. 460_000 Zeichen.
+    body = json.dumps({"history": [{"question": "F", "answer": "ä" * 460_000, "sources": []}]}, ensure_ascii=False)
+    response = client.post(
+        "/api/conversation-handoff", content=body.encode("utf-8"), headers={"Content-Type": "application/json"}
+    )
+    assert response.status_code == 400
+
+
+def test_conversation_handoff_rejects_max_turns_plus_one_but_accepts_max_turns(client):
+    ok = [_HANDOFF_TURN] * main_module.CONVERSATION_HANDOFF_MAX_TURNS
+    assert client.post("/api/conversation-handoff", json={"history": ok}).status_code == 200
+    response = client.post("/api/conversation-handoff", json={"history": ok + [_HANDOFF_TURN]})
+    assert response.status_code == 400
+
+
+def test_conversation_handoff_store_rejects_when_global_byte_cap_reached(client, monkeypatch):
+    body = {"history": [_HANDOFF_TURN]}
+    one = len(main_module.ConversationHandoffIn(**body).model_dump_json().encode())
+    monkeypatch.setattr(conversation_handoff, "MAX_TOTAL_BYTES", one * 2 + 10)
+    assert client.post("/api/conversation-handoff", json=body).status_code == 200
+    assert client.post("/api/conversation-handoff", json=body).status_code == 200
+    response = client.post("/api/conversation-handoff", json=body)
+    assert response.status_code == 503
+    assert response.json()["detail"] == main_module.i18n.get_message("conversation_handoff_store_full", "de")
+    en = client.post("/api/conversation-handoff", json=body, headers={"X-Lang": "en"})
+    assert en.json()["detail"] == main_module.i18n.get_message("conversation_handoff_store_full", "en")
+    assert en.json()["detail"] != response.json()["detail"]
+
+
+def test_conversation_handoff_store_frees_space_on_pop_and_expiry(client, monkeypatch):
+    fake_now = [0.0]
+    monkeypatch.setattr(conversation_handoff, "_now", lambda: fake_now[0])
+    body = {"history": [_HANDOFF_TURN]}
+    one = len(main_module.ConversationHandoffIn(**body).model_dump_json().encode())
+    monkeypatch.setattr(conversation_handoff, "MAX_TOTAL_BYTES", one + 10)
+    token = client.post("/api/conversation-handoff", json=body).json()["token"]
+    assert client.post("/api/conversation-handoff", json=body).status_code == 503
+    client.get(f"/api/conversation-handoff/{token}")  # Einmal-Abruf gibt Platz frei
+    assert client.post("/api/conversation-handoff", json=body).status_code == 200
+    fake_now[0] = conversation_handoff.TTL_SECONDS + 1  # abgelaufen -> Platz frei
+    assert client.post("/api/conversation-handoff", json=body).status_code == 200
+
+
 def test_conversation_handoff_rejects_after_rate_limit_exceeded(client):
     for _ in range(main_module.CONVERSATION_HANDOFF_RATE_LIMIT_MAX_REQUESTS):
         response = client.post("/api/conversation-handoff", json={"history": [_HANDOFF_TURN]})
@@ -2981,38 +3061,6 @@ def test_ask_passes_history_to_llm(client, monkeypatch):
     ]
 
 
-def test_ask_caps_history_to_last_turns_even_if_client_sends_more(client, monkeypatch):
-    client.post(
-        "/api/sources",
-        json={"title": "Q", "text": "Der BetaCodex beschreibt Prinzipien dezentraler Organisation."},
-    )
-    captured = {}
-
-    def fake_answer(question, chunks, lang="de", author_bios=None, history=None, **kwargs):
-        captured["history"] = history
-        return iter(["Testantwort [1]."])
-
-    monkeypatch.setattr(llm, "stream_answer_question", fake_answer)
-    monkeypatch.setattr(main_module, "ASK_HISTORY_MAX_TURNS", 2)
-
-    client.post(
-        "/api/ask",
-        json={
-            "question": "Frage 4?",
-            "history": [
-                {"question": "Frage 1?", "answer": "Antwort 1."},
-                {"question": "Frage 2?", "answer": "Antwort 2."},
-                {"question": "Frage 3?", "answer": "Antwort 3."},
-            ],
-        },
-    )
-
-    assert captured["history"] == [
-        {"question": "Frage 2?", "answer": "Antwort 2."},
-        {"question": "Frage 3?", "answer": "Antwort 3."},
-    ]
-
-
 def _ask_with_history(client, monkeypatch, history):
     """Hilfe für die Verlaufs-Tests: liefert, was Antwort- und Umformulierungs-Call bekommen."""
     client.post(
@@ -3039,19 +3087,128 @@ def _turns(n, size=10):
     return [{"question": f"F{i:03d}" + "q" * size, "answer": f"A{i:03d}" + "a" * size} for i in range(n)]
 
 
-def test_ask_history_keeps_last_ten_turns_in_order(client, monkeypatch):
+def _bytes(turns):
+    return sum(len(t["question"].encode()) + len(t["answer"].encode()) for t in turns)
+
+
+def _sized_turns(n, per_turn_bytes):
+    """n Turns mit exakt per_turn_bytes (ASCII) je Turn, Kennung vorn."""
+    half = per_turn_bytes // 2
+    return [
+        {"question": f"F{i:03d}".ljust(half, "q"), "answer": f"A{i:03d}".ljust(per_turn_bytes - half, "a")}
+        for i in range(n)
+    ]
+
+
+def test_ask_history_keeps_twelve_turns_completely_in_order(client, monkeypatch):
     turns = _turns(12)
     _, captured = _ask_with_history(client, monkeypatch, turns)
-    assert captured["answer"] == turns[2:]
+    assert captured["answer"] == turns
 
 
-def test_ask_history_drops_oldest_turns_over_char_budget(client, monkeypatch):
-    # 10 Turns à 3200 Zeichen = 32.000 > 30.000 -> der älteste fällt weg
-    turns = _turns(10, size=1596)
+def test_ask_history_keeps_fifty_turns_in_order(client, monkeypatch):
+    turns = _turns(50)
     _, captured = _ask_with_history(client, monkeypatch, turns)
-    kept = captured["answer"]
-    assert kept == turns[1:]
-    assert sum(len(t["question"]) + len(t["answer"]) for t in kept) <= 30_000
+    assert captured["answer"] == turns
+
+
+def test_ask_history_budget_exactly_reached_keeps_all(client, monkeypatch):
+    turns = _sized_turns(50, 4000)  # genau 200_000 Bytes
+    assert _bytes(turns) == 200_000
+    _, captured = _ask_with_history(client, monkeypatch, turns)
+    assert captured["answer"] == turns
+
+
+def test_ask_history_one_byte_over_budget_drops_oldest_block(client, monkeypatch):
+    turns = _sized_turns(50, 4000)
+    turns[-1]["answer"] += "x"  # 200_001 Bytes
+    _, captured = _ask_with_history(client, monkeypatch, turns)
+    # Block-Kürzung (F1): nicht ein Turn, sondern ein Vielfaches von 10.
+    assert captured["answer"] == turns[10:]
+
+
+def test_ask_history_budget_counts_utf8_bytes_not_characters(client, monkeypatch):
+    # 2000 Zeichen "ä" = 4000 Bytes je Feld -> 8000 Bytes je Turn; 25 Turns = 200_000 Bytes
+    turns = [{"question": "ä" * 2000, "answer": "ä" * 2000} for _ in range(25)]
+    assert _bytes(turns) == 200_000
+    _, captured = _ask_with_history(client, monkeypatch, turns)
+    assert len(captured["answer"]) == 25
+    turns.append({"question": "ä" * 2000, "answer": "ä" * 2000})  # 208_000 Bytes, aber nur 104_000 Zeichen
+    _, captured = _ask_with_history(client, monkeypatch, turns)
+    assert captured["answer"] == turns[10:]
+
+
+def test_ask_history_single_giant_turn_is_kept(client, monkeypatch):
+    turns = [{"question": "ä" * 8000, "answer": "ä" * 8000}]  # 32_000 Bytes
+    _, captured = _ask_with_history(client, monkeypatch, turns)
+    assert captured["answer"] == turns
+
+
+def test_ask_rewrite_gets_only_last_three_turns_with_fifty(client, monkeypatch):
+    turns = _turns(50)
+    _, captured = _ask_with_history(client, monkeypatch, turns)
+    assert captured["rewrite"] == turns[-3:]
+
+
+def test_trim_history_block_cut_keeps_start_stable_for_51_to_60_turns():
+    firsts = {main_module._trim_history(_turns(n))[0]["question"] for n in range(51, 61)}
+    assert len(firsts) == 1  # gleiches erstes Element -> stabiler Cache-Prefix
+    assert main_module._trim_history(_turns(51))[0] == _turns(51)[10]
+    assert len(main_module._trim_history(_turns(51))) == 41
+
+
+def test_trim_history_block_cut_jumps_by_ten_at_61_turns():
+    turns = _turns(61)
+    assert main_module._trim_history(turns)[0] == turns[20]
+    assert main_module._trim_history(_turns(60))[0] == _turns(60)[10]
+
+
+def test_trim_history_budget_cut_moves_in_blocks_of_ten_and_starts_after_turn_cut():
+    turns = _sized_turns(55, 4000)  # 220_000 Bytes; Turn-Grenze: start 10 -> 180_000, passt
+    assert main_module._trim_history(turns) == turns[10:]
+    turns = _sized_turns(60, 4000)  # start 10 -> 200_000 passt genau
+    assert main_module._trim_history(turns) == turns[10:]
+    turns[-1]["answer"] += "x"  # 200_001 -> start 20
+    assert main_module._trim_history(turns) == turns[20:]
+
+
+def test_trim_history_budget_cut_never_goes_past_last_turn(monkeypatch):
+    turns = [{"question": "q" * 100, "answer": "a" * 100}] * 3
+    monkeypatch.setattr(main_module, "ASK_HISTORY_MAX_BYTES", 250)
+    assert main_module._trim_history(turns) == turns[-1:]
+    monkeypatch.setattr(main_module, "ASK_HISTORY_MAX_BYTES", 150)
+    assert main_module._trim_history(turns) == []
+
+
+def test_ask_history_drops_oversize_blocks_via_http_with_fewer_turns(client, monkeypatch):
+    monkeypatch.setattr(main_module, "ASK_HISTORY_MAX_BYTES", 10_000)
+    turns = _sized_turns(12, 1000)  # 12_000 > 10_000 -> start 10 -> 2 Turns
+    _, captured = _ask_with_history(client, monkeypatch, turns)
+    assert captured["answer"] == turns[10:]
+
+
+def test_ask_rejects_question_over_8000_chars_without_llm_call(client, monkeypatch):
+    client.post("/api/sources", json={"title": "Q", "text": "Der BetaCodex beschreibt Prinzipien."})
+    called = []
+    monkeypatch.setattr(llm, "stream_answer_question", lambda *a, **k: called.append(1) or iter(["x"]))
+    monkeypatch.setattr(llm, "rewrite_followup_query", lambda *a, **k: called.append(1))
+    ok = client.post("/api/ask", json={"question": "x" * 8000})
+    assert ok.status_code == 200
+    called.clear()
+    response = client.post("/api/ask", json={"question": "x" * 8001})
+    assert response.status_code == 422
+    assert called == []
+
+
+def test_ask_top_k_must_be_between_1_and_10(client, monkeypatch):
+    client.post("/api/sources", json={"title": "Q", "text": "Der BetaCodex beschreibt Prinzipien."})
+    called = []
+    monkeypatch.setattr(llm, "stream_answer_question", lambda *a, **k: called.append(1) or iter(["x"]))
+    for bad in (0, 11):
+        assert client.post("/api/ask", json={"question": "Frage?", "top_k": bad}).status_code == 422
+    assert called == []
+    for good in (1, 10):
+        assert client.post("/api/ask", json={"question": "Frage?", "top_k": good}).status_code == 200
 
 
 def test_ask_history_rejects_oversized_field_without_llm_call(client, monkeypatch):
@@ -3108,7 +3265,12 @@ def test_history_limits_match_between_frontend_and_backend():
     js = (Path(main_module.__file__).parent.parent / "static" / "question.js").read_text()
     turns = int(re.search(r"const ASK_HISTORY_MAX_TURNS = (\d+);", js).group(1))
     field = int(re.search(r"const ASK_HISTORY_MAX_FIELD_CHARS = (\d+);", js).group(1))
-    assert turns == main_module.ASK_HISTORY_MAX_TURNS
+    max_bytes = int(re.search(r"const ASK_HISTORY_MAX_BYTES = ([\d_]+);", js).group(1).replace("_", ""))
+    assert turns == main_module.ASK_HISTORY_MAX_TURNS == 50
+    assert max_bytes == main_module.ASK_HISTORY_MAX_BYTES == 200_000
+    assert models.QuestionIn.model_fields["history"].metadata[0].max_length == turns
+    # Invariante: ein Turn mit 2 x Feldgrenze x 4 Bytes (UTF-8) bleibt unter dem Budget
+    assert 2 * models.HistoryTurnIn.model_fields["question"].metadata[0].max_length * 4 < max_bytes
     assert field == models.HistoryTurnIn.model_fields["question"].metadata[0].max_length
 
 
@@ -9007,3 +9169,23 @@ def test_ask_does_not_log_system_admins_follow_up_with_conversation_id(anon_clie
     anon_client.post("/api/ask", json={"question": "Folge des Admins", "is_first_message": False, "conversation_id": CID})
 
     assert question_log.list_entries() == []
+
+
+def test_conversation_handoff_store_is_thread_safe_and_keeps_cap(monkeypatch):
+    from concurrent.futures import ThreadPoolExecutor
+
+    monkeypatch.setattr(conversation_handoff, "_store", {})
+    monkeypatch.setattr(conversation_handoff, "MAX_TOTAL_BYTES", 1000)
+
+    def attempt(_):
+        try:
+            conversation_handoff.create([{"question": "q", "answer": "a"}], None, 100)
+            return True
+        except conversation_handoff.StoreFull:
+            return False
+
+    with ThreadPoolExecutor(max_workers=32) as pool:
+        results = list(pool.map(attempt, range(400)))  # wirft ein RuntimeError, schlägt der Test fehl
+
+    assert sum(results) == 10  # 10 x 100 Bytes = Obergrenze, nie mehr
+    assert sum(e[3] for e in conversation_handoff._store.values()) == 1000

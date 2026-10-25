@@ -36,7 +36,7 @@ PARAMS = [
     (main.AUTHOR_MENTION_KEYWORD_MATCH_FACTOR, "app/main.py: AUTHOR_MENTION_KEYWORD_MATCH_FACTOR", "… wenn zusätzlich ein Schlagwort der Quelle in der Frage steht", "… if a key term of the source also appears in the question"),
     (main.LEXICAL_MAX_TERMS, "app/main.py: LEXICAL_MAX_TERMS", "Begriffe pro Frage mit garantiertem Ausschnitt (Hybrid-Suche)", "Terms per question with a guaranteed excerpt (hybrid search)"),
     (main.ASK_HISTORY_MAX_TURNS, "app/main.py: ASK_HISTORY_MAX_TURNS", "Frühere Gesprächsrunden im Prompt", "Previous conversation turns in the prompt"),
-    (main.ASK_HISTORY_MAX_CHARS, "app/main.py: ASK_HISTORY_MAX_CHARS", "Zeichenbudget für den Gesprächsverlauf im Prompt", "Character budget for the conversation history in the prompt"),
+    (main.ASK_HISTORY_MAX_BYTES, "app/main.py: ASK_HISTORY_MAX_BYTES", "Byte-Budget (UTF-8) für den Gesprächsverlauf im Prompt (Kürzung in 10er-Blöcken, damit der Prompt-Cache trifft)", "Byte budget (UTF-8) for the conversation history in the prompt (trimmed in blocks of 10 so the prompt cache hits)"),
     (main.ASK_REWRITE_HISTORY_TURNS, "app/main.py: ASK_REWRITE_HISTORY_TURNS", "Gesprächsrunden für die Umformulierung der Suchanfrage", "Conversation turns used to rewrite the search query"),
     (main.CREATIVE_TOP_K, "app/main.py: CREATIVE_TOP_K", "Textausschnitte als Beta-Kontext im Kreativ-Modus", "Excerpts as Beta context in creative mode"),
     (llm.CREATIVE_MAX_SEARCH_USES, "app/llm.py: CREATIVE_MAX_SEARCH_USES", "Max. Websuchen pro Kreativ-Anfrage", "Max. web searches per creative request"),
