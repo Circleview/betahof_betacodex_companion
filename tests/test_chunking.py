@@ -257,3 +257,14 @@ def test_assign_images_keeps_file_images_with_page_and_drops_anchor():
     result = assign_images(["Seitentext der siebten Seite und mehr."], [image])
 
     assert result == [[{"kind": "file", "file": "a" * 32 + ".webp", "alt": "", "page": 7}]]
+
+
+def test_assign_images_discards_image_when_its_first_matching_chunk_is_full():
+    from app.chunking import assign_images
+
+    chunks = ["Gemeinsamer Anker Satz hier.", "Gemeinsamer Anker Satz hier und weiter."]
+    images = [_img("Gemeinsamer Anker Satz", name=f"i{i}") for i in range(4)]
+
+    result = assign_images(chunks, images)
+
+    assert [len(r) for r in result] == [3, 0]

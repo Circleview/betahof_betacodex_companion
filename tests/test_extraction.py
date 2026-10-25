@@ -1698,3 +1698,62 @@ def test_pdf_images_respects_max_images():
 
     assert len(extract_pdf_images(data, max_images=3)) == 3
     assert len(extract_pdf_images(data)) == 5
+
+
+def test_pdf_images_drop_images_above_pixel_limit():
+    import io as _io
+
+    from PIL import Image
+
+    from app.extraction import extract_pdf_images
+
+    buf = _io.BytesIO()
+    Image.new("1", (6000, 6000)).save(buf, format="PNG")
+    data = _pdf_with_images([(_PAGE_TEXT, [(buf.getvalue(), (200, 200))])])
+
+    assert extract_pdf_images(data) == []
+
+
+def test_pdf_images_read_text_only_for_pages_with_images():
+    import pypdf
+
+    from app.extraction import extract_pdf_images
+
+    data = _pdf_with_images(
+        [(_PAGE_TEXT, []), (_PAGE_TEXT, [(_png((400, 300)), (200, 150))]), (_PAGE_TEXT, [])]
+    )
+    calls = []
+    original = pypdf.PageObject.extract_text
+
+    def counting(self, *a, **k):
+        calls.append(1)
+        return original(self, *a, **k)
+
+    with patch.object(pypdf.PageObject, "extract_text", counting):
+        assert len(extract_pdf_images(data)) == 1
+
+    assert len(calls) == 1
+
+
+def test_pdf_images_use_distinct_anchors_when_pages_share_a_long_header():
+    from app.extraction import extract_pdf_images
+
+    header = "Kolumnentitel der Schriftenreihe zur Selbstorganisation und Fuehrung in Teams 2026"
+    assert len(header) > 80
+
+    def page(body, color):
+        return header + "\n" + body, [(_png((300, 300), color), (100, 100))]
+
+    import fitz
+
+    doc = fitz.open()
+    for body, color in (("Erste Seite handelt von Budgets.", (1, 2, 3)), ("Zweite Seite handelt von Teams.", (9, 8, 7))):
+        pg = doc.new_page(width=595, height=842)
+        pg.insert_text((30, 40), header, fontsize=7)
+        pg.insert_text((30, 60), body, fontsize=9)
+        pg.insert_image(fitz.Rect(50, 100, 150, 200), stream=_png((300, 300), color))
+    result = extract_pdf_images(doc.tobytes())
+
+    assert len(result) == 2
+    assert result[0]["anchor"] != result[1]["anchor"]
+    assert "Seite" in result[0]["anchor"] and "Seite" in result[1]["anchor"]

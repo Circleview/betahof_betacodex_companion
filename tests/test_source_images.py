@@ -103,10 +103,10 @@ def test_staging_roundtrip_requires_identical_url(tmp_path):
     images = [{"kind": "url", "url": "https://img.example.org/a.jpg", "alt": "A", "anchor": "Anker"}]
     token = source_images.stage_web_images(tmp_path, "https://example.org/a", images)
 
-    assert source_images.take_staged_web_images(tmp_path, token, "https://example.org/fremd") == []
+    assert source_images.take_staged_web_images(tmp_path, token, "https://example.org/fremd") is None
     assert source_images.take_staged_web_images(tmp_path, token, "https://example.org/a") == images
-    assert source_images.take_staged_web_images(tmp_path, "../../etc/passwd", "https://example.org/a") == []
-    assert source_images.take_staged_web_images(tmp_path, "0" * 32, "https://example.org/a") == []
+    assert source_images.take_staged_web_images(tmp_path, "../../etc/passwd", "https://example.org/a") is None
+    assert source_images.take_staged_web_images(tmp_path, "0" * 32, "https://example.org/a") is None
 
 
 def test_staging_sanitizes_images_again_on_take(tmp_path):
@@ -129,3 +129,17 @@ def test_staging_sanitizes_images_again_on_take(tmp_path):
 
     assert [i["url"] for i in result] == ["https://img.example.org/ok.jpg"]
     assert len(result[0]["alt"]) == 300
+
+
+def test_staging_empty_list_is_valid_but_not_none(tmp_path):
+    token = source_images.stage_web_images(tmp_path, "https://example.org/a", [])
+
+    assert source_images.take_staged_web_images(tmp_path, token, "https://example.org/a") == []
+
+
+def test_store_images_skips_images_above_pixel_limit(tmp_path):
+    # 1-Bit-PNG: winzige Datei, aber 36 Megapixel - darf nie dekodiert werden.
+    buf = io.BytesIO()
+    Image.new("1", (6000, 6000)).save(buf, format="PNG")
+
+    assert source_images.store_images(tmp_path, "s", [_item(buf.getvalue())]) == []

@@ -9056,7 +9056,7 @@ def test_extract_url_stages_web_images_and_returns_token(client, monkeypatch, tm
     assert staged == {"url": "https://example.org/artikel", "images": [_IMG_WEB]}
 
 
-def test_extract_url_without_images_has_no_token(client, monkeypatch):
+def test_extract_url_without_images_still_stages_empty_list_for_checked_marker(client, monkeypatch, tmp_path):
     monkeypatch.setattr(
         extraction,
         "extract_from_url",
@@ -9064,7 +9064,17 @@ def test_extract_url_without_images_has_no_token(client, monkeypatch):
     )
     monkeypatch.setattr(extraction, "looks_like_audio", lambda u: False)
 
-    assert client.post("/api/extract-url", json={"url": "https://example.org/x"}).json().get("image_token") is None
+    token = client.post("/api/extract-url", json={"url": "https://example.org/x"}).json().get("image_token")
+
+    assert json.loads((tmp_path / "image_staging" / f"{token}.json").read_text())["images"] == []
+
+
+def test_add_source_from_page_without_images_is_marked_checked(client, monkeypatch):
+    # L6: sonst ruft jeder Admin-Reindex diese Seite erneut ab.
+    source_id, _ = _import_web_with_images(client, monkeypatch, images=[])
+
+    entry = main_module._load_sources()[source_id]
+    assert entry["images"] == [] and entry["images_checked_at"]
 
 
 def test_add_source_stores_staged_images_in_entry_and_chunk_metadata(client, monkeypatch):
@@ -9442,7 +9452,7 @@ def test_ask_web_fallback_refs_have_no_images():
     from app.models import ChunkRef
 
     ref = ChunkRef(chunk_id="w", source_id="p", title="T", position=0, text="t", is_web_fallback=True)
-    main_module._apply_chunk_images([ref], [{"source_id": "p", "images_json": json.dumps([{"kind": "url", "url": "https://i.example.org/a.jpg"}])}], {})
+    main_module._apply_chunk_images([ref], [{"source_id": "p", "images_json": json.dumps([{"kind": "url", "url": "https://i.example.org/a.jpg"}])}])
 
     assert ref.images == []
 
@@ -9507,3 +9517,121 @@ def test_handoff_applies_restricted_limit_and_sanitizes_urls(client, monkeypatch
     assert sum(len(s["images"]) for s in sources) == 1
     assert sources[0]["url"] is None and sources[0]["listen_url"] is None
     assert sources[1]["url"] == "https://example.org/ok"
+
+
+# --- Fehler-Check-Befunde Bildleiste (S1, S2, L1-L3) ---
+
+
+def test_handoff_restricted_limit_is_shared_across_turns(client):
+    imgs = lambda n: [{"kind": "url", "url": f"https://img.example.org/{n}.jpg", "alt": "", "page": None}]
+    source_id = _seed_image_chunks(client, [imgs(0), imgs(1), imgs(2)], restricted=True)
+    turns = [
+        {
+            "question": "F?", "answer": "A.",
+            "sources": [{"chunk_id": f"{source_id}::{i}", "source_id": source_id, "title": "Q", "position": i, "text": "t", "images": []}],
+        }
+        for i in range(3)
+    ]
+    token = client.post("/api/conversation-handoff", json={"history": turns}).json()["token"]
+
+    history = client.get(f"/api/conversation-handoff/{token}").json()["history"]
+
+    assert sum(len(t["sources"][0]["images"]) for t in history) == 1
+
+
+def test_handoff_ignores_chunk_id_that_belongs_to_another_source(client):
+    source_id = _seed_image_chunks(client, [[{"kind": "url", "url": "https://img.example.org/a.jpg", "alt": "", "page": None}]])
+    turn = {
+        "question": "F?", "answer": "A.",
+        "sources": [{"chunk_id": f"{source_id}::0", "source_id": "andere-quelle", "title": "Q", "position": 0, "text": "t", "images": []}],
+    }
+    token = client.post("/api/conversation-handoff", json={"history": [turn]}).json()["token"]
+
+    assert client.get(f"/api/conversation-handoff/{token}").json()["history"][0]["sources"][0]["images"] == []
+
+
+def _pdf_source(client, tmp_path, with_image=True):
+    from tests.test_extraction import _PAGE_TEXT, _pdf_with_images, _png
+
+    pdf = _pdf_with_images([(_PAGE_TEXT, [(_png((1200, 900)), (200, 150))])])
+    (tmp_path / "pdf_uploads").mkdir(exist_ok=True)
+    upload_id = str(uuid.uuid4())
+    (tmp_path / "pdf_uploads" / f"{upload_id}.pdf").write_bytes(pdf)
+    response = client.post("/api/sources", json={"title": "PDF", "text": _PAGE_TEXT, "pdf_upload_id": upload_id})
+    return response.json()["id"], _PAGE_TEXT
+
+
+def test_update_with_new_url_drops_old_pdf_images(client, tmp_path, monkeypatch):
+    source_id, text = _pdf_source(client, tmp_path)
+    name = main_module._load_sources()[source_id]["images"][0]["file"]
+    monkeypatch.setattr(extraction, "looks_like_pdf", lambda u: False)
+    monkeypatch.setattr(extraction, "looks_like_audio", lambda u: False)
+
+    client.put(f"/api/sources/{source_id}", json={"title": "PDF", "text": text, "url": "https://example.org/neu"})
+
+    entry = main_module._load_sources()[source_id]
+    assert not entry.get("images") and "images_checked_at" not in entry
+    assert not (tmp_path / "source_images" / source_id).exists()
+    assert client.get(f"/api/sources/{source_id}/images/{name}").status_code == 404
+    assert _chunk_image_lists(source_id) == [[]]
+
+
+def test_update_with_new_pdf_upload_drops_old_pdf_images(client, tmp_path):
+    source_id, text = _pdf_source(client, tmp_path)
+    (tmp_path / "pdf_uploads").mkdir(exist_ok=True)
+    upload_id = str(uuid.uuid4())
+    (tmp_path / "pdf_uploads" / f"{upload_id}.pdf").write_bytes(b"%PDF-1.4 neu")
+
+    client.put(f"/api/sources/{source_id}", json={"title": "PDF", "text": text, "pdf_upload_id": upload_id})
+
+    entry = main_module._load_sources()[source_id]
+    assert not entry.get("images") and "images_checked_at" not in entry
+    assert not (tmp_path / "source_images" / source_id).exists()
+
+
+def test_update_without_file_or_url_change_keeps_images(client, tmp_path):
+    source_id, text = _pdf_source(client, tmp_path)
+    before = main_module._load_sources()[source_id]["images"]
+
+    client.put(f"/api/sources/{source_id}", json={"title": "Neu", "text": text, "url": None})
+
+    assert main_module._load_sources()[source_id]["images"] == before
+
+
+def test_pdf_images_are_extracted_in_import_thread_not_in_request(client, tmp_path, monkeypatch):
+    import threading as _threading
+
+    from tests.test_extraction import _PAGE_TEXT, _pdf_with_images, _png
+
+    seen = []
+    real = extraction.extract_pdf_images
+    monkeypatch.setattr(extraction, "extract_pdf_images", lambda d, *a, **k: seen.append(_threading.current_thread()) or real(d, *a, **k))
+    (tmp_path / "pdf_uploads").mkdir(exist_ok=True)
+    upload_id = str(uuid.uuid4())
+    (tmp_path / "pdf_uploads" / f"{upload_id}.pdf").write_bytes(
+        _pdf_with_images([(_PAGE_TEXT, [(_png((400, 300)), (200, 150))])])
+    )
+    # Der TestClient-Request läuft in einem eigenen Thread; der Import-Thread ist ein weiterer.
+    request_threads = []
+    original_import = main_module._finish_synchronous_import
+    monkeypatch.setattr(
+        main_module, "_finish_synchronous_import", lambda *a, **k: (request_threads.append(_threading.current_thread()), original_import(*a, **k))[1]
+    )
+
+    client.post("/api/sources", json={"title": "PDF", "text": _PAGE_TEXT, "pdf_upload_id": upload_id})
+
+    assert seen and request_threads and seen[0] is request_threads[0]
+
+
+def test_restricted_image_moves_to_first_cited_ref(client, monkeypatch):
+    imgs = lambda n: [{"kind": "url", "url": f"https://img.example.org/{n}.jpg", "alt": "", "page": None}]
+    _seed_image_chunks(client, [imgs(0), imgs(1), imgs(2)], restricted=True)
+    monkeypatch.setattr(llm, "stream_answer_question", lambda *a, **k: iter(["Antwort [2]."]))
+
+    response = client.post("/api/ask", json={"question": "Frage?", "top_k": 5})
+    events = [json.loads(l) for l in response.text.split("\n") if l.strip()]
+
+    early = next(e for e in events if e["type"] == "sources")["sources"]
+    done = next(e for e in events if e["type"] == "done")["sources"]
+    assert [len(r["images"]) for r in early] == [1, 0, 0]
+    assert [len(r["images"]) for r in done] == [0, 1, 0]
