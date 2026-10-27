@@ -262,7 +262,7 @@ def test_ask_question_rejects_empty_question(mcp_client, fake_ask):
 
 def test_format_answer_makes_relative_links_absolute():
     text = mcp_server._format_answer("Siehe [Quellenübersicht](/import.html).", [], "de")
-    assert "(https://chat.betacodex.org/import.html)" in text
+    assert "(https://companion.betahof.com/import.html)" in text
 
 
 def test_ask_question_output_contains_no_chunk_text(mcp_client, monkeypatch):
@@ -318,3 +318,37 @@ def test_ask_question_sends_no_cache_control_without_history(mcp_client, monkeyp
 
     messages = client.messages.stream.call_args.kwargs["messages"]
     assert len(messages) == 1 and "cache_control" not in str(messages)
+
+
+def _post(client, host, origin=None):
+    headers = {"Accept": "application/json, text/event-stream", "Content-Type": "application/json", "Host": host}
+    if origin:
+        headers["Origin"] = origin
+    body = {"jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": {}}
+    return client.post(mcp_server.MCP_PATH, headers=headers, json=body)
+
+
+OLD = "chat." + "betacodex.org"
+
+
+def test_old_host_is_rejected_with_421(mcp_client):
+    assert _post(mcp_client, OLD).status_code == 421
+
+
+@pytest.mark.parametrize("host", ["companion.betahof.com", "localhost:8000", "127.0.0.1:8000", "testserver"])
+def test_allowed_hosts_pass_host_check(mcp_client, host):
+    # ohne Schlüssel: 401 heißt, die Host-Prüfung ist bestanden
+    assert _post(mcp_client, host).status_code == 401
+
+
+def test_old_origin_is_rejected_with_403(mcp_client):
+    assert _post(mcp_client, "companion.betahof.com", f"https://{OLD}").status_code == 403
+
+
+def test_new_origin_passes_origin_check(mcp_client):
+    assert _post(mcp_client, "companion.betahof.com", "https://companion.betahof.com").status_code == 401
+
+
+def test_format_answer_keeps_absolute_and_anchor_links():
+    text = mcp_server._format_answer("[a](https://x.example/y) [b](#q)", [], "de")
+    assert "(https://x.example/y)" in text and "(#q)" in text and "companion.betahof.com" not in text
