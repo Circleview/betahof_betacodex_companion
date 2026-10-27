@@ -321,7 +321,8 @@ def test_ask_question_sends_no_cache_control_without_history(mcp_client, monkeyp
 
 
 def _post(client, host, origin=None):
-    headers = {"Accept": "application/json, text/event-stream", "Content-Type": "application/json", "Host": host}
+    _, secret = mcp_keys.create_key(OWNER, "Laptop")
+    headers = {"Authorization": f"Bearer {secret}", "Accept": "application/json, text/event-stream", "Content-Type": "application/json", "Host": host}
     if origin:
         headers["Origin"] = origin
     body = {"jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": {}}
@@ -337,8 +338,7 @@ def test_old_host_is_rejected_with_421(mcp_client):
 
 @pytest.mark.parametrize("host", ["companion.betahof.com", "localhost:8000", "127.0.0.1:8000", "testserver"])
 def test_allowed_hosts_pass_host_check(mcp_client, host):
-    # ohne Schlüssel: 401 heißt, die Host-Prüfung ist bestanden
-    assert _post(mcp_client, host).status_code == 401
+    assert _post(mcp_client, host).status_code == 200
 
 
 def test_old_origin_is_rejected_with_403(mcp_client):
@@ -346,7 +346,8 @@ def test_old_origin_is_rejected_with_403(mcp_client):
 
 
 def test_new_origin_passes_origin_check(mcp_client):
-    assert _post(mcp_client, "companion.betahof.com", "https://companion.betahof.com").status_code == 401
+    assert _post(mcp_client, "companion.betahof.com").status_code == 200  # ohne Origin (Connector)
+    assert _post(mcp_client, "companion.betahof.com", "https://companion.betahof.com").status_code == 200
 
 
 def test_format_answer_keeps_absolute_and_anchor_links():
