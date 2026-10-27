@@ -6,7 +6,7 @@ Alle kuratierten Quellen, sortiert nach Nachname der (ersten) Autor:in. Volltext
 
 Lizenz: [CC BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/), Namensnennung „BetaCodex Chat (https://companion.betahof.com)“ – siehe [LICENSE.md](LICENSE.md). Maschinenlesbar: [sources.json](sources.json).
 
-Anzahl Quellen: 372
+Anzahl Quellen: 376
 
 ### Ackoff, Russell – Systems explained
 
@@ -1935,6 +1935,38 @@ Datum: 2026-06-13 · Link: <https://www.youtube.com/watch?v=r4PgVKhyK6M>
 **Zusammenfassung (KI-generiert):**
 
 > In dieser Podcast-Episode stellen Ryan und Neil zwei Gäste vor: Ron Perer von der San Francisco State University und Al Blueorn von Mizu. Die Hosts diskutieren ein bahnbrechendes akademisches Paper aus dem Jahr 2004 von Ron, Al und Jack Petranker mit dem Titel „The Times of Cause and Flow in Organizational Change". Ron erklärt, wie er durch die Begegnung mit der Zeitsoziologin Barbara Adam auf die Thematik kam und sein Interesse an der Hinterfragung linearer, kausaler Zeitvorstellungen in der Organisationswissenschaft entstand. Diese Inspiration stammt aus einem tibetischen buddhistischen Text „Time, Space and Knowledge" von Tarthang Tulku, den Ron seit 1982 studiert. Das Gespräch behandelt auch Rons neues Buch „The Alchemy of Time", das eine Fortsetzung seines Werkes „Mindpace" darstellt und sich mit Zeittheorien auseinandersetzt.
+
+### qomenius.com – Didactics
+
+Datum: 2026-01-01 · Link: <https://www.qomenius.com/de/didactics>
+
+**Zusammenfassung (KI-generiert):**
+
+> Der qomenius-Lernansatz wurde 2018 von Silke Hermann und Niels Pflaeging entwickelt und verbindet Konzepte aus Kleingruppenlernen, Diskurslernen, Organisationswissenschaften und zeitgenössischer Psychologie. Der Ansatz unterscheidet sich von konventionellen Entwicklungsprogrammen durch die integrierte Kombination von Technologie, Didaktik und Inhalten – anstatt diese isoliert zu betonen. Zentral ist die Erkenntnis, dass wirksames Lernen nicht durch individuelles Lernen oder Technologie allein entsteht, sondern durch die Verbindung von Technologie mit kleingruppenbasiertem, interaktionsgestütztem Lernen. Damit adressiert qomenius eine Schwäche traditioneller Online- und Präsenzformate und schafft eine neue Grundlage für berufsbezogenes Lernen.
+
+### qomenius.com – Start | qomenius
+
+Datum: 2026-01-01 · Link: <https://www.qomenius.com/de/about-us>
+
+**Zusammenfassung (KI-generiert):**
+
+> qomenius entwickelt digitale Lerninfrastrukturen für skalierbares organisationales Lernen basierend auf Diskurslernen in kleinen Gruppen. Das Unternehmen bietet verschiedene Lösungsformen an: technische Infrastruktur via Lizenzierung, maßgeschneiderte Full-Service-Angebote und schnell einsetzbare Lösungen wie qomenius Nano und Ninety. Die Wurzeln liegen in Learning & Development, Organisationswissenschaft und Softwareentwicklung. Der Ansatz wurde 2018 bei Red42 entwickelt, 2020 digitalisiert und 2022 kommerzialisiert. qomenius konzentriert sich auf Unternehmenskunden, Lernen am Arbeitsplatz und Bildungseinrichtungen. Das Unternehmen vertraut darauf, dass menschliches Potenzial unbegrenzt ist, Algorithmen niemals neutral wirken und EdTech-Systeme weltweit skalierbar Lernen fördern müssen.
+
+### qomenius.com – Start | qomenius
+
+Datum: 2026-01-01 · Link: <https://www.qomenius.com/de/tech-faqs>
+
+**Zusammenfassung (KI-generiert):**
+
+> qomenius ist eine Lernplattform für Diskurslernen in Kleingruppen von vier bis sechs Personen. Die Plattform bietet zwei Produktlinien: qomenius Nano für Teamentwicklung und qomenius Ninety für Organisationsentwicklung. Lernsessions dauern 90 Minuten und können online oder am Tisch mit Laptops durchgeführt werden. Ein Lernzyklus (Cycle) besteht aus vier (Nano) oder fünf (Ninety) Sessions zu verschiedenen Themen. Module sind einzelne Lernunterlagen für 90-minütige Sessions. Die Plattform funktioniert ohne Moderator und nutzt Vorlesen als Kulturtechnik. Inhalte sind in sechs Sprachen verfügbar. qomenius unterscheidet sich durch seine soziale Didaktik von individuellen Lernplattformen und konzentriert sich auf gemeinschaftliches, diskursives Lernen im Dialog.
+
+### qomenius.com – Start | qomenius
+
+Datum: 2026-01-01 · Link: <https://www.qomenius.com/de/solutions>
+
+**Zusammenfassung (KI-generiert):**
+
+> qomenius ist eine innovative Lernplattform, die Diskurslernen in den Mittelpunkt stellt – einen Quantensprung für Zusammenarbeit. Im Gegensatz zu klassischen E-Learning-Formaten fördert qomenius strukturiertes Lernen in Kleingruppen nach einem regelmäßigen Rhythmus durch intensiven Diskurs ohne externe Lehrpersonen. Die Plattform schafft digitale Räume, in denen ernsthafte Diskussionen zur Wissenserzeugung angeregt werden. qomenius wirkt auf drei Ebenen: individuell durch Förderung kritischen Denkens, auf Teamebene durch sichere Räume für intellektuelle Spannung und Innovationskraft sowie organisational durch schnellere Reaktionsfähigkeit und kohärente Gestaltung. Einsatzgebiete reichen von Agilität über Diversity bis Sales, ideal für Teams, Unternehmen, Corporate Academies und Hochschulen.
 
 ### Roeder, Martin; Herbert Schober-Ehmer; Michael von Kutzschenbach – Führung, Entscheidung - und KI
 
