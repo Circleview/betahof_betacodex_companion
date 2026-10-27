@@ -6,7 +6,7 @@ unter der Lizenz **Creative Commons Namensnennung – Nicht kommerziell –
 Weitergabe unter gleichen Bedingungen 4.0 International (CC BY-NC-SA 4.0)**:
 <https://creativecommons.org/licenses/by-nc-sa/4.0/deed.de>
 
-Namensnennung: „BetaCodex Chat (https://chat.betacodex.org)“
+Namensnennung: „BetaCodex Chat (https://companion.betahof.com)“
 
 Die verlinkten Quellen selbst sind **nicht** Teil dieser Lizenz. Ihre Rechte
 liegen bei den jeweiligen Autor:innen. Wer aus ihnen zitiert, muss die
@@ -19,7 +19,7 @@ The source list in this directory (`QUELLEN.md`, `SOURCES.md`,
 **Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International
 (CC BY-NC-SA 4.0)**: <https://creativecommons.org/licenses/by-nc-sa/4.0/>
 
-Attribution: “BetaCodex Chat (https://chat.betacodex.org)”
+Attribution: “BetaCodex Chat (https://companion.betahof.com)”
 
 The linked sources themselves are **not** covered by this license. Their
 rights remain with their respective authors. Anyone quoting from them must

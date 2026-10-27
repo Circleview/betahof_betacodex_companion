@@ -29,7 +29,6 @@ _SCOPE_KEY = "bcx_mcp_key"
 
 # DNS-Rebinding-Schutz des SDK: nur diese Host-Header werden angenommen.
 ALLOWED_HOSTS = [
-    "chat.betacodex.org",
     "companion.betahof.com",
     "127.0.0.1:*",
     "localhost:*",
@@ -47,7 +46,7 @@ server = MCPServer(
     ),
 )
 
-PUBLIC_BASE_URL = "https://chat.betacodex.org"
+PUBLIC_BASE_URL = "https://companion.betahof.com"
 MAX_QUESTION_CHARS = 2000
 
 
@@ -237,7 +236,7 @@ _mcp_http_app = server.streamable_http_app(
     transport_security=TransportSecuritySettings(
         enable_dns_rebinding_protection=True,
         allowed_hosts=ALLOWED_HOSTS,
-        allowed_origins=["https://chat.betacodex.org", "https://companion.betahof.com"],
+        allowed_origins=[PUBLIC_BASE_URL],
     ),
 )
 session_manager = server.session_manager

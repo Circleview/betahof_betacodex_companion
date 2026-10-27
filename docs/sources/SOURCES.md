@@ -4,7 +4,7 @@
 
 All curated sources, sorted by the (first) author's last name. Full texts are deliberately not published here.
 
-License: [CC BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/), attribution “BetaCodex Chat (https://chat.betacodex.org)” – see [LICENSE.md](LICENSE.md). Machine-readable: [sources.json](sources.json).
+License: [CC BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/), attribution “BetaCodex Chat (https://companion.betahof.com)” – see [LICENSE.md](LICENSE.md). Machine-readable: [sources.json](sources.json).
 
 Number of sources: 372
 

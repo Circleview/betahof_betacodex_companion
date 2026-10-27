@@ -2,7 +2,7 @@
 
 [English version](HOW-IT-WORKS.md)
 
-Erfahrungen aus dem Bau von [BetaCodex Chat](https://chat.betacodex.org) für alle
+Erfahrungen aus dem Bau von [BetaCodex Chat](https://companion.betahof.com) für alle
 im Beta-Kodex-Netzwerk, die selbst KI-Werkzeuge bauen. Das Dokument beschreibt,
 was im Code steckt, und vor allem, warum es so ist. Die Zahlen in der Tabelle am
 Ende werden aus dem Code erzeugt, ein Test hält den Text aktuell (siehe

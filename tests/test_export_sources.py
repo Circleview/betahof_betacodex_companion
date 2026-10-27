@@ -1,4 +1,6 @@
-from scripts.export_sources import format_author, render, sort_key
+import json
+
+from scripts.export_sources import format_author, render, render_json, sort_key
 
 
 def _src(authors, title="T", **kw):
@@ -59,3 +61,10 @@ def test_render_json_merges_languages_and_carries_license():
     assert a["key_terms"] == {"de": ["Führung"], "en": ["leadership"]}
     assert b["summary_ai_generated"] == {"de": False, "en": True}
     assert b["key_terms"] == {"de": [], "en": []}
+
+
+def test_attribution_names_companion_domain():
+    md = render([_src(["A B"])], "de")
+    assert "BetaCodex Chat (https://companion.betahof.com)" in md
+    data = json.loads(render_json({"de": [_src(["A B"], id="1", key_terms=[])], "en": []}))
+    assert data["attribution"] == "BetaCodex Chat (https://companion.betahof.com)"

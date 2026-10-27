@@ -2,7 +2,7 @@
 
 [Deutsche Fassung](WIE-ES-FUNKTIONIERT.md)
 
-Lessons from building [BetaCodex Chat](https://chat.betacodex.org), for everyone in
+Lessons from building [BetaCodex Chat](https://companion.betahof.com), for everyone in
 the BetaCodex network who is building AI tools of their own. This document
 describes what is in the code and, above all, why. The numbers in the table at the
 end are generated from the code, and a test keeps the text current (see
