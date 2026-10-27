@@ -4,7 +4,7 @@
 
 Alle kuratierten Quellen, sortiert nach Nachname der (ersten) Autor:in. Volltexte werden hier bewusst nicht veröffentlicht.
 
-Lizenz: [CC BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/), Namensnennung „BetaCodex Chat (https://chat.betacodex.org)“ – siehe [LICENSE.md](LICENSE.md). Maschinenlesbar: [sources.json](sources.json).
+Lizenz: [CC BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/), Namensnennung „BetaCodex Chat (https://companion.betahof.com)“ – siehe [LICENSE.md](LICENSE.md). Maschinenlesbar: [sources.json](sources.json).
 
 Anzahl Quellen: 372
 

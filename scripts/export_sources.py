@@ -16,12 +16,12 @@ import unicodedata
 import urllib.request
 from pathlib import Path
 
-API = "https://chat.betacodex.org"
+API = "https://companion.betahof.com"
 OUT_DIR = Path(__file__).resolve().parent.parent / "docs" / "sources"
 FIELDS = ("id", "title", "authors", "date", "url", "summary", "summary_ai_generated", "key_terms")
 LICENSE = "CC BY-NC-SA 4.0"
 LICENSE_URL = "https://creativecommons.org/licenses/by-nc-sa/4.0/"
-ATTRIBUTION = "BetaCodex Chat (https://chat.betacodex.org)"
+ATTRIBUTION = "BetaCodex Chat (https://companion.betahof.com)"
 
 LANGS = {
     "de": {

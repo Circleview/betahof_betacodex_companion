@@ -4,7 +4,7 @@ Ein KI-Wissensassistent, der Fragen zum BetaCodex ausschließlich auf Basis
 kuratierter, geprüfter Quellen beantwortet – mit lückenloser Quellenangabe
 bis zur Originalstelle.
 
-Live unter **https://chat.betacodex.org**.
+Live unter **https://companion.betahof.com**.
 
 ---
 
@@ -217,18 +217,18 @@ Einrichtung in Claude Code (Schlüssel auf der Seite „MCP-Zugänge“
 anlegen, der fertige Befehl wird dort angezeigt):
 
 ```bash
-claude mcp add --transport http betacodex https://chat.betacodex.org/mcp \
+claude mcp add --transport http betacodex https://companion.betahof.com/mcp \
   --header "Authorization: Bearer <dein-schlüssel>"
 ```
 
 Als Konnektor in Claude (claude.ai oder Desktop-App): Einstellungen ›
 Konnektoren › „Benutzerdefinierten Konnektor hinzufügen“, Adresse
-`https://chat.betacodex.org/mcp`, Authentifizierung „Keine Anmeldung“ und
+`https://companion.betahof.com/mcp`, Authentifizierung „Keine Anmeldung“ und
 unter „Request headers“ den Standard-Header `x-api-key` aus der Liste mit
 dem Schlüssel als Wert (ohne „Bearer“) – ein eigener Header-Name wäre nicht
 nötig und müsste erst von Anthropic freigegeben werden.
 
-Andere MCP-Clients brauchen die Adresse `https://chat.betacodex.org/mcp`
+Andere MCP-Clients brauchen die Adresse `https://companion.betahof.com/mcp`
 (Streamable HTTP) und entweder `Authorization: Bearer <dein-schlüssel>` oder
 `x-api-key: <dein-schlüssel>`.
 
@@ -513,11 +513,12 @@ fehl.
 - **Dev** (`Beta-Kodex - Wissenspartner/`, Port 8000): der aktive
   Arbeitsstand, kann jederzeit kurzzeitig instabil sein
   (Server-Neustarts während der Entwicklung).
-- **Produktion** (https://chat.betacodex.org, Hetzner Cloud, CX23,
+- **Produktion** (https://companion.betahof.com, Hetzner Cloud, CX23,
   Falkenstein, DSGVO-konform): ein einzelner Server mit zwei kompletten
   App-Instanzen ("Blue"/"Green") unter einem eigenen Systembenutzer
   `betacodex`, dahinter Caddy als Reverse Proxy mit automatischem
-  Let's-Encrypt-TLS. Beide Instanzen teilen sich `data/` und `.env` per
+  Let's-Encrypt-TLS (`deploy.sh` bedient nur noch `DOMAIN`, `DOMAIN2` ist
+  seit 2026-10-27 leer). Beide Instanzen teilen sich `data/` und `.env` per
   Symlink auf ein gemeinsames `shared/`-Verzeichnis; nur der Code
   unterscheidet sich zwischen den beiden Slots. Deployment läuft
   vollautomatisch per GitHub Actions (`.github/workflows/deploy.yml`),

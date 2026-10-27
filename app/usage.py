@@ -67,7 +67,7 @@ _fx_lock = threading.Lock()
 def _fetch_ecb_rate() -> tuple[float, str]:
     # Eigener User-Agent: Frankfurter (hinter Cloudflare) lehnt den
     # Standard-Agent "Python-urllib" mit 403 ab.
-    req = urllib.request.Request(FX_URL, headers={"User-Agent": "BetaCodex-Chat/1.0 (+https://chat.betacodex.org)"})
+    req = urllib.request.Request(FX_URL, headers={"User-Agent": "BetaCodex-Chat/1.0 (+https://companion.betahof.com)"})
     with urllib.request.urlopen(req, timeout=FX_TIMEOUT_SECONDS) as resp:
         data = json.load(resp)
     return float(data["rates"]["EUR"]), data["date"]
