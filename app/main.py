@@ -1657,6 +1657,29 @@ def _normalize_beta_kodex_spelling_once() -> None:
         _register_all_terms(source_id, sources[source_id])
 
 
+def _repair_char_split_key_terms_once() -> None:
+    """Einmalige Datenkorrektur (Idee 3c32da30): lieferte das Modell
+    key_terms_* als String statt Liste, entstand eine Liste einzelner
+    Buchstaben (Ursache in summarization.py behoben). Die Begriffe lassen sich
+    daraus nicht sicher zurückgewinnen (Leerzeichen fehlen) - das Feld wird
+    geleert; die Zusammenfassungs-Nachholung füllt es bei Bedarf neu. Läuft bei
+    jedem Start, idempotent."""
+    sources = _load_sources()
+    changed = []
+    for source_id, entry in sources.items():
+        for field in ("key_terms_de", "key_terms_en"):
+            value = entry.get(field)
+            if isinstance(value, list) and len(value) >= 3 and all(isinstance(t, str) and len(t) == 1 for t in value):
+                entry[field] = []
+                if source_id not in changed:
+                    changed.append(source_id)
+    if not changed:
+        return
+    _save_sources(sources)
+    for source_id in changed:
+        _register_all_terms(source_id, sources[source_id])
+
+
 def _backfill_term_languages_once() -> None:
     """Einmalige Datenkorrektur (Nutzerwunsch 2026-09-22): terms.json
     unterschied bisher nicht nach Sprache - deutsche und englische
@@ -1687,6 +1710,7 @@ def _start_background_workers() -> None:
     users.ensure_bootstrap_admin(os.environ.get("SYSTEM_ADMIN_EMAIL", ""))
     _normalize_pflaeging_spelling_once()
     _normalize_beta_kodex_spelling_once()
+    _repair_char_split_key_terms_once()
     _backfill_term_languages_once()
     threading.Thread(
         target=_run_periodic, args=(_run_url_health_check_once, URL_HEALTH_CHECK_INTERVAL_SECONDS), daemon=True
@@ -5073,7 +5097,11 @@ def ask(question: QuestionIn, request: Request, x_lang: str = Header(default=i18
     # der Seiten-URL (kommt per Referer), nur wenn IS_DEV_ENVIRONMENT; Prod
     # ignoriert ihn. Ohne eigenes Feld/Frontend; Ablösung, wenn der Test vorbei ist.
     extra = {}
-    if IS_DEV_ENVIRONMENT and "aus" in parse_qs(urlsplit(request.headers.get("referer", "")).query).get("vielfalt", []):
+    try:
+        referer_query = urlsplit(request.headers.get("referer", "")).query
+    except ValueError:  # kaputter Referer (z. B. "http://[") darf keinen 500 auslösen
+        referer_query = ""
+    if IS_DEV_ENVIRONMENT and "aus" in parse_qs(referer_query).get("vielfalt", []):
         extra["max_per_source"] = 0
     llm_chunks, chunk_refs, author_bios, query_embedding = _ask_context(
         question.question, history, x_lang, question.top_k, _get_current_user_email(request), **extra

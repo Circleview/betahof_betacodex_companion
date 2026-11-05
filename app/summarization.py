@@ -178,6 +178,12 @@ def _known_terms_instruction(known_terms_by_lang: dict[str, list[str]]) -> str:
     )
 
 
+def _clean_terms(value) -> list[str]:
+    """Nur echte Listen: ein String würde sonst Buchstabe für Buchstabe zu
+    Schlagworten (Vorfall Idee 3c32da30, Quelle mit 'O','p','e','n' ...)."""
+    return [t.strip() for t in value if isinstance(t, str) and t.strip()] if isinstance(value, list) else []
+
+
 def _call_tool(system_prompt: str, tool: dict, content: str) -> dict | None:
     """Nutzt Anthropics Tool-Use statt freitextigem JSON in der Antwort - die
     API validiert/strukturiert das Ergebnis serverseitig. Vorher wurde das
@@ -213,7 +219,7 @@ def generate_summary(text: str, lang: str = DEFAULT_LANG) -> dict:
         if not data:
             return {"summary": "", "key_terms": []}
         summary = (data.get("summary") or "").strip()
-        key_terms = [t.strip() for t in data.get("key_terms") or [] if t and t.strip()]
+        key_terms = _clean_terms(data.get("key_terms"))
         return {"summary": summary, "key_terms": key_terms}
     except Exception:
         return {"summary": "", "key_terms": []}
@@ -232,11 +238,11 @@ def _call_bilingual_summary_tool(
         return {
             "de": {
                 "summary": (data.get("summary_de") or "").strip(),
-                "key_terms": [t.strip() for t in data.get("key_terms_de") or [] if t and t.strip()],
+                "key_terms": _clean_terms(data.get("key_terms_de")),
             },
             "en": {
                 "summary": (data.get("summary_en") or "").strip(),
-                "key_terms": [t.strip() for t in data.get("key_terms_en") or [] if t and t.strip()],
+                "key_terms": _clean_terms(data.get("key_terms_en")),
             },
         }
     except Exception:
@@ -323,7 +329,7 @@ def extract_key_terms(text: str, lang: str = DEFAULT_LANG, known_terms: list[str
         data = _call_tool(system_prompt, _KEY_TERMS_TOOL, text[:MAX_INPUT_CHARS])
         if not data:
             return []
-        return [t.strip() for t in data.get("key_terms") or [] if t and t.strip()]
+        return _clean_terms(data.get("key_terms"))
     except Exception:
         return []
 
