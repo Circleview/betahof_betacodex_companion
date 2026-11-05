@@ -291,3 +291,89 @@ def test_restricted_sources_keep_at_most_one_image_each_with_many_sources():
     sources = {s: {"restricted": True} for s in ("R1", "R2", "R3")}
     out = main_module._limit_restricted_images(refs, sources)
     assert [len(x) for x in out] == [1, 0, 1, 0, 1]
+
+
+# ---- Fehler-Check-Nachbesserung ----
+
+def _web(spec, entry="W"):
+    ids, docs, metas, dists = _pool(spec)
+    for m in metas:
+        if m["source_id"].startswith("page"):
+            m.update(allowlist_entry_id=entry, is_web_fallback=True)
+    return ids, docs, metas, dists
+
+
+def test_web_chunk_never_replaces_curated_overflow_chunk():
+    spec = A4 + [("b1", "B", 0.110), ("page1", "page1", 0.112)]
+    ids, docs, metas, dists = _web(spec)
+    out, _, _ = main_module._rerank_by_relevance(ids, docs, metas, dists, {}, 5, max_per_source=2)
+    assert "page1" not in out
+    assert out == ["a1", "a2", "a3", "a4", "b1"]
+
+
+def test_web_overflow_chunk_may_get_web_or_curated_replacement():
+    spec = [("page1", "page1", 0.100), ("page2", "page2", 0.101), ("page3", "page3", 0.102), ("page4", "page4", 0.103),
+            ("b1", "B", 0.104), ("c1", "C", 0.110)]
+    ids, docs, metas, dists = _web(spec)
+    out, _, _ = main_module._rerank_by_relevance(ids, docs, metas, dists, {}, 5, max_per_source=2)
+    assert "c1" in out
+
+
+def test_no_swap_is_wasted_by_greedy_assignment():
+    # a4 (.110) darf c (.112) oder e (.120) nehmen, a3 (.100) nur c: zwei Tausche moeglich
+    spec = [("a1", "A", 0.09), ("a2", "A", 0.095), ("a3", "A", 0.100), ("a4", "A", 0.110), ("b1", "B", 0.111),
+            ("c1", "C", 0.112), ("e1", "E", 0.120)]
+    out = _rerank(spec)
+    assert sorted(out) == ["a1", "a2", "b1", "c1", "e1"]
+
+
+def _term_fixture(monkeypatch, forced_by_term):
+    monkeypatch.setattr(terms, "list_terms", lambda: [{"term": t} for t in forced_by_term])
+
+    def fake_query(embedding, top_k=5, where=None, where_document=None):
+        term = where_document["$contains"]
+        return {"ids": [[f"f-{term}"]], "documents": [[f"Treffer {term}"]], "metadatas": [[{"source_id": f"F{term}", "title": f"F{term}"}]]}
+
+    monkeypatch.setattr(vectorstore, "query", fake_query)
+
+
+def test_trim_keeps_sole_carrier_of_question_term(monkeypatch):
+    _term_fixture(monkeypatch, ["Doppelmanagement", "NUMMI"])
+    ids = ["a1", "a2", "a3", "b1", "c1"]
+    metas = [{"source_id": s, "title": s} for s in ("A", "A", "A", "B", "C")]
+    docs = ["x", "y", "Über Doppelmanagement", "z", "w"]
+    out, _, _ = main_module._ensure_term_hits(
+        ids, docs, metas, [0.1], "Was ist Doppelmanagement bei NUMMI?", 5, trim_repeats=True
+    )
+    assert out == ["a1", "a3", "b1", "c1", "f-NUMMI"]
+
+
+def test_trim_with_more_terms_than_slots_does_not_crash(monkeypatch):
+    _term_fixture(monkeypatch, ["NUMMI", "Seddon"])
+    out, _, _ = main_module._ensure_term_hits(
+        ["a1"], ["x"], [{"source_id": "A", "title": "A"}], [0.1], "NUMMI und Seddon?", 1, trim_repeats=True
+    )
+    assert set(out) <= {"a1", "f-NUMMI", "f-Seddon"}
+
+
+def test_keyword_exemption_uses_word_boundaries_and_min_length():
+    sources = {
+        "T": {"key_terms_de": ["Team"], "key_terms_en": []},
+        "K": {"key_terms_de": ["KI"], "key_terms_en": []},
+        "Z": {"key_terms_de": ["Zeitorientierung"], "key_terms_en": []},
+    }
+    assert main_module._keyword_exempt_source_ids(sources, "Wie funktioniert Teamarbeit mit KI?") == set()
+    assert main_module._keyword_exempt_source_ids(sources, "Was ist zeitorientierung?") == {"Z"}
+
+
+def test_keyword_exemption_threshold_applies_per_term_not_in_sum():
+    sources = {f"B{i}": {"key_terms_de": ["Beta-Kodex"], "key_terms_en": []} for i in range(10)}
+    sources["D1"] = {"key_terms_de": ["Doppelmanagement"], "key_terms_en": ["Beta-Kodex"]}
+    sources["D2"] = {"key_terms_de": ["Doppelmanagement"], "key_terms_en": []}
+    out = main_module._keyword_exempt_source_ids(sources, "Was sagt der Beta-Kodex über Doppelmanagement?")
+    assert out == {"D1", "D2"}
+
+
+def test_keyword_exemption_ignores_garbage_single_letter_terms():
+    sources = {"G": {"key_terms_de": [], "key_terms_en": list("OpenSpace")}}
+    assert main_module._keyword_exempt_source_ids(sources, "Open Space e p n?") == set()
