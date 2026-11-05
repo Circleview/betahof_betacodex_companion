@@ -372,3 +372,9 @@ def test_keyword_exemption_threshold_applies_per_term_not_in_sum():
 def test_keyword_exemption_ignores_garbage_single_letter_terms():
     sources = {"G": {"key_terms_de": [], "key_terms_en": list("OpenSpace")}}
     assert main_module._keyword_exempt_source_ids(sources, "Open Space e p n?") == set()
+
+
+def test_overflow_chunk_without_replacement_is_logged(caplog):
+    with caplog.at_level(logging.INFO, logger="app.main"):
+        _rerank(A4 + [("b1", "B", 0.110), ("b2", "B", 0.112)])
+    assert any("kein Nachrücker" in r.getMessage() for r in caplog.records)
