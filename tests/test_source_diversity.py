@@ -322,6 +322,19 @@ def test_no_swap_is_wasted_by_greedy_assignment():
     assert sorted(out) == ["a1", "a2", "b1", "c1", "e1"]
 
 
+def test_successor_is_the_best_chunk_of_a_new_source_not_the_weakest_in_tolerance():
+    # Qualitaetsvorgabe: Ein Tausch nimmt den besten Ausschnitt der neuen Quelle.
+    spec = [("a1", "A", 0.100), ("a2", "A", 0.101), ("a3", "A", 0.102), ("a4", "A", 0.103), ("b1", "B", 0.104),
+            ("c1", "C", 0.105), ("c2", "C", 0.110)]
+    assert sorted(_rerank(spec)) == ["a1", "a2", "a3", "b1", "c1"]
+
+
+def test_single_swap_takes_best_new_source_and_drops_worst_candidate():
+    spec = [("a1", "A", 0.100), ("a2", "A", 0.101), ("a3", "A", 0.102), ("b1", "B", 0.103), ("e1", "E", 0.104),
+            ("d1", "D", 0.106), ("c1", "C", 0.112)]
+    assert sorted(_rerank(spec)) == ["a1", "a2", "b1", "d1", "e1"]
+
+
 def _term_fixture(monkeypatch, forced_by_term):
     monkeypatch.setattr(terms, "list_terms", lambda: [{"term": t} for t in forced_by_term])
 
