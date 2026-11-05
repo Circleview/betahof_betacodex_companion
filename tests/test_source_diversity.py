@@ -73,11 +73,13 @@ def test_duplicate_text_never_moves_up():
 
 
 def test_exempt_source_chunks_stay_and_never_move_up():
-    spec = [("x1", "X", 0.10), ("x2", "X", 0.101), ("x3", "X", 0.102), ("y1", "Y", 0.103), ("y2", "Y", 0.104),
-            ("y3", "Y", 0.105), ("x4", "X", 0.106), ("z1", "Z", 0.107)]
+    stay = [("x1", "X", 0.10), ("x2", "X", 0.101), ("x3", "X", 0.102), ("x4", "X", 0.103), ("y1", "Y", 0.104),
+            ("z1", "Z", 0.105)]
+    assert _rerank(stay, exempt_source_ids={"X"}) == ["x1", "x2", "x3", "x4", "y1"]
+    spec = [("x1", "X", 0.10), ("x2", "X", 0.101), ("y1", "Y", 0.103), ("y2", "Y", 0.104),
+            ("y3", "Y", 0.105), ("x3", "X", 0.106), ("z1", "Z", 0.107)]
     out = _rerank(spec, exempt_source_ids={"X"})
-    assert {"x1", "x2", "x3"} <= set(out)
-    assert "x4" not in out  # Nachrücker nie aus ausgenommener Quelle
+    assert "x3" not in out  # Nachrücker nie aus ausgenommener Quelle
     assert sum(i.startswith("y") for i in out) <= 2
     assert "z1" in out
 
@@ -230,28 +232,7 @@ def test_keyword_exempts_only_when_at_most_three_sources_match(monkeypatch):
     assert sum(r.source_id == "A" for r in refs) == 2
 
 
-# ---- Umschalter vielfalt=aus ----
-
-def _spy_ask(client, monkeypatch, dev, referer):
-    seen = {}
-
-    def fake(question, history, lang, top_k=5, usage_email=None, max_per_source=None):
-        seen["max_per_source"] = max_per_source
-        raise HTTPException(400, "stop")
-
-    monkeypatch.setattr(main_module, "_ask_context", fake)
-    monkeypatch.setattr(main_module, "IS_DEV_ENVIRONMENT", dev)
-    headers = {"Referer": referer} if referer else {}
-    client.post("/api/ask", json={"question": "Frage?"}, headers=headers)
-    return seen["max_per_source"]
-
-
-def test_vielfalt_aus_switches_off_on_dev_only(client, monkeypatch):
-    url = "http://localhost/index.html?vielfalt=aus"
-    assert _spy_ask(client, monkeypatch, True, url) == 0
-    assert _spy_ask(client, monkeypatch, False, url) is None
-    assert _spy_ask(client, monkeypatch, True, None) is None
-    assert _spy_ask(client, monkeypatch, True, "http://localhost/?vielfalt=an") is None
+# ---- Umschalter vielfalt=aus: HTTP-Tests in tests/test_api.py ----
 
 
 def test_mcp_calls_ask_context_without_override():

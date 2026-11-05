@@ -6,6 +6,7 @@ import uuid
 
 import anthropic
 import pytest
+from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
 from app import (
@@ -9817,3 +9818,27 @@ def test_conversation_handoff_store_is_thread_safe_and_keeps_cap(monkeypatch):
 
     assert sum(results) == 10  # 10 x 100 Bytes = Obergrenze, nie mehr
     assert sum(e[3] for e in conversation_handoff._store.values()) == 1000
+
+
+# Idee 3c32da30: Umschalter vielfalt=aus
+
+def _spy_ask(client, monkeypatch, dev, referer):
+    seen = {}
+
+    def fake(question, history, lang, top_k=5, usage_email=None, max_per_source=None):
+        seen["max_per_source"] = max_per_source
+        raise HTTPException(400, "stop")
+
+    monkeypatch.setattr(main_module, "_ask_context", fake)
+    monkeypatch.setattr(main_module, "IS_DEV_ENVIRONMENT", dev)
+    headers = {"Referer": referer} if referer else {}
+    client.post("/api/ask", json={"question": "Frage?"}, headers=headers)
+    return seen["max_per_source"]
+
+
+def test_vielfalt_aus_switches_off_on_dev_only(client, monkeypatch):
+    url = "http://localhost/index.html?vielfalt=aus"
+    assert _spy_ask(client, monkeypatch, True, url) == 0
+    assert _spy_ask(client, monkeypatch, False, url) is None
+    assert _spy_ask(client, monkeypatch, True, None) is None
+    assert _spy_ask(client, monkeypatch, True, "http://localhost/?vielfalt=an") is None
