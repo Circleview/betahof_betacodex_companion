@@ -4478,35 +4478,38 @@ def _diversify(order, reserve, metadatas, documents, score, max_per_source, exem
             candidates.append(i)
     order = list(order)
     present = {key(i) for i in order}
-    used = set()
-    for cand in reversed(candidates):  # schlechtester zuerst
+    is_web = lambda i: bool(metadatas[i].get("is_web_fallback"))
+    # Je neuer Quelle zählt nur ihr bester Ausschnitt; kuratierte vor Web.
+    best_per_key = {}
+    for r in sorted(reserve, key=score):
+        if key(r) not in present and metadatas[r]["source_id"] not in exempt:
+            best_per_key.setdefault(key(r), r)
+    successors = sorted(best_per_key.values(), key=lambda r: (is_web(r), score(r)))
+    candidates = sorted(candidates, key=score)
+
+    def allowed(cand, succ):
         limit = score(cand) * (1 + SOURCE_DIVERSITY_MAX_DISTANCE_INCREASE) + 1e-12
-        cand_web = bool(metadatas[cand].get("is_web_fallback"))
-        options = [
-            r for r in reserve
-            if r not in used
-            and key(r) not in present
-            and metadatas[r]["source_id"] not in exempt
-            and score(r) <= limit
-            # Web ersetzt nie einen kuratierten Chunk.
-            and (cand_web or not metadatas[r].get("is_web_fallback"))
-        ]
-        if not options:
-            logging.getLogger(__name__).info(
-                "Quellen-Vielfalt: kein Nachrücker für %s", metadatas[cand]["source_id"]
-            )
-            continue
-        # Kuratierte vor Web; danach der SCHLECHTESTE passende (innerhalb der
-        # Toleranz), damit bessere Nachrücker für bessere Kandidaten bleiben.
-        pick = min(options, key=lambda r: (bool(metadatas[r].get("is_web_fallback")), -score(r)))
-        logging.getLogger(__name__).info(
+        # Web ersetzt nie einen kuratierten Chunk.
+        return score(succ) <= limit and (is_web(cand) or not is_web(succ))
+
+    # Möglichst viele Täusche: die k schlechtesten Kandidaten gegen die k besten
+    # Nachrücker, aufsteigend gepaart.
+    swaps = []
+    for k in range(min(len(candidates), len(successors)), 0, -1):
+        pairs = list(zip(candidates[-k:], successors[:k]))
+        if all(allowed(c, r) for c, r in pairs):
+            swaps = pairs
+            break
+    log = logging.getLogger(__name__)
+    for cand in candidates[: len(candidates) - len(swaps)]:
+        log.info("Quellen-Vielfalt: kein Nachrücker für %s", metadatas[cand]["source_id"])
+    for cand, pick in swaps:
+        log.info(
             "Quellen-Vielfalt: Tausch %s -> %s, Distanzzuwachs %.1f %%",
             metadatas[cand]["source_id"], metadatas[pick]["source_id"],
             (score(pick) / score(cand) - 1) * 100 if score(cand) else 0.0,
         )
         order[order.index(cand)] = pick
-        used.add(pick)
-        present.add(key(pick))
     return sorted(order, key=score)
 
 
