@@ -103,7 +103,8 @@ def test_websites_count_as_one_source_and_curated_replacement_beats_web():
     metas[5]["allowlist_entry_id"] = "W2"  # anderer Web-Eintrag, gleich gut
     out, _, _ = main_module._rerank_by_relevance(ids, docs, metas, dists, {}, 5, max_per_source=2)
     assert "k2" in out
-    assert sum(i.startswith("w") for i in out) <= 3
+    assert sum(i in ("w1", "w2", "w3", "w4") for i in out) == 2  # Grenze je Website genau 2: w4/w3 weichen
+    assert "w9" in out
 
 
 def test_title_twin_does_not_count_as_new_source():
@@ -233,12 +234,6 @@ def test_keyword_exempts_only_when_at_most_three_sources_match(monkeypatch):
 
 
 # ---- Umschalter vielfalt=aus: HTTP-Tests in tests/test_api.py ----
-
-
-def test_mcp_calls_ask_context_without_override():
-    import inspect
-    from app import mcp_server
-    assert "max_per_source" not in inspect.getsource(mcp_server)
 
 
 # ---- Hinweis im Prompt und stop_reason ----

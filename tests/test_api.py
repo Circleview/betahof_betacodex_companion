@@ -9842,3 +9842,54 @@ def test_vielfalt_aus_switches_off_on_dev_only(client, monkeypatch):
     assert _spy_ask(client, monkeypatch, False, url) is None
     assert _spy_ask(client, monkeypatch, True, None) is None
     assert _spy_ask(client, monkeypatch, True, "http://localhost/?vielfalt=an") is None
+
+
+
+def test_vielfalt_ignores_malformed_referer(client, monkeypatch):
+    assert _spy_ask(client, monkeypatch, True, "http://[::1/?vielfalt=aus") is None
+
+
+def test_repair_char_split_key_terms_empties_only_broken_fields(client):
+    broken = list("OpenSpaceBeta,BetaCodex")
+    sources = main_module._load_sources()
+    sources["bad"] = {"title": "Kaputt", "key_terms_de": ["Theorie X"], "key_terms_en": broken}
+    sources["ok"] = {"title": "Gut", "key_terms_de": ["A"], "key_terms_en": ["Beyond Budgeting", "X"]}
+    main_module._save_sources(sources)
+    terms.register_term("O", "bad", "en")
+
+    main_module._repair_char_split_key_terms_once()
+    main_module._repair_char_split_key_terms_once()  # idempotent
+
+    after = main_module._load_sources()
+    assert after["bad"]["key_terms_en"] == [] and after["bad"]["key_terms_de"] == ["Theorie X"]
+    assert after["ok"]["key_terms_de"] == ["A"] and after["ok"]["key_terms_en"] == ["Beyond Budgeting", "X"]
+    assert "O" not in [e["term"] for e in terms.list_terms()]
+
+
+def test_event_stream_with_several_restricted_sources_redacts_text_and_limits_images(monkeypatch):
+    from app.models import ChunkRef, ImageRef
+
+    def ref(i, sid):
+        return ChunkRef(chunk_id=f"c{i}", source_id=sid, title=sid, position=i, text=f"Geheimer Volltext {i}.")
+
+    refs = [ref(0, "R1"), ref(1, "R1"), ref(2, "R2"), ref(3, "OPEN")]
+    for r in refs:
+        r.images = [ImageRef(src=f"https://example.invalid/{r.chunk_id}a.webp"), ImageRef(src=f"https://example.invalid/{r.chunk_id}b.webp")]
+    sources = {"R1": {"restricted": True}, "R2": {"restricted": True}, "OPEN": {}}
+    monkeypatch.setattr(main_module, "_load_sources", lambda: sources)
+    monkeypatch.setattr(llm, "stream_answer_question", lambda *a, **k: iter(["Antwort [1][2][3][4]."]))
+    monkeypatch.setattr(main_module, "_compute_occurrence_highlights", lambda answer, docs, quotes: [["Beleg."] for _ in docs])
+    monkeypatch.setattr(main_module, "_best_local_sentence", lambda doc, emb: None)
+    events = [
+        json.loads(line)
+        for line in main_module._ask_event_stream("Frage?", [], "de", None, refs, [r.text for r in refs], [0.1], [], False, None, None, False)
+        if line.strip()
+    ]
+    for event in (e for e in events if e["type"] in ("sources", "done")):
+        by_source = {}
+        for s in event["sources"]:
+            by_source.setdefault(s["source_id"], []).append(s)
+        for sid in ("R1", "R2"):
+            assert sum(len(s["images"]) for s in by_source[sid]) <= 1
+            assert all("Geheimer Volltext" not in s["text"] for s in by_source[sid])
+        assert len(by_source["OPEN"][0]["images"]) == 2

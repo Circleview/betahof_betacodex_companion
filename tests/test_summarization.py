@@ -478,3 +478,15 @@ def test_find_similar_term_groups_uses_sonnet_model():
         summarization.find_similar_term_groups(["A", "B"], "de")
 
     assert client.messages.create.call_args.kwargs["model"] == summarization.MERGE_SUGGESTIONS_MODEL
+
+
+def test_bilingual_summary_ignores_key_terms_returned_as_string():
+    """Regression: ein String statt Liste wurde Buchstabe für Buchstabe zu Schlagworten."""
+    from unittest.mock import patch
+    from app import summarization
+
+    data = {"summary_de": "D", "summary_en": "E", "key_terms_de": ["Theorie X"], "key_terms_en": "OpenSpace Beta, Beta Codex"}
+    with patch.object(summarization, "_call_tool", return_value=data):
+        result = summarization._call_bilingual_summary_tool("Text")
+    assert result["en"]["key_terms"] == []
+    assert result["de"]["key_terms"] == ["Theorie X"]

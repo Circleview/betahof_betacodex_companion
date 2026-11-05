@@ -353,3 +353,23 @@ def test_new_origin_passes_origin_check(mcp_client):
 def test_format_answer_keeps_absolute_and_anchor_links():
     text = mcp_server._format_answer("[a](https://x.example/y) [b](#q)", [], "de")
     assert "(https://x.example/y)" in text and "(#q)" in text and "companion.betahof.com" not in text
+
+
+def test_mcp_ask_never_passes_diversity_override_even_with_dev_referer(mcp_client, monkeypatch):
+    seen = {}
+
+    def fake(*args, **kwargs):
+        seen["kwargs"] = kwargs
+        raise main_module.HTTPException(400, "stop")
+
+    monkeypatch.setattr(main_module, "_ask_context", fake)
+    monkeypatch.setattr(main_module, "IS_DEV_ENVIRONMENT", True)
+    users.invite_user(OWNER, users.MCP_NUTZER, invited_by="root@test.local")
+    _, secret = mcp_keys.create_key(OWNER, "Laptop")
+    headers = {"Accept": "application/json, text/event-stream", "Content-Type": "application/json",
+               "Authorization": f"Bearer {secret}", "Referer": "http://localhost/?vielfalt=aus"}
+    body = {"jsonrpc": "2.0", "id": 1, "method": "tools/call",
+            "params": {"name": "ask_question", "arguments": {"question": "Frage?"}}}
+    mcp_client.post(mcp_server.MCP_PATH, headers=headers, json=body)
+
+    assert "max_per_source" not in seen["kwargs"]
