@@ -4323,6 +4323,32 @@ def _diversity_key(meta: dict) -> str:
     return f"title:{title}" if title else f"id:{meta['source_id']}"
 
 
+SOURCE_DIVERSITY_KEYWORD_MIN_LEN = 4
+SOURCE_DIVERSITY_KEYWORD_MAX_SOURCES = 3
+
+
+def _keyword_exempt_source_ids(sources: dict, query_text: str) -> set[str]:
+    """Quellen, die von der Vielfalts-Regel ausgenommen sind, weil ein
+    Schlagwort in der Frage steht (Wortgrenzen, Mindestlänge). Die Grenze
+    "höchstens 3 Quellen" gilt je Schlagwort - ein häufiges Schlagwort wie
+    "Beta-Kodex" nimmt niemanden aus, ein seltenes daneben schon."""
+    carriers: dict[str, set[str]] = {}
+    for sid, src in sources.items():
+        for field in ("key_terms_de", "key_terms_en"):
+            value = src.get(field)
+            for term in value if isinstance(value, list) else []:
+                if isinstance(term, str) and len(term.strip()) >= SOURCE_DIVERSITY_KEYWORD_MIN_LEN:
+                    carriers.setdefault(term.strip().lower(), set()).add(sid)
+    query_lower = query_text.lower()
+    exempt: set[str] = set()
+    for term, sids in carriers.items():
+        if len(sids) <= SOURCE_DIVERSITY_KEYWORD_MAX_SOURCES and re.search(
+            r"(?<!\w)" + re.escape(term) + r"(?!\w)", query_lower
+        ):
+            exempt |= sids
+    return exempt
+
+
 def _ensure_term_hits(ids, documents, metadatas, embedding, text, top_k, trim_repeats=False):
     forced = []
     for term in _question_terms(text):
@@ -4337,12 +4363,20 @@ def _ensure_term_hits(ids, documents, metadatas, embedding, text, top_k, trim_re
         # Idee 3c32da30: zuerst überzählige Chunks mehrfach vertretener
         # Quellen (schlechtester zuerst) opfern, erst danach von hinten.
         kept = list(range(len(ids)))
+        q_terms = [t.lower() for t in _question_terms(text)]
         for _ in range(max(0, len(ids) - (top_k - len(forced)))):
+            if not kept:
+                break
             counts = {}
             for i in kept:
                 key = _diversity_key(metadatas[i])
                 counts[key] = counts.get(key, 0) + 1
-            repeated = [i for i in kept if counts[_diversity_key(metadatas[i])] > 1]
+            # Einziger Träger eines Frage-Begriffs wird nicht geopfert.
+            sole = {
+                only[0] for t in q_terms
+                if len(only := [i for i in kept if t in documents[i].lower()]) == 1
+            }
+            repeated = [i for i in kept if counts[_diversity_key(metadatas[i])] > 1 and i not in sole]
             kept.remove(repeated[-1] if repeated else kept[-1])
         return (
             [ids[i] for i in kept] + [f[0] for f in forced],
@@ -4423,17 +4457,21 @@ def _diversify(order, reserve, metadatas, documents, score, max_per_source, exem
     used = set()
     for cand in reversed(candidates):  # schlechtester zuerst
         limit = score(cand) * (1 + SOURCE_DIVERSITY_MAX_DISTANCE_INCREASE) + 1e-12
+        cand_web = bool(metadatas[cand].get("is_web_fallback"))
         options = [
             r for r in reserve
             if r not in used
             and key(r) not in present
             and metadatas[r]["source_id"] not in exempt
             and score(r) <= limit
+            # Web ersetzt nie einen kuratierten Chunk.
+            and (cand_web or not metadatas[r].get("is_web_fallback"))
         ]
         if not options:
             continue
-        # Kuratierte vor Web, danach Score (reserve ist nach Score sortiert).
-        pick = min(options, key=lambda r: bool(metadatas[r].get("is_web_fallback")))
+        # Kuratierte vor Web; danach der SCHLECHTESTE passende (innerhalb der
+        # Toleranz), damit bessere Nachrücker für bessere Kandidaten bleiben.
+        pick = min(options, key=lambda r: (bool(metadatas[r].get("is_web_fallback")), -score(r)))
         logging.getLogger(__name__).info(
             "Quellen-Vielfalt: Tausch %s -> %s, Distanzzuwachs %.1f %%",
             metadatas[cand]["source_id"], metadatas[pick]["source_id"],
@@ -4930,9 +4968,7 @@ def _ask_context(
             sid for sid, src in sources.items()
             if len(src.get("title") or "") >= 12 and src["title"].lower() in query_lower
         )
-        keyword_hits = [sid for sid, src in sources.items() if _source_matches_question_keywords(src, query_text)]
-        if len(keyword_hits) <= 3:
-            exempt_source_ids.update(keyword_hits)
+        exempt_source_ids.update(_keyword_exempt_source_ids(sources, query_text))
         question_terms = _question_terms(query_text)
     ids, documents, metadatas = _rerank_by_relevance(
         ids, documents, metadatas, distances, sources, top_k,
