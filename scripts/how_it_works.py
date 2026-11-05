@@ -34,6 +34,8 @@ PARAMS = [
     (main.RELEVANCE_MAX_ADJUSTMENT, "app/main.py: RELEVANCE_MAX_ADJUSTMENT", "Max. Einfluss des Relevanzscores (1–10) auf die Distanz", "Max. influence of the relevance score (1–10) on distance"),
     (main.AUTHOR_MENTION_DISTANCE_FACTOR, "app/main.py: AUTHOR_MENTION_DISTANCE_FACTOR", "Distanz-Faktor für Quellen einer genannten Autor:in", "Distance factor for sources of a mentioned author"),
     (main.AUTHOR_MENTION_KEYWORD_MATCH_FACTOR, "app/main.py: AUTHOR_MENTION_KEYWORD_MATCH_FACTOR", "… wenn zusätzlich ein Schlagwort der Quelle in der Frage steht", "… if a key term of the source also appears in the question"),
+    (main.SOURCE_DIVERSITY_DEFAULT_MAX_PER_SOURCE, "app/main.py: SOURCE_DIVERSITY_DEFAULT_MAX_PER_SOURCE", "Max. Textausschnitte je Quelle unter den Top-K (0 = aus, Umgebungsvariable SOURCE_DIVERSITY_MAX_PER_SOURCE)", "Max. excerpts per source among the top-K (0 = off, env variable SOURCE_DIVERSITY_MAX_PER_SOURCE)"),
+    (main.SOURCE_DIVERSITY_MAX_DISTANCE_INCREASE, "app/main.py: SOURCE_DIVERSITY_MAX_DISTANCE_INCREASE", "Wie viel schlechter ein Ersatz-Ausschnitt höchstens sein darf (Anteil)", "How much worse a replacement excerpt may be at most (fraction)"),
     (main.LEXICAL_MAX_TERMS, "app/main.py: LEXICAL_MAX_TERMS", "Begriffe pro Frage mit garantiertem Ausschnitt (Hybrid-Suche)", "Terms per question with a guaranteed excerpt (hybrid search)"),
     (main.ASK_HISTORY_MAX_TURNS, "app/main.py: ASK_HISTORY_MAX_TURNS", "Frühere Gesprächsrunden im Prompt", "Previous conversation turns in the prompt"),
     (main.ASK_HISTORY_MAX_BYTES, "app/main.py: ASK_HISTORY_MAX_BYTES", "Byte-Budget (UTF-8) für den Gesprächsverlauf im Prompt (Kürzung in 10er-Blöcken, damit der Prompt-Cache trifft)", "Byte budget (UTF-8) for the conversation history in the prompt (trimmed in blocks of 10 so the prompt cache hits)"),
@@ -46,7 +48,7 @@ PARAMS = [
 # Inhalte, deren Änderung den Fließtext betreffen kann.
 FINGERPRINTED = [
     llm.SYSTEM_PROMPTS, llm.REWRITE_SYSTEM_PROMPTS, llm._PARTIAL_ANSWER_REMINDERS,
-    llm._LANGUAGE_REMINDERS, llm.CREATIVE_SYSTEM_PROMPTS, llm.CREATIVE_SECTION_SYSTEM_PROMPTS,
+    llm._LANGUAGE_REMINDERS, llm._MULTI_SOURCE_REMINDERS, llm.CREATIVE_SYSTEM_PROMPTS, llm.CREATIVE_SECTION_SYSTEM_PROMPTS,
     llm._HUMANIZER_BRIDGES, llm._HUMANIZER_GUIDE, main.NO_ANSWER_PHRASES,
     [p[0] for p in PARAMS],
 ]

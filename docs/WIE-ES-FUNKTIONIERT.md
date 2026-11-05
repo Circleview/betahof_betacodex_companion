@@ -63,7 +63,14 @@ Ablauf pro Frage (`app/main.py`, Funktion `ask`):
 2. **Vektorsuche mit Reserve.** Es werden mehr Kandidaten geholt als gebraucht,
    aus den kuratierten Quellen und den freigegebenen Websites zugleich.
 3. **Neu sortieren** nach Ähnlichkeit, gewichtet mit dem Relevanzscore. Doppelte
-   Texte belegen nur einen Platz.
+   Texte belegen nur einen Platz. Danach gilt: Eine Quelle (eine Website zählt als
+   eine) belegt höchstens 2 der 5 Plätze. Den Überschuss ersetzt ein Ausschnitt
+   einer noch nicht vertretenen Quelle, wenn er höchstens 15 % schlechter liegt.
+   Ausgenommen sind Quellen genannter Autor:innen, Quellen mit dem Titel in der
+   Frage, Quellen mit passendem Schlagwort (bei höchstens 3 Treffern) und der erste
+   Ausschnitt je Fachbegriff der Frage. Kommen mehrere Quellen vor, bittet ein
+   Hinweis das Modell, alle stützenden Quellen zu zitieren. Abschalten:
+   `SOURCE_DIVERSITY_MAX_PER_SOURCE=0`.
 4. **Genannte Autor:innen.** Steht ein bekannter Name in der Frage, wird zusätzlich
    in jeder Quelle dieser Person gesucht, und ihre Treffer bekommen einen Vorteil.
    Einen deutlich größeren bekommen sie, wenn auch ein Schlagwort der Quelle in der
@@ -221,6 +228,8 @@ sind willkommen.
 | Max. Einfluss des Relevanzscores (1–10) auf die Distanz | `0.15` | `app/main.py: RELEVANCE_MAX_ADJUSTMENT` |
 | Distanz-Faktor für Quellen einer genannten Autor:in | `0.5` | `app/main.py: AUTHOR_MENTION_DISTANCE_FACTOR` |
 | … wenn zusätzlich ein Schlagwort der Quelle in der Frage steht | `0.05` | `app/main.py: AUTHOR_MENTION_KEYWORD_MATCH_FACTOR` |
+| Max. Textausschnitte je Quelle unter den Top-K (0 = aus, Umgebungsvariable SOURCE_DIVERSITY_MAX_PER_SOURCE) | `2` | `app/main.py: SOURCE_DIVERSITY_DEFAULT_MAX_PER_SOURCE` |
+| Wie viel schlechter ein Ersatz-Ausschnitt höchstens sein darf (Anteil) | `0.15` | `app/main.py: SOURCE_DIVERSITY_MAX_DISTANCE_INCREASE` |
 | Begriffe pro Frage mit garantiertem Ausschnitt (Hybrid-Suche) | `3` | `app/main.py: LEXICAL_MAX_TERMS` |
 | Frühere Gesprächsrunden im Prompt | `50` | `app/main.py: ASK_HISTORY_MAX_TURNS` |
 | Byte-Budget (UTF-8) für den Gesprächsverlauf im Prompt (Kürzung in 10er-Blöcken, damit der Prompt-Cache trifft) | `200000` | `app/main.py: ASK_HISTORY_MAX_BYTES` |
@@ -231,7 +240,7 @@ sind willkommen.
 
 Diese Tabelle wird aus dem Code erzeugt. Ändern sich Prompts oder Parameter, schlägt `tests/test_how_it_works_doc.py` fehl, bis der Text oben geprüft und `python scripts/how_it_works.py --write` gelaufen ist.
 
-<!-- fingerprint: 54cc50946bd4 -->
+<!-- fingerprint: 6908738028ad -->
 <!-- END generiert -->
 
 ## Wie dieses Dokument aktuell bleibt

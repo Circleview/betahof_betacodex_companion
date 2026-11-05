@@ -60,6 +60,11 @@ Assistent das offen, statt zu spekulieren.
   eingeschränkten Quellen höchstens 1 Bild je Antwort. Ältere Quellen holt der
   Admin-Reindex (`/api/admin/reindex-sources`) nach, ohne Text, Zusammenfassung
   oder Schlagworte zu ändern.
+- Mehr verschiedene Quellen je Antwort: Eine Quelle (eine Website zählt als
+  eine) belegt höchstens 2 der 5 Textausschnitte, sofern ein Ausschnitt einer
+  neuen Quelle höchstens 15 % schlechter liegt. Ausnahmen: genannte
+  Autor:innen, Titel in der Frage, passende Schlagworte, Fachbegriffe.
+  Abschalten mit `SOURCE_DIVERSITY_MAX_PER_SOURCE=0` (Dev-Test: `?vielfalt=aus`).
 - Eine "Verwendete Quellen"-Sidebar baut sich über die gesamte
   Konversation auf, nicht nur pro Antwort. Das Auge-Icon öffnet eine
   Quelle als Lese-Dialog direkt in der Konversation.
