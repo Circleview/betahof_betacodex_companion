@@ -4492,6 +4492,9 @@ def _diversify(order, reserve, metadatas, documents, score, max_per_source, exem
             and (cand_web or not metadatas[r].get("is_web_fallback"))
         ]
         if not options:
+            logging.getLogger(__name__).info(
+                "Quellen-Vielfalt: kein Nachrücker für %s", metadatas[cand]["source_id"]
+            )
             continue
         # Kuratierte vor Web; danach der SCHLECHTESTE passende (innerhalb der
         # Toleranz), damit bessere Nachrücker für bessere Kandidaten bleiben.

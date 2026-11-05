@@ -65,9 +65,9 @@ Ablauf pro Frage (`app/main.py`, Funktion `ask`):
 3. **Neu sortieren** nach Ähnlichkeit, gewichtet mit dem Relevanzscore. Doppelte
    Texte belegen nur einen Platz. Danach gilt: Eine Quelle (eine Website zählt als
    eine) belegt höchstens 2 der 5 Plätze. Den Überschuss ersetzt ein Ausschnitt
-   einer noch nicht vertretenen Quelle, wenn er höchstens 15 % schlechter liegt.
+   einer noch nicht vertretenen Quelle, wenn er höchstens 15 % schlechter liegt. Eine Website ersetzt nie einen kuratierten Ausschnitt.
    Ausgenommen sind Quellen genannter Autor:innen, Quellen mit dem Titel in der
-   Frage, Quellen mit passendem Schlagwort (bei höchstens 3 Treffern) und der erste
+   Frage, Quellen mit passendem Schlagwort (ganzes Wort; das Schlagwort darf in höchstens 3 Quellen stehen) und der erste
    Ausschnitt je Fachbegriff der Frage. Kommen mehrere Quellen vor, bittet ein
    Hinweis das Modell, alle stützenden Quellen zu zitieren. Abschalten:
    `SOURCE_DIVERSITY_MAX_PER_SOURCE=0`.
