@@ -71,6 +71,12 @@ Assistent das offen, statt zu spekulieren.
   neuen Quelle höchstens 15 % schlechter liegt. Ausnahmen: genannte
   Autor:innen, Titel in der Frage, passende Schlagworte, Fachbegriffe.
   Abschalten mit `SOURCE_DIVERSITY_MAX_PER_SOURCE=0` (Dev-Test: `?vielfalt=aus`).
+- Beraterstimme: Antworten wägen ab und lassen Perspektiven und Gründe
+  erkennen, bleiben aber präzise. Die Stimme steht als Textdatei in
+  `app/prompts/beraterstimme.md` (ohne Code änderbar, gilt für Chat und MCP).
+  Web-Treffer heißen im Kontext "Web-Seite". Zum Vergleichen gibt es nur im
+  Dev-Betrieb `/dev/vergleich` (ohne Stimme, mit Stimme, optional Sonnet;
+  Kosten im Kanal `vergleich`).
 - Eine "Verwendete Quellen"-Sidebar baut sich über die gesamte
   Konversation auf, nicht nur pro Antwort. Das Auge-Icon öffnet eine
   Quelle als Lese-Dialog direkt in der Konversation.

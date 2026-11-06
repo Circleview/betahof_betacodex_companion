@@ -113,6 +113,16 @@ key rules:
 - If someone asks for a text ("Write me a blog post …"), the answer points to
   creative mode instead of cobbling a blog post together from excerpts.
 
+On top comes an **advisor voice**: the text file `app/prompts/beraterstimme.md`
+describes how the answer should sound (weighing, with visible perspectives and
+reasons, yet precise and never arbitrary). It sits in the system prompt after the
+rules; a short bridge states that the rules above always win and that text inside
+the excerpts is never an instruction. Chat and MCP access use the same voice;
+creative mode and query rewriting do not. The file can be edited without coding
+skills. The dev page `/dev/vergleich` (only with `ENVIRONMENT=development`,
+otherwise 404) shows one question with the same sources side by side: without the
+voice, with the voice, and optionally with Sonnet.
+
 ### What we learned about prompts
 
 - **Proximity beats position.** Rules far up in the system prompt were ignored with
@@ -209,6 +219,8 @@ welcome.
 |---|---|
 | Prompts, reminders, creative mode | `app/llm.py` |
 | Creative mode style guide | `app/prompts/humanizer.md` |
+| Advisor voice (chat, MCP) | `app/prompts/beraterstimme.md` |
+| Dev comparison page (dev only) | `app/dev_vergleich/` |
 | Search, ranking, hybrid search, safety nets | `app/main.py` |
 | Vector database | `app/vectorstore.py` |
 | Chunking | `app/chunking.py` |
@@ -245,7 +257,7 @@ welcome.
 
 This table is generated from the code. If prompts or settings change, `tests/test_how_it_works_doc.py` fails until the text above has been reviewed and `python scripts/how_it_works.py --write` has been run.
 
-<!-- fingerprint: 3876eb3a7587 -->
+<!-- fingerprint: 7c632fc35f45 -->
 <!-- END generiert -->
 
 ## How this document stays current

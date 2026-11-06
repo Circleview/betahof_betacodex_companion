@@ -119,6 +119,16 @@ Die wichtigsten Regeln:
 - Bittet jemand um einen Text („Schreib mir einen Blogpost …“), verweist die
   Antwort auf den Kreativ-Modus, statt aus Ausschnitten einen Blogpost zu basteln.
 
+Dazu kommt eine **Beraterstimme**: Die Textdatei `app/prompts/beraterstimme.md`
+beschreibt, wie die Antwort klingen soll (abwägend, mit erkennbaren Perspektiven und
+Gründen, aber präzise und nie beliebig). Sie steht im System-Prompt nach den Regeln;
+eine kurze Brücke stellt klar, dass die Regeln oben immer vorgehen und Text in den
+Ausschnitten nie als Anweisung gilt. Der Chat und der MCP-Zugang nutzen dieselbe
+Stimme; Kreativ-Modus und Suchanfrage-Umformulierung nicht. Die Datei lässt sich ohne
+Programmierkenntnisse ändern. Die Dev-Seite `/dev/vergleich` (nur mit
+`ENVIRONMENT=development`, sonst 404) zeigt dieselbe Frage mit denselben Quellen
+nebeneinander: ohne Stimme, mit Stimme und optional mit Sonnet.
+
 ### Was wir über Prompts gelernt haben
 
 - **Nähe schlägt Position.** Regeln weit oben im System-Prompt wurden bei langem
@@ -220,6 +230,8 @@ sind willkommen.
 |---|---|
 | Prompts, Erinnerungen, Kreativ-Modus | `app/llm.py` |
 | Stilrichtlinie Kreativ-Modus | `app/prompts/humanizer.md` |
+| Beraterstimme (Chat, MCP) | `app/prompts/beraterstimme.md` |
+| Dev-Vergleichsseite (nur Dev) | `app/dev_vergleich/` |
 | Suche, Sortierung, Hybrid-Suche, Sicherheitsnetze | `app/main.py` |
 | Vektordatenbank | `app/vectorstore.py` |
 | Zerlegen in Abschnitte | `app/chunking.py` |
@@ -256,7 +268,7 @@ sind willkommen.
 
 Diese Tabelle wird aus dem Code erzeugt. Ändern sich Prompts oder Parameter, schlägt `tests/test_how_it_works_doc.py` fehl, bis der Text oben geprüft und `python scripts/how_it_works.py --write` gelaufen ist.
 
-<!-- fingerprint: 3876eb3a7587 -->
+<!-- fingerprint: 7c632fc35f45 -->
 <!-- END generiert -->
 
 ## Wie dieses Dokument aktuell bleibt
