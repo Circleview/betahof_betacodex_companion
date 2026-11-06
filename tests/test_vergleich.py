@@ -30,7 +30,7 @@ def env(tmp_path, monkeypatch):
             {"chunks": chunks, "history": history, "system": system_prompt, "model": model,
              "max_tokens": max_tokens, "usage": usage}
         )
-        yield f"Antwort {len(calls['stream'])} zur These [1].\n\n---QUOTES---\n[1]: \"Text eins.\"\n"
+        yield f"Zur These {len(calls['stream'])} passt [1].\n\n---QUOTES---\n[1]: \"Text eins.\"\n"
 
     monkeypatch.setattr(main_module, "_ask_context", fake_context)
     monkeypatch.setattr(llm, "stream_answer_question", fake_stream)
@@ -84,7 +84,7 @@ def test_result_has_answer_quotes_and_counts_per_column(env):
     cols = post(env).json()["columns"]
     assert set(cols) == {"basis", "stimme"}
     col = cols["basis"]
-    assert col["answer"].startswith("Antwort ") and "---QUOTES---" not in col["answer"]
+    assert col["answer"].startswith("Zur These ") and "---QUOTES---" not in col["answer"]
     assert col["quotes"] == {"1": ["Text eins."]}
     assert col["quote_count"] == 1
     assert col["words"] == len(col["answer"].split())

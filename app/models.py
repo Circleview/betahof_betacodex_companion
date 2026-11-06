@@ -79,6 +79,13 @@ class HistoryTurnIn(BaseModel):
     answer: str = Field(max_length=8000)
 
 
+class DevVergleichIn(BaseModel):
+    question: str = Field(max_length=8000)
+    variants: list[str] = ["basis", "stimme"]
+    # Verlauf je Spalte; die Suche läuft mit dem Verlauf der Spalte "basis".
+    histories: dict[str, list[HistoryTurnIn]] = {}
+
+
 class QuestionIn(BaseModel):
     # Idee 2070893d: Eingabegrenzen (Kosten/Missbrauch) - Frage wie die
     # Verlaufsfelder max. 8000 Zeichen, top_k höchstens 10 Treffer.

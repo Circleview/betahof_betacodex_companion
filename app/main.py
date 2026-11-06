@@ -62,6 +62,7 @@ from app import (
     web_index,
 )
 from app.models import (
+    DevVergleichIn,
     ImageRef,
     AdminUserOut,
     AnswerFeedbackIn,
@@ -5852,6 +5853,75 @@ def my_costs_csv(request: Request, month: str | None = None, x_lang: str = Heade
     email = _require_login(request, x_lang)
     month = _usage_month(month, x_lang)
     return _csv_response(usage.export_csv(month, email=email), f"betacodex-meine-kosten-{month}.csv")
+
+
+# Idee af02ecb1: Dev-Vergleichsseite (Antwort ohne/mit Beraterstimme, optional
+# Sonnet). Bewusst NICHT unter static/: der Static-Mount (html=True) würde sie
+# sonst auch in Produktion ausliefern. Eigene Routen, alle 404 ohne Dev.
+DEV_VERGLEICH_DIR = BASE_DIR / "app" / "dev_vergleich"
+DEV_VERGLEICH_FILES = {
+    "/dev/vergleich": ("vergleich.html", "text/html; charset=utf-8"),
+    "/dev/vergleich.js": ("vergleich.js", "text/javascript; charset=utf-8"),
+    "/dev/vergleich.css": ("vergleich.css", "text/css; charset=utf-8"),
+}
+# Variante -> (Modell, max_tokens, mit Stimme?). Sonnet: 4096 wegen Thinking.
+DEV_VERGLEICH_VARIANTS = {
+    "basis": (llm.MODEL_NAME, 1536, False),
+    "stimme": (llm.MODEL_NAME, 1536, True),
+    "sonnet": ("claude-sonnet-5", 4096, True),
+}
+
+
+def _dev_vergleich_file(name: str, media_type: str) -> FileResponse:
+    if not IS_DEV_ENVIRONMENT:
+        raise HTTPException(404, "Not Found")
+    return FileResponse(DEV_VERGLEICH_DIR / name, media_type=media_type, headers={"Cache-Control": "no-cache"})
+
+
+for _path, (_name, _media) in DEV_VERGLEICH_FILES.items():
+    app.add_api_route(
+        _path, lambda n=_name, m=_media: _dev_vergleich_file(n, m), methods=["GET"], include_in_schema=False
+    )
+
+
+def _dev_vergleich_column(variant, question, chunks, lang, history):
+    model, max_tokens, with_voice = DEV_VERGLEICH_VARIANTS[variant]
+    try:
+        # Datei pro Anfrage frisch lesen, damit Änderungen sofort wirken.
+        system = llm.build_chat_system(lang, llm.load_stimme()) if with_voice else llm._BASE_PROMPTS[lang]
+        raw = "".join(
+            llm.stream_answer_question(
+                question, chunks, lang=lang, history=history, usage={"channel": "vergleich"},
+                system_prompt=system, model=model, max_tokens=max_tokens,
+            )
+        )
+    except Exception as exc:
+        return {"answer": "", "quotes": {}, "words": 0, "quote_count": 0, "error": f"{type(exc).__name__}: {exc}"}
+    answer, quotes = llm.parse_answer_and_quotes(raw)
+    return {
+        "answer": answer, "quotes": quotes, "words": len(answer.split()),
+        "quote_count": sum(len(v) for v in quotes.values()), "error": None,
+    }
+
+
+@app.post("/api/dev/vergleich", include_in_schema=False)
+def dev_vergleich(body: DevVergleichIn, x_lang: str = Header(default=i18n.DEFAULT_LANG)):
+    import concurrent.futures
+
+    if not IS_DEV_ENVIRONMENT:
+        raise HTTPException(404, "Not Found")
+    if not body.variants or any(v not in DEV_VERGLEICH_VARIANTS for v in body.variants):
+        raise HTTPException(400, "Unbekannte Variante")
+    lang = x_lang if x_lang in ("de", "en") else i18n.DEFAULT_LANG
+    histories = {k: [t.model_dump() for t in v] for k, v in body.histories.items()}
+    chunks, _refs, _bios, _emb = _ask_context(body.question, histories.get("basis", []), lang)
+    with concurrent.futures.ThreadPoolExecutor(max_workers=len(body.variants)) as pool:
+        futures = {
+            v: pool.submit(_dev_vergleich_column, v, body.question, chunks, lang, histories.get(v, []))
+            for v in body.variants
+        }
+        columns = {v: f.result() for v, f in futures.items()}
+    return {"sources": [c["title"] for c in chunks], "columns": columns}
 
 
 class NoCacheStaticFiles(StaticFiles):
