@@ -391,3 +391,78 @@ def test_overflow_chunk_without_replacement_is_logged(caplog):
     with caplog.at_level(logging.INFO, logger="app.main"):
         _rerank(A4 + [("b1", "B", 0.110), ("b2", "B", 0.112)])
     assert any("kein Nachrücker" in r.getMessage() for r in caplog.records)
+
+
+def _rerank_authored(spec, top_k=5, max_per_source=2):
+    """spec: (chunk_id, source_id, Distanz, Autor:in[, Titel])."""
+    ids = [s[0] for s in spec]
+    docs = [f"Text {s[0]}" for s in spec]
+    metas = [
+        {"source_id": s[1], "title": s[4] if len(s) > 4 else s[1], "url": "", "position": 0, "authors": [s[3]]}
+        for s in spec
+    ]
+    return main_module._rerank_by_relevance(
+        ids, docs, metas, [s[2] for s in spec], {}, top_k, max_per_source=max_per_source
+    )[0]
+
+
+def test_author_with_three_sources_is_limited_when_other_authors_are_within_tolerance():
+    out = _rerank_authored([
+        ("p1", "P1", 0.100, "Pröll"), ("p2", "P2", 0.101, "Pröll"), ("p3", "P3", 0.102, "Pröll"),
+        ("k1", "K1", 0.103, "Krims"), ("s1", "S1", 0.104, "Sechser"), ("w1", "W1", 0.105, "Willuda"),
+    ])
+    assert sorted(out) == ["k1", "p1", "p2", "s1", "w1"]
+
+
+def test_successor_prefers_a_new_author_over_a_better_chunk_of_a_present_author():
+    out = _rerank_authored([
+        ("a1", "A", 0.100, "Pröll"), ("a2", "A", 0.101, "Pröll"), ("a3", "A", 0.102, "Pröll"),
+        ("k1", "K1", 0.103, "Krims"), ("s1", "S1", 0.104, "Sechser"),
+        ("k2", "K2", 0.105, "Krims"), ("w1", "W1", 0.110, "Willuda"),
+    ])
+    assert "w1" in out and "k2" not in out and "a3" not in out
+
+
+def test_successor_never_pushes_an_author_over_the_limit():
+    out = _rerank_authored([
+        ("a1", "A", 0.100, "Pröll"), ("a2", "A", 0.101, "Pröll"), ("a3", "A", 0.102, "Pröll"),
+        ("k1", "K1", 0.103, "Krims"), ("k2", "K2", 0.104, "Krims"), ("k3", "K3", 0.105, "Krims"),
+    ])
+    assert sorted(out) == ["a1", "a2", "a3", "k1", "k2"]
+
+
+def test_same_article_with_title_suffix_appears_once_when_a_replacement_exists():
+    out = _rerank_authored([
+        ("t1", "T1", 0.100, "Pröll", "Selbstorganisation ist kein Laisser-faire | Peter Pröll"),
+        ("t2", "T2", 0.101, "Pröll", "Selbstorganisation ist kein Laisser-faire"),
+        ("k1", "K1", 0.102, "Krims"), ("s1", "S1", 0.103, "Sechser"), ("w1", "W1", 0.104, "Willuda"),
+        ("h1", "H1", 0.105, "Heer"),
+    ])
+    assert sorted(out) == ["h1", "k1", "s1", "t1", "w1"]
+
+
+def test_limit_off_keeps_same_author_and_same_article():
+    spec = [
+        ("p1", "P1", 0.100, "Pröll"), ("p2", "P2", 0.101, "Pröll"), ("p3", "P3", 0.102, "Pröll"),
+        ("k1", "K1", 0.103, "Krims"), ("s1", "S1", 0.104, "Sechser"), ("w1", "W1", 0.105, "Willuda"),
+    ]
+    assert _rerank_authored(spec, max_per_source=0) == ["p1", "p2", "p3", "k1", "s1"]
+
+
+@pytest.mark.parametrize("limit,expected", [(None, 5 * 8), (0, 5 * 3)])
+def test_ask_context_widens_the_pool_only_when_diversity_is_on(monkeypatch, limit, expected):
+    seen = []
+
+    def empty_hits(embedding, top_k=5, **kwargs):
+        seen.append(top_k)
+        return {"ids": [[]], "documents": [[]], "distances": [[]], "metadatas": [[]]}
+
+    monkeypatch.setattr(main_module, "_load_sources", lambda: {"s": {}})
+    monkeypatch.setattr(main_module, "SOURCE_DIVERSITY_MAX_PER_SOURCE", 2)
+    monkeypatch.setattr(embeddings, "embed_query", lambda text: [0.0])
+    monkeypatch.setattr(authors, "find_mentioned", lambda text: [])
+    monkeypatch.setattr(vectorstore, "query", empty_hits)
+    monkeypatch.setattr(vectorstore, "query_web", empty_hits)
+    with pytest.raises(HTTPException):
+        main_module._ask_context("Frage", [], "de", 5, None, max_per_source=limit)
+    assert seen == [expected, expected]
