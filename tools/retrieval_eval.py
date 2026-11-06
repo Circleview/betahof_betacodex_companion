@@ -8,15 +8,25 @@ Begriff enthält - einmal nur Vektorsuche, einmal mit Hybrid-Suche
 Chunking oder Reranking laufen lassen:
 
     PYTHONPATH=. python tools/retrieval_eval.py [Anzahl, Default 80]
+
+A/B für die Quellen-Vielfalt (Idee 3c32da30) - KOSTENPFLICHTIG (je Frage 2
+Modellaufrufe), stellt jede Frage ohne/mit Vielfalts-Regel und vergleicht
+zitierte Quellen, Web-Anteil, Distanzzuwachs je Tausch, max_tokens-Stopps
+und die Treffer auf Frage-Begriffe. Die Antworten beider Läufe stehen zum
+Handurteil in data/ab_ergebnis.md:
+
+    PYTHONPATH=. python tools/retrieval_eval.py --ab data/ab_fragen.txt
 """
+import logging
 import random
+import re
 import sys
 
 from dotenv import load_dotenv
 
 load_dotenv(".env")
 
-from app import embeddings, main, terms, vectorstore, web_index  # noqa: E402
+from app import embeddings, llm, main, terms, vectorstore, web_index  # noqa: E402
 
 TOP_K = 5
 EXTRA_TERMS = ["Democratic Taylorism", "Zellstrukturdesign"]  # reale Problemfälle
@@ -44,7 +54,9 @@ def retrieve(question: str, hybrid: bool) -> list[str]:
     ids = c["ids"][0] + w["ids"][0]
     docs = c["documents"][0] + w["documents"][0]
     dists = c["distances"][0] + w["distances"][0]
-    metas = list(c["metadatas"][0]) + [{**m, "source_id": m["page_id"]} for m in w["metadatas"][0]]
+    metas = list(c["metadatas"][0]) + [
+        {**m, "source_id": m["page_id"], "is_web_fallback": True} for m in w["metadatas"][0]
+    ]
     ids, docs, metas = main._rerank_by_relevance(ids, docs, metas, dists, sources, TOP_K)
     if hybrid:
         ids, docs, metas = main._ensure_term_hits(ids, docs, metas, emb, question, TOP_K)
@@ -68,5 +80,117 @@ def main_eval(n: int) -> None:
     print("Mit Hybrid verfehlt:", misses or "-")
 
 
+def _cited_numbers(answer: str) -> set[int]:
+    return {int(n) for group in re.findall(r"\[(\d+(?:\s*,\s*\d+)*)\]", answer) for n in re.findall(r"\d+", group)}
+
+
+def cited_keys(answer: str, chunks: list[dict]) -> set[str]:
+    """Quellen-Schlüssel der im Text zitierten Chunks ([1][3] oder [1, 3])."""
+    return {chunks[n - 1]["source_key"] for n in _cited_numbers(answer) if 1 <= n <= len(chunks)}
+
+
+def web_share(answer: str, chunks: list[dict]) -> float:
+    cited = [chunks[n - 1] for n in _cited_numbers(answer) if 1 <= n <= len(chunks)]
+    return sum(c["web"] for c in cited) / len(cited) if cited else 0.0
+
+
+class _Collect(logging.Handler):
+    def __init__(self):
+        super().__init__(logging.INFO)
+        self.messages: list[str] = []
+
+    def emit(self, record):
+        self.messages.append(record.getMessage())
+
+
+def _ab_run(question: str, off: bool) -> dict:
+    lang = llm._question_language(question) or "de"
+    collect = _Collect()
+    loggers = [logging.getLogger("app.main"), logging.getLogger("app.llm")]
+    for lg in loggers:
+        lg.addHandler(collect)
+        lg.setLevel(logging.INFO)
+    try:
+        # max_per_source=0 -> aus, None -> Einstellung der Umgebung (Standard 2)
+        # Vektor-Trefferquote: Ausschnitte VOR dem erzwungenen Begriffs-Treffer
+        before = {}
+        real_ensure = main._ensure_term_hits
+
+        def spy(ids, documents, *a, **k):
+            before["docs"] = list(documents)
+            return real_ensure(ids, documents, *a, **k)
+
+        main._ensure_term_hits = spy
+        try:
+            llm_chunks, refs, bios, _ = main._ask_context(question, [], lang, 5, None, max_per_source=0 if off else None)
+        finally:
+            main._ensure_term_hits = real_ensure
+        answer = "".join(llm.stream_answer_question(question, llm_chunks, lang=lang, author_bios=bios or None))
+    finally:
+        for lg in loggers:
+            lg.removeHandler(collect)
+    answer = answer.split("---QUOTES---")[0].strip()
+    # Schlüssel auch im "aus"-Lauf, damit gezählt werden kann
+    chunks = [{"source_key": main._diversity_key({"source_id": r.source_id, "title": r.title,
+                                                  "allowlist_entry_id": r.allowlist_entry_id}),
+               "web": r.is_web_fallback} for r in refs]
+    terms_hit = [t for t in main._question_terms(question) if any(t.lower() in r.text.lower() for r in refs)]
+    return {
+        "answer": answer,
+        "cited": len(cited_keys(answer, chunks)),
+        "delivered": len({c["source_key"] for c in chunks}),
+        "web": web_share(answer, chunks),
+        "swaps": [float(m) for msg in collect.messages for m in re.findall(r"Distanzzuwachs ([\d.]+) %", msg)],
+        "truncated": any("max_tokens" in m for m in collect.messages),
+        "no_successor": sum("kein Nachrücker" in m for m in collect.messages),
+        "vector_terms_hit": any(t.lower() in d.lower() for t in main._question_terms(question) for d in before.get("docs", [])),
+        "has_terms": bool(main._question_terms(question)),
+        "terms_hit": bool(terms_hit),
+    }
+
+
+def ab_eval(path: str, out_path: str = "data/ab_ergebnis.md") -> None:
+    questions = [q.strip() for q in open(path, encoding="utf-8") if q.strip() and not q.startswith("#")]
+    results = []
+    # Jede Frage sofort in die Datei, damit ein Abbruch den bezahlten Lauf nicht verliert.
+    with open(out_path, "w", encoding="utf-8") as f:
+        for q in questions:
+            try:
+                off, on = _ab_run(q, off=True), _ab_run(q, off=False)
+            except Exception as e:  # noqa: BLE001 - Lauf geht mit der nächsten Frage weiter
+                f.write(f"## {q}\n\nFEHLER: {e}\n\n")
+                f.flush()
+                print(f"Fehler bei '{q}': {e}")
+                continue
+            results.append((q, off, on))
+            f.write(f"## {q}\n\nzitiert aus/an: {off['cited']}/{on['cited']}\n\n**AUS**\n\n{off['answer']}\n\n**AN**\n\n{on['answer']}\n\n")
+            f.flush()
+    n = len(results)
+    if not n:
+        print("Keine Frage erfolgreich.")
+        return
+    mean = lambda mode, key: sum(r[mode][key] for r in results) / n
+    swaps = [d for r in results for d in r[2]["swaps"]]
+    term_qs = [r for r in results if r[1]["has_terms"]]
+    print(f"Fragen: {n} von {len(questions)}")
+    print(f"Zitierte Quellen im Mittel: aus {mean(1, 'cited'):.2f} / an {mean(2, 'cited'):.2f}")
+    print(f"Gelieferte Quellen im Mittel: aus {mean(1, 'delivered'):.2f} / an {mean(2, 'delivered'):.2f}")
+    print(f"Web-Anteil unter den Zitaten: aus {mean(1, 'web'):.0%} / an {mean(2, 'web'):.0%}")
+    print(f"Tausche: {len(swaps)}, Distanzzuwachs im Mittel {sum(swaps) / len(swaps):.1f} %" if swaps else "Tausche: 0")
+    print(f"Überschuss-Kandidaten ohne Nachrücker (an): {sum(r[2]['no_successor'] for r in results)}")
+    print(f"max_tokens-Stopps: aus {sum(r[1]['truncated'] for r in results)} / an {sum(r[2]['truncated'] for r in results)}")
+    if term_qs:
+        print(f"Begriffs-Trefferquote ({len(term_qs)} Fragen), Vektor vor Erzwingen: "
+              f"aus {sum(r[1]['vector_terms_hit'] for r in term_qs)} / an {sum(r[2]['vector_terms_hit'] for r in term_qs)}; "
+              f"nach Erzwingen: aus {sum(r[1]['terms_hit'] for r in term_qs)} / an {sum(r[2]['terms_hit'] for r in term_qs)}")
+    gain = mean(2, "cited") - mean(1, "cited")
+    print(f"Tor: Zuwachs zitierter Quellen {gain:+.2f} (Soll >= +0.50): {'ok' if gain >= 0.5 else 'NICHT erreicht'}; "
+          f"max_tokens-Stopp an: {'keiner' if not any(r[2]['truncated'] for r in results) else 'VORHANDEN'}; "
+          f"Handurteil und Web-Anteil siehe oben/{out_path}")
+
+
 if __name__ == "__main__":
-    main_eval(int(sys.argv[1]) if len(sys.argv) > 1 else 80)
+    if sys.argv[1:2] == ["--ab"]:
+        ab_eval(sys.argv[2])
+    else:
+        main_eval(int(sys.argv[1]) if len(sys.argv) > 1 else 80)

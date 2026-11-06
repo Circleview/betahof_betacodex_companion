@@ -60,6 +60,12 @@ Assistent das offen, statt zu spekulieren.
   eingeschränkten Quellen höchstens 1 Bild je Antwort. Ältere Quellen holt der
   Admin-Reindex (`/api/admin/reindex-sources`) nach, ohne Text, Zusammenfassung
   oder Schlagworte zu ändern.
+- Mehr verschiedene Quellen und Autor:innen je Antwort: Eine Quelle (eine Website
+  zählt als eine) und eine Autor:in belegen je höchstens 2 der 5 Textausschnitte,
+  sofern ein Ausschnitt einer
+  neuen Quelle höchstens 15 % schlechter liegt. Ausnahmen: genannte
+  Autor:innen, Titel in der Frage, passende Schlagworte, Fachbegriffe.
+  Abschalten mit `SOURCE_DIVERSITY_MAX_PER_SOURCE=0` (Dev-Test: `?vielfalt=aus`).
 - Eine "Verwendete Quellen"-Sidebar baut sich über die gesamte
   Konversation auf, nicht nur pro Antwort. Das Auge-Icon öffnet eine
   Quelle als Lese-Dialog direkt in der Konversation.
@@ -588,6 +594,7 @@ Commit-/Tag-Nachrichten in Git.
 
 | Version | Wesentliche Änderungen |
 |---|---|
+| v0.89.3 | **Mehr Vielfalt bei Quellen und Autor:innen** (Idee 3c32da30): eine Quelle (eine Website zählt als eine) und eine Autor:in belegen je höchstens 2 der 5 Textausschnitte, wenn ein Ersatz höchstens 15 % schlechter passt; neue Autor:innen rücken zuerst nach, Web ersetzt nie Kuratiertes. Ausnahmen: genannte Autor:innen, Titel und seltene Schlagworte in der Frage, Fachbegriffe. Größere Kandidatenauswahl, Hinweis an das Modell zu Mehrfachbelegen. Abschaltbar per `SOURCE_DIVERSITY_MAX_PER_SOURCE=0` |
 | v0.89.2 | **Nur noch companion.betahof.com** (Idee b9f8d6c3): die alte chat-Subdomain unter betacodex.org hat keinen DNS-Eintrag mehr. Domain aus MCP-Host-/Origin-Allowlist, Links, Quellen-Export (API + Namensnennung) und Doku entfernt; deploy.sh auf dem Server bedient nur noch DOMAIN. Wächtertest verhindert neue Fundstellen (v0.89.1 scheiterte an genau diesem Test, nicht deployt). |
 | v0.89.0 | **Bildleiste unter der Antwort** (Idee ff895248): bis zu 6 Grafiken aus den zitierten Quellen, Bildunterschrift = Quelle (bei PDFs mit Seite), Klick öffnet die Quelle. Web-Bilder bleiben Links auf den Quellserver, PDF-Grafiken liegen verkleinert als WebP auf dem eigenen Server; eingeschränkte Quellen höchstens 1 Bild je Antwort; keine Icons, Schriftzug-Banner oder Video-Vorschauen. Der Admin-Reindex holt Bilder älterer Quellen nach, ohne Text, Zusammenfassung oder Schlagworte zu ändern. Datenschutzerklärung DE/EN ergänzt. Dazu: verständliche Fehlermeldung mit „Erneut versuchen“-Button, englische Antwort bei Aufforderungen wie „Show me …“ und bei unklarer Fragesprache, Seitenleiste „Verwendete Quellen“ zeigt wieder die richtigen Quellen, geteilte Gesprächslinks können keine Skript-Links mehr einschleusen |
 | v0.88.0 | **Chat merkt sich die ganze Konversation** (Idee 2070893d): statt der letzten 10 Fragen gehen bis zu 50 Fragen und Antworten (bis 200 KB Text) als Kontext mit, wie bei einem normalen ChatBot; darüber fallen die ältesten in Zehnerblöcken weg. Prompt-Caching hält die Kosten auch bei langen Gesprächen bei rund 1,4 ct je Frage (ohne Cache wären es bis 4,7 ct). „In neuem Tab öffnen“ funktioniert jetzt auch bei langen Chats (brach vorher ab ca. 20 Runden still ab). Schärfere Grenzen gegen Missbrauch: Frage höchstens 8000 Zeichen, Trefferzahl höchstens 10, Budget in Bytes, Obergrenze für den Zwischenspeicher beim Tab-Wechsel. Verbrauch wird auch bei abgebrochener Antwort erfasst |

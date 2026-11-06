@@ -15,7 +15,7 @@ import time
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
-from urllib.parse import quote, urlsplit
+from urllib.parse import parse_qs, quote, urlsplit
 
 import networkx as nx
 from dotenv import load_dotenv
@@ -1657,6 +1657,29 @@ def _normalize_beta_kodex_spelling_once() -> None:
         _register_all_terms(source_id, sources[source_id])
 
 
+def _repair_char_split_key_terms_once() -> None:
+    """Einmalige Datenkorrektur (Idee 3c32da30): lieferte das Modell
+    key_terms_* als String statt Liste, entstand eine Liste einzelner
+    Buchstaben (Ursache in summarization.py behoben). Die Begriffe lassen sich
+    daraus nicht sicher zurückgewinnen (Leerzeichen fehlen) - das Feld wird
+    geleert; die Zusammenfassungs-Nachholung füllt es bei Bedarf neu. Läuft bei
+    jedem Start, idempotent."""
+    sources = _load_sources()
+    changed = []
+    for source_id, entry in sources.items():
+        for field in ("key_terms_de", "key_terms_en"):
+            value = entry.get(field)
+            if isinstance(value, list) and len(value) >= 3 and all(isinstance(t, str) and len(t) == 1 for t in value):
+                entry[field] = []
+                if source_id not in changed:
+                    changed.append(source_id)
+    if not changed:
+        return
+    _save_sources(sources)
+    for source_id in changed:
+        _register_all_terms(source_id, sources[source_id])
+
+
 def _backfill_term_languages_once() -> None:
     """Einmalige Datenkorrektur (Nutzerwunsch 2026-09-22): terms.json
     unterschied bisher nicht nach Sprache - deutsche und englische
@@ -1687,6 +1710,7 @@ def _start_background_workers() -> None:
     users.ensure_bootstrap_admin(os.environ.get("SYSTEM_ADMIN_EMAIL", ""))
     _normalize_pflaeging_spelling_once()
     _normalize_beta_kodex_spelling_once()
+    _repair_char_split_key_terms_once()
     _backfill_term_languages_once()
     threading.Thread(
         target=_run_periodic, args=(_run_url_health_check_once, URL_HEALTH_CHECK_INTERVAL_SECONDS), daemon=True
@@ -4287,7 +4311,75 @@ def _question_terms(text: str) -> list[str]:
     return chosen[:LEXICAL_MAX_TERMS]
 
 
-def _ensure_term_hits(ids, documents, metadatas, embedding, text, top_k):
+# Idee 3c32da30: mehr verschiedene Quellen je Antwort. Die Seitenleiste zeigt
+# je Quelle nur einen Eintrag; füllt eine Quelle viele der top_k Plätze,
+# bleiben wenige eigenständige Quellen. Regel in _rerank_by_relevance: je
+# Quelle höchstens N Plätze, der Überschuss weicht Chunks NEUER Quellen, die
+# höchstens 15 % schlechter (Score = quadrierte L2-Distanz) liegen.
+SOURCE_DIVERSITY_DEFAULT_MAX_PER_SOURCE = 2
+SOURCE_DIVERSITY_POOL_MULTIPLIER = 8
+SOURCE_DIVERSITY_MAX_DISTANCE_INCREASE = 0.15
+
+
+def _parse_max_per_source(raw: str | None) -> int:
+    """None (Variable fehlt) -> Standard; leer, 0, negativ, ungültig -> 0 (aus)."""
+    if raw is None:
+        return SOURCE_DIVERSITY_DEFAULT_MAX_PER_SOURCE
+    raw = raw.strip()
+    if not raw:
+        return 0
+    try:
+        return max(0, int(raw))
+    except ValueError:
+        logging.getLogger(__name__).warning(
+            "SOURCE_DIVERSITY_MAX_PER_SOURCE=%r ungültig - Quellen-Vielfalt ausgeschaltet", raw
+        )
+        return 0
+
+
+SOURCE_DIVERSITY_MAX_PER_SOURCE = _parse_max_per_source(os.environ.get("SOURCE_DIVERSITY_MAX_PER_SOURCE"))
+
+
+def _diversity_key(meta: dict) -> str:
+    """Eine Website (allowlist_entry_id) und Titel-Zwillinge zählen als EINE Quelle."""
+    if meta.get("allowlist_entry_id"):
+        return f"web:{meta['allowlist_entry_id']}"
+    title = " ".join((meta.get("title") or "").lower().split())
+    return f"title:{title}" if title else f"id:{meta['source_id']}"
+
+
+def _author_keys(meta: dict) -> list[str]:
+    names = meta.get("authors") or ([meta["author"]] if meta.get("author") else [])
+    return [" ".join(name.lower().split()) for name in names]
+
+
+SOURCE_DIVERSITY_KEYWORD_MIN_LEN = 4
+SOURCE_DIVERSITY_KEYWORD_MAX_SOURCES = 3
+
+
+def _keyword_exempt_source_ids(sources: dict, query_text: str) -> set[str]:
+    """Quellen, die von der Vielfalts-Regel ausgenommen sind, weil ein
+    Schlagwort in der Frage steht (Wortgrenzen, Mindestlänge). Die Grenze
+    "höchstens 3 Quellen" gilt je Schlagwort - ein häufiges Schlagwort wie
+    "Beta-Kodex" nimmt niemanden aus, ein seltenes daneben schon."""
+    carriers: dict[str, set[str]] = {}
+    for sid, src in sources.items():
+        for field in ("key_terms_de", "key_terms_en"):
+            value = src.get(field)
+            for term in value if isinstance(value, list) else []:
+                if isinstance(term, str) and len(term.strip()) >= SOURCE_DIVERSITY_KEYWORD_MIN_LEN:
+                    carriers.setdefault(term.strip().lower(), set()).add(sid)
+    query_lower = query_text.lower()
+    exempt: set[str] = set()
+    for term, sids in carriers.items():
+        if len(sids) <= SOURCE_DIVERSITY_KEYWORD_MAX_SOURCES and re.search(
+            r"(?<!\w)" + re.escape(term) + r"(?!\w)", query_lower
+        ):
+            exempt |= sids
+    return exempt
+
+
+def _ensure_term_hits(ids, documents, metadatas, embedding, text, top_k, trim_repeats=False):
     forced = []
     for term in _question_terms(text):
         if any(term.lower() in doc.lower() for doc in documents + [f[1] for f in forced]):
@@ -4297,6 +4389,30 @@ def _ensure_term_hits(ids, documents, metadatas, embedding, text, top_k):
             forced.append((hits["ids"][0][0], hits["documents"][0][0], hits["metadatas"][0][0]))
     if not forced:
         return ids, documents, metadatas
+    if trim_repeats:
+        # Idee 3c32da30: zuerst überzählige Chunks mehrfach vertretener
+        # Quellen (schlechtester zuerst) opfern, erst danach von hinten.
+        kept = list(range(len(ids)))
+        q_terms = [t.lower() for t in _question_terms(text)]
+        for _ in range(max(0, len(ids) - (top_k - len(forced)))):
+            if not kept:
+                break
+            counts = {}
+            for i in kept:
+                key = _diversity_key(metadatas[i])
+                counts[key] = counts.get(key, 0) + 1
+            # Einziger Träger eines Frage-Begriffs wird nicht geopfert.
+            sole = {
+                only[0] for t in q_terms
+                if len(only := [i for i in kept if t in documents[i].lower()]) == 1
+            }
+            repeated = [i for i in kept if counts[_diversity_key(metadatas[i])] > 1 and i not in sole]
+            kept.remove(repeated[-1] if repeated else kept[-1])
+        return (
+            [ids[i] for i in kept] + [f[0] for f in forced],
+            [documents[i] for i in kept] + [f[1] for f in forced],
+            [metadatas[i] for i in kept] + [f[2] for f in forced],
+        )
     keep = min(len(ids), top_k - len(forced))
     return (
         ids[:keep] + [f[0] for f in forced],
@@ -4312,30 +4428,120 @@ def _rerank_by_relevance(
     distances: list[float],
     sources: dict,
     top_k: int,
+    max_per_source: int = 0,
+    exempt_source_ids: set[str] | None = None,
+    question_terms: list[str] | None = None,
 ) -> tuple[list[str], list[str], list[dict]]:
     def relevance_factor(source_id: str) -> float:
         score = sources.get(source_id, {}).get("relevance_score")
         score = score if score is not None else 5
         return 1 - RELEVANCE_MAX_ADJUSTMENT * (score - 5) / 5
 
+    def score(i: int) -> float:
+        return distances[i] * relevance_factor(metadatas[i]["source_id"])
+
     # Backlog (2026-09-25): derselbe Text kann mehrfach im Pool stehen
     # (doppelt importierte Quelle, kuratiert + Web-Index) und belegte dann
     # mehrere der wenigen Plätze - nur das erste (beste) Vorkommen zählt.
-    order = []
+    ranked = []
     seen_texts = set()
-    for i in sorted(range(len(ids)), key=lambda i: distances[i] * relevance_factor(metadatas[i]["source_id"])):
+    for i in sorted(range(len(ids)), key=score):
         text_key = " ".join(documents[i].split())
         if text_key in seen_texts:
             continue
         seen_texts.add(text_key)
-        order.append(i)
-        if len(order) == top_k:
-            break
+        ranked.append(i)
+    order = ranked[:top_k]
+    if max_per_source > 0 and top_k > max_per_source:
+        order = _diversify(
+            order, ranked[top_k:], metadatas, documents, score, max_per_source,
+            exempt_source_ids or set(), question_terms or [],
+        )
     return (
         [ids[i] for i in order],
         [documents[i] for i in order],
         [metadatas[i] for i in order],
     )
+
+
+def _diversify(order, reserve, metadatas, documents, score, max_per_source, exempt, question_terms):
+    """Idee 3c32da30: siehe Kommentar bei SOURCE_DIVERSITY_*. Tauscht
+    überzählige Chunks einer Quelle gegen Chunks noch nicht vertretener Quellen."""
+    key = lambda i: _diversity_key(metadatas[i])
+    # Pro Frage-Begriff schützt der erste Chunk (beste Platzierung), der ihn enthält.
+    protected = set()
+    for term in question_terms:
+        first = next((i for i in order if term.lower() in documents[i].lower()), None)
+        if first is not None:
+            protected.add(first)
+    counts = {}
+    author_counts = {}
+    candidates = []
+    for i in order:
+        if metadatas[i]["source_id"] in exempt:
+            continue
+        counts[key(i)] = counts.get(key(i), 0) + 1
+        over_limit = counts[key(i)] > max_per_source
+        for author in _author_keys(metadatas[i]):
+            author_counts[author] = author_counts.get(author, 0) + 1
+            over_limit = over_limit or author_counts[author] > max_per_source
+        if over_limit and i not in protected:
+            candidates.append(i)
+    order = list(order)
+    present = {key(i) for i in order}
+    is_web = lambda i: bool(metadatas[i].get("is_web_fallback"))
+    # Je neuer Quelle zählt nur ihr bester Ausschnitt.
+    best_per_key = {}
+    for r in sorted(reserve, key=score):
+        if key(r) not in present and metadatas[r]["source_id"] not in exempt:
+            best_per_key.setdefault(key(r), r)
+    kept = [i for i in order if i not in candidates]
+    author_load = {}
+    for i in kept:
+        for author in _author_keys(metadatas[i]):
+            author_load[author] = author_load.get(author, 0) + 1
+    max_score = max((score(c) for c in candidates), default=0) * (1 + SOURCE_DIVERSITY_MAX_DISTANCE_INCREASE) + 1e-12
+    # Neue Autor:innen zuerst, dann kuratierte vor Web, dann der Score.
+    successors = []
+    for r in sorted(
+        best_per_key.values(),
+        key=lambda r: (any(a in author_load for a in _author_keys(metadatas[r])), is_web(r), score(r)),
+    ):
+        r_authors = _author_keys(metadatas[r])
+        if (
+            score(r) > max_score
+            or any(author_load.get(a, 0) >= max_per_source for a in r_authors)
+        ):
+            continue
+        successors.append(r)
+        for author in r_authors:
+            author_load[author] = author_load.get(author, 0) + 1
+    candidates = sorted(candidates, key=score)
+
+    def allowed(cand, succ):
+        limit = score(cand) * (1 + SOURCE_DIVERSITY_MAX_DISTANCE_INCREASE) + 1e-12
+        # Web ersetzt nie einen kuratierten Chunk.
+        return score(succ) <= limit and (is_web(cand) or not is_web(succ))
+
+    # Möglichst viele Täusche: die k schlechtesten Kandidaten gegen die k besten
+    # Nachrücker, aufsteigend gepaart.
+    swaps = []
+    for k in range(min(len(candidates), len(successors)), 0, -1):
+        pairs = list(zip(candidates[-k:], sorted(successors[:k], key=lambda r: (is_web(r), score(r)))))
+        if all(allowed(c, r) for c, r in pairs):
+            swaps = pairs
+            break
+    log = logging.getLogger(__name__)
+    for cand in candidates[: len(candidates) - len(swaps)]:
+        log.info("Quellen-Vielfalt: kein Nachrücker für %s", metadatas[cand]["source_id"])
+    for cand, pick in swaps:
+        log.info(
+            "Quellen-Vielfalt: Tausch %s -> %s, Distanzzuwachs %.1f %%",
+            metadatas[cand]["source_id"], metadatas[pick]["source_id"],
+            (score(pick) / score(cand) - 1) * 100 if score(cand) else 0.0,
+        )
+        order[order.index(cand)] = pick
+    return sorted(order, key=score)
 
 
 # Nutzerwunsch (2026-09-01): einheitlicher Ausschluss für alle drei
@@ -4682,7 +4888,14 @@ def _ask_event_stream(
     ) + "\n"
 
 
-def _ask_context(question_text: str, history: list[dict], x_lang: str, top_k: int = 5, usage_email: str | None = None):
+def _ask_context(
+    question_text: str,
+    history: list[dict],
+    x_lang: str,
+    top_k: int = 5,
+    usage_email: str | None = None,
+    max_per_source: int | None = None,
+):
     """Suche für eine Frage (2026-09-26 aus ask() herausgelöst, damit auch
     das MCP-Werkzeug ask_question exakt dieselbe Logik nutzt): Quellen
     finden, gewichten, Hybrid-Suche, Autor:innen-Viten. Liefert
@@ -4713,15 +4926,21 @@ def _ask_context(question_text: str, history: list[dict], x_lang: str, top_k: in
     # Wiederverwendet weiter unten auch für author_bios - ein Namensabgleich
     # reicht für beides (siehe Kommentar bei AUTHOR_MENTION_DISTANCE_FACTOR).
     mentioned_author_names = authors.find_mentioned(question_text)
+    # Idee 3c32da30: Quellen-Vielfalt (max_per_source=None -> Einstellung aus
+    # der Umgebung). Ein größerer Pool bringt Nachrücker und Kernquellen, die
+    # erst durch ihren Relevanzscore nach vorn rücken.
+    if max_per_source is None:
+        max_per_source = SOURCE_DIVERSITY_MAX_PER_SOURCE
+    pool_size = top_k * (SOURCE_DIVERSITY_POOL_MULTIPLIER if max_per_source > 0 else RELEVANCE_OVERFETCH_MULTIPLIER)
     curated_hits = vectorstore.query(
-        query_embedding, top_k=top_k * RELEVANCE_OVERFETCH_MULTIPLIER
+        query_embedding, top_k=pool_size
     )
     # Immer mitabgefragt, siehe Kommentar oben - rein lokal, keine spürbare
     # Zeitkosten. exclude_page_ids berücksichtigt manuell ausgeschlossene
     # Einzelseiten (siehe app/web_index.py:set_excluded).
     web_hits = vectorstore.query_web(
         query_embedding,
-        top_k=top_k * RELEVANCE_OVERFETCH_MULTIPLIER,
+        top_k=pool_size,
         exclude_page_ids=web_index.excluded_page_ids(),
     )
 
@@ -4799,11 +5018,30 @@ def _ask_context(question_text: str, history: list[dict], x_lang: str, top_k: in
     if not ids:
         raise HTTPException(400, i18n.get_message("no_matching_chunks", x_lang))
 
+    # Idee 3c32da30: Ausnahmen gelten nur für diesen Rerank.
+    diversity_on = max_per_source > 0
+    exempt_source_ids = set()
+    question_terms = []
+    if diversity_on:
+        query_lower = query_text.lower()
+        names = set(mentioned_author_names) | set(authors.find_mentioned(query_text))
+        for entry in authors.list_authors():
+            if entry["name"] in names:
+                exempt_source_ids.update(entry["source_ids"])
+        exempt_source_ids.update(
+            sid for sid, src in sources.items()
+            if len(src.get("title") or "") >= 12 and src["title"].lower() in query_lower
+        )
+        exempt_source_ids.update(_keyword_exempt_source_ids(sources, query_text))
+        question_terms = _question_terms(query_text)
     ids, documents, metadatas = _rerank_by_relevance(
-        ids, documents, metadatas, distances, sources, top_k
+        ids, documents, metadatas, distances, sources, top_k,
+        max_per_source=max_per_source,
+        exempt_source_ids=exempt_source_ids,
+        question_terms=question_terms,
     )
     ids, documents, metadatas = _ensure_term_hits(
-        ids, documents, metadatas, query_embedding, query_text, top_k
+        ids, documents, metadatas, query_embedding, query_text, top_k, trim_repeats=diversity_on
     )
 
     unknown_label = "unbekannt" if x_lang == "de" else "unknown"
@@ -4847,6 +5085,7 @@ def _ask_context(question_text: str, history: list[dict], x_lang: str, top_k: in
                 "author": ", ".join(authors_list) or unknown_label,
                 "date": date or unknown_label,
                 "text": doc,
+                "source_key": _diversity_key(meta) if diversity_on else None,
             }
         )
 
@@ -4894,8 +5133,18 @@ def ask(question: QuestionIn, request: Request, x_lang: str = Header(default=i18
         )
 
     history = _trim_history([turn.model_dump() for turn in question.history])
+    # ponytail: Dev-Umschalter für A/B ohne zweite Instanz - ?vielfalt=aus in
+    # der Seiten-URL (kommt per Referer), nur wenn IS_DEV_ENVIRONMENT; Prod
+    # ignoriert ihn. Ohne eigenes Feld/Frontend; Ablösung, wenn der Test vorbei ist.
+    extra = {}
+    try:
+        referer_query = urlsplit(request.headers.get("referer", "")).query
+    except ValueError:  # kaputter Referer (z. B. "http://[") darf keinen 500 auslösen
+        referer_query = ""
+    if IS_DEV_ENVIRONMENT and "aus" in parse_qs(referer_query).get("vielfalt", []):
+        extra["max_per_source"] = 0
     llm_chunks, chunk_refs, author_bios, query_embedding = _ask_context(
-        question.question, history, x_lang, question.top_k, _get_current_user_email(request)
+        question.question, history, x_lang, question.top_k, _get_current_user_email(request), **extra
     )
 
     chunk_docs = [chunk_ref.text for chunk_ref in chunk_refs]

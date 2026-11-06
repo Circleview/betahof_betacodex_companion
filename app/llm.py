@@ -220,6 +220,13 @@ _PARTIAL_ANSWER_REMINDERS = {
 }
 
 
+# Idee 3c32da30: kommen die Ausschnitte aus mehreren Quellen, sollen alle
+# Quellen, die dieselbe Aussage stützen, auch zitiert werden.
+_MULTI_SOURCE_REMINDERS = {
+    "de": "(Stützen mehrere verschiedene Quellen dieselbe Aussage, setze alle passenden Verweise direkt hintereinander, z. B. [1][3]. Setze nie einen Verweis ohne echten Beleg im Ausschnitt.)",
+    "en": "(If several different sources support the same statement, place all matching references directly after each other, e.g. [1][3]. Never add a reference without real support in the excerpt.)",
+}
+
 _REWRITE_MAX_TOKENS = 60
 
 # Bug (2026-08-20, per Screenshot gemeldet): eine vage Folgefrage wie
@@ -354,12 +361,14 @@ def stream_answer_question(
     # Nutzerwunsch (2026-10-25): unklare Fragesprache -> Englisch, auch bei
     # deutschen Quellen und deutscher UI.
     explicit = _EXPLICIT_LANGUAGE[_question_language(question) or "en"]
+    multi_source = len({c.get("source_key") for c in chunks} - {None}) > 1
     messages.append(
         {
             "role": "user",
             "content": (
                 f"Kontext-Textausschnitte:\n\n{context}\n\nFrage: {question}\n\n"
                 f"{_PARTIAL_ANSWER_REMINDERS[lang]}\n{_LANGUAGE_REMINDERS[lang]}"
+                + (f"\n{_MULTI_SOURCE_REMINDERS[lang]}" if multi_source else "")
                 + f"\n{explicit}"
             ),
         }
@@ -368,7 +377,7 @@ def stream_answer_question(
     client = _get_client()
     with client.messages.stream(
         model=MODEL_NAME,
-        max_tokens=1024,
+        max_tokens=1536,
         system=SYSTEM_PROMPTS[lang],
         messages=messages,
     ) as stream:
@@ -389,6 +398,8 @@ def stream_answer_question(
             try:
                 if completed:
                     usage_log.track_anthropic_stream(MODEL_NAME, stream, **usage_kwargs)
+                    if stream.get_final_message().stop_reason == "max_tokens":
+                        logging.getLogger(__name__).warning("Antwort (ask) durch max_tokens abgeschnitten")
                 else:
                     try:
                         snapshot_usage = stream.current_message_snapshot.usage
