@@ -64,8 +64,10 @@ Ablauf pro Frage (`app/main.py`, Funktion `ask`):
    aus den kuratierten Quellen und den freigegebenen Websites zugleich.
 3. **Neu sortieren** nach Ähnlichkeit, gewichtet mit dem Relevanzscore. Doppelte
    Texte belegen nur einen Platz. Danach gilt: Eine Quelle (eine Website zählt als
-   eine) belegt höchstens 2 der 5 Plätze. Den Überschuss ersetzt ein Ausschnitt
-   einer noch nicht vertretenen Quelle, wenn er höchstens 15 % schlechter liegt. Eine Website ersetzt nie einen kuratierten Ausschnitt.
+   eine) und eine Autor:in belegen je höchstens 2 der 5 Plätze. Derselbe Artikel
+   unter einem zweiten Eintrag belegt keinen weiteren Platz. Der Pool ist dafür 8-mal
+   so groß wie die Platzzahl. Den Überschuss ersetzt ein Ausschnitt einer noch nicht
+   vertretenen Quelle, wenn er höchstens 15 % schlechter liegt; neue Autor:innen gehen vor. Eine Website ersetzt nie einen kuratierten Ausschnitt.
    Ausgenommen sind Quellen genannter Autor:innen, Quellen mit dem Titel in der
    Frage, Quellen mit passendem Schlagwort (ganzes Wort; das Schlagwort darf in höchstens 3 Quellen stehen) und der erste
    Ausschnitt je Fachbegriff der Frage. Kommen mehrere Quellen vor, bittet ein
@@ -228,7 +230,8 @@ sind willkommen.
 | Max. Einfluss des Relevanzscores (1–10) auf die Distanz | `0.15` | `app/main.py: RELEVANCE_MAX_ADJUSTMENT` |
 | Distanz-Faktor für Quellen einer genannten Autor:in | `0.5` | `app/main.py: AUTHOR_MENTION_DISTANCE_FACTOR` |
 | … wenn zusätzlich ein Schlagwort der Quelle in der Frage steht | `0.05` | `app/main.py: AUTHOR_MENTION_KEYWORD_MATCH_FACTOR` |
-| Max. Textausschnitte je Quelle unter den Top-K (0 = aus, Umgebungsvariable SOURCE_DIVERSITY_MAX_PER_SOURCE) | `2` | `app/main.py: SOURCE_DIVERSITY_DEFAULT_MAX_PER_SOURCE` |
+| Max. Textausschnitte je Quelle und je Autor:in unter den Top-K (0 = aus, Umgebungsvariable SOURCE_DIVERSITY_MAX_PER_SOURCE) | `2` | `app/main.py: SOURCE_DIVERSITY_DEFAULT_MAX_PER_SOURCE` |
+| Kandidaten-Vielfaches bei aktiver Vielfalt | `8` | `app/main.py: SOURCE_DIVERSITY_POOL_MULTIPLIER` |
 | Wie viel schlechter ein Ersatz-Ausschnitt höchstens sein darf (Anteil) | `0.15` | `app/main.py: SOURCE_DIVERSITY_MAX_DISTANCE_INCREASE` |
 | Begriffe pro Frage mit garantiertem Ausschnitt (Hybrid-Suche) | `3` | `app/main.py: LEXICAL_MAX_TERMS` |
 | Frühere Gesprächsrunden im Prompt | `50` | `app/main.py: ASK_HISTORY_MAX_TURNS` |
@@ -240,7 +243,7 @@ sind willkommen.
 
 Diese Tabelle wird aus dem Code erzeugt. Ändern sich Prompts oder Parameter, schlägt `tests/test_how_it_works_doc.py` fehl, bis der Text oben geprüft und `python scripts/how_it_works.py --write` gelaufen ist.
 
-<!-- fingerprint: 6908738028ad -->
+<!-- fingerprint: 3876eb3a7587 -->
 <!-- END generiert -->
 
 ## Wie dieses Dokument aktuell bleibt

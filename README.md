@@ -60,8 +60,9 @@ Assistent das offen, statt zu spekulieren.
   eingeschränkten Quellen höchstens 1 Bild je Antwort. Ältere Quellen holt der
   Admin-Reindex (`/api/admin/reindex-sources`) nach, ohne Text, Zusammenfassung
   oder Schlagworte zu ändern.
-- Mehr verschiedene Quellen je Antwort: Eine Quelle (eine Website zählt als
-  eine) belegt höchstens 2 der 5 Textausschnitte, sofern ein Ausschnitt einer
+- Mehr verschiedene Quellen und Autor:innen je Antwort: Eine Quelle (eine Website
+  zählt als eine) und eine Autor:in belegen je höchstens 2 der 5 Textausschnitte,
+  derselbe Artikel unter zweitem Eintrag keinen weiteren, sofern ein Ausschnitt einer
   neuen Quelle höchstens 15 % schlechter liegt. Ausnahmen: genannte
   Autor:innen, Titel in der Frage, passende Schlagworte, Fachbegriffe.
   Abschalten mit `SOURCE_DIVERSITY_MAX_PER_SOURCE=0` (Dev-Test: `?vielfalt=aus`).

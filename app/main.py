@@ -4317,6 +4317,7 @@ def _question_terms(text: str) -> list[str]:
 # Quelle höchstens N Plätze, der Überschuss weicht Chunks NEUER Quellen, die
 # höchstens 15 % schlechter (Score = quadrierte L2-Distanz) liegen.
 SOURCE_DIVERSITY_DEFAULT_MAX_PER_SOURCE = 2
+SOURCE_DIVERSITY_POOL_MULTIPLIER = 8
 SOURCE_DIVERSITY_MAX_DISTANCE_INCREASE = 0.15
 
 
@@ -4339,12 +4340,28 @@ def _parse_max_per_source(raw: str | None) -> int:
 SOURCE_DIVERSITY_MAX_PER_SOURCE = _parse_max_per_source(os.environ.get("SOURCE_DIVERSITY_MAX_PER_SOURCE"))
 
 
+def _work_key(meta: dict) -> str:
+    """Titel ohne Namenszusatz: „Artikel | Peter Pröll“ und „Artikel“ sind ein Werk."""
+    # ponytail: Heuristik über den Titel; ein Werk mit ganz anderem Titel zählt doppelt.
+    title = " ".join((meta.get("title") or "").lower().split())
+    for separator in (" | ", " - "):
+        head = title.split(separator)[0]
+        if len(head) >= 12:
+            title = head
+    return title.rstrip(" .")
+
+
 def _diversity_key(meta: dict) -> str:
     """Eine Website (allowlist_entry_id) und Titel-Zwillinge zählen als EINE Quelle."""
     if meta.get("allowlist_entry_id"):
         return f"web:{meta['allowlist_entry_id']}"
-    title = " ".join((meta.get("title") or "").lower().split())
+    title = _work_key(meta)
     return f"title:{title}" if title else f"id:{meta['source_id']}"
+
+
+def _author_keys(meta: dict) -> list[str]:
+    names = meta.get("authors") or ([meta["author"]] if meta.get("author") else [])
+    return [" ".join(name.lower().split()) for name in names]
 
 
 SOURCE_DIVERSITY_KEYWORD_MIN_LEN = 4
@@ -4469,22 +4486,54 @@ def _diversify(order, reserve, metadatas, documents, score, max_per_source, exem
         if first is not None:
             protected.add(first)
     counts = {}
+    author_counts = {}
+    first_source_of_work = {}
     candidates = []
     for i in order:
         if metadatas[i]["source_id"] in exempt:
             continue
         counts[key(i)] = counts.get(key(i), 0) + 1
-        if counts[key(i)] > max_per_source and i not in protected:
+        over_limit = counts[key(i)] > max_per_source
+        for author in _author_keys(metadatas[i]):
+            author_counts[author] = author_counts.get(author, 0) + 1
+            over_limit = over_limit or author_counts[author] > max_per_source
+        # Derselbe Artikel unter zweiter source_id (z. B. kuratiert + Web-Seite).
+        work = _work_key(metadatas[i])
+        is_twin = bool(work) and first_source_of_work.setdefault(work, metadatas[i]["source_id"]) != metadatas[i]["source_id"]
+        if (over_limit or is_twin) and i not in protected:
             candidates.append(i)
     order = list(order)
     present = {key(i) for i in order}
     is_web = lambda i: bool(metadatas[i].get("is_web_fallback"))
-    # Je neuer Quelle zählt nur ihr bester Ausschnitt; kuratierte vor Web.
+    # Je neuer Quelle zählt nur ihr bester Ausschnitt.
     best_per_key = {}
     for r in sorted(reserve, key=score):
         if key(r) not in present and metadatas[r]["source_id"] not in exempt:
             best_per_key.setdefault(key(r), r)
-    successors = sorted(best_per_key.values(), key=lambda r: (is_web(r), score(r)))
+    kept = [i for i in order if i not in candidates]
+    author_load = {}
+    for i in kept:
+        for author in _author_keys(metadatas[i]):
+            author_load[author] = author_load.get(author, 0) + 1
+    kept_works = {_work_key(metadatas[i]) for i in kept}
+    max_score = max((score(c) for c in candidates), default=0) * (1 + SOURCE_DIVERSITY_MAX_DISTANCE_INCREASE) + 1e-12
+    # Neue Autor:innen zuerst, dann kuratierte vor Web, dann der Score.
+    successors = []
+    for r in sorted(
+        best_per_key.values(),
+        key=lambda r: (any(a in author_load for a in _author_keys(metadatas[r])), is_web(r), score(r)),
+    ):
+        r_authors = _author_keys(metadatas[r])
+        if (
+            score(r) > max_score
+            or _work_key(metadatas[r]) in kept_works
+            or any(author_load.get(a, 0) >= max_per_source for a in r_authors)
+        ):
+            continue
+        successors.append(r)
+        kept_works.add(_work_key(metadatas[r]))
+        for author in r_authors:
+            author_load[author] = author_load.get(author, 0) + 1
     candidates = sorted(candidates, key=score)
 
     def allowed(cand, succ):
@@ -4496,7 +4545,7 @@ def _diversify(order, reserve, metadatas, documents, score, max_per_source, exem
     # Nachrücker, aufsteigend gepaart.
     swaps = []
     for k in range(min(len(candidates), len(successors)), 0, -1):
-        pairs = list(zip(candidates[-k:], successors[:k]))
+        pairs = list(zip(candidates[-k:], sorted(successors[:k], key=lambda r: (is_web(r), score(r)))))
         if all(allowed(c, r) for c, r in pairs):
             swaps = pairs
             break
@@ -4895,15 +4944,21 @@ def _ask_context(
     # Wiederverwendet weiter unten auch für author_bios - ein Namensabgleich
     # reicht für beides (siehe Kommentar bei AUTHOR_MENTION_DISTANCE_FACTOR).
     mentioned_author_names = authors.find_mentioned(question_text)
+    # Idee 3c32da30: Quellen-Vielfalt (max_per_source=None -> Einstellung aus
+    # der Umgebung). Ein größerer Pool bringt Nachrücker und Kernquellen, die
+    # erst durch ihren Relevanzscore nach vorn rücken.
+    if max_per_source is None:
+        max_per_source = SOURCE_DIVERSITY_MAX_PER_SOURCE
+    pool_size = top_k * (SOURCE_DIVERSITY_POOL_MULTIPLIER if max_per_source > 0 else RELEVANCE_OVERFETCH_MULTIPLIER)
     curated_hits = vectorstore.query(
-        query_embedding, top_k=top_k * RELEVANCE_OVERFETCH_MULTIPLIER
+        query_embedding, top_k=pool_size
     )
     # Immer mitabgefragt, siehe Kommentar oben - rein lokal, keine spürbare
     # Zeitkosten. exclude_page_ids berücksichtigt manuell ausgeschlossene
     # Einzelseiten (siehe app/web_index.py:set_excluded).
     web_hits = vectorstore.query_web(
         query_embedding,
-        top_k=top_k * RELEVANCE_OVERFETCH_MULTIPLIER,
+        top_k=pool_size,
         exclude_page_ids=web_index.excluded_page_ids(),
     )
 
@@ -4981,10 +5036,7 @@ def _ask_context(
     if not ids:
         raise HTTPException(400, i18n.get_message("no_matching_chunks", x_lang))
 
-    # Idee 3c32da30: Quellen-Vielfalt (max_per_source=None -> Einstellung aus
-    # der Umgebung, 0 -> aus). Ausnahmen gelten nur für diesen Rerank.
-    if max_per_source is None:
-        max_per_source = SOURCE_DIVERSITY_MAX_PER_SOURCE
+    # Idee 3c32da30: Ausnahmen gelten nur für diesen Rerank.
     diversity_on = max_per_source > 0
     exempt_source_ids = set()
     question_terms = []
