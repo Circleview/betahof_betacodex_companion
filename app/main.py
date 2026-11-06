@@ -5278,6 +5278,7 @@ def _ask_context(
                 "date": date or unknown_label,
                 "text": doc,
                 "source_key": _diversity_key(meta) if diversity_on else None,
+                "is_web": is_web,
             }
         )
 

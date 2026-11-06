@@ -332,9 +332,12 @@ def rewrite_followup_query(
         return None
 
 
+_WEB_LABEL = {"de": "Web-Seite", "en": "Web page"}
+
+
 def _build_context(chunks: list[dict], lang: str, author_bios: list[dict] | None) -> str:
     context = "\n\n".join(
-        f"[{i + 1}] (Quelle: {c['title']}, {c['author']}, {c['date']})\n{c['text']}"
+        f"[{i + 1}] ({_WEB_LABEL[lang] if c.get('is_web') else 'Quelle'}: {c['title']}, {c['author']}, {c['date']})\n{c['text']}"
         for i, c in enumerate(chunks)
     )
     if author_bios:
