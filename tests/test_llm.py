@@ -822,3 +822,18 @@ def test_call_overrides_system_model_and_max_tokens_and_bills_that_model():
     assert kwargs["max_tokens"] == 4096
     assert track.call_args.args[0] == "claude-sonnet-5"
     assert track.call_args.kwargs["channel"] == "vergleich"
+
+
+def test_web_chunk_is_labelled_web_page_but_keeps_number():
+    chunks = [
+        {"title": "Kuratiert", "author": "A", "date": "2020", "text": "t1"},
+        {"title": "Webartikel", "author": "B", "date": "unbekannt", "text": "t2", "is_web": True},
+    ]
+    context = llm._build_context(chunks, "de", None)
+    assert "[1] (Quelle: Kuratiert, A, 2020)" in context
+    assert "[2] (Web-Seite: Webartikel, B, unbekannt)" in context
+
+
+def test_chunk_without_is_web_keeps_old_header():
+    context = llm._build_context([{"title": "T", "author": "A", "date": "D", "text": "x"}], "en", None)
+    assert "[1] (Quelle: T, A, D)" in context

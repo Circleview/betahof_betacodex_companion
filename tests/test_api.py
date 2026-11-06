@@ -10375,3 +10375,24 @@ def test_language_backfill_does_not_count_stale_sources_as_failures(client, monk
     main_module._backfill_source_language_once()
 
     assert len(calls) == 8
+
+
+def test_ask_marks_web_chunks_with_is_web_for_the_model(client, monkeypatch):
+    monkeypatch.setattr(embeddings, "embed_passages", lambda texts: [[0.0, 1.0954] for _ in texts])
+    monkeypatch.setattr(embeddings, "embed_query", lambda text: [0.0, 0.0])
+    client.post("/api/sources", json={"title": "Kuratierte Quelle", "text": "Weit entfernt."})
+    vectorstore.add_web_chunks(
+        ["page-1::0"], ["Web-Text."], [[1.0, 0.0]],
+        [{"page_id": "page-1", "allowlist_entry_id": "entry-1", "url": "https://beispiel.org/a",
+          "title": "Web-Artikel", "position": 0}],
+    )
+    seen = {}
+
+    def fake_stream(question, chunks, *a, **k):
+        seen["chunks"] = chunks
+        return iter(["Antwort."])
+
+    monkeypatch.setattr(llm, "stream_answer_question", fake_stream)
+    client.post("/api/ask", json={"question": "Frage?", "top_k": 1})
+
+    assert [c.get("is_web") for c in seen["chunks"]] == [True]
