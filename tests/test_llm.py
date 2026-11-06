@@ -837,3 +837,21 @@ def test_web_chunk_is_labelled_web_page_but_keeps_number():
 def test_chunk_without_is_web_keeps_old_header():
     context = llm._build_context([{"title": "T", "author": "A", "date": "D", "text": "x"}], "en", None)
     assert "[1] (Quelle: T, A, D)" in context
+
+
+def test_rewrite_followup_bills_given_channel():
+    client = MagicMock()
+    client.messages.create.return_value.content = [MagicMock(type="text", text="neue Suche")]
+    with patch.object(llm, "_get_client", return_value=client), patch.object(llm.usage_log, "track_anthropic") as track:
+        out = llm.rewrite_followup_query("Mehr?", [{"question": "q", "answer": "a"}], "de", channel="vergleich")
+    assert out == "neue Suche"
+    assert track.call_args.args[2] == "vergleich"
+
+
+def test_stream_reports_stop_reason_in_info():
+    client = _fake_client("x")
+    client.messages.stream.return_value.__enter__.return_value.get_final_message.return_value.stop_reason = "max_tokens"
+    info = {}
+    with patch.object(llm, "_get_client", return_value=client), patch.object(llm.usage_log, "track_anthropic_stream"):
+        "".join(llm.stream_answer_question("F?", [], info=info))
+    assert info["stop_reason"] == "max_tokens"

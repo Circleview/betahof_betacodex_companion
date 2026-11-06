@@ -19,23 +19,29 @@ def env(tmp_path, monkeypatch):
     voice.write_text("STIMME VERSION EINS", encoding="utf-8")
     monkeypatch.setattr(llm, "STIMME_FILE", voice)
     calls = {"context": [], "stream": []}
+    state = {"raw": None, "boom": None}
 
-    def fake_context(question, history, x_lang, top_k=5, usage_email=None, max_per_source=None):
-        calls["context"].append({"question": question, "history": history})
-        return CHUNKS, [], [], [0.0]
+    def fake_context(question, history, x_lang, top_k=5, usage_email=None, max_per_source=None,
+                     rewrite_channel="ask"):
+        calls["context"].append({"question": question, "history": history, "rewrite_channel": rewrite_channel})
+        return CHUNKS, [], [{"name": "N", "bio": "B"}], [0.0]
 
     def fake_stream(question, chunks, lang="de", author_bios=None, history=None, usage=None,
-                    system_prompt=None, model=llm.MODEL_NAME, max_tokens=1536):
+                    system_prompt=None, model=llm.MODEL_NAME, max_tokens=1536, info=None):
         calls["stream"].append(
             {"chunks": chunks, "history": history, "system": system_prompt, "model": model,
-             "max_tokens": max_tokens, "usage": usage}
+             "max_tokens": max_tokens, "usage": usage, "bios": author_bios}
         )
-        yield f"Zur These {len(calls['stream'])} passt [1].\n\n---QUOTES---\n[1]: \"Text eins.\"\n"
+        if state["boom"]:
+            raise RuntimeError(state["boom"])
+        if info is not None:
+            info["stop_reason"] = "max_tokens"
+        yield state["raw"] or f"Zur These {len(calls['stream'])} passt [1].\n\n---QUOTES---\n[1]: \"Text eins.\"\n"
 
     monkeypatch.setattr(main_module, "_ask_context", fake_context)
     monkeypatch.setattr(llm, "stream_answer_question", fake_stream)
     monkeypatch.setattr(main_module, "IS_DEV_ENVIRONMENT", True)
-    return {"calls": calls, "voice": voice, "client": TestClient(main_module.app)}
+    return {"calls": calls, "state": state, "voice": voice, "client": TestClient(main_module.app)}
 
 
 def post(env, **body):
@@ -118,8 +124,8 @@ def test_costs_go_to_channel_vergleich(env):
     assert all(s["usage"]["channel"] == "vergleich" for s in env["calls"]["stream"])
 
 
-def test_unknown_variant_gives_400_and_no_calls(env):
-    assert post(env, variants=["basis", "gpt"]).status_code == 400
+def test_unknown_variant_is_rejected_and_no_calls(env):
+    assert post(env, variants=["basis", "gpt"]).status_code == 422
     assert env["calls"] == {"context": [], "stream": []}
 
 
@@ -140,3 +146,75 @@ def test_missing_voice_file_fails_only_voice_column(env):
     cols = r.json()["columns"]
     assert cols["stimme"]["error"] and cols["stimme"]["answer"] == ""
     assert cols["basis"]["error"] is None and cols["basis"]["answer"]
+
+
+def test_input_limits_cost_guard(env):
+    assert post(env, variants=["basis", "stimme", "sonnet", "basis"]).status_code == 422
+    assert post(env, variants=["basis", "basis"]).status_code == 422
+    assert post(env, question="").status_code == 422
+    turns = [{"question": "q", "answer": "a"}] * 51
+    assert post(env, histories={"basis": turns}).status_code == 422
+    assert env["calls"] == {"context": [], "stream": []}
+
+
+def test_history_is_trimmed_per_column(env):
+    post(env, histories={"stimme": [{"question": "q", "answer": "  "}, {"question": "q2", "answer": "a2"}]})
+    histories = [s["history"] for s in env["calls"]["stream"]]
+    assert [{"question": "q2", "answer": "a2"}] in histories
+
+
+def test_response_has_no_quote_texts_but_keeps_count(env):
+    col = post(env).json()["columns"]["basis"]
+    assert "quotes" not in col and col["quote_count"] == 1
+
+
+def test_author_bios_reach_the_model(env):
+    post(env)
+    assert [s["bios"] for s in env["calls"]["stream"]] == [[{"name": "N", "bio": "B"}]] * 2
+
+
+def test_creative_link_is_filled_and_no_quote_warning_expected(env):
+    env["state"]["raw"] = "Das passt besser in den [Kreativ-Modus]({{CREATIVE_LINK}})."
+    col = post(env, question="Schreib mir einen Text").json()["columns"]["basis"]
+    assert "{{CREATIVE_LINK}}" not in col["answer"]
+    assert "/creative.html?instruction=Schreib%20mir%20einen%20Text" in col["answer"]
+    assert col["quotes_expected"] is False
+
+
+def test_no_answer_lead_is_dropped_before_content(env):
+    env["state"]["raw"] = "Die vorliegende Quellenlage gibt darauf keine Antwort. Aber Inhalt [1].\n\n---QUOTES---\n[1]: \"Text eins.\"\n"
+    col = post(env).json()["columns"]["basis"]
+    assert col["answer"].startswith("Aber Inhalt")
+    assert col["quotes_expected"] is True
+
+
+def test_lone_no_answer_expects_no_quotes(env):
+    env["state"]["raw"] = "Die vorliegende Quellenlage gibt darauf keine Antwort."
+    col = post(env).json()["columns"]["basis"]
+    assert col["quotes_expected"] is False
+
+
+def test_invalid_body_is_404_when_dev_is_off(env, monkeypatch):
+    monkeypatch.setattr(main_module, "IS_DEV_ENVIRONMENT", False)
+    assert env["client"].post("/api/dev/vergleich", json={}).status_code == 404
+
+
+def test_error_text_has_only_type_and_hides_details(env):
+    env["state"]["boom"] = "geheim-xyz /pfad/zum/key"
+    col = post(env).json()["columns"]["basis"]
+    assert col["error"] == "RuntimeError"
+
+
+def test_missing_voice_file_error_names_the_file(env):
+    env["voice"].unlink()
+    err = post(env).json()["columns"]["stimme"]["error"]
+    assert "stimme.md" in err and str(env["voice"].parent) not in err
+
+
+def test_followup_rewrite_is_billed_to_vergleich(env):
+    post(env, histories={"basis": [{"question": "q", "answer": "a"}]})
+    assert env["calls"]["context"][0]["rewrite_channel"] == "vergleich"
+
+
+def test_stop_reason_is_reported_per_column(env):
+    assert post(env).json()["columns"]["basis"]["stop_reason"] == "max_tokens"
