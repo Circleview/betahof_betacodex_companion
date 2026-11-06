@@ -19,7 +19,7 @@ export function renderMarkdown(text) {
   // renderMarkdown keine Links. Nur http(s)- und interne (mit "/"
   // beginnende) Ziele erlaubt, gegen zufällige/eingeschleuste andere
   // Protokoll-Handler (z.B. javascript:) in KI-generiertem Freitext.
-  html = html.replace(/\[([^[\]]+)\]\(((?:https?:\/\/|\/)[^\s()]+)\)/g, '<a href="$2">$1</a>');
+  html = html.replace(/\[([^[\]]+)\]\(((?:https?:\/\/|\/(?!\/))[^\s()]+)\)/g, '<a href="$2">$1</a>');
   // Nutzerwunsch (2026-09-11): Überschriften dürfen nicht als klickbarer,
   // rot eingefärbter Schlagwort-Link (siehe question.js: makeTermsClickable,
   // .term-followup) enden. Schreibt das Modell eine Überschrift zusätzlich

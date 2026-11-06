@@ -5087,6 +5087,7 @@ def _ask_context(
     top_k: int = 5,
     usage_email: str | None = None,
     max_per_source: int | None = None,
+    rewrite_channel: str = "ask",
 ):
     """Suche für eine Frage (2026-09-26 aus ask() herausgelöst, damit auch
     das MCP-Werkzeug ask_question exakt dieselbe Logik nutzt): Quellen
@@ -5109,7 +5110,8 @@ def _ask_context(
     query_text = question_text
     if history:
         query_text = llm.rewrite_followup_query(
-            question_text, history[-ASK_REWRITE_HISTORY_TURNS:], x_lang, usage_email=usage_email
+            question_text, history[-ASK_REWRITE_HISTORY_TURNS:], x_lang, usage_email=usage_email,
+            channel=rewrite_channel,
         ) or (
             f"{history[-1]['question']} {question_text}"
         )
@@ -5884,40 +5886,59 @@ for _path, (_name, _media) in DEV_VERGLEICH_FILES.items():
     )
 
 
-def _dev_vergleich_column(variant, question, chunks, lang, history):
+def _require_dev():
+    # Als Abhängigkeit, damit auch ein ungültiger Body ohne Dev 404 gibt, nicht 422.
+    if not IS_DEV_ENVIRONMENT:
+        raise HTTPException(404, "Not Found")
+
+
+def _dev_vergleich_column(variant, question, chunks, bios, lang, history):
     model, max_tokens, with_voice = DEV_VERGLEICH_VARIANTS[variant]
+    info = {}
     try:
         # Datei pro Anfrage frisch lesen, damit Änderungen sofort wirken.
         system = llm.build_chat_system(lang, llm.load_stimme()) if with_voice else llm._BASE_PROMPTS[lang]
         raw = "".join(
             llm.stream_answer_question(
-                question, chunks, lang=lang, history=history, usage={"channel": "vergleich"},
-                system_prompt=system, model=model, max_tokens=max_tokens,
+                question, chunks, lang=lang, author_bios=bios or None, history=history,
+                usage={"channel": "vergleich"}, system_prompt=system, model=model,
+                max_tokens=max_tokens, info=info,
             )
         )
     except Exception as exc:
-        return {"answer": "", "quotes": {}, "words": 0, "quote_count": 0, "error": f"{type(exc).__name__}: {exc}"}
+        logging.getLogger(__name__).exception("Vergleich (%s) fehlgeschlagen", variant)
+        error = (
+            f"Skill-Datei fehlt: {llm.STIMME_FILE.name}" if isinstance(exc, FileNotFoundError) and with_voice
+            else type(exc).__name__
+        )
+        return {"answer": "", "words": 0, "quote_count": 0, "quotes_expected": True, "stop_reason": None, "error": error}
+    # Nachbearbeitung wie in _ask_event_stream (Kreativ-Link, Absage-Einstieg).
+    link = f"/creative.html?instruction={quote(question)}"
     answer, quotes = llm.parse_answer_and_quotes(raw)
+    answer, _ = _drop_no_answer_lead(answer, final=True)
+    answer = answer.replace(llm.CREATIVE_LINK_PLACEHOLDER, link)
+    quotes_expected = not (
+        llm.CREATIVE_LINK_PLACEHOLDER in raw
+        or any(raw.lstrip().startswith(p) and not raw.lstrip()[len(p):].strip() for p in NO_ANSWER_PHRASES.values())
+    )
     return {
-        "answer": answer, "quotes": quotes, "words": len(answer.split()),
-        "quote_count": sum(len(v) for v in quotes.values()), "error": None,
+        "answer": answer, "words": len(answer.split()), "quote_count": sum(len(v) for v in quotes.values()),
+        "quotes_expected": quotes_expected, "stop_reason": info.get("stop_reason"), "error": None,
     }
 
 
-@app.post("/api/dev/vergleich", include_in_schema=False)
+@app.post("/api/dev/vergleich", include_in_schema=False, dependencies=[Depends(_require_dev)])
 def dev_vergleich(body: DevVergleichIn, x_lang: str = Header(default=i18n.DEFAULT_LANG)):
     import concurrent.futures
 
-    if not IS_DEV_ENVIRONMENT:
-        raise HTTPException(404, "Not Found")
-    if not body.variants or any(v not in DEV_VERGLEICH_VARIANTS for v in body.variants):
-        raise HTTPException(400, "Unbekannte Variante")
     lang = x_lang if x_lang in ("de", "en") else i18n.DEFAULT_LANG
-    histories = {k: [t.model_dump() for t in v] for k, v in body.histories.items()}
-    chunks, _refs, _bios, _emb = _ask_context(body.question, histories.get("basis", []), lang)
+    histories = {k: _trim_history([t.model_dump() for t in v]) for k, v in body.histories.items()}
+    chunks, _refs, bios, _emb = _ask_context(
+        body.question, histories.get("basis", []), lang, rewrite_channel="vergleich"
+    )
     with concurrent.futures.ThreadPoolExecutor(max_workers=len(body.variants)) as pool:
         futures = {
-            v: pool.submit(_dev_vergleich_column, v, body.question, chunks, lang, histories.get(v, []))
+            v: pool.submit(_dev_vergleich_column, v, body.question, chunks, bios, lang, histories.get(v, []))
             for v in body.variants
         }
         columns = {v: f.result() for v, f in futures.items()}

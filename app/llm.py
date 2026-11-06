@@ -294,7 +294,8 @@ _REWRITE_USER_PROMPTS = {
 
 
 def rewrite_followup_query(
-    question: str, history: list[dict], lang: str = DEFAULT_LANG, usage_email: str | None = None
+    question: str, history: list[dict], lang: str = DEFAULT_LANG, usage_email: str | None = None,
+    channel: str = "ask",
 ) -> str | None:
     """Formuliert eine vage Folgefrage anhand des Gesprächsverlaufs zu einer
     eigenständigen, für die Vektorsuche tauglichen Anfrage um (siehe
@@ -323,7 +324,7 @@ def rewrite_followup_query(
             system=REWRITE_SYSTEM_PROMPTS[lang],
             messages=messages,
         )
-        usage_log.track_anthropic(MODEL_NAME, response.usage, "ask", usage_email)
+        usage_log.track_anthropic(MODEL_NAME, response.usage, channel, usage_email)
         rewritten = "".join(
             block.text for block in response.content if getattr(block, "type", None) == "text"
         ).strip()
@@ -356,6 +357,7 @@ def stream_answer_question(
     system_prompt: str | None = None,
     model: str = MODEL_NAME,
     max_tokens: int = 1536,
+    info: dict | None = None,
 ):
     """Wie answer_question, liefert die Antwort aber als Generator einzelner
     Text-Fragmente, sobald Anthropic sie erzeugt (Backlog: Antwortzeit
@@ -427,7 +429,10 @@ def stream_answer_question(
             try:
                 if completed:
                     usage_log.track_anthropic_stream(model, stream, **usage_kwargs)
-                    if stream.get_final_message().stop_reason == "max_tokens":
+                    stop_reason = stream.get_final_message().stop_reason
+                    if info is not None:
+                        info["stop_reason"] = stop_reason
+                    if stop_reason == "max_tokens":
                         logging.getLogger(__name__).warning("Antwort (ask) durch max_tokens abgeschnitten")
                 else:
                     try:

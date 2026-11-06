@@ -1,6 +1,6 @@
-from typing import Optional
+from typing import Literal, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class SourceIn(BaseModel):
@@ -80,10 +80,24 @@ class HistoryTurnIn(BaseModel):
 
 
 class DevVergleichIn(BaseModel):
-    question: str = Field(max_length=8000)
-    variants: list[str] = ["basis", "stimme"]
+    question: str = Field(min_length=1, max_length=8000)
+    variants: list[Literal["basis", "stimme", "sonnet"]] = Field(["basis", "stimme"], min_length=1, max_length=3)
     # Verlauf je Spalte; die Suche läuft mit dem Verlauf der Spalte "basis".
-    histories: dict[str, list[HistoryTurnIn]] = {}
+    histories: dict[Literal["basis", "stimme", "sonnet"], list[HistoryTurnIn]] = {}
+
+    @field_validator("variants")
+    @classmethod
+    def _no_duplicates(cls, v):
+        if len(set(v)) != len(v):
+            raise ValueError("doppelte Variante")
+        return v
+
+    @field_validator("histories")
+    @classmethod
+    def _history_limit(cls, v):
+        if any(len(turns) > 50 for turns in v.values()):
+            raise ValueError("Verlauf zu lang (max. 50)")
+        return v
 
 
 class QuestionIn(BaseModel):

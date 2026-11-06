@@ -91,7 +91,6 @@ def test_result_has_answer_quotes_and_counts_per_column(env):
     assert set(cols) == {"basis", "stimme"}
     col = cols["basis"]
     assert col["answer"].startswith("Zur These ") and "---QUOTES---" not in col["answer"]
-    assert col["quotes"] == {"1": ["Text eins."]}
     assert col["quote_count"] == 1
     assert col["words"] == len(col["answer"].split())
     assert col["error"] is None
