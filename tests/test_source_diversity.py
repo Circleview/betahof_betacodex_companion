@@ -431,14 +431,14 @@ def test_successor_never_pushes_an_author_over_the_limit():
     assert sorted(out) == ["a1", "a2", "a3", "k1", "k2"]
 
 
-def test_same_article_with_title_suffix_appears_once_when_a_replacement_exists():
+def test_similar_titles_stay_separate_sources():
     out = _rerank_authored([
         ("t1", "T1", 0.100, "Pröll", "Selbstorganisation ist kein Laisser-faire | Peter Pröll"),
         ("t2", "T2", 0.101, "Pröll", "Selbstorganisation ist kein Laisser-faire"),
         ("k1", "K1", 0.102, "Krims"), ("s1", "S1", 0.103, "Sechser"), ("w1", "W1", 0.104, "Willuda"),
         ("h1", "H1", 0.105, "Heer"),
     ])
-    assert sorted(out) == ["h1", "k1", "s1", "t1", "w1"]
+    assert sorted(out) == ["k1", "s1", "t1", "t2", "w1"]
 
 
 def test_limit_off_keeps_same_author_and_same_article():

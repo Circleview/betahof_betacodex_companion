@@ -64,8 +64,7 @@ Ablauf pro Frage (`app/main.py`, Funktion `ask`):
    aus den kuratierten Quellen und den freigegebenen Websites zugleich.
 3. **Neu sortieren** nach Ähnlichkeit, gewichtet mit dem Relevanzscore. Doppelte
    Texte belegen nur einen Platz. Danach gilt: Eine Quelle (eine Website zählt als
-   eine) und eine Autor:in belegen je höchstens 2 der 5 Plätze. Derselbe Artikel
-   unter einem zweiten Eintrag belegt keinen weiteren Platz. Der Pool ist dafür 8-mal
+   eine) und eine Autor:in belegen je höchstens 2 der 5 Plätze. Der Pool ist dafür 8-mal
    so groß wie die Platzzahl. Den Überschuss ersetzt ein Ausschnitt einer noch nicht
    vertretenen Quelle, wenn er höchstens 15 % schlechter liegt; neue Autor:innen gehen vor. Eine Website ersetzt nie einen kuratierten Ausschnitt.
    Ausgenommen sind Quellen genannter Autor:innen, Quellen mit dem Titel in der

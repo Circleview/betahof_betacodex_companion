@@ -4340,22 +4340,11 @@ def _parse_max_per_source(raw: str | None) -> int:
 SOURCE_DIVERSITY_MAX_PER_SOURCE = _parse_max_per_source(os.environ.get("SOURCE_DIVERSITY_MAX_PER_SOURCE"))
 
 
-def _work_key(meta: dict) -> str:
-    """Titel ohne Namenszusatz: „Artikel | Peter Pröll“ und „Artikel“ sind ein Werk."""
-    # ponytail: Heuristik über den Titel; ein Werk mit ganz anderem Titel zählt doppelt.
-    title = " ".join((meta.get("title") or "").lower().split())
-    for separator in (" | ", " - "):
-        head = title.split(separator)[0]
-        if len(head) >= 12:
-            title = head
-    return title.rstrip(" .")
-
-
 def _diversity_key(meta: dict) -> str:
     """Eine Website (allowlist_entry_id) und Titel-Zwillinge zählen als EINE Quelle."""
     if meta.get("allowlist_entry_id"):
         return f"web:{meta['allowlist_entry_id']}"
-    title = _work_key(meta)
+    title = " ".join((meta.get("title") or "").lower().split())
     return f"title:{title}" if title else f"id:{meta['source_id']}"
 
 
@@ -4487,7 +4476,6 @@ def _diversify(order, reserve, metadatas, documents, score, max_per_source, exem
             protected.add(first)
     counts = {}
     author_counts = {}
-    first_source_of_work = {}
     candidates = []
     for i in order:
         if metadatas[i]["source_id"] in exempt:
@@ -4497,10 +4485,7 @@ def _diversify(order, reserve, metadatas, documents, score, max_per_source, exem
         for author in _author_keys(metadatas[i]):
             author_counts[author] = author_counts.get(author, 0) + 1
             over_limit = over_limit or author_counts[author] > max_per_source
-        # Derselbe Artikel unter zweiter source_id (z. B. kuratiert + Web-Seite).
-        work = _work_key(metadatas[i])
-        is_twin = bool(work) and first_source_of_work.setdefault(work, metadatas[i]["source_id"]) != metadatas[i]["source_id"]
-        if (over_limit or is_twin) and i not in protected:
+        if over_limit and i not in protected:
             candidates.append(i)
     order = list(order)
     present = {key(i) for i in order}
@@ -4515,7 +4500,6 @@ def _diversify(order, reserve, metadatas, documents, score, max_per_source, exem
     for i in kept:
         for author in _author_keys(metadatas[i]):
             author_load[author] = author_load.get(author, 0) + 1
-    kept_works = {_work_key(metadatas[i]) for i in kept}
     max_score = max((score(c) for c in candidates), default=0) * (1 + SOURCE_DIVERSITY_MAX_DISTANCE_INCREASE) + 1e-12
     # Neue Autor:innen zuerst, dann kuratierte vor Web, dann der Score.
     successors = []
@@ -4526,12 +4510,10 @@ def _diversify(order, reserve, metadatas, documents, score, max_per_source, exem
         r_authors = _author_keys(metadatas[r])
         if (
             score(r) > max_score
-            or _work_key(metadatas[r]) in kept_works
             or any(author_load.get(a, 0) >= max_per_source for a in r_authors)
         ):
             continue
         successors.append(r)
-        kept_works.add(_work_key(metadatas[r]))
         for author in r_authors:
             author_load[author] = author_load.get(author, 0) + 1
     candidates = sorted(candidates, key=score)

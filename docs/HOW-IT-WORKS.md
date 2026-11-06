@@ -62,7 +62,7 @@ Steps per question (`app/main.py`, function `ask`):
    the curated sources and the approved websites at once.
 3. **Rerank** by similarity, weighted with the relevance score. Duplicate texts
    take only one slot. Then a source (a website counts as one) and an author each take at
-   most 2 of the 5 slots. The same article under a second entry takes no further slot.
+   most 2 of the 5 slots.
    For this the pool is 8 times the slot count. The surplus is swapped for an excerpt from a
    source not yet represented, if it ranks at most 15 % worse; new authors go first. A website never replaces a curated excerpt. Exempt are sources of mentioned
    authors, sources whose title is in the question, sources with a matching key term
