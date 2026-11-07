@@ -10396,3 +10396,36 @@ def test_ask_marks_web_chunks_with_is_web_for_the_model(client, monkeypatch):
     client.post("/api/ask", json={"question": "Frage?", "top_k": 1})
 
     assert [c.get("is_web") for c in seen["chunks"]] == [True]
+
+
+# --- Zitat-Zuordnung mit Markdown-Zeichen (Idee af02ecb1, Befund B) ---
+
+def test_find_quote_span_ignores_list_and_bold_markers_in_quote():
+    doc = "Einleitung.\n- **Social technologies derived from the BetaCodex**\n- Anderes Thema."
+    got = main_module._find_quote_span(doc, "- **Social technologies derived from the BetaCodex")
+    assert got is not None and "Social technologies derived from the BetaCodex" in got
+    assert "Anderes" not in got and "Einleitung" not in got
+    plain = "Einleitung.\nSocial technologies derived from the BetaCodex\nAnderes Thema."
+    assert main_module._find_quote_span(plain, "- **Social technologies derived from the BetaCodex") == (
+        "Social technologies derived from the BetaCodex"
+    )
+
+
+def test_find_quote_span_ignores_heading_marker_in_quote():
+    doc = "Vorspann.\n\nDie Zellstruktur ordnet Teams um Kunden. Ende."
+    assert main_module._find_quote_span(doc, "## Die Zellstruktur ordnet Teams um Kunden.") == (
+        "Die Zellstruktur ordnet Teams um Kunden."
+    )
+
+
+def test_find_quote_span_matches_when_only_the_text_has_markdown():
+    doc = "Davor. Das **System** arbeitet **dezentral** und schnell. Danach."
+    got = main_module._find_quote_span(doc, "Das System arbeitet dezentral und schnell")
+    assert got is not None and got.startswith("Das **System**") and got.endswith("schnell")
+
+
+def test_find_quote_span_plain_text_and_no_false_hit():
+    doc = "Teams entscheiden selbst. Budgets sind schädlich."
+    assert main_module._find_quote_span(doc, "Teams entscheiden selbst.") == "Teams entscheiden selbst."
+    assert main_module._find_quote_span(doc, "- **Budgets sind nützlich**") is None
+    assert main_module._find_quote_span(doc, "- ** **") is None

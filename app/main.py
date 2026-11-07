@@ -4178,7 +4178,15 @@ _QUOTE_CHAR_CLASSES = {"'": "['’‘`]", '"': '["“”]'}
 
 
 def _find_quote_span(doc: str, candidate: str) -> str | None:
+    # Das Modell zitiert teils mit Markdown-Zeichen ("- **Text", "## Text"), der
+    # Quelltext hat sie nicht (oder umgekehrt): Listen-/Überschrift-Marker am
+    # Anfang und "*" an Wortgrenzen zählen deshalb nicht, im Text dürfen sie
+    # zwischen den Wörtern stehen.
     words = candidate.split()
+    if words and re.fullmatch(r"[-+*]|#{1,6}", words[0]):
+        words = words[1:]
+    words = [w.strip("*") for w in words]
+    words = [w for w in words if w]
     if not words:
         return None
     escaped_words = []
@@ -4187,7 +4195,7 @@ def _find_quote_span(doc: str, candidate: str) -> str | None:
         for literal, char_class in _QUOTE_CHAR_CLASSES.items():
             escaped = escaped.replace(re.escape(literal), char_class)
         escaped_words.append(escaped)
-    pattern = r"\s+".join(escaped_words)
+    pattern = r"\**\s+\**".join(escaped_words)
     match = re.search(pattern, doc, re.IGNORECASE)
     return doc[match.start() : match.end()] if match else None
 
