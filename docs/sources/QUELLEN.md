@@ -6,7 +6,7 @@ Alle kuratierten Quellen, sortiert nach Nachname der (ersten) Autor:in. Volltext
 
 Lizenz: [CC BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/), Namensnennung „BetaCodex Chat (https://companion.betahof.com)“ – siehe [LICENSE.md](LICENSE.md). Maschinenlesbar: [sources.json](sources.json).
 
-Anzahl Quellen: 376
+Anzahl Quellen: 374
 
 ### Ackoff, Russell – Systems explained
 
@@ -1874,14 +1874,6 @@ Datum: 2020-04-28 · Link: <https://peterproell.com/de/lesen/openspace-beta/>
 
 ### Pröll, Peter – Organisationsphysik: Formale, informelle und Wertschöpfungsstruktur
 
-Datum: 2020-12-23 · Link: <https://peterproell.com/de/lesen/organisationsphysik/>
-
-**Zusammenfassung (KI-generiert):**
-
-> Die Organisationsphysik von Silke Hermann und Niels Pflaeging beschreibt Unternehmen als drei parallel existierende, miteinander interagierende Strukturen. Die formale Struktur regelt Hierarchie und Compliance-Funktionen, eignet sich aber nicht für Wertschöpfung. Die informelle Struktur bildet soziale Netzwerke ab und schafft Grundlagen für Zusammenarbeit. Die Wertschöpfungsstruktur besteht aus selbstorganisierten Zellen (Teams à 5-8 Personen), die dezentral Entscheidungen treffen. Beta-Unternehmen konzentrieren die formale Struktur auf Compliance, während Wertschöpfung in Zellen erfolgt, die marktorientiert agieren. Diese Schwerpunktverlagerung ermöglicht ideale Kooperation, Wendigkeit und Rentabilität durch dezentrale Entscheidungsfindung.
-
-### Pröll, Peter – Organisationsphysik: Formale, informelle und Wertschöpfungsstruktur
-
 Datum: 2020-12-23 · Link: <https://alinbu.net/wissen/organisationsphysik>
 
 **Zusammenfassung (KI-generiert):**
@@ -1895,14 +1887,6 @@ Datum: 2021-02-24 · Link: <https://alinbu.net/magazin/managen-selbstorganisatio
 **Zusammenfassung (KI-generiert):**
 
 > Der Text unterscheidet zwischen Selbstorganisation und Laissez-faire-Management. Ein gescheiterter Versuch, Teams durch bloße Vorgabenentfernung selbstorganisiert zu machen, ist typischerweise kein Versagen von Selbstorganisation, sondern die Folge mangelhaften Managements. Echte Selbstorganisation entsteht nicht durch Kontrollentzug, sondern durch Kontextgestaltung – vergleichbar mit dem Umbau einer ampelgesteuerten Kreuzung zu einem Kreisverkehr. Sie erfordert klare Antworten auf zentrale Fragen: Wie werden Entscheidungen getroffen? Wie funktioniert dezentrales Abstimmungsverhalten? Wer trägt wirtschaftliche Verantwortung? Der Text argumentiert, dass Selbstorganisation fundierte Systemarbeit ist, die genauso verstanden und beherrscht werden muss wie vorheriges Management – ein realistische Perspektive, die Raum für zukünftige erfolgreiche Versuche lässt.
-
-### Pröll, Peter – Selbstorganisation ist kein Laisser-faire | Peter Pröll.
-
-Datum: 2021-02-24 · Link: <https://peterproell.com/de/lesen/selbstorganisation-ist-kein-laisser-faire/>
-
-**Zusammenfassung (KI-generiert):**
-
-> Der Text kritisiert ein häufiges Missverständnis von Selbstorganisation. Viele Führungskräfte verstehen darunter, einfach alle Vorgaben zu streichen und das Team sich selbst zu überlassen – Laisser-faire-Management. Dies führt zu Unordnung, fehlender Koordination und dem Rückfall in alte Muster, nicht zu echter Selbstorganisation. Das entsteht vielmehr durch bewussten Systemumbau: Schaffung eines neuen Rahmens, in dem sich Teams ohne zentrale Steuerung selbst koordinieren können. Dies erfordert klare Antworten auf strukturelle Fragen wie Entscheidungsfindung, Abstimmungsmechanismen und Verantwortungszuweisung. Echte Selbstorganisation ist daher anspruchsvolle Systemarbeit, nicht einfaches Loslassen.
 
 ### Pröll, Peter – Über die Arbeit mit Werten – am Beispiel der Scrum-Werte
 
@@ -1944,7 +1928,15 @@ Datum: 2026-01-01 · Link: <https://www.qomenius.com/de/didactics>
 
 > Der qomenius-Lernansatz wurde 2018 von Silke Hermann und Niels Pflaeging entwickelt und verbindet Konzepte aus Kleingruppenlernen, Diskurslernen, Organisationswissenschaften und zeitgenössischer Psychologie. Der Ansatz unterscheidet sich von konventionellen Entwicklungsprogrammen durch die integrierte Kombination von Technologie, Didaktik und Inhalten – anstatt diese isoliert zu betonen. Zentral ist die Erkenntnis, dass wirksames Lernen nicht durch individuelles Lernen oder Technologie allein entsteht, sondern durch die Verbindung von Technologie mit kleingruppenbasiertem, interaktionsgestütztem Lernen. Damit adressiert qomenius eine Schwäche traditioneller Online- und Präsenzformate und schafft eine neue Grundlage für berufsbezogenes Lernen.
 
-### qomenius.com – Start | qomenius
+### qomenius.com – qomenius - Fitte Teams & fitte Firma
+
+Datum: 2026-01-01 · Link: <https://www.qomenius.com/de/solutions>
+
+**Zusammenfassung (KI-generiert):**
+
+> qomenius ist eine innovative Lernplattform, die Diskurslernen in den Mittelpunkt stellt – einen Quantensprung für Zusammenarbeit. Im Gegensatz zu klassischen E-Learning-Formaten fördert qomenius strukturiertes Lernen in Kleingruppen nach einem regelmäßigen Rhythmus durch intensiven Diskurs ohne externe Lehrpersonen. Die Plattform schafft digitale Räume, in denen ernsthafte Diskussionen zur Wissenserzeugung angeregt werden. qomenius wirkt auf drei Ebenen: individuell durch Förderung kritischen Denkens, auf Teamebene durch sichere Räume für intellektuelle Spannung und Innovationskraft sowie organisational durch schnellere Reaktionsfähigkeit und kohärente Gestaltung. Einsatzgebiete reichen von Agilität über Diversity bis Sales, ideal für Teams, Unternehmen, Corporate Academies und Hochschulen.
+
+### qomenius.com – qomenius - Menschen sind die Lösung
 
 Datum: 2026-01-01 · Link: <https://www.qomenius.com/de/about-us>
 
@@ -1952,21 +1944,13 @@ Datum: 2026-01-01 · Link: <https://www.qomenius.com/de/about-us>
 
 > qomenius entwickelt digitale Lerninfrastrukturen für skalierbares organisationales Lernen basierend auf Diskurslernen in kleinen Gruppen. Das Unternehmen bietet verschiedene Lösungsformen an: technische Infrastruktur via Lizenzierung, maßgeschneiderte Full-Service-Angebote und schnell einsetzbare Lösungen wie qomenius Nano und Ninety. Die Wurzeln liegen in Learning & Development, Organisationswissenschaft und Softwareentwicklung. Der Ansatz wurde 2018 bei Red42 entwickelt, 2020 digitalisiert und 2022 kommerzialisiert. qomenius konzentriert sich auf Unternehmenskunden, Lernen am Arbeitsplatz und Bildungseinrichtungen. Das Unternehmen vertraut darauf, dass menschliches Potenzial unbegrenzt ist, Algorithmen niemals neutral wirken und EdTech-Systeme weltweit skalierbar Lernen fördern müssen.
 
-### qomenius.com – Start | qomenius
+### qomenius.com – qomenius - Technologie & Sozio-Tech: Die FAQs
 
 Datum: 2026-01-01 · Link: <https://www.qomenius.com/de/tech-faqs>
 
 **Zusammenfassung (KI-generiert):**
 
 > qomenius ist eine Lernplattform für Diskurslernen in Kleingruppen von vier bis sechs Personen. Die Plattform bietet zwei Produktlinien: qomenius Nano für Teamentwicklung und qomenius Ninety für Organisationsentwicklung. Lernsessions dauern 90 Minuten und können online oder am Tisch mit Laptops durchgeführt werden. Ein Lernzyklus (Cycle) besteht aus vier (Nano) oder fünf (Ninety) Sessions zu verschiedenen Themen. Module sind einzelne Lernunterlagen für 90-minütige Sessions. Die Plattform funktioniert ohne Moderator und nutzt Vorlesen als Kulturtechnik. Inhalte sind in sechs Sprachen verfügbar. qomenius unterscheidet sich durch seine soziale Didaktik von individuellen Lernplattformen und konzentriert sich auf gemeinschaftliches, diskursives Lernen im Dialog.
-
-### qomenius.com – Start | qomenius
-
-Datum: 2026-01-01 · Link: <https://www.qomenius.com/de/solutions>
-
-**Zusammenfassung (KI-generiert):**
-
-> qomenius ist eine innovative Lernplattform, die Diskurslernen in den Mittelpunkt stellt – einen Quantensprung für Zusammenarbeit. Im Gegensatz zu klassischen E-Learning-Formaten fördert qomenius strukturiertes Lernen in Kleingruppen nach einem regelmäßigen Rhythmus durch intensiven Diskurs ohne externe Lehrpersonen. Die Plattform schafft digitale Räume, in denen ernsthafte Diskussionen zur Wissenserzeugung angeregt werden. qomenius wirkt auf drei Ebenen: individuell durch Förderung kritischen Denkens, auf Teamebene durch sichere Räume für intellektuelle Spannung und Innovationskraft sowie organisational durch schnellere Reaktionsfähigkeit und kohärente Gestaltung. Einsatzgebiete reichen von Agilität über Diversity bis Sales, ideal für Teams, Unternehmen, Corporate Academies und Hochschulen.
 
 ### Roeder, Martin; Herbert Schober-Ehmer; Michael von Kutzschenbach – Führung, Entscheidung - und KI
 

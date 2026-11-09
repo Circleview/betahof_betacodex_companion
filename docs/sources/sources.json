@@ -5721,96 +5721,7 @@
           "Theorie X",
           "Theory X und Y"
         ],
-        "en": [
-          "O",
-          "p",
-          "e",
-          "n",
-          "S",
-          "p",
-          "a",
-          "c",
-          "e",
-          "B",
-          "e",
-          "t",
-          "a",
-          ",",
-          "B",
-          "e",
-          "t",
-          "a",
-          "C",
-          "o",
-          "d",
-          "e",
-          "x",
-          ",",
-          "D",
-          "a",
-          "n",
-          "i",
-          "e",
-          "l",
-          "M",
-          "e",
-          "z",
-          "i",
-          "c",
-          "k",
-          ",",
-          "o",
-          "r",
-          "g",
-          "a",
-          "n",
-          "i",
-          "z",
-          "a",
-          "t",
-          "i",
-          "o",
-          "n",
-          "a",
-          "l",
-          "t",
-          "r",
-          "a",
-          "n",
-          "s",
-          "f",
-          "o",
-          "r",
-          "m",
-          "a",
-          "t",
-          "i",
-          "o",
-          "n",
-          ",",
-          "A",
-          "g",
-          "i",
-          "l",
-          "e",
-          ",",
-          "c",
-          "h",
-          "a",
-          "n",
-          "g",
-          "e",
-          "m",
-          "a",
-          "n",
-          "a",
-          "g",
-          "e",
-          "m",
-          "e",
-          "n",
-          "t"
-        ]
+        "en": []
       }
     },
     {
@@ -8276,41 +8187,6 @@
       }
     },
     {
-      "id": "9cf943f9-3260-48d2-b097-4e5ab1a2775d",
-      "title": "Organisationsphysik: Formale, informelle und Wertschöpfungsstruktur",
-      "authors": [
-        "Peter Pröll"
-      ],
-      "date": "2020-12-23",
-      "url": "https://peterproell.com/de/lesen/organisationsphysik/",
-      "summary": {
-        "de": "Die Organisationsphysik von Silke Hermann und Niels Pflaeging beschreibt Unternehmen als drei parallel existierende, miteinander interagierende Strukturen. Die formale Struktur regelt Hierarchie und Compliance-Funktionen, eignet sich aber nicht für Wertschöpfung. Die informelle Struktur bildet soziale Netzwerke ab und schafft Grundlagen für Zusammenarbeit. Die Wertschöpfungsstruktur besteht aus selbstorganisierten Zellen (Teams à 5-8 Personen), die dezentral Entscheidungen treffen. Beta-Unternehmen konzentrieren die formale Struktur auf Compliance, während Wertschöpfung in Zellen erfolgt, die marktorientiert agieren. Diese Schwerpunktverlagerung ermöglicht ideale Kooperation, Wendigkeit und Rentabilität durch dezentrale Entscheidungsfindung.",
-        "en": "Organization physics, developed by Silke Hermann and Niels Pflaeging, describes companies as three parallel, mutually interacting structures. The formal structure governs hierarchy and compliance functions but is unsuitable for value creation. The informal structure represents social networks and establishes foundations for collaboration. The value creation structure consists of self-organized cells (teams of 5-8 people) that make decentralized decisions. Beta organizations concentrate the formal structure on compliance, while value creation occurs in cells operating market-oriented. This shift in focus enables ideal cooperation, agility, and profitability through decentralized decision-making. Unlike Alpha organizations, this approach doesn't abolish hierarchy but optimizes its application."
-      },
-      "summary_ai_generated": {
-        "de": true,
-        "en": true
-      },
-      "key_terms": {
-        "de": [
-          "Organisationsphysik",
-          "formale Struktur",
-          "Wertschöpfungsstruktur",
-          "Selbstorganisation",
-          "Beta-Organisation",
-          "Zellstrukturdesign"
-        ],
-        "en": [
-          "OrgPhysics",
-          "formal structure",
-          "value creation structure",
-          "self-organization",
-          "beta enterprises",
-          "cell structure"
-        ]
-      }
-    },
-    {
       "id": "335b5f0f-7ae1-495b-8673-72e1b3a8c2d7",
       "title": "Organisationsphysik: Formale, informelle und Wertschöpfungsstruktur",
       "authors": [
@@ -8373,41 +8249,6 @@
           "Context design",
           "Systems work",
           "Decentralization"
-        ]
-      }
-    },
-    {
-      "id": "af7bbd30-331b-4b11-93b5-5a201726ca44",
-      "title": "Selbstorganisation ist kein Laisser-faire | Peter Pröll.",
-      "authors": [
-        "Peter Pröll"
-      ],
-      "date": "2021-02-24",
-      "url": "https://peterproell.com/de/lesen/selbstorganisation-ist-kein-laisser-faire/",
-      "summary": {
-        "de": "Der Text kritisiert ein häufiges Missverständnis von Selbstorganisation. Viele Führungskräfte verstehen darunter, einfach alle Vorgaben zu streichen und das Team sich selbst zu überlassen – Laisser-faire-Management. Dies führt zu Unordnung, fehlender Koordination und dem Rückfall in alte Muster, nicht zu echter Selbstorganisation. Das entsteht vielmehr durch bewussten Systemumbau: Schaffung eines neuen Rahmens, in dem sich Teams ohne zentrale Steuerung selbst koordinieren können. Dies erfordert klare Antworten auf strukturelle Fragen wie Entscheidungsfindung, Abstimmungsmechanismen und Verantwortungszuweisung. Echte Selbstorganisation ist daher anspruchsvolle Systemarbeit, nicht einfaches Loslassen.",
-        "en": "The text challenges a common misconception about self-organization. Many leaders interpret it as simply removing all guidelines and letting teams manage themselves—laissez-faire management. This results in chaos, lack of coordination, and regression to old patterns, not genuine self-organization. True self-organization emerges through deliberate system redesign: creating a new framework enabling teams to self-coordinate without central steering. This requires clear answers to structural questions such as decision-making, coordination mechanisms, and responsibility assignment. Authentic self-organization is therefore demanding systems work, not mere hands-off management."
-      },
-      "summary_ai_generated": {
-        "de": true,
-        "en": true
-      },
-      "key_terms": {
-        "de": [
-          "Selbstorganisation",
-          "Laissez-faire",
-          "Systemarbeit",
-          "Steuerung",
-          "Koordination",
-          "Rahmenbedingungen"
-        ],
-        "en": [
-          "Self-organization",
-          "Laissez-faire management",
-          "Systems work",
-          "Steering",
-          "cooperation",
-          "Framework"
         ]
       }
     },
@@ -8590,8 +8431,43 @@
       }
     },
     {
+      "id": "9b2ec862-eadb-45aa-a428-9a582c85d04f",
+      "title": "qomenius - Fitte Teams & fitte Firma",
+      "authors": [
+        "qomenius.com"
+      ],
+      "date": "2026-01-01",
+      "url": "https://www.qomenius.com/de/solutions",
+      "summary": {
+        "de": "qomenius ist eine innovative Lernplattform, die Diskurslernen in den Mittelpunkt stellt – einen Quantensprung für Zusammenarbeit. Im Gegensatz zu klassischen E-Learning-Formaten fördert qomenius strukturiertes Lernen in Kleingruppen nach einem regelmäßigen Rhythmus durch intensiven Diskurs ohne externe Lehrpersonen. Die Plattform schafft digitale Räume, in denen ernsthafte Diskussionen zur Wissenserzeugung angeregt werden. qomenius wirkt auf drei Ebenen: individuell durch Förderung kritischen Denkens, auf Teamebene durch sichere Räume für intellektuelle Spannung und Innovationskraft sowie organisational durch schnellere Reaktionsfähigkeit und kohärente Gestaltung. Einsatzgebiete reichen von Agilität über Diversity bis Sales, ideal für Teams, Unternehmen, Corporate Academies und Hochschulen.",
+        "en": "qomenius is an innovative learning platform that centers on discourse learning – a quantum leap for collaboration. Unlike traditional e-learning formats, qomenius promotes structured learning in small groups on a regular rhythm through intensive discourse without external instructors. The platform creates digital spaces where serious discussions for knowledge generation are encouraged. qomenius operates on three levels: individually by fostering critical thinking, at the team level through safe spaces for intellectual tension and innovation, and organizationally through faster responsiveness and coherent organizational design. Applications range from agility to diversity to sales, ideal for teams, companies, corporate academies, and universities."
+      },
+      "summary_ai_generated": {
+        "de": true,
+        "en": true
+      },
+      "key_terms": {
+        "de": [
+          "qomenius",
+          "Diskurslernen",
+          "Kleingruppen",
+          "Wissenserzeugung",
+          "Learning & Development",
+          "Organisationsgestaltung"
+        ],
+        "en": [
+          "qomenius",
+          "Discourse learning",
+          "Small groups",
+          "Knowledge generation",
+          "Learning & Development",
+          "Organizational design"
+        ]
+      }
+    },
+    {
       "id": "7de69382-c431-4865-a833-4b211340e112",
-      "title": "Start | qomenius",
+      "title": "qomenius - Menschen sind die Lösung",
       "authors": [
         "qomenius.com"
       ],
@@ -8626,7 +8502,7 @@
     },
     {
       "id": "795f5a0e-c72b-42a7-a909-f6d116adb490",
-      "title": "Start | qomenius",
+      "title": "qomenius - Technologie & Sozio-Tech: Die FAQs",
       "authors": [
         "qomenius.com"
       ],
@@ -8656,41 +8532,6 @@
           "Learning & Development",
           "Organizational development",
           "Team development"
-        ]
-      }
-    },
-    {
-      "id": "9b2ec862-eadb-45aa-a428-9a582c85d04f",
-      "title": "Start | qomenius",
-      "authors": [
-        "qomenius.com"
-      ],
-      "date": "2026-01-01",
-      "url": "https://www.qomenius.com/de/solutions",
-      "summary": {
-        "de": "qomenius ist eine innovative Lernplattform, die Diskurslernen in den Mittelpunkt stellt – einen Quantensprung für Zusammenarbeit. Im Gegensatz zu klassischen E-Learning-Formaten fördert qomenius strukturiertes Lernen in Kleingruppen nach einem regelmäßigen Rhythmus durch intensiven Diskurs ohne externe Lehrpersonen. Die Plattform schafft digitale Räume, in denen ernsthafte Diskussionen zur Wissenserzeugung angeregt werden. qomenius wirkt auf drei Ebenen: individuell durch Förderung kritischen Denkens, auf Teamebene durch sichere Räume für intellektuelle Spannung und Innovationskraft sowie organisational durch schnellere Reaktionsfähigkeit und kohärente Gestaltung. Einsatzgebiete reichen von Agilität über Diversity bis Sales, ideal für Teams, Unternehmen, Corporate Academies und Hochschulen.",
-        "en": "qomenius is an innovative learning platform that centers on discourse learning – a quantum leap for collaboration. Unlike traditional e-learning formats, qomenius promotes structured learning in small groups on a regular rhythm through intensive discourse without external instructors. The platform creates digital spaces where serious discussions for knowledge generation are encouraged. qomenius operates on three levels: individually by fostering critical thinking, at the team level through safe spaces for intellectual tension and innovation, and organizationally through faster responsiveness and coherent organizational design. Applications range from agility to diversity to sales, ideal for teams, companies, corporate academies, and universities."
-      },
-      "summary_ai_generated": {
-        "de": true,
-        "en": true
-      },
-      "key_terms": {
-        "de": [
-          "qomenius",
-          "Diskurslernen",
-          "Kleingruppen",
-          "Wissenserzeugung",
-          "Learning & Development",
-          "Organisationsgestaltung"
-        ],
-        "en": [
-          "qomenius",
-          "Discourse learning",
-          "Small groups",
-          "Knowledge generation",
-          "Learning & Development",
-          "Organizational design"
         ]
       }
     },
