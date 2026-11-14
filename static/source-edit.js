@@ -488,6 +488,62 @@ export function buildEditPanel(s, options = {}) {
   relevanceRow.append(titleField.label, relevanceField);
   form.appendChild(relevanceRow);
 
+  // Idee 134c868a: Textsprache + englischer Titel (nur bei nicht-englischem Text).
+  const aiFlags = aiLangFlags(s);
+  function buildLangLabel(labelKey, tooltipKey, showIcon) {
+    const label = document.createElement('label');
+    const text = document.createElement('span');
+    text.textContent = t(labelKey);
+    const icon = document.createElement('span');
+    icon.className = 'source-summary-icon';
+    icon.innerHTML = MAGIC_ICON;
+    icon.title = t(tooltipKey);
+    icon.setAttribute('aria-label', t(tooltipKey));
+    icon.classList.toggle('hidden', !showIcon);
+    text.append(' ', icon);
+    label.appendChild(text);
+    return { label, icon };
+  }
+  const textLangField = buildLangLabel('import.fieldTextLang', 'import.aiTextLangTooltip', aiFlags.textLang);
+  const textLangSelect = document.createElement('select');
+  textLangSelect.id = `edit-text-lang-${domIdKey}`;
+  textLangField.label.htmlFor = textLangSelect.id;
+  function ensureLangOption(code) {
+    if ([...textLangSelect.options].some((o) => o.value === code)) return;
+    const option = document.createElement('option');
+    option.value = code;
+    option.textContent = languageName(code);
+    textLangSelect.appendChild(option);
+  }
+  const unsetOption = document.createElement('option');
+  unsetOption.value = '';
+  unsetOption.textContent = t('import.textLangUnset');
+  textLangSelect.appendChild(unsetOption);
+  languageSelectCodes(s.text_lang).forEach(ensureLangOption);
+  textLangSelect.value = s.text_lang || '';
+  textLangField.label.appendChild(textLangSelect);
+
+  const titleEnField = buildLangLabel('import.fieldTitleEn', 'import.aiTitleEnTooltip', aiFlags.titleEn);
+  const titleEnInput = document.createElement('input');
+  titleEnInput.type = 'text';
+  titleEnInput.id = `edit-title-en-${domIdKey}`;
+  titleEnInput.value = s.title_en || '';
+  titleEnField.label.htmlFor = titleEnInput.id;
+  titleEnField.label.appendChild(titleEnInput);
+  const syncTitleEnVisibility = () =>
+    titleEnField.label.classList.toggle('hidden', !isTitleEnVisible(textLangSelect.value));
+  syncTitleEnVisibility();
+  textLangSelect.addEventListener('change', () => {
+    textLangField.icon.classList.add('hidden');
+    syncTitleEnVisibility();
+  });
+  titleEnInput.addEventListener('input', () => titleEnField.icon.classList.add('hidden'));
+
+  const langRow = document.createElement('div');
+  langRow.className = 'title-relevance-row lang-row';
+  langRow.append(textLangField.label, titleEnField.label);
+  form.appendChild(langRow);
+
   // Lazy statt direkt gebunden: titleInput/textInput existieren an dieser
   // Stelle noch nicht (werden erst weiter unten deklariert) - der Getter wird
   // aber erst beim Klick auf den KI-Vita-Button ausgewertet, zu diesem
@@ -636,6 +692,44 @@ export function buildEditPanel(s, options = {}) {
 
   if (!pendingDeletion) {
     const magicButtons = [];
+    const langMagicButtons = [];
+    // Zauberstab: Vorschlag vom Server in die Felder übernehmen (speichert nichts).
+    const triggerDetectLanguage = async () => {
+      langMagicButtons.forEach((b) => {
+        b.disabled = true;
+      });
+      status.textContent = t('import.detectingLanguage');
+      try {
+        const res = await fetch(`/api/sources/${s.id}/detect-language`, {
+          method: 'POST',
+          headers: jsonHeaders(),
+        });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error(err.detail || t('import.detectLanguageFailed'));
+        }
+        const data = await res.json();
+        if (/^[a-z]{2,3}$/.test(data.text_lang || '')) {
+          ensureLangOption(data.text_lang);
+          textLangSelect.value = data.text_lang;
+          textLangField.icon.classList.add('hidden');
+        }
+        if (data.title_en) {
+          titleEnInput.value = data.title_en;
+          titleEnField.icon.classList.add('hidden');
+        }
+        syncTitleEnVisibility();
+        status.textContent = '';
+      } catch (err) {
+        status.textContent = t('common.errorPrefix') + err.message;
+      } finally {
+        langMagicButtons.forEach((b) => {
+          b.disabled = false;
+        });
+      }
+    };
+    langMagicButtons.push(addMagicButton(textLangSelect, triggerDetectLanguage, 'import.detectLanguageTitle'));
+    langMagicButtons.push(addMagicButton(titleEnInput, triggerDetectLanguage, 'import.detectLanguageTitle'));
     const triggerGenerate = () =>
       generateSummaryFields(s.id, summaryInput, keyTermsInput, status, magicButtons);
     magicButtons.push(addMagicButton(summaryInput, triggerGenerate));
@@ -656,6 +750,8 @@ export function buildEditPanel(s, options = {}) {
   if (pendingDeletion) {
     [
       titleInput,
+      textLangSelect,
+      titleEnInput,
       ...authorFieldsWrapper.querySelectorAll('.author-input'),
       dateInput,
       urlInput,
@@ -762,6 +858,7 @@ export function buildEditPanel(s, options = {}) {
               .map((term) => term.trim())
               .filter((term) => term),
             relevance_score: parseInt(relevanceInput.value, 10),
+            ...changedLangFields(s, textLangSelect.value, titleEnInput.value.trim()),
           }),
         });
         if (!res.ok) {
@@ -978,18 +1075,43 @@ export function attachTagSuggestions(input, options = {}) {
   return list;
 }
 
-// STUB (rot-Phase)
-export function languageSelectCodes() {
-  return ['de', 'en'];
+// Idee 134c868a: Textsprache (ISO-639-Code) und englischer Titel einer Quelle.
+// Nur de/en plus ein bereits gespeicherter anderer Code stehen zur Wahl.
+export function languageSelectCodes(current) {
+  const codes = ['de', 'en'];
+  if (/^[a-z]{2,3}$/.test(current || '') && !codes.includes(current)) codes.push(current);
+  return codes;
 }
-export function isTitleEnVisible() {
-  return false;
+
+// Englischer Titel nur bei erkannter, nicht-englischer Sprache sinnvoll.
+export function isTitleEnVisible(code) {
+  return /^[a-z]{2,3}$/.test(code || '') && code !== 'en';
 }
-export function aiLangFlags() {
-  return { textLang: false, titleEn: false };
+
+// KI-Icon, solange der Wert da ist und nicht von Hand überarbeitet wurde
+// (fehlendes Flag = KI, wie bei Zusammenfassung/Schlagworten).
+export function aiLangFlags(s) {
+  return {
+    textLang: !!s.text_lang && s.text_lang_ai_generated !== false,
+    titleEn: !!s.title_en && s.title_en_ai_generated !== false,
+  };
 }
-export function changedLangFields() {
-  return {};
+
+// Nur tatsächlich geänderte Felder senden - unverändert mitgeschickt bliebe
+// der KI-Status; das Backend setzt ihn bei jeder Änderung auf "von Hand".
+export function changedLangFields(s, lang, titleEn) {
+  const changes = {};
+  if (lang && lang !== (s.text_lang || '')) changes.text_lang = lang;
+  if (isTitleEnVisible(lang) && titleEn !== (s.title_en || '')) changes.title_en = titleEn;
+  return changes;
+}
+
+function languageName(code) {
+  try {
+    return `${new Intl.DisplayNames([getLang()], { type: 'language' }).of(code)} (${code})`;
+  } catch {
+    return code;
+  }
 }
 
 export function addMagicButton(input, onClick, titleKey = 'import.generateSummaryTitle') {

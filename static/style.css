@@ -573,8 +573,35 @@ input, textarea {
 }
 
 .field-with-magic > textarea,
+.field-with-magic > select,
 .field-with-magic > input {
   padding-right: 2.5rem;
+}
+
+/* Auswahlfeld (Textsprache im Quellen-Formular) wie die Textfelder. */
+select {
+  display: block;
+  width: 100%;
+  margin-top: 0.35rem;
+  font-family: inherit;
+  font-size: 1rem;
+  color: var(--color-text);
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: 0.65rem 0.8rem;
+  box-sizing: border-box;
+}
+
+select:focus {
+  outline: none;
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 3px var(--color-accent-tint);
+}
+
+/* Sprachzeile: beide Felder gleich breit (Titelzeile gibt dem Titel 2/3). */
+.title-relevance-row.lang-row label {
+  flex: 1;
 }
 
 .magic-button {
@@ -745,7 +772,8 @@ button[type="submit"]:disabled, .send-button:disabled, #popover-load:disabled, #
   cursor: not-allowed;
 }
 
-.restricted-badge {
+.restricted-badge,
+.source-translated-badge {
   flex-shrink: 0;
   font-size: 0.75rem;
   color: var(--color-text-muted);
@@ -753,6 +781,16 @@ button[type="submit"]:disabled, .send-button:disabled, #popover-load:disabled, #
   border-radius: 999px;
   padding: 0.1rem 0.5rem;
   white-space: nowrap;
+}
+
+/* Hinweis "translated" neben maschinell übersetzten Quellentiteln (EN-UI),
+   Optik wie .restricted-badge, nur etwas kleiner und vom Titel abgesetzt. */
+.source-translated-badge {
+  display: inline-block;
+  margin-left: 0.25rem;
+  font-size: 0.7rem;
+  line-height: 1.4;
+  vertical-align: 0.1em;
 }
 
 .link-button {

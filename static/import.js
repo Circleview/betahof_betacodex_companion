@@ -7,6 +7,7 @@ import {
   consumeConversationHandoffToken,
 } from '/conversation-handoff.js';
 import { readNdjsonStream } from '/ndjson-stream.js';
+import { displayTitle, citationHref, translatedBadge } from '/source-lang.js';
 import {
   EXTERNAL_LINK_ICON,
   TRASH_ICON,
@@ -1623,7 +1624,7 @@ function buildSourceEntries(s, rowIndex, options = {}) {
   // (url_reachable === false, siehe source-row--unreachable oben) soll
   // nirgendwo mehr verlinkt werden - auch nicht hier in der eigenen
   // Quellenverwaltung.
-  const citationUrl = s.url_reachable === false ? null : s.listen_url || s.url;
+  const citationUrl = citationHref(s);
   const hasDetails = !!s.summary;
   const isProcessing = !!s.processing_status;
   // Nutzerwunsch (2026-08-03): "error" zaehlt NICHT als aktiv - da laeuft
@@ -1636,7 +1637,7 @@ function buildSourceEntries(s, rowIndex, options = {}) {
     const titleBtn = document.createElement('button');
     titleBtn.type = 'button';
     titleBtn.className = 'link-button source-title-toggle';
-    titleBtn.textContent = s.title;
+    titleBtn.textContent = displayTitle(s);
     titleBtn.addEventListener('click', () => {
       if (expandedSourceIds.has(s.id)) {
         expandedSourceIds.delete(s.id);
@@ -1646,10 +1647,13 @@ function buildSourceEntries(s, rowIndex, options = {}) {
       renderSourceList(currentSourceList, options);
     });
     textSpan.appendChild(titleBtn);
-    textSpan.append(' – ');
   } else {
-    textSpan.append(`${s.title} – `);
+    textSpan.append(displayTitle(s));
   }
+  // EN-UI, fremdsprachiger Text: Hinweis "translated" (siehe source-lang.js).
+  const translated = translatedBadge(s);
+  if (translated) textSpan.append(' ', translated);
+  textSpan.append(' – ');
   if (s.authors && s.authors.length) {
     authorsForDisplay(s).forEach((name, index) => {
       if (index > 0) textSpan.append(', ');
