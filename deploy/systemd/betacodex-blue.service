@@ -1,0 +1,61 @@
+# Weg S: System-Unit (User=betacodex) mit voller Sandbox.
+# Ziel auf dem Server: /etc/systemd/system/betacodex-blue.service (root:root 0644).
+# Nicht setzen: MemoryDenyWriteExecute (torch/onnx JIT), IPAddressDeny und PrivateNetwork
+# (App braucht ausgehend Anthropic, SMTP, Turnstile, Import-URLs).
+# SystemCallErrorNumber=EPERM: ein gesperrter Syscall (torch: sched_setaffinity, setpriority, mbind)
+# liefert einen Fehler statt den Prozess zu killen. Der Block probe lässt die Zeile weg (SIGSYS sichtbar).
+# ProcSubset=pid fehlt bewusst: Python/torch lesen /proc/cpuinfo u. a.
+[Unit]
+Description=BetaCodex Chat (blue)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=betacodex
+Group=betacodex
+UMask=0027
+WorkingDirectory=/home/betacodex/releases/blue
+Environment=HF_HUB_OFFLINE=1
+ExecStart=/home/betacodex/releases/blue/venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000
+Restart=on-failure
+RestartSec=3
+TimeoutStopSec=660
+
+# Dateisystem: Home nur mit Release (lesen), shared (lesen), shared/data (schreiben), HF-Cache (lesen)
+ProtectSystem=strict
+ProtectHome=tmpfs
+BindReadOnlyPaths=/home/betacodex/releases/blue
+BindReadOnlyPaths=/home/betacodex/shared
+BindPaths=/home/betacodex/shared/data
+BindReadOnlyPaths=/home/betacodex/.cache
+PrivateTmp=yes
+PrivateDevices=yes
+PrivateIPC=yes
+DevicePolicy=closed
+ProtectProc=invisible
+KeyringMode=private
+
+# Kernel und System
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+
+# Rechte und Syscalls
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources
+SystemCallErrorNumber=EPERM
+SystemCallArchitectures=native
+LockPersonality=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+RestrictNamespaces=yes
+
+[Install]
+WantedBy=multi-user.target

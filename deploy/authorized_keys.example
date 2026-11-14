@@ -1,0 +1,3 @@
+# Server: /etc/ssh/authorized_keys/betacodex (root:root 0644)
+# Eine Zeile je Schluessel. Deploy-Key (GitHub Actions) nur mit restrict + command.
+restrict,command="/usr/local/sbin/companion-deploy" <OEFFENTLICHER-SCHLUESSEL-HIER-EINTRAGEN> github-actions-deploy

@@ -523,22 +523,49 @@ fehl.
   Falkenstein, DSGVO-konform): ein einzelner Server mit zwei kompletten
   App-Instanzen ("Blue"/"Green") unter einem eigenen Systembenutzer
   `betacodex`, dahinter Caddy als Reverse Proxy mit automatischem
-  Let's-Encrypt-TLS (`deploy.sh` bedient nur noch `DOMAIN`, `DOMAIN2` ist
-  seit 2026-10-27 leer). Beide Instanzen teilen sich `data/` und `.env` per
+  Let's-Encrypt-TLS (nur noch `companion.betahof.com`; die zweite Domain
+  ist seit 2026-10-27 entfernt). Beide Instanzen teilen sich `data/` und `.env` per
   Symlink auf ein gemeinsames `shared/`-Verzeichnis; nur der Code
   unterscheidet sich zwischen den beiden Slots. Deployment läuft
   vollautomatisch per GitHub Actions (`.github/workflows/deploy.yml`),
   ausgelöst durch einen Tag-Push: `pytest -q` + `node --check`, bei Erfolg
-  SSH zum Server, `deploy.sh <tag>` deployt auf die gerade inaktive Farbe,
-  wartet auf einen Health-Check (`/api/version`), schaltet Caddy erst
-  danach um und stoppt die alte Farbe – Zero-Downtime, mit automatischem
+  SSH zum Server (Forced Command `companion-deploy`, siehe „Härtung und
+  Deploy-Schlüssel“), `deploy.sh <tag>` deployt auf die gerade inaktive
+  Farbe, wartet auf einen Health-Check (`/api/version`), ruft danach
+  `companion-farbe` auf (schaltet Caddy um) und stoppt die alte Farbe – Zero-Downtime, mit automatischem
   Rollback (alte Farbe bleibt live), falls die neue Version nicht startet.
   Unterschiede zu Dev: `ENVIRONMENT` bleibt hier ungesetzt (nicht
   `"development"`), dadurch sind Cookies `Secure` und der
   `X-Robots-Tag` (verhindert sonst die Suchmaschinen-Indexierung)
-  entfällt; ein eigenes `EARLY_ACCESS_PASSWORD` sperrt die Seite vorerst
-  für einen sanften Start, Turnstile läuft mit einem echten, bei
+  entfällt; die Early-Access-Sperre ist seit 2026-09-10 aus
+  (`EARLY_ACCESS_PASSWORD` leer), Turnstile läuft mit einem echten, bei
   Cloudflare registrierten Schlüsselpaar.
+
+#### Härtung und Deploy-Schlüssel
+
+- Die Farben laufen als System-Units `betacodex-blue`/`-green` mit
+  Sandbox (u. a. `ProtectSystem=strict`, `ProtectHome=tmpfs`,
+  `NoNewPrivileges`); die App kann weder `~/.ssh` noch Deploy-Skript noch
+  Release-Code beschreiben. Logs: `journalctl -u betacodex-blue`.
+- `deploy.sh` liegt root-eigen unter `/usr/local/lib/companion/`; der
+  Deploy-Schlüssel darf per Forced Command (`/usr/local/sbin/companion-deploy`)
+  nur `~/deploy.sh vX.Y.Z` ausführen. `authorized_keys` liegt per
+  sshd-Drop-in unter `/etc/ssh/authorized_keys/`, nicht im Home.
+- `deploy.sh` deployt nur Tags, die Nachfahren des aktiven Tags sind.
+  **Rollback auf einen älteren Tag**: nur von Hand durch root, der
+  Deploy-Schlüssel lehnt ältere Tags ab. Die alte Farbe ist nach dem
+  Deploy gestoppt, daher drei Schritte:
+  `systemctl start betacodex-<alt>.service`, dann
+  `/usr/local/sbin/companion-farbe <alt>`, dann
+  `echo -n <alt> > /home/betacodex/active_color`. Ein Tag-Rollback per
+  git in `releases/<alt>` ist ebenfalls nur von Hand möglich.
+- Vorlagen und Einrichtung: Ordner `deploy/`. Vom Mac
+  `scp -r deploy root@<host>:/root/companion-deploy`, dann auf dem Server
+  `bash /root/companion-deploy/server-haertung.sh <block> /root/companion-deploy`.
+  Sicherungen liegen unter `/root/companion-haertung/`. Blöcke in dieser
+  Reihenfolge: `pruefen`, `probe`, `skripte`, `units`, `sshd`, nach dem
+  nächsten Deploy `nach-deploy`.
+- Ablauf-Diagramm: `docs/diagrams/deploy-flow.html`.
 
 ### System-Voraussetzungen (Produktion)
 
@@ -553,7 +580,7 @@ sudo apt-get update && sudo apt-get install -y ffmpeg
 ```
 
 Fehlt `ffmpeg`/`ffprobe` beim Start, schreibt die App eine deutliche
-Warnung in die Logs (`journalctl --user -u betacodex-blue`/`-green`).
+Warnung in die Logs (`journalctl -u betacodex-blue`/`-green`).
 
 ### Schutz vor versehentlichem Secret-Commit
 
@@ -594,6 +621,7 @@ Commit-/Tag-Nachrichten in Git.
 
 | Version | Wesentliche Änderungen |
 |---|---|
+| v0.90.0 | **Gehärteter Server-Betrieb** (Idee 6b60ad86): Vorlagen für den Betrieb als System-Unit mit Sandbox (App sieht nur Code lesend, `shared/data` schreibend; Probe: Score 9.8 → 3.5, wirksam nach `server-haertung.sh units` + nächstem Deploy), der GitHub-Deploy-Schlüssel darf nach Block `sshd` per Forced Command nur noch `~/deploy.sh vX.Y.Z` für neuere Tags ausführen, die Schlüsselliste liegt außerhalb des Home. `deploy.sh`, Units, sudoers- und sshd-Vorlagen liegen jetzt im Repo unter `deploy/`, Einrichtung per `deploy/server-haertung.sh <block>`. Health-Check verlangt den deployten Tag. |
 | v0.89.3 | **Mehr Vielfalt bei Quellen und Autor:innen** (Idee 3c32da30): eine Quelle (eine Website zählt als eine) und eine Autor:in belegen je höchstens 2 der 5 Textausschnitte, wenn ein Ersatz höchstens 15 % schlechter passt; neue Autor:innen rücken zuerst nach, Web ersetzt nie Kuratiertes. Ausnahmen: genannte Autor:innen, Titel und seltene Schlagworte in der Frage, Fachbegriffe. Größere Kandidatenauswahl, Hinweis an das Modell zu Mehrfachbelegen. Abschaltbar per `SOURCE_DIVERSITY_MAX_PER_SOURCE=0` |
 | v0.89.2 | **Nur noch companion.betahof.com** (Idee b9f8d6c3): die alte chat-Subdomain unter betacodex.org hat keinen DNS-Eintrag mehr. Domain aus MCP-Host-/Origin-Allowlist, Links, Quellen-Export (API + Namensnennung) und Doku entfernt; deploy.sh auf dem Server bedient nur noch DOMAIN. Wächtertest verhindert neue Fundstellen (v0.89.1 scheiterte an genau diesem Test, nicht deployt). |
 | v0.89.0 | **Bildleiste unter der Antwort** (Idee ff895248): bis zu 6 Grafiken aus den zitierten Quellen, Bildunterschrift = Quelle (bei PDFs mit Seite), Klick öffnet die Quelle. Web-Bilder bleiben Links auf den Quellserver, PDF-Grafiken liegen verkleinert als WebP auf dem eigenen Server; eingeschränkte Quellen höchstens 1 Bild je Antwort; keine Icons, Schriftzug-Banner oder Video-Vorschauen. Der Admin-Reindex holt Bilder älterer Quellen nach, ohne Text, Zusammenfassung oder Schlagworte zu ändern. Datenschutzerklärung DE/EN ergänzt. Dazu: verständliche Fehlermeldung mit „Erneut versuchen“-Button, englische Antwort bei Aufforderungen wie „Show me …“ und bei unklarer Fragesprache, Seitenleiste „Verwendete Quellen“ zeigt wieder die richtigen Quellen, geteilte Gesprächslinks können keine Skript-Links mehr einschleusen |
