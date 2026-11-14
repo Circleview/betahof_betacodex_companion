@@ -978,6 +978,20 @@ export function attachTagSuggestions(input, options = {}) {
   return list;
 }
 
+// STUB (rot-Phase)
+export function languageSelectCodes() {
+  return ['de', 'en'];
+}
+export function isTitleEnVisible() {
+  return false;
+}
+export function aiLangFlags() {
+  return { textLang: false, titleEn: false };
+}
+export function changedLangFields() {
+  return {};
+}
+
 export function addMagicButton(input, onClick, titleKey = 'import.generateSummaryTitle') {
   const wrapper = document.createElement('div');
   wrapper.className = 'field-with-magic';

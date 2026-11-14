@@ -5317,3 +5317,66 @@ def test_question_js_filters_hidden_sources_and_rerenders_on_language_change():
 def test_import_js_source_list_uses_display_title_and_badge():
     js = (STATIC_DIR / "import.js").read_text()
     assert "displayTitle" in js and "translatedBadge" in js
+
+
+# ---------------------------------------------------------------------------
+# Idee 134c868a (H4/H6): Formularfelder Textsprache / englischer Titel
+# ---------------------------------------------------------------------------
+
+
+def _run_edit_lang(expr: str):
+    return _run_import_js_functions(
+        [
+            r"function languageSelectCodes.*?\n\}",
+            r"function isTitleEnVisible.*?\n\}",
+            r"function aiLangFlags.*?\n\}",
+            r"function changedLangFields.*?\n\}",
+        ],
+        expr,
+    )
+
+
+def test_language_select_offers_de_en_and_keeps_other_existing_code():
+    assert _run_edit_lang("languageSelectCodes(null)") == ["de", "en"]
+    assert _run_edit_lang("languageSelectCodes('fr')") == ["de", "en", "fr"]
+    assert _run_edit_lang("languageSelectCodes('de')") == ["de", "en"]
+    assert _run_edit_lang("languageSelectCodes('xx&u=1')") == ["de", "en"]
+
+
+def test_english_title_field_hidden_for_english_or_unknown_text_language():
+    assert _run_edit_lang("[isTitleEnVisible('de'), isTitleEnVisible('fr')]") == [True, True]
+    assert _run_edit_lang("[isTitleEnVisible('en'), isTitleEnVisible(''), isTitleEnVisible(null)]") == [
+        False, False, False,
+    ]
+
+
+def test_ai_icon_only_while_value_present_and_not_hand_edited():
+    flags = lambda s: _run_edit_lang(f"aiLangFlags({json.dumps(s)})")  # noqa: E731
+    assert flags({"text_lang": "de", "title_en": "T", "text_lang_ai_generated": True,
+                  "title_en_ai_generated": True}) == {"textLang": True, "titleEn": True}
+    # Felder fehlen (alte Daten) -> wie Zusammenfassung: Standard KI
+    assert flags({"text_lang": "de", "title_en": "T"}) == {"textLang": True, "titleEn": True}
+    assert flags({"text_lang": "de", "title_en": "T", "text_lang_ai_generated": False,
+                  "title_en_ai_generated": False}) == {"textLang": False, "titleEn": False}
+    # kein Wert -> kein Icon
+    assert flags({"text_lang": None, "title_en": None}) == {"textLang": False, "titleEn": False}
+
+
+def test_only_changed_language_fields_are_sent_on_save():
+    changed = lambda s, lang, title: _run_edit_lang(  # noqa: E731
+        f"changedLangFields({json.dumps(s)}, {json.dumps(lang)}, {json.dumps(title)})"
+    )
+    src = {"text_lang": "de", "title_en": "Old"}
+    assert changed(src, "de", "Old") == {}
+    assert changed(src, "de", "New") == {"title_en": "New"}
+    assert changed(src, "fr", "Old") == {"text_lang": "fr"}
+    assert changed({"text_lang": None, "title_en": None}, "", "") == {}
+    # Titel bei englischer Sprache unsichtbar: nicht senden
+    assert changed(src, "en", "Old changed") == {"text_lang": "en"}
+
+
+def test_edit_form_wires_language_fields_to_detect_endpoint_and_put():
+    js = (STATIC_DIR / "source-edit.js").read_text()
+    assert "/detect-language" in js
+    assert "changedLangFields(" in js.split("method: 'PUT'")[1]
+    assert "addMagicButton(textLangSelect" in js and "addMagicButton(titleEnInput" in js
