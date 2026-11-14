@@ -136,7 +136,7 @@ class Env:
             rel = self.base / "releases" / color
             subprocess.run([REAL_GIT, "clone", "-q", str(o), str(rel)], check=True, capture_output=True)
             (rel / "venv" / "bin").mkdir(parents=True)
-            (rel / "venv" / "bin" / "activate").write_text("")
+            (rel / "venv" / "bin" / "activate").write_text("deactivate() { :; }\n")
             (rel / "requirements.txt").write_text("")
         other = "green" if active == "blue" else "blue"
         self.git(self.base / "releases" / active, "checkout", "-q", "v0.1.0")

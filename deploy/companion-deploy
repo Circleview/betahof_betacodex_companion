@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+# Forced-Command-Wrapper fuer den Deploy-Key (authorized_keys: command=).
+# Server: /usr/local/sbin/companion-deploy, root:root 0755.
+# Erlaubt nur wörtlich "~/deploy.sh vX.Y.Z"; alles andere wird abgelehnt.
+set -euo pipefail
+export LC_ALL=C
+re='^~/deploy\.sh (v[0-9]+\.[0-9]+\.[0-9]+)$'
+if [[ "${SSH_ORIGINAL_COMMAND-}" =~ $re ]]; then
+  exec /usr/local/lib/companion/deploy.sh "${BASH_REMATCH[1]}"
+fi
+echo "abgelehnt: nur '~/deploy.sh vX.Y.Z' ist erlaubt" >&2
+exit 1
