@@ -5493,3 +5493,24 @@ def test_language_change_rerender_keeps_bubble_controls_and_running_answer_sourc
     assert "replaceChildren" not in body.split("renderSidebarSources")[0].replace("conversationCitedSources", "")
     assert "renderAnswerBubble(" not in body  # Bubble nicht komplett neu bauen
     assert "conversationCitedSources.clear()" not in body  # laufende Antwort behält Quellen
+
+
+# Idee 134c868a (Live-Test v0.91.0): die hidden="until-found"-Platzhalter der
+# Quellenliste machen Cmd/Strg+F über noch nicht gerenderte Quellen möglich.
+# In der EN-UI muss dort der sichtbare englische Titel stehen (sonst findet
+# die Browser-Suche ihn nicht), der Originaltitel bleibt zusätzlich findbar.
+@pytest.mark.parametrize(
+    "lang, src, expected",
+    [
+        ("en", _lang_src(), "English title Originaltitel"),
+        ("de", _lang_src(), "Originaltitel"),
+        ("en", _lang_src(text_lang="en"), "Originaltitel"),
+    ],
+)
+def test_source_lang_findable_title_contains_visible_and_original_title(lang, src, expected):
+    assert _run_lang(lang, f"findableTitle({json.dumps(src)})") == expected
+
+
+def test_import_js_until_found_placeholder_uses_findable_title():
+    js_source = _import_js_source()
+    assert "placeholder.textContent = `${findableTitle(s)} " in js_source
