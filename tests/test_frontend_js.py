@@ -2124,6 +2124,8 @@ function normalizeAuthor(name) {{ return name.trim().split(/\\s+/).join(' ').toL
 function getSurname(name) {{ const parts = name.trim().split(/\\s+/); return parts[parts.length - 1]; }}
 const currentSortMode = 'author';
 function isFilterActive() {{ return false; }}
+function t(k) {{ return k; }}
+{_source_lang_js()}
 
 {func_source}
 
@@ -5384,3 +5386,110 @@ def test_edit_form_wires_language_fields_to_detect_endpoint_and_put():
     assert "/detect-language" in js
     assert "changedLangFields(" in js.split("method: 'PUT'")[1]
     assert "addMagicButton(textLangSelect" in js and "addMagicButton(titleEnInput" in js
+
+
+# ---------------------------------------------------------------------------
+# Idee 134c868a: Nachbesserungen aus dem Fehler-Check
+# ---------------------------------------------------------------------------
+
+
+def test_on_saved_updates_language_fields_of_cited_source():
+    js = (STATIC_DIR / "question.js").read_text()
+    block = js.split("onSaved: (updated) => {")[1].split("dialog.close();")[0]
+    for key in ("text_lang", "title_en", "restricted", "text_lang_ai_generated", "title_en_ai_generated"):
+        assert f"{key}: updated.{key}" in block, key
+
+
+def test_detected_language_becomes_new_baseline_so_put_does_not_send_it():
+    # Der Endpunkt speichert den KI-Vorschlag selbst (KI-Status bleibt):
+    # der PUT darf ihn nicht als Handänderung schicken.
+    src = {"text_lang": None, "title_en": None}
+    detected = {"text_lang": "de", "title_en": "Neuer Titel"}
+    changed = _run_import_js_functions(
+        [
+            r"function applyDetectedLang.*?\n\}",
+            r"function isTitleEnVisible.*?\n\}",
+            r"function changedLangFields.*?\n\}",
+        ],
+        f"changedLangFields(applyDetectedLang({json.dumps(src)}, {json.dumps(detected)}), 'de', 'Neuer Titel')",
+    )
+    assert changed == {}
+    edited = _run_import_js_functions(
+        [
+            r"function applyDetectedLang.*?\n\}",
+            r"function isTitleEnVisible.*?\n\}",
+            r"function changedLangFields.*?\n\}",
+        ],
+        f"changedLangFields(applyDetectedLang({json.dumps(src)}, {json.dumps(detected)}), 'de', 'Von Hand')",
+    )
+    assert edited == {"title_en": "Von Hand"}
+
+
+def test_edit_form_keeps_ai_icon_after_magic_wand():
+    js = (STATIC_DIR / "source-edit.js").read_text()
+    body = js.split("const triggerDetectLanguage")[1].split("langMagicButtons.push(addMagicButton")[0]
+    assert "applyDetectedLang(" in body
+    assert "icon.classList.add('hidden')" not in body
+
+
+def test_import_search_and_sort_use_display_title_in_en_ui():
+    src = _lang_src(id="1", title="Zebra", title_en="Apple")
+    other = _lang_src(id="2", title="Mango", title_en="Mango en", source_id="2")
+    sort_js = re.search(r"function sortSources.*?\n\}", _import_js_source(), re.S).group(0)
+    search_js = re.search(r"function sourceMatchesSearch.*?\n\}", _import_js_source(), re.S).group(0)
+    norm_js = re.search(r"function normalizeSearch.*?\n\}", _import_js_source(), re.S).group(0)
+    script = f"""
+function t(k) {{ return k; }}
+function getSurname(n) {{ return n; }}
+const currentSortMode = 'date';
+function isFilterActive() {{ return false; }}
+{_source_lang_js()}
+{norm_js}
+{search_js}
+{sort_js}
+const list = {json.dumps([src, other])};
+globalThis.__UI_LANG = 'en';
+const en = sortSources(list).map((s) => s.id);
+const hit = sourceMatchesSearch(list[0], 'apple');
+globalThis.__UI_LANG = 'de';
+const de = sortSources(list).map((s) => s.id);
+const missDe = sourceMatchesSearch(list[0], 'apple');
+console.log(JSON.stringify({{ en, de, hit, missDe }}));
+"""
+    assert _run_node(script) == {"en": ["1", "2"], "de": ["2", "1"], "hit": True, "missDe": False}
+
+
+def test_translated_badge_tooltip_mentions_link_only_with_translate_link():
+    def tip(src):
+        return _run_lang("en", f"translatedBadge({json.dumps(src)}).title")
+
+    assert tip(_lang_src()) == "common.translatedBadgeTooltip"
+    assert tip(_lang_src(url="https://beispiel.org/a.pdf")) == "common.translatedTitleTooltip"
+    assert tip(_lang_src(restricted=True)) == "common.translatedTitleTooltip"
+
+
+@pytest.mark.parametrize(
+    "text, sources, expected",
+    [
+        ("Aussage (siehe [1]) hier.", [_HIDDEN], "Aussage hier."),
+        ("Aussage (vgl. [1][2]) hier.", [_HIDDEN, _HIDDEN], "Aussage hier."),
+        ("Ein foo() bleibt [1].", [_HIDDEN], "Ein foo() bleibt."),
+        ("Alt () bleibt auch.", [_HIDDEN], "Alt () bleibt auch."),
+    ],
+)
+def test_hidden_marker_parenthesis_cleanup_only_around_marker(text, sources, expected):
+    assert _marker_texts(text, sources)["text"] == expected
+
+
+def test_hidden_marker_parenthesis_keeps_visible_marker():
+    r = _marker_texts("Aussage (siehe [1][2]) hier.", [_HIDDEN, _VISIBLE])
+    assert r["buttons"] == ["[1]"]
+    assert r["text"] == "Aussage (siehe) hier."
+
+
+def test_language_change_rerender_keeps_bubble_controls_and_running_answer_sources():
+    js = (STATIC_DIR / "question.js").read_text()
+    body = js.split("function rerenderConversation()")[1].split("\n}\n")[0]
+    assert "replaceChildren" not in body.split("renderSidebarSources")[0].replace("conversationCitedSources", "")
+    assert "renderAnswerBubble(" not in body  # Bubble nicht komplett neu bauen
+    assert "conversationCitedSources.clear()" not in body  # laufende Antwort behält Quellen
