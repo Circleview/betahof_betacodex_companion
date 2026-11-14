@@ -41,6 +41,20 @@ Details, die in der Praxis den Unterschied gemacht haben.
 - **Zusammenfassungen und Schlagworte** erzeugt beim Import eine KI
   (`app/summarization.py`), auf Deutsch und Englisch. Pfleger:innen können sie von
   Hand überschreiben. Die Schlagworte sind später für die Suche wichtig (Abschnitt 3).
+- **Textsprache und englischer Titel:** Beim Import erkennt die KI die Sprache
+  des Textes (`app/summarization.py`) und schlägt bei fremdsprachigen Quellen
+  einen englischen Titel vor. Ein täglicher Nachtrag erledigt das auch für
+  Bestandsquellen ohne Sprache. Er ändert weder Titel noch Zusammenfassung.
+  Pfleger:innen können beide Felder im Formular von Hand setzen. Der Vorschlag
+  trägt ein KI-Icon. Eine Handänderung entfernt das Icon. Danach überschreibt
+  die KI den Wert nicht mehr.
+- **Anzeige auf Englisch:** In der englischen Oberfläche zeigt eine
+  fremdsprachige Quelle den englischen Titel und das Label „translated“. Der
+  Link öffnet `translate.google.com`. Lässt sich die Quelle so nicht
+  übersetzen (PDF, Audio, Video, YouTube, LinkedIn, eingeschränkt), zeigt die
+  englische Oberfläche sie nicht an. Die Antwort nutzt sie trotzdem. Ihr
+  Marker `[n]` entfällt im Text. Die deutsche Oberfläche zeigt alles wie
+  bisher.
 - **Relevanzscore 1–10** je Quelle: Kernquellen rutschen in der Suche etwas nach
   vorn, Randquellen etwas nach hinten. Score 5 ändert nichts.
 - **Freigegebene Websites** (`app/web_allowlist.py`, `app/web_crawler.py`):

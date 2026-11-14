@@ -49,6 +49,11 @@ Assistent das offen, statt zu spekulieren.
 
 - Chat-Oberfläche, Antworten erscheinen als Stream Wort für Wort statt
   nach langem Warten auf einmal.
+- Englische Oberfläche: Fremdsprachige Quellen zeigen den englischen Titel,
+  das Label „translated“ und einen Link über Google Translate. Quellen, die
+  sich so nicht übersetzen lassen (PDF, Audio, Video, YouTube, LinkedIn,
+  eingeschränkt), blendet die englische Oberfläche aus; die Antwort nutzt sie
+  weiter, ihr Marker `[n]` entfällt.
 - Jede Aussage trägt einen klickbaren Verweis (`[1]`, `[2]` …) auf die
   tatsächlich verwendete Textstelle – ein Klick springt zur passierten
   Original-Quelle und hebt die exakte Textpassage hervor, bei
@@ -273,6 +278,11 @@ Andere MCP-Clients brauchen die Adresse `https://companion.betahof.com/mcp`
   Zusammenfassung wird automatisch in die jeweils andere Sprache
   übersetzt und danach nicht mehr von einer erneuten KI-Generierung
   überschrieben.
+- Textsprache und englischer Titel: Beim Import erkennt die KI die Sprache
+  des Textes und schlägt bei fremdsprachigen Quellen einen englischen Titel
+  vor; ein täglicher Nachtrag füllt Bestandsquellen. Beide Felder sind im
+  Formular von Hand änderbar (KI-Icon verschwindet, die KI überschreibt dann
+  nicht mehr).
 - Schlagwort-Ansicht als dritte Sortierung neben Autor:in und Datum: alle
   Schlagworte der gewählten Sprache alphabetisch mit Sprungleiste,
   aufklappbar mit den zugehörigen Quellen, ein Balken zeigt, wie viele
