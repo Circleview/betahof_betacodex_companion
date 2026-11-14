@@ -490,3 +490,88 @@ def test_bilingual_summary_ignores_key_terms_returned_as_string():
         result = summarization._call_bilingual_summary_tool("Text")
     assert result["en"]["key_terms"] == []
     assert result["de"]["key_terms"] == ["Theorie X"]
+
+
+# --- detect_source_language (Idee 134c868a) ---
+
+
+def test_detect_source_language_german_text_returns_de_and_english_title():
+    client = _fake_tool_client({"text_lang": "de", "title_en": "Organisations Without Hierarchy"})
+    with patch.object(summarization, "_get_client", return_value=client):
+        result = summarization.detect_source_language("Organisationen ohne Hierarchie", "Dies ist ein deutscher Text.")
+
+    assert result == {"text_lang": "de", "title_en": "Organisations Without Hierarchy"}
+
+
+def test_detect_source_language_english_text_has_no_title_even_if_model_returns_one():
+    client = _fake_tool_client({"text_lang": "en", "title_en": "Should be dropped"})
+    with patch.object(summarization, "_get_client", return_value=client):
+        result = summarization.detect_source_language("Dynamic Administration", "This is an English text.")
+
+    assert result == {"text_lang": "en", "title_en": None}
+
+
+def test_detect_source_language_french_text_returns_fr_and_english_title():
+    client = _fake_tool_client({"text_lang": "fr", "title_en": "Reinventing Organizations"})
+    with patch.object(summarization, "_get_client", return_value=client):
+        result = summarization.detect_source_language("Reinventer les organisations", "Ceci est un texte français.")
+
+    assert result == {"text_lang": "fr", "title_en": "Reinventing Organizations"}
+
+
+def test_detect_source_language_blank_text_makes_no_api_call():
+    client = _fake_tool_client({"text_lang": "de", "title_en": "X"})
+    with patch.object(summarization, "_get_client", return_value=client):
+        result = summarization.detect_source_language("Titel", "   ")
+
+    assert result == {"text_lang": None, "title_en": None}
+    client.messages.create.assert_not_called()
+
+
+def test_detect_source_language_returns_none_on_api_error():
+    client = MagicMock()
+    client.messages.create.side_effect = RuntimeError("API down")
+    with patch.object(summarization, "_get_client", return_value=client):
+        result = summarization.detect_source_language("Titel", "Text.")
+
+    assert result == {"text_lang": None, "title_en": None}
+
+
+def test_detect_source_language_returns_none_when_no_tool_use_block():
+    client = MagicMock()
+    client.messages.create.return_value.content = []
+    with patch.object(summarization, "_get_client", return_value=client):
+        result = summarization.detect_source_language("Titel", "Text.")
+
+    assert result == {"text_lang": None, "title_en": None}
+
+
+def test_detect_source_language_rejects_invalid_language_code():
+    # K4: der Code landet in einer URL (translate.google.com ... sl=) - nur 2-3 Kleinbuchstaben.
+    for bad in ("de&u=https://evil.example", "german", "d", "de\n", ""):
+        client = _fake_tool_client({"text_lang": bad, "title_en": "X"})
+        with patch.object(summarization, "_get_client", return_value=client):
+            result = summarization.detect_source_language("Titel", "Text.")
+        assert result == {"text_lang": None, "title_en": None}, bad
+
+
+def test_detect_source_language_truncates_title_to_300_chars_and_removes_line_breaks():
+    client = _fake_tool_client({"text_lang": "de", "title_en": "A\nB " + "x" * 400})
+    with patch.object(summarization, "_get_client", return_value=client):
+        result = summarization.detect_source_language("Titel", "Text.")
+
+    assert len(result["title_en"]) == 300
+    assert "\n" not in result["title_en"]
+    assert result["title_en"].startswith("A B x")
+
+
+def test_detect_source_language_sends_title_and_only_first_3000_chars_and_treats_text_as_data():
+    client = _fake_tool_client({"text_lang": "de", "title_en": "T"})
+    with patch.object(summarization, "_get_client", return_value=client):
+        summarization.detect_source_language("Mein Titel", "a" * 3000 + "ENDMARKER")
+
+    kwargs = client.messages.create.call_args.kwargs
+    content = kwargs["messages"][0]["content"]
+    assert "Mein Titel" in content
+    assert "ENDMARKER" not in content
+    assert "instruction" in kwargs["system"].lower()  # Quelltext ist Daten, keine Anweisung
