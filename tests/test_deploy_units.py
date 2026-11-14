@@ -188,12 +188,15 @@ def test_schluesselzeile_mit_neuen_optionen(tmp_path, zeile, erwartet):
     assert r.stdout == 'restrict,command="/usr/local/sbin/companion-deploy" ' + erwartet + "\n", r.stderr
 
 
-def test_probe_properties_ohne_sperrdirektiven(tmp_path):
+def test_probe_properties_wie_produktion(tmp_path):
+    # Probe prüft wie Produktion: mit SystemCallErrorNumber=EPERM. Ohne diese Zeile beendet
+    # sched_setaffinity (torch, @resources) den Prozess per SIGSYS, obwohl die Unit läuft.
     r = sh(tmp_path, f'unit_props "{DEPLOY}/systemd/betacodex-blue.service"')
     zeilen = r.stdout.splitlines()
     assert "SystemCallFilter=~@privileged @resources" in zeilen
     assert "CapabilityBoundingSet=" in zeilen
-    for k in ("SystemCallErrorNumber", "ExecStart", "Restart", "TimeoutStopSec"):
+    assert "SystemCallErrorNumber=EPERM" in zeilen
+    for k in ("ExecStart", "Restart", "TimeoutStopSec"):
         assert not any(z.startswith(k + "=") for z in zeilen), k
 
 
