@@ -205,3 +205,15 @@ def test_user_units_werden_in_units_und_nach_deploy_abgeschaltet():
     assert re.search(r"blk_units\(\) \{.*?ubuctl disable betacodex-blue betacodex-green.*?\n\}", t, re.S)
     assert re.search(r"blk_nach_deploy\(\) \{.*?ubuctl stop .*?ubuctl disable .*?\n\}", t, re.S)
     assert re.search(r"blk_pruefen\(\) \{.*?ubuctl is-enabled.*?ubuctl is-active.*?\n\}", t, re.S)
+
+
+def test_sshd_pruefung_akzeptiert_unexpandiertes_prozent_u(tmp_path):
+    # sshd -T gibt AuthorizedKeysFile unexpandiert aus (…/%u). Server-Lauf 2026-11-14 brach daran ab.
+    for zeile, ok in (("authorizedkeysfile /etc/ssh/authorized_keys/%u", 0),
+                      ("authorizedkeysfile /etc/ssh/authorized_keys/betacodex", 0),
+                      ("AuthorizedKeysFile /etc/ssh/authorized_keys/%u", 0),
+                      ("authorizedkeysfile .ssh/authorized_keys .ssh/authorized_keys2", 1),
+                      ("authorizedkeysfile /etc/ssh/authorized_keys/%u .ssh/authorized_keys", 1),
+                      ("", 1)):
+        r = sh(tmp_path, f'akf_ist_neu "{zeile}"')
+        assert r.returncode == ok, (zeile, r.stdout, r.stderr)
