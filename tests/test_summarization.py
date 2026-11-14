@@ -575,3 +575,21 @@ def test_detect_source_language_sends_title_and_only_first_3000_chars_and_treats
     assert "Mein Titel" in content
     assert "ENDMARKER" not in content
     assert "instruction" in kwargs["system"].lower()  # Quelltext ist Daten, keine Anweisung
+
+
+def test_detect_source_language_with_known_language_keeps_it_and_still_returns_title():
+    # Gepflegte Sprache de, KI hält den Text für en: Sprache bleibt de, Titel wird trotzdem geliefert.
+    client = _fake_tool_client({"text_lang": "en", "title_en": "English Title"})
+    with patch.object(summarization, "_get_client", return_value=client):
+        result = summarization.detect_source_language("Titel", "Text.", known_lang="de")
+
+    assert result == {"text_lang": "de", "title_en": "English Title"}
+    assert "de" in client.messages.create.call_args.kwargs["messages"][0]["content"]
+
+
+def test_detect_source_language_with_known_english_returns_no_title():
+    client = _fake_tool_client({"text_lang": "en", "title_en": "Dropped"})
+    with patch.object(summarization, "_get_client", return_value=client):
+        result = summarization.detect_source_language("Title", "Text.", known_lang="en")
+
+    assert result == {"text_lang": "en", "title_en": None}
