@@ -578,6 +578,15 @@ input, textarea {
   padding-right: 2.5rem;
 }
 
+/* Auswahlfeld: Zauberstab links neben den nativen Pfeil setzen, sonst verdeckt er ihn. */
+.field-with-magic > select {
+  padding-right: 4rem;
+}
+
+.field-with-magic > select ~ .magic-button {
+  right: 2rem;
+}
+
 /* Auswahlfeld (Textsprache im Quellen-Formular) wie die Textfelder. */
 select {
   display: block;
