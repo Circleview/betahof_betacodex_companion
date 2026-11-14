@@ -18,6 +18,9 @@ class SourceIn(BaseModel):
     relevance_score: Optional[int] = None
     # Idee ff895248: Token aus /api/extract-url (Web-Bilder der Vorschau).
     image_token: Optional[str] = None
+    # Idee 134c868a: nur beim Bearbeiten (PUT) ausgewertet; None = unverändert.
+    text_lang: Optional[str] = None
+    title_en: Optional[str] = None
 
 
 class SourceOut(BaseModel):
@@ -50,6 +53,12 @@ class SourceOut(BaseModel):
     url_reason_code: Optional[str] = None
     url_status_code: Optional[int] = None
     url_checked_at: Optional[str] = None
+    # Idee 134c868a: Textsprache (ISO-Code) + englischer Titel; *_ai_generated
+    # wie bei summary (False = von Hand gepflegt, KI überschreibt nicht mehr).
+    text_lang: Optional[str] = None
+    title_en: Optional[str] = None
+    text_lang_ai_generated: bool = True
+    title_en_ai_generated: bool = True
 
 
 class BrokenLinksCountOut(BaseModel):
@@ -208,6 +217,13 @@ class ChunkRef(BaseModel):
     url_reachable: Optional[bool] = None
     # Idee ff895248: Bildleiste - kommt aus den Chunk-Metadaten, nie vom Client.
     images: list[ImageRef] = []
+    # Idee 134c868a: aus dem Quellen-Eintrag, nie vom Client (siehe
+    # create_conversation_handoff). Web-Fallback-Chunks: Standardwerte.
+    restricted: bool = False
+    text_lang: Optional[str] = None
+    title_en: Optional[str] = None
+    text_lang_ai_generated: bool = True
+    title_en_ai_generated: bool = True
 
 
 class ConversationTurnIn(BaseModel):
@@ -408,6 +424,11 @@ class UrlCheckOut(BaseModel):
     reachable: Optional[bool] = None
     status_code: Optional[int] = None
     reason_code: Optional[str] = None
+
+
+class LanguageDetectionOut(BaseModel):
+    text_lang: Optional[str] = None
+    title_en: Optional[str] = None
 
 
 class SummaryOut(BaseModel):

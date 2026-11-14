@@ -94,6 +94,7 @@ from app.models import (
     SourceOut,
     SourceSuggestionOut,
     SpeechIn,
+    LanguageDetectionOut,
     SummaryOut,
     TermMergeIn,
     TermMergeOut,
@@ -736,6 +737,70 @@ def _generate_summary_with_retries(text: str) -> dict:
     return result
 
 
+# Idee 134c868a: Textsprache + englischer Titel je Quelle. Beide Felder haben
+# wie summary_*/key_terms_* ein *_ai_generated-Flag: von Hand gepflegte Werte
+# (Flag False) überschreibt kein KI-Lauf.
+def _source_lang_fields(entry: dict | None) -> dict:
+    """Felder fürs Frontend (ChunkRef, Kreativ-Dict) aus dem Quellen-Eintrag."""
+    entry = entry or {}
+    return {
+        "restricted": bool(entry.get("restricted")),
+        "text_lang": entry.get("text_lang") or None,
+        "title_en": entry.get("title_en") or None,
+        "text_lang_ai_generated": entry.get("text_lang_ai_generated", True),
+        "title_en_ai_generated": entry.get("title_en_ai_generated", True),
+    }
+
+
+def _detect_language_safely(title: str, text: str) -> dict:
+    # Ein Fehler hier darf nie die Zusammenfassung oder den Nachzug kippen.
+    try:
+        return summarization.detect_source_language(title, text)
+    except Exception:
+        return {"text_lang": None, "title_en": None}
+
+
+def _apply_language_result(entry: dict, result: dict) -> None:
+    """Schreibt ein Erkennungsergebnis in den Eintrag (Aufrufer hält den
+    Schreib-Lock). None-Ergebnis überschreibt nichts; Handpflege bleibt."""
+    if not result.get("text_lang"):
+        return
+    if entry.get("text_lang_ai_generated") is not False:
+        entry["text_lang"] = result["text_lang"]
+        entry["text_lang_ai_generated"] = True
+    if entry.get("title_en_ai_generated") is not False:
+        entry["title_en"] = result["title_en"]
+        entry["title_en_ai_generated"] = True
+
+
+def _detect_and_store_language(source_id: str, title: str, text: str) -> bool:
+    """Erkennung als eigener Lauf (Nachzug, Titel-/Textänderung). KI-Aufruf
+    vor dem Lock; geschrieben wird erst nach erneutem Laden, und nur wenn die
+    Quelle noch existiert und Titel/Text unverändert sind (sonst läuft schon
+    eine neuere Erkennung)."""
+    result = _detect_language_safely(title, text)
+    if not result.get("text_lang"):
+        return False
+    with _sources_write_lock:
+        sources = _load_sources()
+        if _source_is_missing(sources, source_id):
+            return False
+        entry = sources[source_id]
+        if entry.get("title") != title or (entry.get("text") or "").strip() != text.strip():
+            return False
+        _apply_language_result(entry, result)
+        _save_sources(sources)
+    return True
+
+
+def _clear_ai_language_fields(entry: dict, keep: frozenset = frozenset()) -> None:
+    """Titel/Text geändert: KI-erkannte Werte sind veraltet. Handgepflegte
+    bleiben."""
+    for field in ("text_lang", "title_en"):
+        if field not in keep and entry.get(f"{field}_ai_generated") is not False:
+            entry.pop(field, None)
+
+
 def _generate_summary_background(source_id: str, text: str) -> None:
     # Nutzerwunsch (2026-09-22): eine Quelle galt bisher schon als "fertig"
     # (processing_status=None), sobald Text+Chunks gespeichert waren - die
@@ -745,15 +810,20 @@ def _generate_summary_background(source_id: str, text: str) -> None:
     # nicht mehr zurückgesetzt), mit eigenem processing_step fürs Icon/Label.
     with _sources_write_lock:
         sources = _load_sources()
+        title = ""
         if source_id in sources:
+            title = sources[source_id].get("title", "")
             sources[source_id]["processing_step"] = "summarizing"
             _save_sources(sources)
 
     result = _generate_summary_with_retries(text)
+    # Beide KI-Aufrufe vor dem Lock; ein Erkennungsfehler verwirft nie die Zusammenfassung.
+    language = _detect_language_safely(title, text)
     with _sources_write_lock:
         sources = _load_sources()
         if source_id not in sources:
             return
+        _apply_language_result(sources[source_id], language)
         sources[source_id]["summary_de"] = result["de"]["summary"]
         sources[source_id]["summary_en"] = result["en"]["summary"]
         sources[source_id]["key_terms_de"] = result["de"]["key_terms"]
@@ -1369,6 +1439,38 @@ def _backfill_missing_summaries_once() -> None:
             _generate_summary_background(source_id, text)
 
 
+# Idee 134c868a: Textsprache + englischer Titel für Bestandsquellen nachziehen
+# - idempotent (nur Quellen ohne text_lang), ändert weder Zusammenfassung noch
+# Titel. Nach 5 Fehlschlägen in Folge Abbruch (KI down: nicht 375 Aufrufe
+# verbrennen), der nächste Tageslauf versucht es neu.
+LANGUAGE_BACKFILL_MAX_CONSECUTIVE_FAILURES = 5
+
+
+def _backfill_source_language_once() -> None:
+    sources = _load_sources()
+    todo = [
+        (sid, entry.get("title", ""), entry["text"])
+        for sid, entry in sources.items()
+        if not entry.get("deleted_at") and entry.get("text", "").strip() and not entry.get("text_lang")
+    ]
+    failures = 0
+    for source_id, title, text in todo:
+        if _detect_and_store_language(source_id, title, text):
+            failures = 0
+        else:
+            failures += 1
+            if failures >= LANGUAGE_BACKFILL_MAX_CONSECUTIVE_FAILURES:
+                return
+
+
+def _backfill_summaries_and_language_once() -> None:
+    # Ein Worker-Thread, Sprache direkt nach den Zusammenfassungen.
+    try:
+        _backfill_missing_summaries_once()
+    finally:
+        _backfill_source_language_once()
+
+
 # Nutzerwunsch (2026-08-23): externe Autor:innen-Fotos sterben regelmäßig
 # weg (v.a. LinkedIn-CDN-URLs mit eingebautem Ablaufdatum, siehe app/
 # author_photos.py) - dieser tägliche Lauf holt für jede Autorin/jeden
@@ -1721,7 +1823,7 @@ def _start_background_workers() -> None:
         daemon=True,
     ).start()
     threading.Thread(
-        target=_run_periodic, args=(_backfill_missing_summaries_once, SUMMARY_BACKFILL_INTERVAL_SECONDS), daemon=True
+        target=_run_periodic, args=(_backfill_summaries_and_language_once, SUMMARY_BACKFILL_INTERVAL_SECONDS), daemon=True
     ).start()
     threading.Thread(
         target=_run_periodic, args=(_cache_missing_author_photos_once, AUTHOR_PHOTO_CACHE_INTERVAL_SECONDS), daemon=True
@@ -2184,6 +2286,10 @@ def update_source(
     _user: str = Depends(require_role(users.QUELLEN_PFLEGER)),
     x_lang: str = Header(default=i18n.DEFAULT_LANG),
 ):
+    # Idee 134c868a (K4/H2): der Code landet später in einer URL - nur 2-3
+    # Kleinbuchstaben. "" gilt wie None als "nicht mitgeschickt".
+    if source.text_lang and not summarization.is_valid_lang_code(source.text_lang):
+        raise HTTPException(400, i18n.get_message("invalid_text_lang", x_lang))
     with _sources_write_lock:
         sources = _load_sources()
         if _source_is_missing(sources, source_id):
@@ -2250,7 +2356,28 @@ def update_source(
             sources[source_id][f"key_terms_ai_generated_{x_lang}"] = False
         if source.relevance_score is not None:
             sources[source_id]["relevance_score"] = source.relevance_score
+        # Idee 134c868a (K2): geänderter Titel/Text macht KI-erkannte Sprache
+        # und englischen Titel ungültig - leeren und neu erkennen lassen.
+        # Danach erst die mitgeschickten Werte: nur eine tatsächliche
+        # Änderung gegenüber vorher zählt als Handpflege (wie bei summary).
+        redetect = source.title != before.get("title") or (
+            not metadata_only and source.text.strip() != (before.get("text") or "").strip()
+        )
+        if redetect:
+            _clear_ai_language_fields(sources[source_id])
+        if source.text_lang and source.text_lang != before.get("text_lang"):
+            sources[source_id]["text_lang"] = source.text_lang
+            sources[source_id]["text_lang_ai_generated"] = False
+        title_en = summarization.clean_title_en(source.title_en) if source.title_en is not None else None
+        if source.title_en is not None and (title_en or None) != (before.get("title_en") or None):
+            sources[source_id]["title_en"] = title_en
+            sources[source_id]["title_en_ai_generated"] = False
         _save_sources(sources)
+
+    if redetect:
+        background_tasks.add_task(
+            _detect_and_store_language, source_id, source.title, sources[source_id].get("text", "")
+        )
 
     if summary_changed and source.summary.strip():
         other_lang = "en" if x_lang == "de" else "de"
@@ -2300,6 +2427,9 @@ def update_source(
         new_values[f"key_terms_{x_lang}"] = source.key_terms
     if source.relevance_score is not None:
         new_values["relevance_score"] = source.relevance_score
+    for field in ("text_lang", "title_en"):
+        if field in sources[source_id] and sources[source_id][field] != before.get(field):
+            new_values[field] = sources[source_id][field]
     changes = _diff_fields(before, new_values)
     if changes:
         audit.log_change(
@@ -3270,7 +3400,9 @@ def _restore_deleted_source(source_id: str, x_lang: str) -> None:
     _register_all_terms(source_id, entry)
 
 
-def _revert_source_changes(source_id: str, changes: dict, x_lang: str) -> None:
+def _revert_source_changes(
+    source_id: str, changes: dict, x_lang: str, background_tasks: BackgroundTasks | None = None
+) -> None:
     with _sources_write_lock:
         sources = _load_sources()
         if source_id not in sources:
@@ -3278,6 +3410,12 @@ def _revert_source_changes(source_id: str, changes: dict, x_lang: str) -> None:
         entry = sources[source_id]
         for field, diff in changes.items():
             entry[field] = diff["old"]
+        # Idee 134c868a (K2): wie update_source - zurückgesetzter Titel/Text
+        # macht die KI-erkannte Sprache ungültig (ausgenommen explizit
+        # mitzurückgesetzte Sprachfelder).
+        redetect = "title" in changes or "text" in changes
+        if redetect:
+            _clear_ai_language_fields(entry, keep=frozenset(changes))
         if "text" in changes:
             source_in = _source_in_from_entry(entry)
             chunks, chunk_embeddings = _prepare_chunks(source_in, x_lang)
@@ -3287,6 +3425,8 @@ def _revert_source_changes(source_id: str, changes: dict, x_lang: str) -> None:
                     source_id, source_in, chunks, chunk_embeddings, entry.get("images")
                 )
         _save_sources(sources)
+    if redetect and background_tasks is not None:
+        background_tasks.add_task(_detect_and_store_language, source_id, entry.get("title", ""), entry.get("text", ""))
     if "authors" in changes:
         authors.unregister_source(source_id)
         for name in entry.get("authors") or []:
@@ -3325,6 +3465,7 @@ def _revert_source_suggestion_changes(suggestion_id: str, changes: dict, x_lang:
 @app.post("/api/audit-log/{entry_id}/revert", response_model=MessageOut)
 def revert_audit_entry(
     entry_id: str,
+    background_tasks: BackgroundTasks,
     _user: str = Depends(require_role(users.QUELLEN_PFLEGER)),
     x_lang: str = Header(default=i18n.DEFAULT_LANG),
 ):
@@ -3349,7 +3490,7 @@ def revert_audit_entry(
         if _rename_author_entity(new_name, old_name) is None:
             raise HTTPException(400, i18n.get_message("audit_revert_failed", x_lang))
     elif entity_type == "source":
-        _revert_source_changes(entity_id, changes, x_lang)
+        _revert_source_changes(entity_id, changes, x_lang, background_tasks)
     elif entity_type == "author":
         _revert_author_changes(entity_id, changes, x_lang)
     elif entity_type == "source_suggestion":
@@ -3828,6 +3969,20 @@ def reprocess_source(
     else:
         background_tasks.add_task(_process_pdf_ocr, source_id, x_lang)
     return MessageOut(detail=i18n.get_message("reprocess_started", x_lang))
+
+
+@app.post("/api/sources/{source_id}/detect-language", response_model=LanguageDetectionOut)
+def detect_source_language_suggestion(
+    source_id: str,
+    _user: str = Depends(require_role(users.QUELLEN_PFLEGER)),
+    x_lang: str = Header(default=i18n.DEFAULT_LANG),
+):
+    # Nur ein Vorschlag fürs Formular (wie der Magic-Button der Zusammenfassung) - speichert nichts.
+    sources = _load_sources()
+    if _source_is_missing(sources, source_id):
+        raise HTTPException(404, i18n.get_message("source_not_found", x_lang))
+    entry = sources[source_id]
+    return LanguageDetectionOut(**_detect_language_safely(entry.get("title", ""), entry.get("text", "")))
 
 
 @app.post("/api/sources/{source_id}/generate-summary", response_model=SummaryOut)
@@ -5077,6 +5232,7 @@ def _ask_context(
                 is_web_fallback=is_web,
                 allowlist_entry_id=meta.get("allowlist_entry_id") if is_web else None,
                 url_reachable=sources.get(meta["source_id"], {}).get("url_reachable"),
+                **_source_lang_fields(sources.get(meta["source_id"])),
             )
         )
         llm_chunks.append(
@@ -5315,16 +5471,25 @@ def _creative_context(instruction: str, document: str, x_lang: str) -> tuple[lis
             # einmal ohne URL) und würde sonst doppelt erscheinen - der
             # Eintrag mit Link gewinnt dann.
             work_key = (meta["title"].strip().lower(), tuple(authors_list))
+            record = sources.get(meta["source_id"]) or {}
+            # Link und alles, was an ihm hängt (listen_url, restricted, Sprache),
+            # kommen immer vom selben Datensatz.
+            link_fields = {
+                "url": meta["url"] or None,
+                "listen_url": meta.get("listen_url") or None,
+                "url_reachable": record.get("url_reachable"),
+                **_source_lang_fields(record),
+            }
             existing = betacodex_by_work.get(work_key)
             if existing:
-                existing["url"] = existing["url"] or meta["url"] or None
+                if not existing["url"] and link_fields["url"]:
+                    existing.update(link_fields)
                 continue
             entry = {
                 "title": meta["title"],
                 "authors": authors_list,
                 "date": meta["date"] or None,
-                "url": meta["url"] or None,
-                "url_reachable": sources.get(meta["source_id"], {}).get("url_reachable"),
+                **link_fields,
             }
             betacodex_by_work[work_key] = entry
             betacodex_sources.append(entry)
@@ -5429,6 +5594,11 @@ def create_conversation_handoff(
             ref.listen_url = (
                 ref.listen_url if ref.listen_url and ref.listen_url.lower().startswith(("http://", "https://")) else None
             )
+            # Idee 134c868a (K4): Sprache/Titel/restricted nie vom Client,
+            # sondern aus dem Quellen-Eintrag (Web-Treffer/Unbekannte: Standard).
+            record = None if _source_is_missing(all_sources, ref.source_id) else all_sources[ref.source_id]
+            for field, value in _source_lang_fields(record).items():
+                setattr(ref, field, value)
 
     # restricted-Grenze über ALLE Turns gemeinsam, nicht je Turn.
     flat = [ref for turn in payload.history for ref in turn.sources]
