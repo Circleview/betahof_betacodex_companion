@@ -1,7 +1,9 @@
 # Weg S: System-Unit (User=betacodex) mit voller Sandbox.
 # Ziel auf dem Server: /etc/systemd/system/betacodex-blue.service (root:root 0644).
 # Nicht setzen: MemoryDenyWriteExecute (torch/onnx JIT), IPAddressDeny und PrivateNetwork
-# (App braucht ausgehend Anthropic, SMTP, Turnstile, Import-URLs), SystemCallErrorNumber.
+# (App braucht ausgehend Anthropic, SMTP, Turnstile, Import-URLs).
+# SystemCallErrorNumber=EPERM: ein gesperrter Syscall (torch: sched_setaffinity, setpriority, mbind)
+# liefert einen Fehler statt den Prozess zu killen. Der Block probe lässt die Zeile weg (SIGSYS sichtbar).
 # ProcSubset=pid fehlt bewusst: Python/torch lesen /proc/cpuinfo u. a.
 [Unit]
 Description=BetaCodex Chat (blue)
@@ -48,6 +50,7 @@ AmbientCapabilities=
 RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
 SystemCallFilter=@system-service
 SystemCallFilter=~@privileged @resources
+SystemCallErrorNumber=EPERM
 SystemCallArchitectures=native
 LockPersonality=yes
 RestrictRealtime=yes
