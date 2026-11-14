@@ -7,7 +7,7 @@ import {
   consumeConversationHandoffToken,
 } from '/conversation-handoff.js';
 import { readNdjsonStream } from '/ndjson-stream.js';
-import { displayTitle, citationHref, translatedBadge } from '/source-lang.js';
+import { displayTitle, findableTitle, citationHref, translatedBadge } from '/source-lang.js';
 import {
   EXTERNAL_LINK_ICON,
   TRASH_ICON,
@@ -1889,7 +1889,7 @@ function renderSourceList(sources, options = {}) {
   sorted.slice(visible.length).forEach((s) => {
     const placeholder = document.createElement('li');
     placeholder.setAttribute('hidden', 'until-found');
-    placeholder.textContent = `${s.title} ${authorsForDisplay(s).join(' ')}`;
+    placeholder.textContent = `${findableTitle(s)} ${authorsForDisplay(s).join(' ')}`;
     placeholder.addEventListener(
       'beforematch',
       () => {

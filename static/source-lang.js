@@ -45,6 +45,12 @@ export function displayTitle(s) {
   return isForeignText(s) && s.title_en ? s.title_en : s.title;
 }
 
+// Text für die Browser-Suche (Strg+F): sichtbarer Titel, der Originaltitel bleibt zusätzlich findbar.
+export function findableTitle(s) {
+  const shown = displayTitle(s);
+  return shown === s.title ? s.title : `${shown} ${s.title}`;
+}
+
 // Link-Ziel einer Quelle: Maschinenübersetzung (nur EN-UI, fremdsprachig,
 // übersetzbar), sonst wie bisher listen_url vor url (defekter Link: keiner).
 export function citationHref(s) {
