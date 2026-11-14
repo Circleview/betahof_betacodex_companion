@@ -5484,7 +5484,7 @@ def test_hidden_marker_parenthesis_cleanup_only_around_marker(text, sources, exp
 def test_hidden_marker_parenthesis_keeps_visible_marker():
     r = _marker_texts("Aussage (siehe [1][2]) hier.", [_HIDDEN, _VISIBLE])
     assert r["buttons"] == ["[1]"]
-    assert r["text"] == "Aussage (siehe) hier."
+    assert r["text"] == "Aussage (siehe ) hier."  # Button [1] steht zwischen den Textteilen
 
 
 def test_language_change_rerender_keeps_bubble_controls_and_running_answer_sources():

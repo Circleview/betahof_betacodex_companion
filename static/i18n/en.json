@@ -535,5 +535,6 @@
   "import.aiTitleEnTooltip": "AI-translated title",
   "import.detectLanguageTitle": "Detect language and English title with AI",
   "import.detectingLanguage": "Detecting language …",
-  "import.detectLanguageFailed": "Language detection failed."
+  "import.detectLanguageFailed": "Language detection failed.",
+  "common.translatedTitleTooltip": "Title translated"
 }

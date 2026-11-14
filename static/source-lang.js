@@ -71,6 +71,7 @@ export function translatedBadge(s) {
   const badge = document.createElement('span');
   badge.className = 'source-translated-badge';
   badge.textContent = t('common.translatedBadge');
-  badge.title = t('common.translatedBadgeTooltip');
+  // Link-Hinweis nur, wenn der Link wirklich zur Übersetzung führt.
+  badge.title = t(translateHref(s) ? 'common.translatedBadgeTooltip' : 'common.translatedTitleTooltip');
   return badge;
 }

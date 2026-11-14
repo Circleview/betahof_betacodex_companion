@@ -535,5 +535,6 @@
   "import.aiTitleEnTooltip": "KI-übersetzter Titel",
   "import.detectLanguageTitle": "Sprache und englischen Titel mit KI erkennen",
   "import.detectingLanguage": "Sprache wird erkannt …",
-  "import.detectLanguageFailed": "Spracherkennung fehlgeschlagen."
+  "import.detectLanguageFailed": "Spracherkennung fehlgeschlagen.",
+  "common.translatedTitleTooltip": "Titel übersetzt"
 }

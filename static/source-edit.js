@@ -490,6 +490,7 @@ export function buildEditPanel(s, options = {}) {
 
   // Idee 134c868a: Textsprache + englischer Titel (nur bei nicht-englischem Text).
   const aiFlags = aiLangFlags(s);
+  let langBaseline = { text_lang: s.text_lang, title_en: s.title_en };
   function buildLangLabel(labelKey, tooltipKey, showIcon) {
     const label = document.createElement('label');
     const text = document.createElement('span');
@@ -712,12 +713,13 @@ export function buildEditPanel(s, options = {}) {
         if (/^[a-z]{2,3}$/.test(data.text_lang || '')) {
           ensureLangOption(data.text_lang);
           textLangSelect.value = data.text_lang;
-          textLangField.icon.classList.add('hidden');
+          textLangField.icon.classList.toggle('hidden', s.text_lang_ai_generated === false);
         }
         if (data.title_en) {
           titleEnInput.value = data.title_en;
-          titleEnField.icon.classList.add('hidden');
+          titleEnField.icon.classList.toggle('hidden', s.title_en_ai_generated === false);
         }
+        langBaseline = applyDetectedLang(langBaseline, data);
         syncTitleEnVisibility();
         status.textContent = '';
       } catch (err) {
@@ -858,7 +860,7 @@ export function buildEditPanel(s, options = {}) {
               .map((term) => term.trim())
               .filter((term) => term),
             relevance_score: parseInt(relevanceInput.value, 10),
-            ...changedLangFields(s, textLangSelect.value, titleEnInput.value.trim()),
+            ...changedLangFields(langBaseline, textLangSelect.value, titleEnInput.value.trim()),
           }),
         });
         if (!res.ok) {
@@ -1104,6 +1106,15 @@ export function changedLangFields(s, lang, titleEn) {
   if (lang && lang !== (s.text_lang || '')) changes.text_lang = lang;
   if (isTitleEnVisible(lang) && titleEn !== (s.title_en || '')) changes.title_en = titleEn;
   return changes;
+}
+
+// Ergebnis des Zauberstabs: der Endpunkt speichert den KI-Vorschlag selbst
+// (KI-Status bleibt), er ist damit der neue Ausgangswert für changedLangFields.
+export function applyDetectedLang(baseline, data) {
+  const next = { ...baseline };
+  if (/^[a-z]{2,3}$/.test(data.text_lang || '')) next.text_lang = data.text_lang;
+  if (data.title_en) next.title_en = data.title_en;
+  return next;
 }
 
 function languageName(code) {

@@ -1457,7 +1457,7 @@ function sortSources(sources) {
   if (currentSortMode === 'date' || isFilterActive()) {
     const copy = [...sources];
     copy.sort((a, b) => {
-      if (!a.date && !b.date) return a.title.localeCompare(b.title);
+      if (!a.date && !b.date) return displayTitle(a).localeCompare(displayTitle(b));
       if (!a.date) return 1;
       if (!b.date) return -1;
       return b.date.localeCompare(a.date);
@@ -1486,11 +1486,11 @@ function sortSources(sources) {
     const authorA = getSurname(a.__sortAuthor || '￿').toLowerCase();
     const authorB = getSurname(b.__sortAuthor || '￿').toLowerCase();
     if (authorA !== authorB) return authorA.localeCompare(authorB);
-    if (!a.date && !b.date) return a.title.localeCompare(b.title);
+    if (!a.date && !b.date) return displayTitle(a).localeCompare(displayTitle(b));
     if (!a.date) return 1;
     if (!b.date) return -1;
     if (a.date !== b.date) return b.date.localeCompare(a.date);
-    return a.title.localeCompare(b.title);
+    return displayTitle(a).localeCompare(displayTitle(b));
   });
   return expanded;
 }
@@ -2005,6 +2005,7 @@ function sourceMatchesSearch(source, query) {
   if (!q) return true;
   const haystacks = [
     source.title,
+    displayTitle(source),
     source.text,
     source.summary,
     (source.authors || []).join(' '),

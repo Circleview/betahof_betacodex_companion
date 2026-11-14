@@ -334,6 +334,11 @@ async function openSourceEditDialog(sourceId) {
               listen_url: updated.listen_url,
               summary: updated.summary,
               url_reachable: updated.url_reachable,
+              restricted: updated.restricted,
+              text_lang: updated.text_lang,
+              title_en: updated.title_en,
+              text_lang_ai_generated: updated.text_lang_ai_generated,
+              title_en_ai_generated: updated.title_en_ai_generated,
             });
             dialog.close();
           },
@@ -756,17 +761,23 @@ function makeCitationsClickable(container, sources) {
       const nums = group.split(/\s*,\s*/);
       return nums.every(sourceAt) ? nums.map((n) => `[${n}]`).join('') : m;
     });
-    const result = expanded.replace(/(\s*)((?:\[\d+\])+)/g, (m, space, run) => {
-      const markers = run.match(/\[\d+\]/g);
-      const kept = markers.filter((marker) => {
+    const keptMarkers = (run) =>
+      run.match(/\[\d+\]/g).filter((marker) => {
         const source = sourceAt(marker.slice(1, -1));
         return !source || !isHiddenForLang(source);
       });
-      if (kept.length === markers.length) return m;
+    // Klammerzusatz wie "(siehe [2])" fällt mit dem Marker ganz weg - nur
+    // genau diese Klammer um den Marker, andere Klammern bleiben unberührt.
+    const withoutParens = expanded.replace(/(\s*)\(([^()[\]]{0,20})((?:\[\d+\])+)\)/g, (m, space, lead, run) => {
+      const kept = keptMarkers(run);
+      if (kept.length === run.match(/\[\d+\]/g).length) return m;
+      return kept.length ? `${space}(${lead}${kept.join('')})` : '';
+    });
+    return withoutParens.replace(/(\s*)((?:\[\d+\])+)/g, (m, space, run) => {
+      const kept = keptMarkers(run);
+      if (kept.length === run.match(/\[\d+\]/g).length) return m;
       return kept.length ? space + kept.join('') : '';
     });
-    // "(siehe [2])" ohne Marker nicht als "(siehe)" mit leeren Klammern stehen lassen.
-    return result === expanded ? result : result.replace(/\s*\(\s*\)/g, '');
   }
 
   // Schlüssel ist der tatsächliche INHALT (Chunk + Highlight), nicht die
@@ -1494,6 +1505,8 @@ let questionSentInConversation = false;
 // Wiederherstellen einer gespeicherten Konversation (beides schon bekannt)
 // laufen weiterhin beide Schritte direkt hintereinander, siehe
 // renderAnswerBubble unten.
+const controlsByBubble = new WeakMap();
+
 function renderAnswerText(bubble, question, answer) {
   bubble.innerHTML = renderMarkdown(answer);
   // Unabhängig von Quellen/Zitaten (die ggf. erst später/asynchron
@@ -1501,7 +1514,12 @@ function renderAnswerText(bubble, question, answer) {
   // stehen schon jetzt fest, einmalig statt bei jedem Zwischenstand während
   // des Streamens neu zu binden.
   makeTermsClickable(bubble);
-  return attachSpeakButton(bubble, question, answer);
+  const contentCount = bubble.childNodes.length;
+  const speakBtn = attachSpeakButton(bubble, question, answer);
+  // Knöpfe (Vorlesen, Tempo, Feedback, Kopieren) merken, damit ein
+  // Sprachwechsel nur den Antwortinhalt neu baut (rerenderAnswerBody).
+  controlsByBubble.set(bubble, [...bubble.childNodes].slice(contentCount));
+  return speakBtn;
 }
 
 function attachAnswerSources(bubble, sources) {
@@ -1558,12 +1576,24 @@ const bubbleByTurn = new WeakMap();
 // wieder und umgekehrt, Titel/Links/Marker passen sich an. Geöffnete
 // Zitat-Karten gehen dabei zu.
 function rerenderConversation() {
-  conversationCitedSources.clear();
+  // Nur Quellen der gespeicherten Antworten neu einsammeln; Quellen einer
+  // noch laufenden Antwort (noch nicht im Verlauf) bleiben stehen.
+  const historyIds = new Set(
+    conversationHistory.flatMap((turn) => (turn.sources || []).map((s) => s.source_id))
+  );
+  [...conversationCitedSources.keys()].forEach((id) => {
+    if (historyIds.has(id)) conversationCitedSources.delete(id);
+  });
   conversationHistory.forEach((turn) => {
     const bubble = bubbleByTurn.get(turn);
-    if (!bubble) return;
-    bubble.replaceChildren();
-    renderAnswerBubble(bubble, turn.question, turn.answer, turn.sources);
+    const controls = controlsByBubble.get(bubble);
+    if (!controls || !controls.length) return;
+    // Antworttext, Zitate, Karten und Bildleiste neu; die Knöpfe bleiben
+    // (Feedback-Sperre, Vorlese-Zustand).
+    [...bubble.childNodes].filter((node) => !controls.includes(node)).forEach((node) => node.remove());
+    controls[0].insertAdjacentHTML('beforebegin', renderMarkdown(turn.answer));
+    makeTermsClickable(bubble);
+    attachAnswerSources(bubble, turn.sources);
   });
   renderSidebarSources();
 }
