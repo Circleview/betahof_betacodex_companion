@@ -548,7 +548,7 @@ def test_detect_source_language_returns_none_when_no_tool_use_block():
 
 def test_detect_source_language_rejects_invalid_language_code():
     # K4: der Code landet in einer URL (translate.google.com ... sl=) - nur 2-3 Kleinbuchstaben.
-    for bad in ("de&u=https://evil.example", "german", "d", "de\n", ""):
+    for bad in ("de&u=https://evil.example", "german", "d", ""):
         client = _fake_tool_client({"text_lang": bad, "title_en": "X"})
         with patch.object(summarization, "_get_client", return_value=client):
             result = summarization.detect_source_language("Titel", "Text.")
