@@ -2847,7 +2847,11 @@ def _run_creative_source_label(source):
     js_source = (STATIC_DIR / "creative.js").read_text()
     match = re.search(r"export function creativeSourceLabel.*?\n\}", js_source, re.S)
     assert match, "creativeSourceLabel wurde in creative.js nicht gefunden."
-    script = f"{match.group(0)}\nconsole.log(JSON.stringify(creativeSourceLabel({json.dumps(source)})));"
+    func = match.group(0).replace("export function", "function")
+    script = (
+        f"function t(k) {{ return k; }}\n{_source_lang_js()}\n{func}\n"
+        f"console.log(JSON.stringify(creativeSourceLabel({json.dumps(source)})));"
+    )
     return _run_node(script)
 
 
@@ -5228,7 +5232,7 @@ def test_hidden_source_marker_kept_in_de_ui():
 def test_hidden_source_marker_removed_numbers_stay_gapless():
     r = _marker_texts("A [1] B [2] C [3] D [2]", [_VISIBLE, _HIDDEN, _ENGLISH])
     assert r["buttons"] == ["[1]", "[2]"]  # [2] (versteckt) entfällt, [3] wird zu [2]
-    assert r["text"] == "A  B  C  D"
+    assert r["text"] == "A  B C  D"  # " [2]" samt Leerraum entfernt
     assert r["cited"] == ["vis", "eng"]
 
 
