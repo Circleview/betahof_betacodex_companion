@@ -359,6 +359,12 @@ def client(tmp_path, monkeypatch):
     # dazwischen aus. Ohne dies wuerde JEDER Test, der eine Quelle anlegt,
     # durch die Test-Suite hindurch spuerbar langsamer werden.
     monkeypatch.setattr(main_module, "SUMMARY_RETRY_DELAY_SECONDS", 0)
+    # Idee 134c868a: Sprach-/Titelerkennung läuft nach jeder Zusammenfassung und
+    # im täglichen Nachzug - Standard-Mock ohne KI-Aufruf. Tests dazu
+    # überschreiben ihn lokal.
+    monkeypatch.setattr(
+        summarization, "detect_source_language", lambda title, text: {"text_lang": None, "title_en": None}
+    )
     # Ohne dieses Mock würde jede neue Person beim Import einen echten
     # API-Call für die automatische Vita auslösen (Backlog: "jede:r Autor:in
     # soll von Anfang an eine Vita haben"). Tests, die dieses Verhalten
@@ -9893,3 +9899,381 @@ def test_event_stream_with_several_restricted_sources_redacts_text_and_limits_im
             assert sum(len(s["images"]) for s in by_source[sid]) <= 1
             assert all("Geheimer Volltext" not in s["text"] for s in by_source[sid])
         assert len(by_source["OPEN"][0]["images"]) == 2
+
+
+# --- Textsprache + englischer Titel (Idee 134c868a, Paket A) ---
+
+_REAL_DETECT_SOURCE_LANGUAGE = summarization.detect_source_language
+
+
+def _fake_detect(text_lang="de", title_en="English Title", calls=None):
+    def detect(title, text):
+        if calls is not None:
+            calls.append((title, text))
+        return {"text_lang": text_lang, "title_en": title_en}
+
+    return detect
+
+
+def _lang_source(client, **extra):
+    body = {"title": "Deutscher Titel", "text": "Ein deutscher Text.", **extra}
+    return client.post("/api/sources", json=body).json()["id"]
+
+
+def _raw(source_id):
+    return main_module._load_sources()[source_id]
+
+
+def _listed(client, source_id):
+    return next(s for s in client.get("/api/sources").json() if s["id"] == source_id)
+
+
+def test_new_source_gets_text_lang_and_title_en_after_summary_run(client, monkeypatch):
+    monkeypatch.setattr(summarization, "detect_source_language", _fake_detect("de", "German Title"))
+
+    source_id = _lang_source(client)
+
+    listed = _listed(client, source_id)
+    assert listed["text_lang"] == "de"
+    assert listed["title_en"] == "German Title"
+    assert listed["title"] == "Deutscher Titel"
+    assert listed["text_lang_ai_generated"] is True
+    assert listed["title_en_ai_generated"] is True
+
+
+def test_detection_failure_keeps_the_generated_summary(client, monkeypatch):
+    monkeypatch.setattr(
+        summarization,
+        "generate_bilingual_summary",
+        lambda text, *_known: {
+            "de": {"summary": "Zusammenfassung.", "key_terms": ["X"]},
+            "en": {"summary": "Summary.", "key_terms": ["X"]},
+        },
+    )
+
+    def boom(title, text):
+        raise RuntimeError("Erkennung kaputt")
+
+    monkeypatch.setattr(summarization, "detect_source_language", boom)
+
+    source_id = _lang_source(client)
+
+    listed = _listed(client, source_id)
+    assert listed["summary"] == "Zusammenfassung."
+    assert listed["text_lang"] is None
+
+
+def test_detection_none_result_overwrites_nothing(client, monkeypatch):
+    source_id = _lang_source(client)
+    raw = main_module._load_sources()
+    raw[source_id]["text_lang"] = "fr"
+    raw[source_id]["title_en"] = "Alt"
+    main_module._save_sources(raw)
+
+    main_module._generate_summary_background(source_id, "Ein deutscher Text.")
+
+    assert _raw(source_id)["text_lang"] == "fr"
+    assert _raw(source_id)["title_en"] == "Alt"
+
+
+def test_language_backfill_fills_only_sources_without_text_lang(client, monkeypatch):
+    done = _lang_source(client, title="Schon erkannt")
+    todo = _lang_source(client, title="Offen")
+    no_text = _lang_source(client, title="Ohne Text")
+    deleted = _lang_source(client, title="Gelöscht")
+    raw = main_module._load_sources()
+    raw[done]["text_lang"] = "en"
+    raw[no_text]["text"] = ""
+    raw[deleted]["deleted_at"] = "2026-11-01T00:00:00+00:00"
+    raw[todo]["summary_de"] = "Handgepflegte Zusammenfassung."
+    main_module._save_sources(raw)
+    calls = []
+    monkeypatch.setattr(summarization, "detect_source_language", _fake_detect("de", "Open", calls))
+
+    main_module._backfill_source_language_once()
+
+    assert [c[0] for c in calls] == ["Offen"]
+    assert _raw(todo)["text_lang"] == "de"
+    assert _raw(todo)["title_en"] == "Open"
+    assert _raw(todo)["title"] == "Offen"
+    assert _raw(todo)["summary_de"] == "Handgepflegte Zusammenfassung."
+    assert _raw(done)["text_lang"] == "en"
+    assert not _raw(no_text).get("text_lang")
+    assert not _raw(deleted).get("text_lang")
+
+    main_module._backfill_source_language_once()
+    assert len(calls) == 1  # zweiter Lauf: alles erledigt, kein KI-Aufruf
+
+
+def test_language_backfill_ai_failure_leaves_field_empty_and_retries_next_run(client, monkeypatch):
+    source_id = _lang_source(client)
+    monkeypatch.setattr(summarization, "detect_source_language", _fake_detect(None, None))
+    main_module._backfill_source_language_once()
+    assert not _raw(source_id).get("text_lang")
+
+    monkeypatch.setattr(summarization, "detect_source_language", _fake_detect("de", "T"))
+    main_module._backfill_source_language_once()
+    assert _raw(source_id)["text_lang"] == "de"
+
+
+def test_language_backfill_does_not_recreate_source_deleted_during_run(client, monkeypatch):
+    hard = _lang_source(client, title="Hart gelöscht")
+    soft = _lang_source(client, title="Weich gelöscht")
+
+    def detect(title, text):
+        current = main_module._load_sources()
+        if title == "Hart gelöscht":
+            del current[hard]
+        else:
+            current[soft]["deleted_at"] = "2026-11-01T00:00:00+00:00"
+        main_module._save_sources(current)
+        return {"text_lang": "de", "title_en": "X"}
+
+    monkeypatch.setattr(summarization, "detect_source_language", detect)
+
+    main_module._backfill_source_language_once()
+
+    current = main_module._load_sources()
+    assert hard not in current
+    assert not current[soft].get("text_lang")
+
+
+def test_language_backfill_stops_after_five_failures_in_a_row(client, monkeypatch):
+    for i in range(8):
+        _lang_source(client, title=f"Quelle {i}")
+    calls = []
+    monkeypatch.setattr(summarization, "detect_source_language", _fake_detect(None, None, calls))
+
+    main_module._backfill_source_language_once()
+
+    assert len(calls) == 5
+
+
+def test_language_backfill_runs_right_after_summary_backfill_in_same_worker(client, monkeypatch):
+    order = []
+    monkeypatch.setattr(main_module, "_backfill_missing_summaries_once", lambda: order.append("summary"))
+    monkeypatch.setattr(main_module, "_backfill_source_language_once", lambda: order.append("language"))
+
+    main_module._backfill_summaries_and_language_once()
+
+    assert order == ["summary", "language"]
+
+
+def test_sources_list_and_ask_stream_deliver_language_fields_and_keep_title(client, monkeypatch):
+    monkeypatch.setattr(summarization, "detect_source_language", _fake_detect("de", "German Title"))
+    source_id = _lang_source(client, url="https://example.org/de", text="Der BetaCodex beschreibt Organisation.")
+
+    listed = _listed(client, source_id)
+    assert (listed["text_lang"], listed["title_en"], listed["title"]) == ("de", "German Title", "Deutscher Titel")
+
+    data = ask_result(client.post("/api/ask", json={"question": "Was beschreibt der BetaCodex?"}))
+    ref = data["sources"][0]
+    assert ref["text_lang"] == "de"
+    assert ref["title_en"] == "German Title"
+    assert ref["title"] == "Deutscher Titel"
+    assert ref["restricted"] is False
+
+
+def test_ask_and_creative_mark_restricted_source_and_carry_language_fields(client, monkeypatch):
+    monkeypatch.setattr(summarization, "detect_source_language", _fake_detect("de", "German Title"))
+    _lang_source(
+        client, restricted=True, url="https://example.org/geschuetzt", listen_url="https://example.org/audio",
+        text="Der BetaCodex beschreibt Zentrumszellen.",
+    )
+
+    ref = ask_result(client.post("/api/ask", json={"question": "Was beschreibt der BetaCodex?"}))["sources"][0]
+    assert ref["restricted"] is True
+
+    result = creative_result(
+        client.post("/api/creative", json={"document": "", "instruction": "Schreibe über Zentrumszellen."})
+    )
+    entry = next(s for s in result["sources"]["betacodex"] if s["title"] == "Deutscher Titel")
+    assert entry["restricted"] is True
+    assert entry["listen_url"] == "https://example.org/audio"
+    assert entry["text_lang"] == "de"
+    assert entry["title_en"] == "German Title"
+
+
+def test_conversation_handoff_resets_language_fields_from_the_source(client, monkeypatch):
+    monkeypatch.setattr(summarization, "detect_source_language", _fake_detect("de", "Real English Title"))
+    _lang_source(client, restricted=True, url="https://example.org/x", text="Der BetaCodex beschreibt Organisation.")
+    ref = ask_result(client.post("/api/ask", json={"question": "Was beschreibt der BetaCodex?"}))["sources"][0]
+    ref.update({"text_lang": "de&u=https://evil.example", "title_en": "Gefälscht", "restricted": False})
+    turn = {"question": "Q", "answer": "A [1]", "sources": [ref]}
+
+    token = client.post("/api/conversation-handoff", json={"history": [turn]}).json()["token"]
+
+    got = client.get(f"/api/conversation-handoff/{token}").json()["history"][0]["sources"][0]
+    assert got["text_lang"] == "de"
+    assert got["title_en"] == "Real English Title"
+    assert got["restricted"] is True
+
+
+def test_conversation_handoff_clears_language_fields_of_unknown_source(client):
+    ref = {
+        "chunk_id": "nope::0", "source_id": "nope", "title": "T", "position": 0, "text": "x",
+        "text_lang": "de", "title_en": "Fake", "restricted": True,
+    }
+    token = client.post(
+        "/api/conversation-handoff", json={"history": [{"question": "Q", "answer": "A", "sources": [ref]}]}
+    ).json()["token"]
+
+    got = client.get(f"/api/conversation-handoff/{token}").json()["history"][0]["sources"][0]
+    assert (got["text_lang"], got["title_en"], got["restricted"]) == (None, None, False)
+
+
+def _put(client, source_id, **overrides):
+    raw = _raw(source_id)
+    body = {"title": raw["title"], "text": raw["text"], "authors": raw.get("authors", [])}
+    body.update(overrides)
+    return client.put(f"/api/sources/{source_id}", json=body)
+
+
+def test_title_change_clears_language_fields_and_restarts_detection(client, monkeypatch):
+    monkeypatch.setattr(summarization, "detect_source_language", _fake_detect("de", "Old English"))
+    source_id = _lang_source(client)
+    calls = []
+    monkeypatch.setattr(summarization, "detect_source_language", _fake_detect("de", "New English", calls))
+
+    assert _put(client, source_id, title="Neuer Titel").status_code == 200
+
+    assert calls == [("Neuer Titel", "Ein deutscher Text.")]
+    assert _raw(source_id)["title_en"] == "New English"
+
+
+def test_text_change_restarts_detection_and_failed_detection_leaves_fields_cleared(client, monkeypatch):
+    monkeypatch.setattr(summarization, "detect_source_language", _fake_detect("de", "Old English"))
+    source_id = _lang_source(client)
+    monkeypatch.setattr(summarization, "detect_source_language", _fake_detect(None, None))
+
+    assert _put(client, source_id, text="Completely different English text.").status_code == 200
+
+    assert not _raw(source_id).get("text_lang")
+    assert not _raw(source_id).get("title_en")
+
+
+def test_put_without_title_or_text_change_does_not_clear_or_detect(client, monkeypatch):
+    monkeypatch.setattr(summarization, "detect_source_language", _fake_detect("de", "English"))
+    source_id = _lang_source(client)
+    calls = []
+    monkeypatch.setattr(summarization, "detect_source_language", _fake_detect("fr", "Other", calls))
+
+    assert _put(client, source_id, text_lang="de", title_en="English").status_code == 200
+
+    assert calls == []
+    assert _raw(source_id)["text_lang"] == "de"
+    assert _raw(source_id)["title_en"] == "English"
+    assert _listed(client, source_id)["title_en_ai_generated"] is True  # unverändert mitgeschickt = bleibt KI
+
+
+def test_manual_title_en_edit_sets_flag_false_and_is_never_overwritten_by_ai(client, monkeypatch):
+    monkeypatch.setattr(summarization, "detect_source_language", _fake_detect("de", "AI English"))
+    source_id = _lang_source(client)
+
+    assert _put(client, source_id, text_lang="de", title_en="Hand English").status_code == 200
+
+    listed = _listed(client, source_id)
+    assert listed["title_en"] == "Hand English"
+    assert listed["title_en_ai_generated"] is False
+    assert listed["text_lang_ai_generated"] is True  # nur das geänderte Feld wird Handpflege
+
+    monkeypatch.setattr(summarization, "detect_source_language", _fake_detect("fr", "AI Again"))
+    main_module._generate_summary_background(source_id, "Ein deutscher Text.")
+    assert _raw(source_id)["title_en"] == "Hand English"
+    assert _raw(source_id)["text_lang"] == "fr"  # nicht gepflegtes Feld darf KI weiter setzen
+
+    raw = main_module._load_sources()
+    raw[source_id].pop("text_lang")
+    main_module._save_sources(raw)
+    main_module._backfill_source_language_once()
+    assert _raw(source_id)["title_en"] == "Hand English"
+
+
+def test_manual_title_en_survives_title_change_but_ai_fields_are_cleared(client, monkeypatch):
+    monkeypatch.setattr(summarization, "detect_source_language", _fake_detect("de", "AI English"))
+    source_id = _lang_source(client)
+    _put(client, source_id, text_lang="de", title_en="Hand English")
+    monkeypatch.setattr(summarization, "detect_source_language", _fake_detect("fr", "AI New"))
+
+    _put(client, source_id, title="Anderer Titel", text_lang="de", title_en="Hand English")
+
+    assert _raw(source_id)["title_en"] == "Hand English"
+    assert _raw(source_id)["text_lang"] == "fr"  # KI-Feld wurde geleert und neu erkannt
+
+
+def test_put_rejects_invalid_text_lang(client):
+    source_id = _lang_source(client)
+    for bad in ("de&u=https://evil.example", "DE", "d", "deutsch"):
+        assert _put(client, source_id, text_lang=bad).status_code == 400, bad
+    assert not _raw(source_id).get("text_lang")
+
+
+def test_put_title_en_is_cleaned_and_truncated(client):
+    source_id = _lang_source(client)
+
+    _put(client, source_id, text_lang="de", title_en="A\nB " + "x" * 400)
+
+    assert len(_raw(source_id)["title_en"]) == 300
+    assert "\n" not in _raw(source_id)["title_en"]
+
+
+def test_revert_of_title_change_clears_and_redetects(client, monkeypatch):
+    monkeypatch.setattr(summarization, "detect_source_language", _fake_detect("de", "Old English"))
+    source_id = _lang_source(client)
+    _put(client, source_id, title="Neuer Titel")
+    entry = next(e for e in audit.list_entries() if e["action"] == "source_updated")
+    calls = []
+    monkeypatch.setattr(summarization, "detect_source_language", _fake_detect("de", "Reverted English", calls))
+
+    assert client.post(f"/api/audit-log/{entry['id']}/revert").status_code == 200
+
+    assert calls == [("Deutscher Titel", "Ein deutscher Text.")]
+    assert _raw(source_id)["title_en"] == "Reverted English"
+
+
+def test_detect_language_endpoint_returns_suggestion_and_saves_nothing(client, monkeypatch):
+    source_id = _lang_source(client)
+    calls = []
+    monkeypatch.setattr(summarization, "detect_source_language", _fake_detect("fr", "Suggested", calls))
+
+    response = client.post(f"/api/sources/{source_id}/detect-language")
+
+    assert response.status_code == 200
+    assert response.json() == {"text_lang": "fr", "title_en": "Suggested"}
+    assert calls == [("Deutscher Titel", "Ein deutscher Text.")]
+    assert not _raw(source_id).get("text_lang")
+
+
+def test_detect_language_endpoint_requires_pfleger_role_and_saves_nothing(client, anon_client, monkeypatch):
+    source_id = _lang_source(client)
+    calls = []
+    monkeypatch.setattr(summarization, "detect_source_language", _fake_detect("fr", "Suggested", calls))
+
+    response = anon_client.post(f"/api/sources/{source_id}/detect-language")
+
+    assert response.status_code in (401, 403)
+    assert calls == []
+    assert not _raw(source_id).get("text_lang")
+
+
+def test_detect_language_endpoint_unknown_source_returns_404(client):
+    assert client.post("/api/sources/does-not-exist/detect-language").status_code == 404
+
+
+def test_invalid_ai_language_code_is_not_stored_and_long_title_is_truncated_end_to_end(client, monkeypatch):
+    # Echter Erkennungspfad, nur der API-Client ist gemockt.
+    monkeypatch.setattr(summarization, "detect_source_language", _REAL_DETECT_SOURCE_LANGUAGE)
+    block = type("B", (), {"type": "tool_use", "input": {"text_lang": "de&u=x", "title_en": "T"}})()
+    fake = type("C", (), {})()
+    fake.messages = type("M", (), {"create": lambda self, **kw: type("R", (), {"content": [block], "usage": None})()})()
+    monkeypatch.setattr(summarization, "_get_client", lambda: fake)
+    monkeypatch.setattr(usage, "track_anthropic", lambda *a, **k: None)
+
+    bad = _lang_source(client, title="Ungültig")
+    assert not _raw(bad).get("text_lang")
+    assert not _raw(bad).get("title_en")
+
+    block.input = {"text_lang": "de", "title_en": "x" * 500}
+    ok = _lang_source(client, title="Lang")
+    assert _raw(ok)["text_lang"] == "de"
+    assert len(_raw(ok)["title_en"]) == 300
