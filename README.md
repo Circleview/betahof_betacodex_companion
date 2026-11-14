@@ -552,10 +552,19 @@ fehl.
   nur `~/deploy.sh vX.Y.Z` ausführen. `authorized_keys` liegt per
   sshd-Drop-in unter `/etc/ssh/authorized_keys/`, nicht im Home.
 - `deploy.sh` deployt nur Tags, die Nachfahren des aktiven Tags sind.
-  **Rollback auf einen älteren Tag** nur von Hand durch root (z. B.
-  `companion-farbe <alte Farbe>`), nie per Deploy-Schlüssel.
-- Vorlagen und Einrichtung: Ordner `deploy/`, Aufruf
-  `deploy/server-haertung.sh <block>` als root auf dem Server.
+  **Rollback auf einen älteren Tag**: nur von Hand durch root, der
+  Deploy-Schlüssel lehnt ältere Tags ab. Die alte Farbe ist nach dem
+  Deploy gestoppt, daher drei Schritte:
+  `systemctl start betacodex-<alt>.service`, dann
+  `/usr/local/sbin/companion-farbe <alt>`, dann
+  `echo -n <alt> > /home/betacodex/active_color`. Ein Tag-Rollback per
+  git in `releases/<alt>` ist ebenfalls nur von Hand möglich.
+- Vorlagen und Einrichtung: Ordner `deploy/`. Vom Mac
+  `scp -r deploy root@<host>:/root/companion-deploy`, dann auf dem Server
+  `bash /root/companion-deploy/server-haertung.sh <block> /root/companion-deploy`.
+  Sicherungen liegen unter `/root/companion-haertung/`. Blöcke in dieser
+  Reihenfolge: `pruefen`, `probe`, `skripte`, `units`, `sshd`, nach dem
+  nächsten Deploy `nach-deploy`.
 - Ablauf-Diagramm: `docs/diagrams/deploy-flow.html`.
 
 ### System-Voraussetzungen (Produktion)
