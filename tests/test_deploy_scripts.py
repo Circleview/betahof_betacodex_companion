@@ -81,7 +81,7 @@ class Env:
         self.stubs.mkdir()
         self.base.mkdir()
         self.log.write_text("")
-        self._stub("sudo", 'echo "sudo $*" >> "$LOG"; [ -f "$STUBS/sudo_fail" ] && exit 1; exit 0')
+        self._stub("sudo", 'echo "sudo $*" >> "$LOG"; case "$*" in *companion-farbe*) [ -f "$STUBS/sudo_fail" ] && exit 1;; esac; exit 0')
         self._stub("systemctl", 'echo "systemctl $*" >> "$LOG"')
         self._stub("pip", 'echo "pip $*" >> "$LOG"')
         self._stub("sleep", "exit 0")
@@ -90,7 +90,7 @@ class Env:
             "curl",
             'echo "curl $*" >> "$LOG"\n'
             'case " $* " in *" @- "*) echo "curl-stdin $(cat)" >> "$LOG";; esac\n'
-            'case "$*" in *api/version*) [ -f "$STUBS/unhealthy" ] && exit 22; echo \'{"version":"x"}\';; esac\n'
+            'case "$*" in *api/version*) [ -f "$STUBS/unhealthy" ] && exit 22; cat "$STUBS/version_resp";; esac\n'
             "exit 0",
         )
 
@@ -147,7 +147,8 @@ class Env:
         # Datei "same" muss nach Textersetzung gleich sein -> bereits kopiert
         return self
 
-    def run(self, tag, healthy=True, sudo_fail=False):
+    def run(self, tag, healthy=True, sudo_fail=False, served=None):
+        (self.stubs / "version_resp").write_text('{"version":"%s"}' % (served or tag))
         if not healthy:
             (self.stubs / "unhealthy").write_text("")
         if sudo_fail:
@@ -262,6 +263,26 @@ def test_deploy_caddy_switch_failure_keeps_old(env):
     r, log = env.run("v0.2.0", sudo_fail=True)
     assert r.returncode != 0
     assert env.active == "blue"
+    lines = log.splitlines()
+    assert "sudo -n /usr/bin/systemctl stop betacodex-green.service" in lines
+    assert "sudo -n /usr/bin/systemctl stop betacodex-blue.service" not in lines
+
+
+def test_deploy_stops_old_user_unit_of_target_before_restart(env):
+    env.setup()
+    r, log = env.run("v0.2.0")
+    assert r.returncode == 0, r.stdout + r.stderr
+    lines = log.splitlines()
+    assert lines.index("systemctl --user stop betacodex-green.service") < lines.index(
+        "sudo -n /usr/bin/systemctl restart betacodex-green.service")
+
+
+def test_deploy_health_requires_deployed_tag(env):
+    env.setup()
+    r, log = env.run("v0.2.0", served="v0.1.0")  # alter Prozess antwortet
+    assert r.returncode != 0
+    assert env.active == "blue"
+    assert not any("companion-farbe" in x for x in log.splitlines())
 
 
 def test_deploy_cmp_warning_when_repo_file_differs(env):
