@@ -25,6 +25,8 @@ source venv/bin/activate
 pip install -q -r requirements.txt
 deactivate
 echo "==> Starte $target neu"
+# ponytail: Übergang User→System-Unit, nach Abschluss entfernen (alte User-Unit der Zielfarbe belegt nach Reboot den Port)
+XDG_RUNTIME_DIR="/run/user/$(id -u)" systemctl --user stop "betacodex-$target.service" 2>/dev/null || true
 sudo -n /usr/bin/systemctl restart "betacodex-$target.service"
 # Early-Access-Login (Backlog #114): Passwort nur per stdin an curl, nie als Argument.
 early_access_password="$(grep -m1 '^EARLY_ACCESS_PASSWORD=' "$BASE/shared/.env" | cut -d= -f2-)"
@@ -34,7 +36,7 @@ for _ in $(seq 1 30); do
   if [ -n "$early_access_password" ]; then
     printf '{"password":"%s"}' "$early_access_password" | curl -sf -c "$COOKIE_JAR" -X POST "http://127.0.0.1:$target_port/api/early-access" -H "Content-Type: application/json" --data @- > /dev/null 2>&1 || true
   fi
-  if response="$(curl -sf -b "$COOKIE_JAR" "http://127.0.0.1:$target_port/api/version" 2>/dev/null)" && printf '%s' "$response" | grep -q '"version"'; then healthy=true; break; fi
+  if response="$(curl -sf -b "$COOKIE_JAR" "http://127.0.0.1:$target_port/api/version" 2>/dev/null)" && printf '%s' "$response" | grep -qF "\"$TAG\""; then healthy=true; break; fi
   sleep 2
 done
 if [ "$healthy" != "true" ]; then echo "FEHLER: $target antwortet nicht auf /api/version - Cutover abgebrochen, $current bleibt live." >&2; sudo -n /usr/bin/systemctl stop "betacodex-$target.service" || true; exit 1; fi

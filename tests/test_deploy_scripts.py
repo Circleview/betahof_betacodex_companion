@@ -318,7 +318,7 @@ def test_deploy_sh_static_rules():
     t = _read("deploy.sh")
     for bad in ("CADDYFILE", "DOMAIN", "/etc/caddy"):
         assert bad not in t, bad
-    assert t.count("XDG_RUNTIME_DIR") == 1  # nur Übergangszeile
+    assert t.count("XDG_RUNTIME_DIR") == 2  # nur Übergangszeilen
     assert "systemctl --user restart" not in t
     sudo_calls = re.findall(r"sudo -n (\S+ ?\S* ?\S*)", t)
     assert sudo_calls
