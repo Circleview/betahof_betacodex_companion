@@ -524,5 +524,17 @@
   "questionLog.chatFilterActive": "Nur Chat {id}",
   "questionLog.deleteConversation": "Ganzes Gespräch löschen",
   "questionLog.deleteConversationConfirm": "Sicher? Ganzes Gespräch löschen",
-  "questionLog.deleteConversationFailed": "Gespräch löschen fehlgeschlagen."
+  "questionLog.deleteConversationFailed": "Gespräch löschen fehlgeschlagen.",
+  "common.translatedBadge": "übersetzt",
+  "common.translatedBadgeTooltip": "Titel übersetzt; Link öffnet die maschinelle Übersetzung",
+  "common.machineTranslatedLink": "Automatisch übersetzt (Google Translate)",
+  "import.fieldTextLang": "Textsprache",
+  "import.fieldTitleEn": "Englischer Titel",
+  "import.textLangUnset": "– nicht gesetzt –",
+  "import.aiTextLangTooltip": "KI-erkannte Sprache",
+  "import.aiTitleEnTooltip": "KI-übersetzter Titel",
+  "import.detectLanguageTitle": "Sprache und englischen Titel mit KI erkennen",
+  "import.detectingLanguage": "Sprache wird erkannt …",
+  "import.detectLanguageFailed": "Spracherkennung fehlgeschlagen.",
+  "common.translatedTitleTooltip": "Titel übersetzt"
 }

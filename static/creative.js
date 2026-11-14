@@ -5,6 +5,7 @@ import { readNdjsonStream } from '/ndjson-stream.js';
 import { renderMarkdown } from '/markdown.js';
 import { createSpeechController } from '/speech.js';
 import { buildAnswerFeedback } from '/answer-feedback.js';
+import { displayTitle, citationHref, citationLinkLabel, isHiddenForLang, translatedBadge } from '/source-lang.js';
 
 // Nutzerwunsch (2026-08-26): Kreativ-Modus - anders als die strikte
 // Konversationsansicht kein wachsender Chat-Verlauf, sondern ein
@@ -786,10 +787,16 @@ const CREATIVE_SOURCES_STORAGE_KEY = 'creativeSources';
 
 let currentSources = { betacodex: [], web: [] };
 
+function renderSourceLists() {
+  renderSourceList(betacodexListEl, currentSources.betacodex, 'creative.noBetacodexSources');
+  renderSourceList(webListEl, currentSources.web, 'creative.noWebSources');
+}
+// Sprachwechsel: ausgeblendete Quellen erscheinen bei DE wieder, Titel/Links wechseln.
+document.addEventListener('i18n:changed', renderSourceLists);
+
 function showSources(sources) {
   currentSources = sources;
-  renderSourceList(betacodexListEl, sources.betacodex, 'creative.noBetacodexSources');
-  renderSourceList(webListEl, sources.web, 'creative.noWebSources');
+  renderSourceLists();
   try {
     sessionStorage.setItem(CREATIVE_SOURCES_STORAGE_KEY, JSON.stringify(sources));
   } catch (err) {
@@ -982,20 +989,22 @@ export function creativeSourceLabel(source) {
   // Web-Quellen (kein authors-Feld, siehe validated_web_sources in main.py)
   // behalten den bisherigen Hostname-Fallback, da dort kein Autor bekannt ist.
   if (source.authors && source.authors.length) {
-    return `${source.title} — ${source.authors.join(', ')}`;
+    return `${displayTitle(source)} — ${source.authors.join(', ')}`;
   }
-  if (!source.url) return source.title;
+  if (!source.url) return displayTitle(source);
   let host = '';
   try {
     host = new URL(source.url).hostname;
   } catch (err) {
     // Ungültige URL - Titel allein reicht als Label.
   }
-  return host ? `${source.title} (${host})` : source.title;
+  return host ? `${displayTitle(source)} (${host})` : displayTitle(source);
 }
 
-function renderSourceList(listEl, sources, emptyKey) {
+function renderSourceList(listEl, allSources, emptyKey) {
   listEl.replaceChildren();
+  // EN-UI: nicht übersetzbare fremdsprachige Quellen nicht anzeigen (source-lang.js).
+  const sources = allSources.filter((source) => !isHiddenForLang(source));
   if (!sources.length) {
     const li = document.createElement('li');
     li.className = 'creative-sources-empty';
@@ -1008,16 +1017,20 @@ function renderSourceList(listEl, sources, emptyKey) {
     // Nutzerwunsch (2026-09-23): eine Quelle mit erkanntem defektem Link
     // (url_reachable === false, siehe Quellenverwaltung) soll nirgendwo in
     // der App mehr verlinkt werden - auch hier im Kreativ-Modus nicht.
-    if (source.url && source.url_reachable !== false) {
+    const href = citationHref(source);
+    if (href) {
       const link = document.createElement('a');
-      link.href = source.url;
+      link.href = href;
       link.target = '_blank';
       link.rel = 'noopener noreferrer';
+      link.title = citationLinkLabel(source);
       link.textContent = creativeSourceLabel(source);
       li.appendChild(link);
     } else {
       li.textContent = creativeSourceLabel(source);
     }
+    const badge = translatedBadge(source);
+    if (badge) li.append(' ', badge);
     listEl.appendChild(li);
   });
 }

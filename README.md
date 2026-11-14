@@ -49,6 +49,11 @@ Assistent das offen, statt zu spekulieren.
 
 - Chat-Oberfläche, Antworten erscheinen als Stream Wort für Wort statt
   nach langem Warten auf einmal.
+- Englische Oberfläche: Fremdsprachige Quellen zeigen den englischen Titel,
+  das Label „translated“ und einen Link über Google Translate. Quellen, die
+  sich so nicht übersetzen lassen (PDF, Audio, Video, YouTube, LinkedIn,
+  eingeschränkt), blendet die englische Oberfläche aus; die Antwort nutzt sie
+  weiter, ihr Marker `[n]` entfällt.
 - Jede Aussage trägt einen klickbaren Verweis (`[1]`, `[2]` …) auf die
   tatsächlich verwendete Textstelle – ein Klick springt zur passierten
   Original-Quelle und hebt die exakte Textpassage hervor, bei
@@ -273,6 +278,11 @@ Andere MCP-Clients brauchen die Adresse `https://companion.betahof.com/mcp`
   Zusammenfassung wird automatisch in die jeweils andere Sprache
   übersetzt und danach nicht mehr von einer erneuten KI-Generierung
   überschrieben.
+- Textsprache und englischer Titel: Beim Import erkennt die KI die Sprache
+  des Textes und schlägt bei fremdsprachigen Quellen einen englischen Titel
+  vor; ein täglicher Nachtrag füllt Bestandsquellen. Beide Felder sind im
+  Formular von Hand änderbar (KI-Icon verschwindet, die KI überschreibt dann
+  nicht mehr).
 - Schlagwort-Ansicht als dritte Sortierung neben Autor:in und Datum: alle
   Schlagworte der gewählten Sprache alphabetisch mit Sprungleiste,
   aufklappbar mit den zugehörigen Quellen, ein Balken zeigt, wie viele
@@ -622,6 +632,7 @@ Commit-/Tag-Nachrichten in Git.
 | Version | Wesentliche Änderungen |
 |---|---|
 | v0.90.0 | **Gehärteter Server-Betrieb** (Idee 6b60ad86): Vorlagen für den Betrieb als System-Unit mit Sandbox (App sieht nur Code lesend, `shared/data` schreibend; Probe: Score 9.8 → 3.5, wirksam nach `server-haertung.sh units` + nächstem Deploy), der GitHub-Deploy-Schlüssel darf nach Block `sshd` per Forced Command nur noch `~/deploy.sh vX.Y.Z` für neuere Tags ausführen, die Schlüsselliste liegt außerhalb des Home. `deploy.sh`, Units, sudoers- und sshd-Vorlagen liegen jetzt im Repo unter `deploy/`, Einrichtung per `deploy/server-haertung.sh <block>`. Health-Check verlangt den deployten Tag. |
+| v0.91.0 | **Quellen auf Englisch** (Idee 134c868a): Die KI erkennt die Textsprache jeder Quelle und schreibt für nicht-englische Quellen einen englischen Titel. Bestandsquellen trägt der Server einmal von selbst nach (372 Quellen, unter 1 €). Textsprache und englischer Titel sind im Quellen-Formular pflegbar, mit KI-Icon und Zauberstab wie bei Zusammenfassung und Schlagworten; eine Handänderung überschreibt die KI nie. In der englischen Oberfläche zeigen deutsche Quellen den englischen Titel mit Hinweis „translated“ und verlinken auf Google Translate. Nicht übersetzbare fremdsprachige Quellen (PDF, Video, Audio, LinkedIn, geschützt) blendet die englische Oberfläche aus; die Antwort nutzt sie weiter, ihre Belegnummer entfällt. Datenschutzerklärung ergänzt (Quell-URL geht erst beim Klick an Google). |
 | v0.89.3 | **Mehr Vielfalt bei Quellen und Autor:innen** (Idee 3c32da30): eine Quelle (eine Website zählt als eine) und eine Autor:in belegen je höchstens 2 der 5 Textausschnitte, wenn ein Ersatz höchstens 15 % schlechter passt; neue Autor:innen rücken zuerst nach, Web ersetzt nie Kuratiertes. Ausnahmen: genannte Autor:innen, Titel und seltene Schlagworte in der Frage, Fachbegriffe. Größere Kandidatenauswahl, Hinweis an das Modell zu Mehrfachbelegen. Abschaltbar per `SOURCE_DIVERSITY_MAX_PER_SOURCE=0` |
 | v0.89.2 | **Nur noch companion.betahof.com** (Idee b9f8d6c3): die alte chat-Subdomain unter betacodex.org hat keinen DNS-Eintrag mehr. Domain aus MCP-Host-/Origin-Allowlist, Links, Quellen-Export (API + Namensnennung) und Doku entfernt; deploy.sh auf dem Server bedient nur noch DOMAIN. Wächtertest verhindert neue Fundstellen (v0.89.1 scheiterte an genau diesem Test, nicht deployt). |
 | v0.89.0 | **Bildleiste unter der Antwort** (Idee ff895248): bis zu 6 Grafiken aus den zitierten Quellen, Bildunterschrift = Quelle (bei PDFs mit Seite), Klick öffnet die Quelle. Web-Bilder bleiben Links auf den Quellserver, PDF-Grafiken liegen verkleinert als WebP auf dem eigenen Server; eingeschränkte Quellen höchstens 1 Bild je Antwort; keine Icons, Schriftzug-Banner oder Video-Vorschauen. Der Admin-Reindex holt Bilder älterer Quellen nach, ohne Text, Zusammenfassung oder Schlagworte zu ändern. Datenschutzerklärung DE/EN ergänzt. Dazu: verständliche Fehlermeldung mit „Erneut versuchen“-Button, englische Antwort bei Aufforderungen wie „Show me …“ und bei unklarer Fragesprache, Seitenleiste „Verwendete Quellen“ zeigt wieder die richtigen Quellen, geteilte Gesprächslinks können keine Skript-Links mehr einschleusen |

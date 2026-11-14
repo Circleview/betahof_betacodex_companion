@@ -524,5 +524,17 @@
   "questionLog.chatFilterActive": "Chat {id} only",
   "questionLog.deleteConversation": "Delete entire conversation",
   "questionLog.deleteConversationConfirm": "Sure? Delete entire conversation",
-  "questionLog.deleteConversationFailed": "Deleting the conversation failed."
+  "questionLog.deleteConversationFailed": "Deleting the conversation failed.",
+  "common.translatedBadge": "translated",
+  "common.translatedBadgeTooltip": "Title translated; link opens machine translation",
+  "common.machineTranslatedLink": "Machine-translated (Google Translate)",
+  "import.fieldTextLang": "Text language",
+  "import.fieldTitleEn": "English title",
+  "import.textLangUnset": "– not set –",
+  "import.aiTextLangTooltip": "AI-detected language",
+  "import.aiTitleEnTooltip": "AI-translated title",
+  "import.detectLanguageTitle": "Detect language and English title with AI",
+  "import.detectingLanguage": "Detecting language …",
+  "import.detectLanguageFailed": "Language detection failed.",
+  "common.translatedTitleTooltip": "Title translated"
 }

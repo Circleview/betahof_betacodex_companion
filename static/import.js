@@ -7,6 +7,7 @@ import {
   consumeConversationHandoffToken,
 } from '/conversation-handoff.js';
 import { readNdjsonStream } from '/ndjson-stream.js';
+import { displayTitle, citationHref, translatedBadge } from '/source-lang.js';
 import {
   EXTERNAL_LINK_ICON,
   TRASH_ICON,
@@ -1456,7 +1457,7 @@ function sortSources(sources) {
   if (currentSortMode === 'date' || isFilterActive()) {
     const copy = [...sources];
     copy.sort((a, b) => {
-      if (!a.date && !b.date) return a.title.localeCompare(b.title);
+      if (!a.date && !b.date) return displayTitle(a).localeCompare(displayTitle(b));
       if (!a.date) return 1;
       if (!b.date) return -1;
       return b.date.localeCompare(a.date);
@@ -1485,11 +1486,11 @@ function sortSources(sources) {
     const authorA = getSurname(a.__sortAuthor || '￿').toLowerCase();
     const authorB = getSurname(b.__sortAuthor || '￿').toLowerCase();
     if (authorA !== authorB) return authorA.localeCompare(authorB);
-    if (!a.date && !b.date) return a.title.localeCompare(b.title);
+    if (!a.date && !b.date) return displayTitle(a).localeCompare(displayTitle(b));
     if (!a.date) return 1;
     if (!b.date) return -1;
     if (a.date !== b.date) return b.date.localeCompare(a.date);
-    return a.title.localeCompare(b.title);
+    return displayTitle(a).localeCompare(displayTitle(b));
   });
   return expanded;
 }
@@ -1623,7 +1624,7 @@ function buildSourceEntries(s, rowIndex, options = {}) {
   // (url_reachable === false, siehe source-row--unreachable oben) soll
   // nirgendwo mehr verlinkt werden - auch nicht hier in der eigenen
   // Quellenverwaltung.
-  const citationUrl = s.url_reachable === false ? null : s.listen_url || s.url;
+  const citationUrl = citationHref(s);
   const hasDetails = !!s.summary;
   const isProcessing = !!s.processing_status;
   // Nutzerwunsch (2026-08-03): "error" zaehlt NICHT als aktiv - da laeuft
@@ -1636,7 +1637,7 @@ function buildSourceEntries(s, rowIndex, options = {}) {
     const titleBtn = document.createElement('button');
     titleBtn.type = 'button';
     titleBtn.className = 'link-button source-title-toggle';
-    titleBtn.textContent = s.title;
+    titleBtn.textContent = displayTitle(s);
     titleBtn.addEventListener('click', () => {
       if (expandedSourceIds.has(s.id)) {
         expandedSourceIds.delete(s.id);
@@ -1646,10 +1647,13 @@ function buildSourceEntries(s, rowIndex, options = {}) {
       renderSourceList(currentSourceList, options);
     });
     textSpan.appendChild(titleBtn);
-    textSpan.append(' – ');
   } else {
-    textSpan.append(`${s.title} – `);
+    textSpan.append(displayTitle(s));
   }
+  // EN-UI, fremdsprachiger Text: Hinweis "translated" (siehe source-lang.js).
+  const translated = translatedBadge(s);
+  if (translated) textSpan.append(' ', translated);
+  textSpan.append(' – ');
   if (s.authors && s.authors.length) {
     authorsForDisplay(s).forEach((name, index) => {
       if (index > 0) textSpan.append(', ');
@@ -2001,6 +2005,7 @@ function sourceMatchesSearch(source, query) {
   if (!q) return true;
   const haystacks = [
     source.title,
+    displayTitle(source),
     source.text,
     source.summary,
     (source.authors || []).join(' '),

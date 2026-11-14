@@ -25,6 +25,16 @@ def _run_node(script: str):
     return json.loads(result.stdout)
 
 
+def _source_lang_js() -> str:
+    """Echtes static/source-lang.js als Node-Skript-Ausschnitt: Imports und
+    `export` entfernt, getLang() liest globalThis.__UI_LANG (Standard 'de').
+    t() muss das jeweilige Testskript selbst definieren."""
+    src = (STATIC_DIR / "source-lang.js").read_text()
+    src = re.sub(r"^import .*$", "", src, flags=re.M)
+    src = re.sub(r"^export ", "", src, flags=re.M)
+    return "function getLang() { return globalThis.__UI_LANG || 'de'; }\n" + src
+
+
 def _run_strip_markdown_for_speech(text: str) -> str:
     """Führt static/speech.js#stripMarkdownForSpeech per Node aus (statt die
     Regeln in Python nachzubauen) - die Funktion importiert selbst /i18n.js
@@ -129,7 +139,7 @@ def _run_append_title_text(source_obj):
     js_source = (STATIC_DIR / "question.js").read_text()
     match = re.search(r"function appendTitleText.*?\n\}", js_source, re.S)
     assert match, "appendTitleText wurde in question.js nicht gefunden."
-    func_source = _question_js_funcs("safeHttpUrl") + "\n" + match.group(0)
+    func_source = _source_lang_js() + "\n" + match.group(0)
     script = f"""
 function t(key) {{ return key; }}
 const EXTERNAL_LINK_ICON = '<svg></svg>';
@@ -335,6 +345,7 @@ function buildSourceInfo(source, highlight) {{
   return marker;
 }}
 
+{_source_lang_js()}
 {func_source}
 
 const container = new FakeNode('element', 'div');
@@ -446,6 +457,7 @@ function buildSourceInfo(source, highlight) {{
   return marker;
 }}
 
+{_source_lang_js()}
 {func_source}
 
 const container = new FakeNode('element', 'div');
@@ -559,6 +571,7 @@ function buildSourceInfo(source, highlight) {{
   return marker;
 }}
 
+{_source_lang_js()}
 {func_source}
 
 const container = new FakeNode('element', 'div');
@@ -2111,6 +2124,8 @@ function normalizeAuthor(name) {{ return name.trim().split(/\\s+/).join(' ').toL
 function getSurname(name) {{ const parts = name.trim().split(/\\s+/); return parts[parts.length - 1]; }}
 const currentSortMode = 'author';
 function isFilterActive() {{ return false; }}
+function t(k) {{ return k; }}
+{_source_lang_js()}
 
 {func_source}
 
@@ -2834,7 +2849,11 @@ def _run_creative_source_label(source):
     js_source = (STATIC_DIR / "creative.js").read_text()
     match = re.search(r"export function creativeSourceLabel.*?\n\}", js_source, re.S)
     assert match, "creativeSourceLabel wurde in creative.js nicht gefunden."
-    script = f"{match.group(0)}\nconsole.log(JSON.stringify(creativeSourceLabel({json.dumps(source)})));"
+    func = match.group(0).replace("export function", "function")
+    script = (
+        f"function t(k) {{ return k; }}\n{_source_lang_js()}\n{func}\n"
+        f"console.log(JSON.stringify(creativeSourceLabel({json.dumps(source)})));"
+    )
     return _run_node(script)
 
 
@@ -4634,7 +4653,7 @@ def _question_js_funcs(*names: str) -> str:
 
 
 def _run_question_js(body: str, *funcs: str):
-    script = f"{_FAKE_DOM_JS}\n{_question_js_funcs(*funcs)}\n{body}"
+    script = f"{_FAKE_DOM_JS}\n{_source_lang_js()}\n{_question_js_funcs(*funcs)}\n{body}"
     return _run_node(script)
 
 
@@ -4660,7 +4679,7 @@ function summarize(strip) {
 }
 """
 
-_STRIP_FUNCS = ("safeHttpUrl", "safeImageSrc", "buildImageStrip")
+_STRIP_FUNCS = ("safeImageSrc", "buildImageStrip")
 
 
 def _src(i):
@@ -4799,7 +4818,7 @@ def test_safe_http_url_accepts_only_http_and_https():
 console.log(JSON.stringify(['https://a.example/x', 'http://a.example/', 'javascript:alert(1)',
   'data:text/html,x', '/relativ', '', null, undefined].map(safeHttpUrl)));
 """
-    assert _run_question_js(script, "safeHttpUrl") == [
+    assert _run_question_js(script) == [
         "https://a.example/x", "http://a.example/", None, None, None, None, None, None
     ]
 
@@ -5024,3 +5043,453 @@ def test_question_js_truncates_question_and_handles_list_detail():
     # 422 liefert detail als Liste -> allgemeine Fehlermeldung statt [object Object]
     assert "typeof err.detail === 'string' ? err.detail : t('index.askFailed')" in js
     assert "throw new Error(err.detail || t('index.askError'))" not in js
+
+
+# ---------------------------------------------------------------------------
+# Idee 134c868a: Quellen-Sprache (static/source-lang.js) - englischer Titel,
+# Google-Translate-Link, Ausblenden nicht übersetzbarer Quellen in der EN-UI
+# ---------------------------------------------------------------------------
+
+_DE_URL = "https://beispiel.org/artikel?x=1&y=2"
+_TRANSLATE = "https://translate.google.com/translate?sl=de&tl=en&u="
+
+
+def _lang_src(**kw):
+    base = {"source_id": "s1", "chunk_id": "c1", "title": "Originaltitel", "url": _DE_URL,
+            "text_lang": "de", "title_en": "English title"}
+    base.update(kw)
+    return base
+
+
+def _run_lang(lang: str, expr: str):
+    """Wertet einen JS-Ausdruck gegen das echte source-lang.js aus (UI-Sprache `lang`)."""
+    body = f"globalThis.__UI_LANG = {json.dumps(lang)};\nconsole.log(JSON.stringify({expr}));"
+    return _run_question_js(body)
+
+
+def test_source_lang_display_title_uses_english_title_for_foreign_text_in_en_ui():
+    assert _run_lang("en", f"displayTitle({json.dumps(_lang_src())})") == "English title"
+
+
+@pytest.mark.parametrize(
+    "lang, src",
+    [
+        ("de", _lang_src()),  # DE-UI: Original
+        ("en", _lang_src(text_lang="en")),  # englische Quelle
+        ("en", _lang_src(title_en=None)),  # kein englischer Titel
+        ("en", _lang_src(text_lang=None)),  # nicht klassifiziert
+        ("en", _lang_src(text_lang="de&u=evil")),  # ungültiger Code
+        ("en", {"title": "Originaltitel", "url": None, "is_web_fallback": True}),  # Web-Fallback
+    ],
+)
+def test_source_lang_display_title_keeps_original(lang, src):
+    assert _run_lang(lang, f"displayTitle({json.dumps(src)})") == "Originaltitel"
+
+
+def test_source_lang_display_title_follows_runtime_language_switch():
+    body = f"""
+const s = {json.dumps(_lang_src())};
+const out = [];
+globalThis.__UI_LANG = 'de'; out.push(displayTitle(s));
+globalThis.__UI_LANG = 'en'; out.push(displayTitle(s));
+globalThis.__UI_LANG = 'de'; out.push(displayTitle(s));
+console.log(JSON.stringify(out));
+"""
+    assert _run_question_js(body) == ["Originaltitel", "English title", "Originaltitel"]
+
+
+def test_source_lang_citation_href_translates_with_encoded_url():
+    href = _run_lang("en", f"citationHref({json.dumps(_lang_src())})")
+    assert href == _TRANSLATE + "https%3A%2F%2Fbeispiel.org%2Fartikel%3Fx%3D1%26y%3D2"
+
+
+def test_source_lang_citation_href_translates_even_without_english_title():
+    href = _run_lang("en", f"citationHref({json.dumps(_lang_src(title_en=None))})")
+    assert href.startswith(_TRANSLATE)
+
+
+def test_source_lang_citation_href_uses_source_language_code():
+    href = _run_lang("en", f"citationHref({json.dumps(_lang_src(text_lang='fr'))})")
+    assert href.startswith("https://translate.google.com/translate?sl=fr&tl=en&u=")
+
+
+@pytest.mark.parametrize(
+    "lang, src, expected",
+    [
+        ("de", _lang_src(), _DE_URL),  # DE-UI: Original-URL
+        ("en", _lang_src(text_lang="en"), _DE_URL),
+        ("en", _lang_src(text_lang=None), _DE_URL),
+        ("en", _lang_src(text_lang="de&u=evil"), _DE_URL),
+        ("en", _lang_src(url="https://beispiel.org/a.pdf"), "https://beispiel.org/a.pdf"),
+        ("en", _lang_src(url="https://beispiel.org/a.PDF?download=1"), "https://beispiel.org/a.PDF?download=1"),
+        ("en", _lang_src(url="https://beispiel.org/a.mp3"), "https://beispiel.org/a.mp3"),
+        ("en", _lang_src(url="https://beispiel.org/a.mp4"), "https://beispiel.org/a.mp4"),
+        ("en", _lang_src(url="https://www.youtube.com/watch?v=abc"), "https://www.youtube.com/watch?v=abc"),
+        ("en", _lang_src(url="https://youtu.be/abc"), "https://youtu.be/abc"),
+        ("en", _lang_src(url="https://www.linkedin.com/posts/x"), "https://www.linkedin.com/posts/x"),
+        ("en", _lang_src(url="https://feed.podigee.io/x"), "https://feed.podigee.io/x"),
+        ("en", _lang_src(restricted=True), _DE_URL),
+        ("en", _lang_src(listen_url="https://beispiel.org/audio"), "https://beispiel.org/audio"),
+        ("en", _lang_src(url_reachable=False), None),
+        ("en", _lang_src(url="javascript:alert(1)"), None),
+        ("en", _lang_src(url=None), None),
+    ],
+)
+def test_source_lang_citation_href_no_translate_link(lang, src, expected):
+    href = _run_lang(lang, f"citationHref({json.dumps(src)})")
+    assert href == expected
+
+
+@pytest.mark.parametrize(
+    "lang, src, hidden",
+    [
+        ("en", _lang_src(url="https://beispiel.org/a.pdf"), True),  # de-PDF
+        ("en", _lang_src(url="https://beispiel.org/a.mp3"), True),
+        ("en", _lang_src(url="https://www.youtube.com/watch?v=abc"), True),
+        ("en", _lang_src(restricted=True), True),
+        ("en", _lang_src(listen_url="https://beispiel.org/audio"), True),
+        ("en", _lang_src(url_reachable=False), True),
+        ("en", _lang_src(url=None), True),
+        ("en", _lang_src(), False),  # de-HTML: sichtbar mit Translate-Link
+        ("en", _lang_src(text_lang="en", url="https://beispiel.org/a.pdf"), False),  # en-PDF
+        ("en", _lang_src(text_lang=None, url="https://beispiel.org/a.pdf"), False),  # unklassifiziert
+        ("en", _lang_src(text_lang="de&u=evil", url="https://beispiel.org/a.pdf"), False),
+        ("de", _lang_src(url="https://beispiel.org/a.pdf"), False),  # DE-UI
+        ("en", {"title": "W", "url": "https://w.example/x", "is_web_fallback": True}, False),
+    ],
+)
+def test_source_lang_is_hidden_for_lang(lang, src, hidden):
+    assert _run_lang(lang, f"isHiddenForLang({json.dumps(src)})") is hidden
+
+
+def test_source_lang_translated_badge_only_for_foreign_text_in_en_ui():
+    def badge(lang, src):
+        return _run_lang(
+            lang,
+            f"(() => {{ const b = translatedBadge({json.dumps(src)}); "
+            "return b && {cls: b.className, text: b.textContent, title: b.title}; })()",
+        )
+
+    shown = badge("en", _lang_src())
+    assert shown == {
+        "cls": "source-translated-badge",
+        "text": "common.translatedBadge",
+        "title": "common.translatedBadgeTooltip",
+    }
+    assert badge("de", _lang_src()) is None
+    assert badge("en", _lang_src(text_lang="en")) is None
+    assert badge("en", _lang_src(text_lang=None)) is None
+
+
+def test_source_lang_translated_link_has_machine_translation_label():
+    label = lambda s, lang="en": _run_lang(lang, f"citationLinkLabel({json.dumps(s)})")  # noqa: E731
+    assert label(_lang_src()) == "common.machineTranslatedLink"
+    assert label(_lang_src(), "de") == "common.openSource"
+    assert label(_lang_src(url="https://beispiel.org/a.pdf")) == "common.openSource"
+
+
+def _marker_texts(text, sources, lang="en"):
+    body = f"""
+globalThis.__UI_LANG = {json.dumps(lang)};
+const container = new FakeNode('element', 'div');
+const p = document.createElement('p');
+container.appendChild(p);
+p.appendChild(document.createTextNode({json.dumps(text)}));
+const sources = {json.dumps(sources)};
+makeCitationsClickable(container, sources);
+function walk(n, acc) {{
+  if (n.tag === 'button') acc.buttons.push(n.textContent);
+  else if (n.nodeType === 'text') acc.text.push(n.textContent);
+  n.children.forEach((c) => walk(c, acc));
+  return acc;
+}}
+const acc = walk(container, {{ buttons: [], text: [] }});
+console.log(JSON.stringify({{
+  buttons: acc.buttons,
+  text: acc.text.join(''),
+  cited: extractCitedSources(container, sources).map((s) => s.source_id),
+}}));
+"""
+    return _run_question_js(body, "makeCitationsClickable", "extractCitedSources")
+
+
+_HIDDEN = _lang_src(source_id="hid", chunk_id="ch", url="https://beispiel.org/a.pdf")
+_VISIBLE = _lang_src(source_id="vis", chunk_id="cv")
+_ENGLISH = _lang_src(source_id="eng", chunk_id="ce", text_lang="en", title_en=None, url="https://beispiel.org/e.pdf")
+
+
+def test_hidden_source_marker_removed_in_en_ui():
+    r = _marker_texts("Das stimmt [1]. Und das auch.", [_HIDDEN])
+    assert r["buttons"] == []
+    assert r["text"] == "Das stimmt. Und das auch."
+    assert r["cited"] == []
+
+
+def test_hidden_source_marker_kept_in_de_ui():
+    r = _marker_texts("Das stimmt [1].", [_HIDDEN], lang="de")
+    assert r["buttons"] == ["[1]"]
+    assert r["cited"] == ["hid"]
+
+
+def test_hidden_source_marker_removed_numbers_stay_gapless():
+    r = _marker_texts("A [1] B [2] C [3] D [2]", [_VISIBLE, _HIDDEN, _ENGLISH])
+    assert r["buttons"] == ["[1]", "[2]"]  # [2] (versteckt) entfällt, [3] wird zu [2]
+    assert r["text"] == "A  B C  D"  # " [2]" samt Leerraum entfernt
+    assert r["cited"] == ["vis", "eng"]
+
+
+def test_hidden_source_multi_markers_leave_no_remainder():
+    r = _marker_texts("Satz [1][2] und Satz [2][1].", [_HIDDEN, _VISIBLE])
+    assert r["buttons"] == ["[1]", "[2]"]
+    assert r["text"] == "Satz  und Satz ."
+    r = _marker_texts("Nur versteckt [1][1].", [_HIDDEN])
+    assert r["buttons"] == [] and r["text"] == "Nur versteckt."
+
+
+def test_hidden_source_comma_marker_group_handled():
+    r = _marker_texts("Beleg [1, 2] hier", [_HIDDEN, _VISIBLE])
+    assert r["buttons"] == ["[1]"] and r["text"] == "Beleg  hier"
+    r = _marker_texts("Beleg [1, 2] hier", [_HIDDEN, _HIDDEN])
+    assert r["buttons"] == [] and r["text"] == "Beleg hier"
+
+
+def test_hidden_source_all_hidden_keeps_answer_text_and_no_cited_sources():
+    r = _marker_texts("Antwort [1] mit [2] Belegen.", [_HIDDEN, _HIDDEN])
+    assert r["text"] == "Antwort mit Belegen."
+    assert r["buttons"] == [] and r["cited"] == []
+
+
+def test_visible_translatable_source_stays_citable_in_en_ui():
+    r = _marker_texts("Beleg [1].", [_VISIBLE])
+    assert r["buttons"] == ["[1]"] and r["cited"] == ["vis"]
+    assert _marker_texts("Beleg [1].", [_ENGLISH])["buttons"] == ["[1]"]
+    unclassified = _lang_src(source_id="u", text_lang=None, url="https://beispiel.org/a.pdf")
+    assert _marker_texts("Beleg [1].", [unclassified])["buttons"] == ["[1]"]
+
+
+def test_hidden_source_dropped_from_image_strip_via_cited_sources():
+    sources = [
+        {**_HIDDEN, "images": [{"src": _src(1), "alt": "", "page": None}]},
+        {**_VISIBLE, "images": [{"src": _src(2), "alt": "", "page": None}]},
+    ]
+    script = f"""
+{_STRIP_SUMMARY_JS}
+globalThis.__UI_LANG = 'en';
+const container = new FakeNode('element', 'div');
+const p = document.createElement('p');
+container.appendChild(p);
+p.appendChild(document.createTextNode('A [1] B [2]'));
+const sources = {json.dumps(sources)};
+makeCitationsClickable(container, sources);
+const strip = buildImageStrip(extractCitedSources(container, sources));
+console.log(JSON.stringify(summarize(strip).figures.map((f) => [f.img.src, f.caption, f.links[0].href])));
+"""
+    result = _run_question_js(script, "makeCitationsClickable", "extractCitedSources", *_STRIP_FUNCS)
+    assert result == [[_src(2), "English title", _TRANSLATE + "https%3A%2F%2Fbeispiel.org%2Fartikel%3Fx%3D1%26y%3D2"]]
+
+
+def test_creative_source_label_uses_english_title_for_foreign_text_in_en_ui():
+    js_source = (STATIC_DIR / "creative.js").read_text()
+    match = re.search(r"export function creativeSourceLabel.*?\n\}", js_source, re.S)
+    assert match
+    func = match.group(0).replace("export function", "function")
+    script = (
+        "function t(k) { return k; }\n"
+        + _source_lang_js()
+        + "\n"
+        + func
+        + f"\nconst s = {json.dumps(_lang_src(authors=['A. Autor']))};\n"
+        "globalThis.__UI_LANG = 'en'; const en = creativeSourceLabel(s);\n"
+        "globalThis.__UI_LANG = 'de'; const de = creativeSourceLabel(s);\n"
+        "console.log(JSON.stringify([en, de]));"
+    )
+    assert _run_node(script) == ["English title — A. Autor", "Originaltitel — A. Autor"]
+
+
+def test_creative_js_imports_source_lang_module_instead_of_question_js():
+    js = (STATIC_DIR / "creative.js").read_text()
+    assert "from '/source-lang.js'" in js
+    assert "question.js" not in js.split("\n\n")[0]
+    assert "isHiddenForLang" in js
+
+
+def test_question_js_filters_hidden_sources_and_rerenders_on_language_change():
+    js = (STATIC_DIR / "question.js").read_text()
+    assert "from '/source-lang.js'" in js
+    # Sprachwechsel baut Antworten neu auf (ausgeblendete erscheinen bei DE wieder).
+    assert "rerenderConversation" in js.split("document.addEventListener('i18n:changed'")[1]
+
+
+def test_import_js_source_list_uses_display_title_and_badge():
+    js = (STATIC_DIR / "import.js").read_text()
+    assert "displayTitle" in js and "translatedBadge" in js
+
+
+# ---------------------------------------------------------------------------
+# Idee 134c868a (H4/H6): Formularfelder Textsprache / englischer Titel
+# ---------------------------------------------------------------------------
+
+
+def _run_edit_lang(expr: str):
+    return _run_import_js_functions(
+        [
+            r"function languageSelectCodes.*?\n\}",
+            r"function isTitleEnVisible.*?\n\}",
+            r"function aiLangFlags.*?\n\}",
+            r"function changedLangFields.*?\n\}",
+        ],
+        expr,
+    )
+
+
+def test_language_select_offers_de_en_and_keeps_other_existing_code():
+    assert _run_edit_lang("languageSelectCodes(null)") == ["de", "en"]
+    assert _run_edit_lang("languageSelectCodes('fr')") == ["de", "en", "fr"]
+    assert _run_edit_lang("languageSelectCodes('de')") == ["de", "en"]
+    assert _run_edit_lang("languageSelectCodes('xx&u=1')") == ["de", "en"]
+
+
+def test_english_title_field_hidden_for_english_or_unknown_text_language():
+    assert _run_edit_lang("[isTitleEnVisible('de'), isTitleEnVisible('fr')]") == [True, True]
+    assert _run_edit_lang("[isTitleEnVisible('en'), isTitleEnVisible(''), isTitleEnVisible(null)]") == [
+        False, False, False,
+    ]
+
+
+def test_ai_icon_only_while_value_present_and_not_hand_edited():
+    flags = lambda s: _run_edit_lang(f"aiLangFlags({json.dumps(s)})")  # noqa: E731
+    assert flags({"text_lang": "de", "title_en": "T", "text_lang_ai_generated": True,
+                  "title_en_ai_generated": True}) == {"textLang": True, "titleEn": True}
+    # Felder fehlen (alte Daten) -> wie Zusammenfassung: Standard KI
+    assert flags({"text_lang": "de", "title_en": "T"}) == {"textLang": True, "titleEn": True}
+    assert flags({"text_lang": "de", "title_en": "T", "text_lang_ai_generated": False,
+                  "title_en_ai_generated": False}) == {"textLang": False, "titleEn": False}
+    # kein Wert -> kein Icon
+    assert flags({"text_lang": None, "title_en": None}) == {"textLang": False, "titleEn": False}
+
+
+def test_only_changed_language_fields_are_sent_on_save():
+    changed = lambda s, lang, title: _run_edit_lang(  # noqa: E731
+        f"changedLangFields({json.dumps(s)}, {json.dumps(lang)}, {json.dumps(title)})"
+    )
+    src = {"text_lang": "de", "title_en": "Old"}
+    assert changed(src, "de", "Old") == {}
+    assert changed(src, "de", "New") == {"title_en": "New"}
+    assert changed(src, "fr", "Old") == {"text_lang": "fr"}
+    assert changed({"text_lang": None, "title_en": None}, "", "") == {}
+    # Titel bei englischer Sprache unsichtbar: nicht senden
+    assert changed(src, "en", "Old changed") == {"text_lang": "en"}
+
+
+def test_edit_form_wires_language_fields_to_detect_endpoint_and_put():
+    js = (STATIC_DIR / "source-edit.js").read_text()
+    assert "/detect-language" in js
+    assert "changedLangFields(" in js.split("method: 'PUT'")[1]
+    assert "addMagicButton(textLangSelect" in js and "addMagicButton(titleEnInput" in js
+
+
+# ---------------------------------------------------------------------------
+# Idee 134c868a: Nachbesserungen aus dem Fehler-Check
+# ---------------------------------------------------------------------------
+
+
+def test_on_saved_updates_language_fields_of_cited_source():
+    js = (STATIC_DIR / "question.js").read_text()
+    block = js.split("onSaved: (updated) => {")[1].split("dialog.close();")[0]
+    for key in ("text_lang", "title_en", "restricted", "text_lang_ai_generated", "title_en_ai_generated"):
+        assert f"{key}: updated.{key}" in block, key
+
+
+def test_detected_language_becomes_new_baseline_so_put_does_not_send_it():
+    # Der Endpunkt speichert den KI-Vorschlag selbst (KI-Status bleibt):
+    # der PUT darf ihn nicht als Handänderung schicken.
+    src = {"text_lang": None, "title_en": None}
+    detected = {"text_lang": "de", "title_en": "Neuer Titel"}
+    changed = _run_import_js_functions(
+        [
+            r"function applyDetectedLang.*?\n\}",
+            r"function isTitleEnVisible.*?\n\}",
+            r"function changedLangFields.*?\n\}",
+        ],
+        f"changedLangFields(applyDetectedLang({json.dumps(src)}, {json.dumps(detected)}), 'de', 'Neuer Titel')",
+    )
+    assert changed == {}
+    edited = _run_import_js_functions(
+        [
+            r"function applyDetectedLang.*?\n\}",
+            r"function isTitleEnVisible.*?\n\}",
+            r"function changedLangFields.*?\n\}",
+        ],
+        f"changedLangFields(applyDetectedLang({json.dumps(src)}, {json.dumps(detected)}), 'de', 'Von Hand')",
+    )
+    assert edited == {"title_en": "Von Hand"}
+
+
+def test_edit_form_keeps_ai_icon_after_magic_wand():
+    js = (STATIC_DIR / "source-edit.js").read_text()
+    body = js.split("const triggerDetectLanguage")[1].split("langMagicButtons.push(addMagicButton")[0]
+    assert "applyDetectedLang(" in body
+    assert "icon.classList.add('hidden')" not in body
+
+
+def test_import_search_and_sort_use_display_title_in_en_ui():
+    src = _lang_src(id="1", title="Zebra", title_en="Apple")
+    other = _lang_src(id="2", title="Mango", title_en="Mango en", source_id="2")
+    sort_js = re.search(r"function sortSources.*?\n\}", _import_js_source(), re.S).group(0)
+    search_js = re.search(r"function sourceMatchesSearch.*?\n\}", _import_js_source(), re.S).group(0)
+    norm_js = re.search(r"function normalizeSearch.*?\n\}", _import_js_source(), re.S).group(0)
+    script = f"""
+function t(k) {{ return k; }}
+function getSurname(n) {{ return n; }}
+const currentSortMode = 'date';
+function isFilterActive() {{ return false; }}
+{_source_lang_js()}
+{norm_js}
+{search_js}
+{sort_js}
+const list = {json.dumps([src, other])};
+globalThis.__UI_LANG = 'en';
+const en = sortSources(list).map((s) => s.id);
+const hit = sourceMatchesSearch(list[0], 'apple');
+globalThis.__UI_LANG = 'de';
+const de = sortSources(list).map((s) => s.id);
+const missDe = sourceMatchesSearch(list[0], 'apple');
+console.log(JSON.stringify({{ en, de, hit, missDe }}));
+"""
+    assert _run_node(script) == {"en": ["1", "2"], "de": ["2", "1"], "hit": True, "missDe": False}
+
+
+def test_translated_badge_tooltip_mentions_link_only_with_translate_link():
+    def tip(src):
+        return _run_lang("en", f"translatedBadge({json.dumps(src)}).title")
+
+    assert tip(_lang_src()) == "common.translatedBadgeTooltip"
+    assert tip(_lang_src(url="https://beispiel.org/a.pdf")) == "common.translatedTitleTooltip"
+    assert tip(_lang_src(restricted=True)) == "common.translatedTitleTooltip"
+
+
+@pytest.mark.parametrize(
+    "text, sources, expected",
+    [
+        ("Aussage (siehe [1]) hier.", [_HIDDEN], "Aussage hier."),
+        ("Aussage (vgl. [1][2]) hier.", [_HIDDEN, _HIDDEN], "Aussage hier."),
+        ("Ein foo() bleibt [1].", [_HIDDEN], "Ein foo() bleibt."),
+        ("Alt () bleibt auch.", [_HIDDEN], "Alt () bleibt auch."),
+    ],
+)
+def test_hidden_marker_parenthesis_cleanup_only_around_marker(text, sources, expected):
+    assert _marker_texts(text, sources)["text"] == expected
+
+
+def test_hidden_marker_parenthesis_keeps_visible_marker():
+    r = _marker_texts("Aussage (siehe [1][2]) hier.", [_HIDDEN, _VISIBLE])
+    assert r["buttons"] == ["[1]"]
+    assert r["text"] == "Aussage (siehe ) hier."  # Button [1] steht zwischen den Textteilen
+
+
+def test_language_change_rerender_keeps_bubble_controls_and_running_answer_sources():
+    js = (STATIC_DIR / "question.js").read_text()
+    body = js.split("function rerenderConversation()")[1].split("\n}\n")[0]
+    assert "replaceChildren" not in body.split("renderSidebarSources")[0].replace("conversationCitedSources", "")
+    assert "renderAnswerBubble(" not in body  # Bubble nicht komplett neu bauen
+    assert "conversationCitedSources.clear()" not in body  # laufende Antwort behält Quellen

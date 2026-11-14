@@ -3,6 +3,14 @@ import { renderMarkdown } from '/markdown.js';
 import { initAuth, hasRole, onAuthChange } from '/auth.js';
 import { createTurnstileWidget } from '/turnstile.js';
 import { createSpeechController, stripMarkdownForSpeech } from '/speech.js';
+import {
+  safeHttpUrl,
+  displayTitle,
+  citationHref,
+  citationLinkLabel,
+  isHiddenForLang,
+  translatedBadge,
+} from '/source-lang.js';
 import { readNdjsonStream } from '/ndjson-stream.js';
 import { buildAnswerFeedback } from '/answer-feedback.js';
 import {
@@ -199,21 +207,23 @@ function buildSourceReader(s) {
   article.className = 'source-reader';
 
   const heading = document.createElement('h2');
-  heading.textContent = s.title;
+  heading.textContent = displayTitle(s);
+  const readerBadge = translatedBadge(s);
+  if (readerBadge) heading.append(' ', readerBadge);
   article.appendChild(heading);
 
   const meta = document.createElement('p');
   meta.className = 'source-reader-meta';
   const year = s.date ? s.date.split('-')[0] : null;
   meta.textContent = [(s.authors || []).join(', '), year].filter(Boolean).join(' · ');
-  const url = safeHttpUrl(s.url_reachable === false ? null : s.listen_url || s.url);
+  const url = citationHref(s);
   if (url) {
     const a = document.createElement('a');
     a.href = url;
     a.target = '_blank';
     a.rel = 'noopener noreferrer';
     a.className = 'external-link';
-    const label = t('common.openSource');
+    const label = citationLinkLabel(s);
     a.title = label;
     a.setAttribute('aria-label', label);
     a.innerHTML = EXTERNAL_LINK_ICON;
@@ -324,6 +334,11 @@ async function openSourceEditDialog(sourceId) {
               listen_url: updated.listen_url,
               summary: updated.summary,
               url_reachable: updated.url_reachable,
+              restricted: updated.restricted,
+              text_lang: updated.text_lang,
+              title_en: updated.title_en,
+              text_lang_ai_generated: updated.text_lang_ai_generated,
+              title_en_ai_generated: updated.title_en_ai_generated,
             });
             dialog.close();
           },
@@ -468,13 +483,15 @@ function appendTitleText(container, s) {
   if (s.deleted) {
     const span = document.createElement('span');
     span.className = 'source-deleted-title';
-    span.textContent = `${s.title} (${t('common.sourceDeletedBadge')})`;
+    span.textContent = `${displayTitle(s)} (${t('common.sourceDeletedBadge')})`;
     container.appendChild(span);
     return;
   }
-  const citationUrl = safeHttpUrl(s.url_reachable === false ? null : s.listen_url || s.url);
+  const citationUrl = citationHref(s);
+  const badge = translatedBadge(s);
   if (!citationUrl) {
-    container.appendChild(document.createTextNode(s.title));
+    container.appendChild(document.createTextNode(displayTitle(s)));
+    if (badge) container.append(' ', badge);
     return;
   }
   const a = document.createElement('a');
@@ -482,9 +499,9 @@ function appendTitleText(container, s) {
   a.target = '_blank';
   a.rel = 'noopener noreferrer';
   a.className = 'citation-title-link';
-  const label = t('common.openSource');
+  const label = citationLinkLabel(s);
   a.title = label;
-  a.textContent = s.title;
+  a.textContent = displayTitle(s);
   // Verhindert, dass ein Klick auf den Titel innerhalb eines <summary>
   // (siehe buildSourcesList) zusätzlich das umgebende <details>-Element
   // auf-/zuklappt - analog appendAuthorLinks.
@@ -505,6 +522,7 @@ function appendTitleText(container, s) {
   icon.innerHTML = EXTERNAL_LINK_ICON;
   icon.addEventListener('click', (e) => e.stopPropagation());
   container.appendChild(icon);
+  if (badge) container.append(' ', badge);
 }
 
 function truncateWords(text, maxWords) {
@@ -643,14 +661,14 @@ function buildSourceInfo(s, highlight) {
   // Nutzerwunsch (2026-09-23): eine Quelle mit erkanntem defektem Link soll
   // nirgendwo mehr verlinkt werden, auch nicht hier am Ende des Chunk-
   // Ausschnitts.
-  const citationUrl = safeHttpUrl(s.url_reachable === false ? null : s.listen_url || s.url);
+  const citationUrl = citationHref(s);
   if (citationUrl) {
     const a = document.createElement('a');
     a.href = citationUrl;
     a.target = '_blank';
     a.rel = 'noopener noreferrer';
     a.className = 'external-link';
-    const label = t('common.openSource');
+    const label = citationLinkLabel(s);
     a.title = label;
     a.setAttribute('aria-label', label);
     a.innerHTML = EXTERNAL_LINK_ICON;
@@ -674,7 +692,7 @@ function buildSourceInfo(s, highlight) {
 function buildSourcesList(sources) {
   const sourcesList = document.createElement('ol');
   sourcesList.className = 'chat-sources-list';
-  sources.forEach((s) => {
+  sources.filter((s) => !isHiddenForLang(s)).forEach((s) => {
     const li = document.createElement('li');
     const details = document.createElement('details');
     details.dataset.sourceId = s.source_id;
@@ -702,14 +720,14 @@ function buildSourcesList(sources) {
     // Nutzerwunsch (2026-09-23): eine Quelle mit erkanntem defektem Link
     // soll nirgendwo mehr verlinkt werden, auch nicht hier in der
     // Sidebar-Quellenliste.
-    const citationUrl = safeHttpUrl(s.url_reachable === false ? null : s.listen_url || s.url);
+    const citationUrl = citationHref(s);
     if (citationUrl) {
       const a = document.createElement('a');
       a.href = citationUrl;
       a.target = '_blank';
       a.rel = 'noopener noreferrer';
       a.className = 'external-link';
-      const label = t('common.openSource');
+      const label = citationLinkLabel(s);
       a.title = label;
       a.setAttribute('aria-label', label);
       a.innerHTML = EXTERNAL_LINK_ICON;
@@ -732,6 +750,36 @@ function buildSourcesList(sources) {
 }
 
 function makeCitationsClickable(container, sources) {
+  // Entfernt Belegmarker ausgeblendeter Quellen (EN-UI, nicht übersetzbar, siehe
+  // source-lang.js) samt davorstehendem Leerraum und lässt "[2, 3]"-Gruppen in
+  // Einzelmarker zerfallen (nur wenn alle Nummern existieren). Die angezeigten
+  // Nummern zählt diese Funktion ohnehin fortlaufend neu, Lücken entstehen
+  // also nicht.
+  const sourceAt = (n) => sources[parseInt(n, 10) - 1];
+  function dropHiddenMarkers(text) {
+    const expanded = text.replace(/\[(\d+(?:\s*,\s*\d+)+)\]/g, (m, group) => {
+      const nums = group.split(/\s*,\s*/);
+      return nums.every(sourceAt) ? nums.map((n) => `[${n}]`).join('') : m;
+    });
+    const keptMarkers = (run) =>
+      run.match(/\[\d+\]/g).filter((marker) => {
+        const source = sourceAt(marker.slice(1, -1));
+        return !source || !isHiddenForLang(source);
+      });
+    // Klammerzusatz wie "(siehe [2])" fällt mit dem Marker ganz weg - nur
+    // genau diese Klammer um den Marker, andere Klammern bleiben unberührt.
+    const withoutParens = expanded.replace(/(\s*)\(([^()[\]]{0,20})((?:\[\d+\])+)\)/g, (m, space, lead, run) => {
+      const kept = keptMarkers(run);
+      if (kept.length === run.match(/\[\d+\]/g).length) return m;
+      return kept.length ? `${space}(${lead}${kept.join('')})` : '';
+    });
+    return withoutParens.replace(/(\s*)((?:\[\d+\])+)/g, (m, space, run) => {
+      const kept = keptMarkers(run);
+      if (kept.length === run.match(/\[\d+\]/g).length) return m;
+      return kept.length ? space + kept.join('') : '';
+    });
+  }
+
   // Schlüssel ist der tatsächliche INHALT (Chunk + Highlight), nicht die
   // Zitat-Nummer und nicht der einzelne Button: Verweisen zwei verschiedene
   // [n]-Vorkommen auf denselben Chunk mit demselben Highlight (z.B. dieselbe
@@ -761,14 +809,16 @@ function makeCitationsClickable(container, sources) {
   const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
   let node = walker.nextNode();
   while (node) {
-    if (/\[\d+\]/.test(node.textContent)) {
+    if (/\[\d+(?:\s*,\s*\d+)*\]/.test(node.textContent)) {
       textNodes.push(node);
     }
     node = walker.nextNode();
   }
 
   textNodes.forEach((textNode) => {
-    const parts = textNode.textContent.split(/(\[\d+\])/g);
+    const cleaned = dropHiddenMarkers(textNode.textContent);
+    if (cleaned !== textNode.textContent) textNode.textContent = cleaned;
+    const parts = cleaned.split(/(\[\d+\])/g);
     if (parts.length === 1) return;
     const frag = document.createDocumentFragment();
     for (let i = 0; i < parts.length; i += 1) {
@@ -983,18 +1033,6 @@ function extractCitedSources(container, sources) {
   return cited;
 }
 
-// Nur http(s)-URLs werden verlinkt (verhindert javascript:-Links aus
-// manipulierten Quellendaten, z.B. über den anonymen Handoff).
-function safeHttpUrl(value) {
-  if (!value) return null;
-  try {
-    const u = new URL(value);
-    return u.protocol === 'https:' || u.protocol === 'http:' ? u.href : null;
-  } catch {
-    return null;
-  }
-}
-
 // Bild-URLs: https oder der eigene Bildendpunkt (relativer Pfad).
 function safeImageSrc(value) {
   if (typeof value !== 'string') return null;
@@ -1038,9 +1076,9 @@ function buildImageStrip(sources) {
     });
     const caption = document.createElement('figcaption');
     caption.textContent =
-      page === null ? source.title : `${source.title} · ${t('index.sourceImagePage', { n: page })}`;
+      page === null ? displayTitle(source) : `${displayTitle(source)} · ${t('index.sourceImagePage', { n: page })}`;
 
-    let href = safeHttpUrl(source.url_reachable === false ? null : source.listen_url || source.url);
+    let href = citationHref(source);
     if (href && page !== null && /\.pdf$/i.test(new URL(href).pathname) && !new URL(href).hash) {
       href += `#page=${page}`;
     }
@@ -1467,6 +1505,8 @@ let questionSentInConversation = false;
 // Wiederherstellen einer gespeicherten Konversation (beides schon bekannt)
 // laufen weiterhin beide Schritte direkt hintereinander, siehe
 // renderAnswerBubble unten.
+const controlsByBubble = new WeakMap();
+
 function renderAnswerText(bubble, question, answer) {
   bubble.innerHTML = renderMarkdown(answer);
   // Unabhängig von Quellen/Zitaten (die ggf. erst später/asynchron
@@ -1474,7 +1514,12 @@ function renderAnswerText(bubble, question, answer) {
   // stehen schon jetzt fest, einmalig statt bei jedem Zwischenstand während
   // des Streamens neu zu binden.
   makeTermsClickable(bubble);
-  return attachSpeakButton(bubble, question, answer);
+  const contentCount = bubble.childNodes.length;
+  const speakBtn = attachSpeakButton(bubble, question, answer);
+  // Knöpfe (Vorlesen, Tempo, Feedback, Kopieren) merken, damit ein
+  // Sprachwechsel nur den Antwortinhalt neu baut (rerenderAnswerBody).
+  controlsByBubble.set(bubble, [...bubble.childNodes].slice(contentCount));
+  return speakBtn;
 }
 
 function attachAnswerSources(bubble, sources) {
@@ -1524,11 +1569,41 @@ function renderAnswerBubble(bubble, question, answer, sources) {
   return speakBtn;
 }
 
+// Antwort-Bubble je Verlaufseintrag - für das Neu-Rendern bei Sprachwechsel.
+const bubbleByTurn = new WeakMap();
+
+// Sprachwechsel zur Laufzeit: ausgeblendete Quellen (EN-UI) erscheinen bei DE
+// wieder und umgekehrt, Titel/Links/Marker passen sich an. Geöffnete
+// Zitat-Karten gehen dabei zu.
+function rerenderConversation() {
+  // Nur Quellen der gespeicherten Antworten neu einsammeln; Quellen einer
+  // noch laufenden Antwort (noch nicht im Verlauf) bleiben stehen.
+  const historyIds = new Set(
+    conversationHistory.flatMap((turn) => (turn.sources || []).map((s) => s.source_id))
+  );
+  [...conversationCitedSources.keys()].forEach((id) => {
+    if (historyIds.has(id)) conversationCitedSources.delete(id);
+  });
+  conversationHistory.forEach((turn) => {
+    const bubble = bubbleByTurn.get(turn);
+    const controls = controlsByBubble.get(bubble);
+    if (!controls || !controls.length) return;
+    // Antworttext, Zitate, Karten und Bildleiste neu; die Knöpfe bleiben
+    // (Feedback-Sperre, Vorlese-Zustand).
+    [...bubble.childNodes].filter((node) => !controls.includes(node)).forEach((node) => node.remove());
+    controls[0].insertAdjacentHTML('beforebegin', renderMarkdown(turn.answer));
+    makeTermsClickable(bubble);
+    attachAnswerSources(bubble, turn.sources);
+  });
+  renderSidebarSources();
+}
+
 function restoreConversationHistory() {
   if (conversationHistory.length === 0) return;
   document.body.classList.add('chat-started');
   questionInput.placeholder = t('index.questionPlaceholderContinue');
-  conversationHistory.forEach(({ question, answer, sources }) => {
+  conversationHistory.forEach((turn) => {
+    const { question, answer, sources } = turn;
     const { message: userMessage, bubble: userBubble } = buildChatMessage('user');
     userBubble.textContent = question;
     chatMessages.appendChild(userMessage);
@@ -1536,6 +1611,7 @@ function restoreConversationHistory() {
     const { message: assistantMessage, bubble: assistantBubble } = buildChatMessage('assistant');
     chatMessages.appendChild(assistantMessage);
     renderAnswerBubble(assistantBubble, question, answer, sources);
+    bubbleByTurn.set(turn, assistantBubble);
   });
   renderSidebarSources();
   // Ohne "smooth"/Verzögerung: beim Wiederherstellen soll die Ansicht
@@ -1840,7 +1916,9 @@ questionForm.addEventListener('submit', async (e) => {
       attachAnswerSources(assistantBubble, doneEvent.sources);
       renderSidebarSources();
     }
-    conversationHistory.push({ question, answer: finalAnswer, sources: earlySources || doneEvent.sources });
+    const turn = { question, answer: finalAnswer, sources: earlySources || doneEvent.sources };
+    conversationHistory.push(turn);
+    bubbleByTurn.set(turn, assistantBubble);
     saveConversationHistory();
     // Fix (2026-08-31): attachConversationHandoff (siehe appendEditSourceLink/
     // appendViewSourceLink) prüft beim Bauen der Sidebar-Links
@@ -1912,4 +1990,5 @@ document.addEventListener('i18n:changed', () => {
   // statt die zuvor in der alten Sprache eingesammelten Texte stehen zu
   // lassen.
   refreshCitedSourceSummaries();
+  rerenderConversation();
 });
