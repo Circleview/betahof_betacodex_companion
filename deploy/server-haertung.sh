@@ -13,8 +13,8 @@
 #
 # Blöcke, in dieser Reihenfolge:
 #   1. pruefen       nur lesen: Ist-Zustand, User-Units, systemd-analyze security beider Farben
-#      probe         nur lesend: systemd-run mit den Properties der Unit (ohne SystemCallErrorNumber,
-#                    Verstöße = SIGSYS): torch-Import, ffmpeg-Segment, git describe
+#      probe         nur lesend: systemd-run mit den Properties der Unit (wie Produktion,
+#                    gesperrte Syscalls = EPERM): torch-Import, ffmpeg-Segment, git describe
 #   2. skripte       Wrapper nach /usr/local/sbin/companion-deploy, deploy.sh nach
 #                    /usr/local/lib/companion/deploy.sh, Symlink ~betacodex/deploy.sh
 #   3. units         System-Units + sudoers (visudo -c, systemd-analyze verify), enable ohne --now;
@@ -85,11 +85,12 @@ restrict_key_line() {
         out = ""; for (j = i; j <= NF; j++) out = out (j > i ? " " : "") $j; print pre " " out; next } }' "$1"
 }
 
-# Service-Direktiven einer Unit als Zeilen, ohne Start-/Neustart-Zeilen und ohne SystemCallErrorNumber.
+# Service-Direktiven einer Unit als Zeilen, ohne Start-/Neustart-Zeilen. SystemCallErrorNumber bleibt:
+# ohne sie beendet sched_setaffinity (torch, @resources) die Probe per SIGSYS, Produktion läuft aber.
 unit_props() {
   awk '/^\[/ { s = ($0 == "[Service]") }
        s && /^[A-Za-z]+=/ { k = $0; sub(/=.*/, "", k)
-         if (k !~ /^(ExecStart|Restart|RestartSec|TimeoutStopSec|SystemCallErrorNumber)$/) print }' "$1"
+         if (k !~ /^(ExecStart|Restart|RestartSec|TimeoutStopSec)$/) print }' "$1"
 }
 
 reload_sshd() { systemctl reload ssh 2>/dev/null || systemctl reload sshd; }
