@@ -5,44 +5,231 @@
     "title": "BetaCodex Chat: CI/CD-Deploy-Ablauf",
     "animation": "trace",
     "visual_preset": "signal-flow",
-    "quality_profile": "showcase"
+    "quality_profile": "showcase",
+    "output": "docs/diagrams/deploy-flow.html"
   },
   "lanes": [
-    { "id": "dev", "label": "Entwickler:in" },
-    { "id": "ci", "label": "GitHub Actions" },
-    { "id": "server", "label": "Hetzner-Server" },
-    { "id": "fail", "label": "Fehlerfall", "variant": "exception" }
+    {
+      "id": "dev",
+      "label": "Entwickler:in"
+    },
+    {
+      "id": "ci",
+      "label": "GitHub Actions"
+    },
+    {
+      "id": "server",
+      "label": "Hetzner-Server"
+    },
+    {
+      "id": "fail",
+      "label": "Fehlerfall",
+      "variant": "exception"
+    }
   ],
   "phases": [
-    { "id": "trigger", "label": "Ausloesen", "fromCol": 0, "toCol": 1 },
-    { "id": "verify", "label": "Pruefen", "fromCol": 2, "toCol": 2, "variant": "emphasis" },
-    { "id": "rollout", "label": "Ausrollen", "fromCol": 3, "toCol": 5, "variant": "dashed" }
+    {
+      "id": "trigger",
+      "label": "Ausloesen",
+      "fromCol": 0,
+      "toCol": 0
+    },
+    {
+      "id": "verify",
+      "label": "Pruefen",
+      "fromCol": 1,
+      "toCol": 1,
+      "variant": "emphasis"
+    },
+    {
+      "id": "rollout",
+      "label": "Ausrollen",
+      "fromCol": 2,
+      "toCol": 5,
+      "variant": "dashed"
+    }
   ],
-  "mainPath": ["push", "test", "gate", "deploy", "healthcheck", "switch"],
+  "mainPath": [
+    "push",
+    "test",
+    "gate",
+    "wrapper",
+    "deploy",
+    "unit",
+    "healthcheck",
+    "switch"
+  ],
   "nodes": [
-    { "id": "push", "lane": "dev", "col": 0, "type": "external", "label": "git tag Push", "sublabel": "vX.Y.Z", "width": 132 },
-    { "id": "test", "lane": "ci", "col": 1, "type": "backend", "label": "Testsuite", "sublabel": "pytest + Node-Tests", "width": 132 },
-    { "id": "gate", "lane": "ci", "col": 2, "type": "security", "label": "Tests OK?", "sublabel": "Deploy-Gate", "width": 132 },
-    { "id": "abort", "lane": "fail", "col": 2, "type": "security", "label": "Abbruch", "sublabel": "kein Deploy", "width": 132 },
-    { "id": "deploy", "lane": "server", "col": 3, "type": "backend", "label": "SSH-Deploy", "sublabel": "deploy.sh startet neue Farbe", "width": 132 },
-    { "id": "healthcheck", "lane": "server", "col": 4, "type": "backend", "label": "Health-Check", "sublabel": "curl /api/version", "width": 132 },
-    { "id": "switch", "lane": "server", "col": 5, "type": "security", "label": "Caddy-Switch", "sublabel": "Reload auf neue Farbe", "width": 132 }
+    {
+      "id": "push",
+      "lane": "dev",
+      "col": 0,
+      "type": "external",
+      "label": "git tag Push",
+      "sublabel": "vX.Y.Z",
+      "width": 132
+    },
+    {
+      "id": "test",
+      "lane": "ci",
+      "col": 0,
+      "type": "backend",
+      "label": "Testsuite",
+      "sublabel": "pytest + Node-Tests",
+      "width": 132
+    },
+    {
+      "id": "gate",
+      "lane": "ci",
+      "col": 1,
+      "type": "security",
+      "label": "Tests OK?",
+      "sublabel": "Deploy-Gate",
+      "width": 132
+    },
+    {
+      "id": "abort",
+      "lane": "fail",
+      "col": 0,
+      "type": "security",
+      "label": "Abbruch",
+      "sublabel": "kein Deploy",
+      "width": 132
+    },
+    {
+      "id": "wrapper",
+      "lane": "server",
+      "col": 1,
+      "type": "security",
+      "label": "Forced Command",
+      "sublabel": "nur Tag-Format",
+      "width": 132
+    },
+    {
+      "id": "deploy",
+      "lane": "server",
+      "col": 2,
+      "type": "backend",
+      "label": "deploy.sh",
+      "sublabel": "root-eigen, Nachfahre?",
+      "width": 132
+    },
+    {
+      "id": "unit",
+      "lane": "server",
+      "col": 3,
+      "type": "backend",
+      "label": "sudo systemctl",
+      "sublabel": "System-Unit, Sandbox",
+      "width": 132
+    },
+    {
+      "id": "healthcheck",
+      "lane": "server",
+      "col": 4,
+      "type": "backend",
+      "label": "Health-Check",
+      "sublabel": "curl /api/version",
+      "width": 132
+    },
+    {
+      "id": "switch",
+      "lane": "server",
+      "col": 5,
+      "type": "security",
+      "label": "companion-farbe",
+      "sublabel": "Caddy per sudo",
+      "width": 132
+    },
+    {
+      "id": "reject",
+      "lane": "fail",
+      "col": 2,
+      "type": "security",
+      "label": "Abgelehnt",
+      "sublabel": "Tag ungueltig/aelter",
+      "width": 132
+    }
   ],
   "edges": [
-    { "id": "trigger-test", "from": "push", "to": "test", "variant": "emphasis" },
-    { "id": "test-gate", "from": "test", "to": "gate", "variant": "default" },
-    { "id": "gate-abort", "from": "gate", "to": "abort", "label": "nein", "variant": "dashed", "role": "branch" },
-    { "id": "gate-deploy", "from": "gate", "to": "deploy", "label": "ja", "variant": "emphasis" },
-    { "id": "deploy-healthcheck", "from": "deploy", "to": "healthcheck", "variant": "default" },
-    { "id": "healthcheck-switch", "from": "healthcheck", "to": "switch", "label": "erreichbar", "variant": "emphasis" }
+    {
+      "id": "trigger-test",
+      "from": "push",
+      "to": "test",
+      "variant": "emphasis"
+    },
+    {
+      "id": "test-gate",
+      "from": "test",
+      "to": "gate",
+      "variant": "default"
+    },
+    {
+      "id": "gate-abort",
+      "from": "gate",
+      "to": "abort",
+      "label": "nein",
+      "variant": "dashed",
+      "role": "branch"
+    },
+    {
+      "id": "gate-wrapper",
+      "from": "gate",
+      "to": "wrapper",
+      "label": "ja, SSH",
+      "variant": "emphasis"
+    },
+    {
+      "id": "wrapper-deploy",
+      "from": "wrapper",
+      "to": "deploy",
+      "label": "gueltiger Tag",
+      "variant": "default"
+    },
+    {
+      "id": "deploy-reject",
+      "from": "deploy",
+      "to": "reject",
+      "label": "kein Nachfahre",
+      "variant": "dashed",
+      "role": "branch"
+    },
+    {
+      "id": "deploy-unit",
+      "from": "deploy",
+      "to": "unit",
+      "label": "neuer Tag",
+      "variant": "default"
+    },
+    {
+      "id": "unit-healthcheck",
+      "from": "unit",
+      "to": "healthcheck",
+      "variant": "default"
+    },
+    {
+      "id": "healthcheck-switch",
+      "from": "healthcheck",
+      "to": "switch",
+      "label": "erreichbar",
+      "variant": "emphasis"
+    }
   ],
   "cards": [
     {
       "dot": "cyan",
       "title": "Zero-Downtime",
       "items": [
-        "Neue Farbe startet, bevor Caddy umschaltet",
+        "Neue Farbe startet, bevor companion-farbe Caddy umschaltet",
         "Alte Farbe wird danach gestoppt, nicht vorher"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Eingeschraenkter Deploy-Schluessel",
+      "items": [
+        "Der Schluessel darf nur ~/deploy.sh vX.Y.Z ausfuehren (Forced Command)",
+        "Nur neuere Tags; Rollback auf aeltere Tags macht root von Hand"
       ]
     },
     {

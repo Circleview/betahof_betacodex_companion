@@ -523,22 +523,40 @@ fehl.
   Falkenstein, DSGVO-konform): ein einzelner Server mit zwei kompletten
   App-Instanzen ("Blue"/"Green") unter einem eigenen Systembenutzer
   `betacodex`, dahinter Caddy als Reverse Proxy mit automatischem
-  Let's-Encrypt-TLS (`deploy.sh` bedient nur noch `DOMAIN`, `DOMAIN2` ist
-  seit 2026-10-27 leer). Beide Instanzen teilen sich `data/` und `.env` per
+  Let's-Encrypt-TLS (nur noch `companion.betahof.com`; die zweite Domain
+  ist seit 2026-10-27 entfernt). Beide Instanzen teilen sich `data/` und `.env` per
   Symlink auf ein gemeinsames `shared/`-Verzeichnis; nur der Code
   unterscheidet sich zwischen den beiden Slots. Deployment läuft
   vollautomatisch per GitHub Actions (`.github/workflows/deploy.yml`),
   ausgelöst durch einen Tag-Push: `pytest -q` + `node --check`, bei Erfolg
-  SSH zum Server, `deploy.sh <tag>` deployt auf die gerade inaktive Farbe,
-  wartet auf einen Health-Check (`/api/version`), schaltet Caddy erst
-  danach um und stoppt die alte Farbe – Zero-Downtime, mit automatischem
+  SSH zum Server (Forced Command `companion-deploy`, siehe „Härtung und
+  Deploy-Schlüssel“), `deploy.sh <tag>` deployt auf die gerade inaktive
+  Farbe, wartet auf einen Health-Check (`/api/version`), ruft danach
+  `companion-farbe` auf (schaltet Caddy um) und stoppt die alte Farbe – Zero-Downtime, mit automatischem
   Rollback (alte Farbe bleibt live), falls die neue Version nicht startet.
   Unterschiede zu Dev: `ENVIRONMENT` bleibt hier ungesetzt (nicht
   `"development"`), dadurch sind Cookies `Secure` und der
   `X-Robots-Tag` (verhindert sonst die Suchmaschinen-Indexierung)
-  entfällt; ein eigenes `EARLY_ACCESS_PASSWORD` sperrt die Seite vorerst
-  für einen sanften Start, Turnstile läuft mit einem echten, bei
+  entfällt; die Early-Access-Sperre ist seit 2026-09-10 aus
+  (`EARLY_ACCESS_PASSWORD` leer), Turnstile läuft mit einem echten, bei
   Cloudflare registrierten Schlüsselpaar.
+
+#### Härtung und Deploy-Schlüssel
+
+- Die Farben laufen als System-Units `betacodex-blue`/`-green` mit
+  Sandbox (u. a. `ProtectSystem=strict`, `ProtectHome=tmpfs`,
+  `NoNewPrivileges`); die App kann weder `~/.ssh` noch Deploy-Skript noch
+  Release-Code beschreiben. Logs: `journalctl -u betacodex-blue`.
+- `deploy.sh` liegt root-eigen unter `/usr/local/lib/companion/`; der
+  Deploy-Schlüssel darf per Forced Command (`/usr/local/sbin/companion-deploy`)
+  nur `~/deploy.sh vX.Y.Z` ausführen. `authorized_keys` liegt per
+  sshd-Drop-in unter `/etc/ssh/authorized_keys/`, nicht im Home.
+- `deploy.sh` deployt nur Tags, die Nachfahren des aktiven Tags sind.
+  **Rollback auf einen älteren Tag** nur von Hand durch root (z. B.
+  `companion-farbe <alte Farbe>`), nie per Deploy-Schlüssel.
+- Vorlagen und Einrichtung: Ordner `deploy/`, Aufruf
+  `deploy/server-haertung.sh <block>` als root auf dem Server.
+- Ablauf-Diagramm: `docs/diagrams/deploy-flow.html`.
 
 ### System-Voraussetzungen (Produktion)
 
@@ -553,7 +571,7 @@ sudo apt-get update && sudo apt-get install -y ffmpeg
 ```
 
 Fehlt `ffmpeg`/`ffprobe` beim Start, schreibt die App eine deutliche
-Warnung in die Logs (`journalctl --user -u betacodex-blue`/`-green`).
+Warnung in die Logs (`journalctl -u betacodex-blue`/`-green`).
 
 ### Schutz vor versehentlichem Secret-Commit
 
