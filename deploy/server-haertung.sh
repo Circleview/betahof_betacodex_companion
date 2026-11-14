@@ -97,6 +97,8 @@ reload_sshd() { systemctl reload ssh 2>/dev/null || systemctl reload sshd; }
 ubuctl() { runuser -u betacodex -- env XDG_RUNTIME_DIR="/run/user/$(id -u betacodex)" systemctl --user "$@"; }
 authkeysfile() { sshd -T -C "user=$1,host=localhost,addr=127.0.0.1" | grep -i '^authorizedkeysfile' || true; }
 count_lines() { grep -c . "$1" || true; }
+# sshd -T zeigt AuthorizedKeysFile unexpandiert (%u). Genau eine Datei, die neue root-eigene.
+akf_ist_neu() { printf "%s\n" "$1" | grep -qiE "^authorizedkeysfile /etc/ssh/authorized_keys/(%u|betacodex)$"; }
 
 blk_pruefen() {
   echo "== aktive Farbe"; cat "$B/active_color"
@@ -202,9 +204,12 @@ blk_sshd() {
   chown root:root "$AK.neu"; chmod 0644 "$AK.neu"; mv "$AK.neu" "$AK"
   install -o root -g root -m 0644 "$s/sshd-betacodex.conf" "$DROPIN"
   if ! sshd -t \
-     || ! authkeysfile betacodex | grep -qi '^authorizedkeysfile /etc/ssh/authorized_keys/betacodex' \
+     || ! akf_ist_neu "$(authkeysfile betacodex)" \
      || [ "$(authkeysfile root)" != "$root_vor" ]; then
     echo "sshd-Prüfung fehlgeschlagen, stelle zurück." >&2
+    echo "  sshd -t: $(sshd -t 2>&1 && echo ok)" >&2
+    echo "  betacodex: $(authkeysfile betacodex)" >&2
+    echo "  root vorher: $root_vor | jetzt: $(authkeysfile root)" >&2
     blk_rueckweg_sshd "$TS" || true; exit 1
   fi
   rm -f "$B/.ssh/authorized_keys"   # Original liegt gesichert unter $BAKROOT; kein Rückfall auf die alte Datei
