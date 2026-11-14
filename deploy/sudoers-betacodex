@@ -1,0 +1,3 @@
+# Ziel auf dem Server: /etc/sudoers.d/betacodex-companion (root:root 0440), Prüfung: visudo -cf
+# Ersetzt die alte Datei betacodex-companion-farbe (deren Recht steht hier mit drin).
+betacodex ALL=(root) NOPASSWD: /usr/local/sbin/companion-farbe blue, /usr/local/sbin/companion-farbe green, /usr/bin/systemctl restart betacodex-blue.service, /usr/bin/systemctl restart betacodex-green.service, /usr/bin/systemctl stop betacodex-blue.service, /usr/bin/systemctl stop betacodex-green.service
