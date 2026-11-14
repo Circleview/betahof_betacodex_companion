@@ -444,20 +444,24 @@ def clean_title_en(value) -> str | None:
     return " ".join(value.split())[:TITLE_EN_MAX_CHARS].strip() or None
 
 
-def detect_source_language(title: str, text: str) -> dict:
+def detect_source_language(title: str, text: str, known_lang: str | None = None) -> dict:
     """Liefert {"text_lang": ISO-Code|None, "title_en": str|None}. Bei jedem
     Fehler und bei leerem Text {None, None} (wie translate_summary: kein
-    Fehler nach außen). title_en nur, wenn der Text nicht Englisch ist."""
+    Fehler nach außen). title_en nur, wenn der Text nicht Englisch ist.
+    known_lang: von Hand gepflegte Sprache - bleibt maßgeblich, der englische
+    Titel wird dann trotzdem erzeugt."""
     empty = {"text_lang": None, "title_en": None}
     text = (text or "").strip()
     if not text:
         return empty
     try:
-        content = f"Title: {title or ''}\n\nText:\n{text[:LANGUAGE_DETECTION_MAX_CHARS]}"
+        known_lang = known_lang if is_valid_lang_code(known_lang) else None
+        hint = f"The text language is {known_lang}.\n\n" if known_lang else ""
+        content = f"{hint}Title: {title or ''}\n\nText:\n{text[:LANGUAGE_DETECTION_MAX_CHARS]}"
         data = _call_tool(LANGUAGE_SYSTEM_PROMPT, _LANGUAGE_TOOL, content)
         if not data:
             return empty
-        lang = data.get("text_lang")
+        lang = known_lang or data.get("text_lang")
         lang = lang.strip().lower() if isinstance(lang, str) else None
         if not is_valid_lang_code(lang):
             return empty

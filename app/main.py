@@ -752,10 +752,16 @@ def _source_lang_fields(entry: dict | None) -> dict:
     }
 
 
-def _detect_language_safely(title: str, text: str) -> dict:
+def _known_lang(entry: dict | None) -> str | None:
+    """Von Hand gepflegte Sprache (Flag False) - die KI übernimmt sie, liefert aber den Titel."""
+    entry = entry or {}
+    return entry.get("text_lang") if entry.get("text_lang_ai_generated") is False else None
+
+
+def _detect_language_safely(title: str, text: str, known_lang: str | None = None) -> dict:
     # Ein Fehler hier darf nie die Zusammenfassung oder den Nachzug kippen.
     try:
-        return summarization.detect_source_language(title, text)
+        return summarization.detect_source_language(title, text, known_lang=known_lang)
     except Exception:
         return {"text_lang": None, "title_en": None}
 
@@ -773,21 +779,24 @@ def _apply_language_result(entry: dict, result: dict) -> None:
         entry["title_en_ai_generated"] = True
 
 
-def _detect_and_store_language(source_id: str, title: str, text: str) -> bool:
+def _detect_and_store_language(source_id: str, title: str, text: str) -> bool | None:
     """Erkennung als eigener Lauf (Nachzug, Titel-/Textänderung). KI-Aufruf
     vor dem Lock; geschrieben wird erst nach erneutem Laden, und nur wenn die
     Quelle noch existiert und Titel/Text unverändert sind (sonst läuft schon
-    eine neuere Erkennung)."""
-    result = _detect_language_safely(title, text)
+    eine neuere Erkennung). True = gespeichert, False = KI-Fehler,
+    None = Quelle inzwischen geändert/gelöscht (kein KI-Fehler)."""
+    with _sources_write_lock:
+        current = _load_sources().get(source_id)
+    result = _detect_language_safely(title, text, _known_lang(current))
     if not result.get("text_lang"):
         return False
     with _sources_write_lock:
         sources = _load_sources()
         if _source_is_missing(sources, source_id):
-            return False
+            return None
         entry = sources[source_id]
         if entry.get("title") != title or (entry.get("text") or "").strip() != text.strip():
-            return False
+            return None
         _apply_language_result(entry, result)
         _save_sources(sources)
     return True
@@ -811,14 +820,16 @@ def _generate_summary_background(source_id: str, text: str) -> None:
     with _sources_write_lock:
         sources = _load_sources()
         title = ""
+        known_lang = None
         if source_id in sources:
             title = sources[source_id].get("title", "")
+            known_lang = _known_lang(sources[source_id])
             sources[source_id]["processing_step"] = "summarizing"
             _save_sources(sources)
 
     result = _generate_summary_with_retries(text)
     # Beide KI-Aufrufe vor dem Lock; ein Erkennungsfehler verwirft nie die Zusammenfassung.
-    language = _detect_language_safely(title, text)
+    language = _detect_language_safely(title, text, known_lang)
     with _sources_write_lock:
         sources = _load_sources()
         if source_id not in sources:
@@ -1451,13 +1462,18 @@ def _backfill_source_language_once() -> None:
     todo = [
         (sid, entry.get("title", ""), entry["text"])
         for sid, entry in sources.items()
-        if not entry.get("deleted_at") and entry.get("text", "").strip() and not entry.get("text_lang")
+        if not entry.get("deleted_at")
+        and entry.get("text", "").strip()
+        and not entry.get("text_lang")
+        # von Hand geleert/gepflegt: kein täglicher Nachzug
+        and entry.get("text_lang_ai_generated") is not False
     ]
     failures = 0
     for source_id, title, text in todo:
-        if _detect_and_store_language(source_id, title, text):
+        stored = _detect_and_store_language(source_id, title, text)
+        if stored:
             failures = 0
-        else:
+        elif stored is False:
             failures += 1
             if failures >= LANGUAGE_BACKFILL_MAX_CONSECUTIVE_FAILURES:
                 return
@@ -3414,6 +3430,11 @@ def _revert_source_changes(
         # macht die KI-erkannte Sprache ungültig (ausgenommen explizit
         # mitzurückgesetzte Sprachfelder).
         redetect = "title" in changes or "text" in changes
+        # Zurückgesetzte Sprachfelder gelten wieder als KI-Stand (auch bei
+        # altem Wert None: sonst blieben sie ohne Nachzug leer).
+        for field in ("text_lang", "title_en"):
+            if field in changes:
+                entry[f"{field}_ai_generated"] = True
         if redetect:
             _clear_ai_language_fields(entry, keep=frozenset(changes))
         if "text" in changes:
@@ -3972,17 +3993,32 @@ def reprocess_source(
 
 
 @app.post("/api/sources/{source_id}/detect-language", response_model=LanguageDetectionOut)
-def detect_source_language_suggestion(
+def detect_source_language_endpoint(
     source_id: str,
     _user: str = Depends(require_role(users.QUELLEN_PFLEGER)),
     x_lang: str = Header(default=i18n.DEFAULT_LANG),
 ):
-    # Nur ein Vorschlag fürs Formular (wie der Magic-Button der Zusammenfassung) - speichert nichts.
+    # Wie generate-summary: speichert das Ergebnis als KI-Stand (Flag True);
+    # von Hand gepflegte Felder (Flag False) bleiben unberührt.
     sources = _load_sources()
     if _source_is_missing(sources, source_id):
         raise HTTPException(404, i18n.get_message("source_not_found", x_lang))
     entry = sources[source_id]
-    return LanguageDetectionOut(**_detect_language_safely(entry.get("title", ""), entry.get("text", "")))
+    title, text = entry.get("title", ""), entry.get("text", "")
+    result = _detect_language_safely(title, text, _known_lang(entry))
+    with _sources_write_lock:
+        sources = _load_sources()
+        if _source_is_missing(sources, source_id):
+            raise HTTPException(404, i18n.get_message("source_not_found", x_lang))
+        before = dict(sources[source_id])
+        _apply_language_result(sources[source_id], result)
+        after = sources[source_id]
+        _save_sources(sources)
+        out = {"text_lang": after.get("text_lang") or None, "title_en": after.get("title_en") or None}
+    changes = _diff_fields(before, {f: out[f] for f in out if out[f] != (before.get(f) or None)})
+    if changes:
+        audit.log_change(_user, "source_language_detected", "source", source_id, before.get("title", source_id), changes)
+    return LanguageDetectionOut(**out)
 
 
 @app.post("/api/sources/{source_id}/generate-summary", response_model=SummaryOut)
