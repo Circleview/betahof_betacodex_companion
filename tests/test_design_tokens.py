@@ -69,14 +69,14 @@ LIGHT_EXPECTED = {
     "--color-accent-hover": "#a52a17",
     "--color-on-accent": "#fff", "--color-focus": "#1c1c1c", "--color-success": "#2e7d32",
     "--color-danger": "#c62828", "--color-warning": "#9a6400", "--color-on-conversation": "#fff",
-    "--radius": "0", "--graph-cluster-0": "#d92416",
+    "--radius": "0", "--graph-cluster-0": "#d92416", "--color-cover-sand": "#f7f3ea",
 }
 DARK_EXPECTED = {
     "--color-bg": "#1c1c1c", "--color-surface": "#2a2622", "--color-text": "#e8e4de",
     "--color-text-muted": "#b0aaa2", "--color-border": "#3a3733", "--color-accent": "#f0604f",
     "--color-accent-hover": "#f4806f",
     "--color-on-accent": "#1c1c1c", "--color-focus": "#e8e4de", "--color-success": "#6cc070",
-    "--color-danger": "#f07a6e", "--color-warning": "#e0a530", "--graph-cluster-0": "#f0604f",
+    "--color-danger": "#f07a6e", "--color-warning": "#e0a530", "--graph-cluster-0": "#f0604f", "--color-cover-sand": "#302b25",
 }
 
 
@@ -106,6 +106,7 @@ PAIRS = [
     ("--color-success", "--color-bg"), ("--color-danger", "--color-bg"),
     ("--color-on-accent", "--color-warning"), ("--color-on-accent", "--color-accent-hover"),
     ("--color-accent", "--color-surface"),
+    ("--color-text", "--color-cover-sand"), ("--color-text-muted", "--color-cover-sand"),
 ]
 
 
@@ -232,6 +233,7 @@ def test_fields_have_ink_border_and_one_focus_indicator(sel):
 ACCENT_ALLOWED = {
     'button[type="submit"], .send-button, #popover-load, #popover-upload, #term-merge-analyze',
     "button[type=\"submit\"]:hover, .send-button:hover, #popover-load:hover, #popover-upload:hover, #term-merge-analyze:hover",
+    ".brand-dot",
     ".legal-page a", ".legal-page a:hover, .legal-page a:focus-visible",
     ".link-button", ".link-button:hover", "#embed-expand-button", "#embed-expand-button:hover",
     ".term-followup", ".term-followup:hover", ".citation-ref", ".citation-ref:hover",
@@ -259,3 +261,64 @@ def test_accent_red_only_on_allowed_selectors():
 def test_tint_tokens_unused_and_removed():
     assert "--color-accent-tint" not in CSS
     assert "--color-accent-on-tint" not in CSS
+
+
+# --- Eingabeleiste (C) ---
+def test_question_form_expanded_never_keeps_buttons_beside_field():
+    for sel, body in _rules():
+        if "chat-started" in sel and "question-form--expanded" in sel:
+            assert "flex-basis: 0" not in body and "justify-content: normal" not in body, sel
+
+
+def test_question_form_bar_has_ink_frame_and_borderless_field():
+    assert re.search(r"border:\s*2px solid var\(--color-text\)", _field_rule("#question-form"))
+    assert re.search(r"border:\s*0\b", _field_rule("#question-form textarea"))
+    for sel, body in _rules():
+        if "#question-form" in sel and "textarea" not in sel:
+            assert "border-top: none" not in body, sel
+
+
+# --- Kreativ-Modus (D) ---
+import json
+
+CREATIVE = (STATIC / "creative.html").read_text(encoding="utf-8")
+I18N = {l: json.loads((STATIC / "i18n" / f"{l}.json").read_text(encoding="utf-8")) for l in ("de", "en")}
+STEP_KEYS = [f"creative.step{i}{part}" for i in (1, 2, 3) for part in ("Title", "Text")]
+LABEL_KEYS = ["creative.draftEyebrow", "creative.sourcesEyebrow", "creative.sourcesPlaceholder", "creative.instructionLabel"]
+
+
+def test_creative_steps_and_labels_in_html_and_both_languages():
+    assert len(re.findall(r'class="creative-step"', CREATIVE)) == 3
+    for key in STEP_KEYS + LABEL_KEYS:
+        assert f'data-i18n="{key}"' in CREATIVE or key == "creative.instructionLabel", key
+        for lang in ("de", "en"):
+            assert I18N[lang].get(key), (lang, key)
+    assert I18N["de"]["creative.step1Title"] == "Anweisung geben"
+    assert I18N["de"]["creative.step2Text"] == "Lies den Entwurf und die Quellen rechts."
+    assert I18N["de"]["creative.sourcesPlaceholder"] == "Erscheint nach dem ersten Entwurf."
+    assert I18N["en"]["creative.sourcesPlaceholder"] == "Appears after the first draft."
+    assert 'for="creative-instruction" class="creative-field-label"' in CREATIVE
+    assert CREATIVE.count('data-i18n="creative.instructionLabel"') == 1
+
+
+def test_creative_steps_styled_like_bcx_steps():
+    css = " ".join(CSS.split())
+    assert re.search(r"\.creative-step \{[^}]*border-top: 4px solid var\(--color-text\)[^}]*padding-top: 20px", css)
+    assert re.search(r"\.creative-step__no \{[^}]*font-family: var\(--font-display\)", css)
+    assert re.search(r"\.creative-eyebrow[^{]*\{[^}]*letter-spacing: 0\.12em[^}]*text-transform: uppercase", css)
+
+
+def test_creative_disclaimer_uses_cover_sand_and_ink_top_border():
+    body = _field_rule(".creative-disclaimer")
+    assert "background: var(--color-cover-sand)" in body
+    assert "border-top: 4px solid var(--color-text)" in body
+
+
+def test_creative_sources_placeholder_only_when_list_empty():
+    assert CREATIVE.count('class="creative-sources-placeholder"') == 2
+    css = " ".join(CSS.split())
+    assert re.search(r"ul:not\(:empty\) \+ \.creative-sources-placeholder \{ display: none", css)
+
+
+def test_brand_dot_stays_red():
+    assert "background: var(--color-accent)" in _field_rule(".brand-dot")
