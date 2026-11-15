@@ -5801,7 +5801,7 @@ def test_question_js_wires_inline_image_into_live_view_copy_and_done():
     js = (STATIC_DIR / "question.js").read_text()
     assert "placeInlineImage(assistantBubble, null)" in js  # Skeleton im Live-Stream
     assert re.search(r"placeInlineImage\(bubble, sources\);\s*makeCitationsClickable\(bubble, sources\)", js)
-    assert "\\[bild:\\d+\\.\\d+\\]" in js.split("function buildCopyAnswerButton")[1].split("startSpeaking")[0]
+    assert "\\[bild:\\d{1,2}\\.\\d{1,2}\\]" in js.split("function buildCopyAnswerButton")[1].split("startSpeaking")[0]
     done = js.split("function applyDoneImages")[1].split("\n}\n")[0]
     assert "placeInlineImage" not in done
 

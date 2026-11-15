@@ -1115,7 +1115,7 @@ function buildImageStrip(sources, excludeSrc) {
 
 // Inline-Bild (Idee fe44f080): das Modell setzt höchstens einen Marker
 // [bild:n.m] (n = Ausschnitt wie [n], m = 1-basiertes Bild der Quelle n).
-const INLINE_MARKER_RE = /\[bild:(\d+)\.(\d+)\]/;
+const INLINE_MARKER_RE = /\[bild:(\d{1,2})\.(\d{1,2})\]/;
 
 function inlineMarkerNodes(bubble) {
   const nodes = [];
@@ -1131,7 +1131,7 @@ function removeInlineMarkers(bubble, nodes) {
   nodes.forEach((node) => {
     let block = node;
     while (block.parentNode !== bubble) block = block.parentNode;
-    node.textContent = node.textContent.replace(/\[bild:\d+\.\d+\]/g, '');
+    node.textContent = node.textContent.replace(/\[bild:\d{1,2}\.\d{1,2}\]/g, '');
     if (node.textContent.trim() === '') {
       const next = node.nextSibling;
       const prev = node.previousSibling;
@@ -1399,7 +1399,7 @@ function buildCopyAnswerButton(answer) {
   btn.setAttribute('aria-label', t('index.copyAnswerTitle'));
   let copiedTimer = null;
   btn.addEventListener('click', async () => {
-    const text = answer.replace(/\s*\[\d+\]/g, '').replace(/\s*\[bild:\d+\.\d+\]/g, '');
+    const text = answer.replace(/\s*\[\d+\]/g, '').replace(/\s*\[bild:\d{1,2}\.\d{1,2}\]/g, '');
     try {
       await navigator.clipboard.write([
         new ClipboardItem({

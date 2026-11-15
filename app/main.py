@@ -4337,8 +4337,8 @@ _ASK_QUOTES_MARKER = "---QUOTES---"
 # Der Bildmarker [bild:nn.mm] (höchstens 12 Zeichen) passt ebenfalls hinein
 # (Idee fe44f080); ein vollständiger Marker, den der Schnitt träfe, wird
 # in _ask_event_stream vorgezogen.
-_PENDING_IMAGE_MARKER_RE = re.compile(r"\[bild:[0-9]+\.[0-9]+\]\s*\Z")
-_ASK_STREAM_HOLDBACK = max(len(_ASK_QUOTES_MARKER), len(llm.CREATIVE_LINK_PLACEHOLDER), len("[bild:99.99]"))
+_PENDING_IMAGE_MARKER_RE = re.compile(r"\[bild:[^\]\n]{0,12}\]\s*\Z", re.I)
+_ASK_STREAM_HOLDBACK = max(len(_ASK_QUOTES_MARKER), len(llm.CREATIVE_LINK_PLACEHOLDER), len("[bild:123456789012]"))
 
 # Backlog #51: der Relevanzscore (1-10, Slider in der Quellen-Bearbeitung)
 # wirkte bislang nur als gespeichertes Metadatum, ohne Einfluss auf die
@@ -5052,7 +5052,7 @@ def _ask_event_stream(
         yield json.dumps({"type": "error", "message": i18n.get_message("ask_llm_failed", lang)}) + "\n"
         return
 
-    buffer = llm.filter_image_markers(buffer, offered_counts)
+    buffer = llm.filter_image_markers(llm.drop_partial_marker(buffer), offered_counts)
     raw_answer_text, quotes_by_citation = llm.parse_answer_and_quotes(buffer)
     answer_text, _ = _drop_no_answer_lead(raw_answer_text, final=True)
     answer_text = answer_text.replace(llm.CREATIVE_LINK_PLACEHOLDER, creative_link_url)

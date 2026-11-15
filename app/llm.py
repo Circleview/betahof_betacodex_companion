@@ -135,6 +135,16 @@ _LEADING_CITATION_RE = re.compile(
 
 
 def _move_leading_citations_to_sentence_end(text: str) -> str:
+    # Bildmarker [bild:n.m] enthalten einen Punkt und würden als Satzende gelten:
+    # vorher durch Platzhalter ersetzen, danach zurücksetzen.
+    markers: list[str] = []
+
+    def stash(match: re.Match) -> str:
+        markers.append(match.group(0))
+        return f"\x00{len(markers) - 1}\x00"
+
+    text = _STRICT_IMAGE_MARKER_RE.sub(stash, text)
+
     def repl(match: re.Match) -> str:
         citations = " ".join(re.findall(r"\[\d+\]", match.group("citations")))
         sentence = match.group("sentence")
@@ -142,7 +152,8 @@ def _move_leading_citations_to_sentence_end(text: str) -> str:
         body = sentence[:-1].rstrip()
         return f"{match.group('sep')}{body} {citations}{punctuation}"
 
-    return _LEADING_CITATION_RE.sub(repl, text)
+    moved = _LEADING_CITATION_RE.sub(repl, text)
+    return re.sub(r"\x00(\d+)\x00", lambda m: markers[int(m.group(1))], moved)
 
 
 def parse_answer_and_quotes(raw: str) -> tuple[str, dict[int, list[str]]]:
@@ -339,7 +350,17 @@ _WEB_LABEL = {"de": "Web-Seite", "en": "Web page"}
 
 
 # Inline-Bild (Idee fe44f080): Marker [bild:n.m] = Ausschnitt n, Bild m (1-basiert).
-IMAGE_MARKER_RE = re.compile(r"\[bild:([0-9]+)\.([0-9]+)\]\s*")
+_STRICT_IMAGE_MARKER_RE = re.compile(r"\[bild:[0-9]{1,2}\.[0-9]{1,2}\]")
+IMAGE_MARKER_RE = re.compile(r"\[bild:([0-9]{1,2})\.([0-9]{1,2})\]\s*")
+# Jeder bildmarker-ähnliche Rest (beliebige Schreibweise, höchstens 19 Zeichen =
+# Holdback in app/main.py) fliegt raus; nur die strenge Form kann gültig sein.
+IMAGE_JUNK_RE = re.compile(r"\[bild:[^\]\n]{0,12}\]\s*", re.I)
+_PARTIAL_IMAGE_MARKER_RE = re.compile(r"\[bild:[0-9.]*\Z")
+
+
+def drop_partial_marker(text: str) -> str:
+    """Schneidet einen Markerrest am Textende ab (Stream endete mitten im Marker)."""
+    return _PARTIAL_IMAGE_MARKER_RE.sub("", text)
 _IMAGE_FILE_RE = re.compile(r"[A-Za-z0-9._-]{1,80}")
 _ALT_FORBIDDEN_RE = re.compile(r"[\[\](){}\"'„“”‚‘’]")
 _ALT_PROMPT_MAX = 120
@@ -347,7 +368,7 @@ _ALT_PROMPT_MAX = 120
 
 def strip_image_markers(text: str) -> str:
     """Entfernt alle [bild:n.m]-Marker samt Leerraum danach."""
-    return IMAGE_MARKER_RE.sub("", text)
+    return IMAGE_JUNK_RE.sub("", text)
 
 
 def filter_image_markers(text: str, offered: list[int]) -> str:
@@ -360,13 +381,16 @@ def filter_image_markers(text: str, offered: list[int]) -> str:
 
     def decide(match):
         nonlocal kept
-        n, m = int(match.group(1)), int(match.group(2))
+        strict = IMAGE_MARKER_RE.fullmatch(match.group(0))
+        if not strict:
+            return ""
+        n, m = int(strict.group(1)), int(strict.group(2))
         if kept or not (0 < n <= len(offered) and 0 < m <= offered[n - 1]) or f"[{n}]" not in head[: match.start()]:
             return ""
         kept = True
         return match.group(0)
 
-    return IMAGE_MARKER_RE.sub(decide, head) + sep + strip_image_markers(tail)
+    return IMAGE_JUNK_RE.sub(decide, head) + sep + strip_image_markers(tail)
 
 
 def _image_line(chunk_number: int, images: list[dict]) -> str:
