@@ -996,6 +996,7 @@ body:not(.chat-started) #question-form {
 
   body:not(.chat-started) .site-footer {
     margin-top: 0;
+    border-top: 0;
   }
 }
 
