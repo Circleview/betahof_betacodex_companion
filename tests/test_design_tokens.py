@@ -238,11 +238,11 @@ ACCENT_ALLOWED = {
     ".brand-dot",
     ".legal-page a", ".legal-page a:hover, .legal-page a:focus-visible",
     ".link-button", ".link-button:hover", "#embed-expand-button", "#embed-expand-button:hover",
-    ".term-followup", ".term-followup:hover", ".citation-ref", ".citation-ref:hover",
+    ".term-followup:hover", ".citation-ref", ".citation-ref:hover",
     "#chat-messages a", "#chat-messages a:hover, #chat-messages a:focus-visible",
     ".external-link", ".external-link:hover", ".source-open-link", ".source-open-link:hover",
     ".author-link", ".author-link:hover", "details a", ".creative-disclaimer a", "#creative-sources a",
-    ".citation-author-link:hover", ".citation-title-link:hover", ".citation-card .external-link", ".citation-card .external-link:hover", ".question-log-question-link:hover",
+    ".citation-card .citation-author-link:hover, .citation-card .citation-title-link:hover, .citation-card .external-link:hover", ".question-log-question-link:hover",
     ".question-log-answer-details summary:hover", ".site-footer a:hover",
     ".source-image a:hover img",
 }
@@ -414,16 +414,14 @@ def test_embed_copy_button_is_secondary_ink_button():
 
 def test_accent_red_forbidden_on_cover_surfaces_links_use_accent_hover():
     # Rot (#d92416) erreicht auf Cover-Farben nur ~3.8-4.5; Links dort in accent-hover.
-    cover_links = {".creative-disclaimer a", ".citation-card .external-link", ".citation-card a"}
+    cover_links = {".creative-disclaimer a", ".citation-card a"}
     seen = set()
     for sel, body in _rules():
         if sel in cover_links:
             seen.add(sel)
             assert "var(--color-accent)" not in body, sel
             assert "var(--color-accent-hover)" in body, sel
-    assert {".creative-disclaimer a", ".citation-card .external-link"} <= seen
-    for sel in (".citation-author-link:hover", ".citation-title-link:hover"):
-        assert "var(--color-accent-hover)" in _field_rule(sel)
+    assert ".creative-disclaimer a" in seen
 
 
 # --- Favicon von betacodex.org ---
@@ -460,3 +458,27 @@ def test_favicon_svg_reachable_with_early_access_gate(monkeypatch):
     monkeypatch.setenv("EARLY_ACCESS_PASSWORD", "geheim123")
     r = TestClient(main_module.app).get("/icons/favicon.svg")
     assert r.status_code == 200 and r.headers["content-type"].startswith("image/svg+xml")
+
+
+def test_citation_card_links_are_ink_underlined_with_accent_hover():
+    ink = ".citation-card .citation-title-link, .citation-card .citation-author-link, .citation-card .external-link"
+    body = _field_rule(ink)
+    assert "color: var(--color-text)" in body
+    assert "text-decoration: underline" in body and "text-underline-offset: 3px" in body
+    assert "var(--color-accent-hover)" in _field_rule(
+        ".citation-card .citation-title-link:hover, .citation-card .citation-author-link:hover, .citation-card .external-link:hover"
+    )
+
+
+def test_citation_card_has_no_extra_inline_indent():
+    body = _field_rule(".citation-card")
+    assert not re.search(r"margin(-inline|-left|-right)", body)
+    assert re.search(r"margin:\s*0\.6rem 0 1rem", body)
+
+
+def test_term_followup_is_ink_bold_thin_underline_hover_accent_hover():
+    body = _field_rule(".term-followup")
+    assert "color: var(--color-text)" in body and "font-weight: 700" in body
+    assert "text-decoration: underline 1px" in body and "text-underline-offset: 3px" in body
+    assert "var(--color-accent-hover)" in _field_rule(".term-followup:hover")
+    assert "var(--color-accent)" in _field_rule(".citation-ref")
