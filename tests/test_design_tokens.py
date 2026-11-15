@@ -525,7 +525,11 @@ def test_question_bar_focus_is_single_ring_on_the_bar_frame():
     # Textfeld der Eingabeleiste - nur zusammen mit dem Ring auf der Leiste selbst.
     assert "outline: none" in _field_rule("#question-form textarea:focus-visible")
     ring = _field_rule("#question-form:has(textarea:focus)")
-    assert "outline: 3px solid var(--color-focus)" in ring and "outline-offset: 0" in ring
+    # #chat-column hat overflow: hidden und schneidet alles ab, was außerhalb
+    # der Leiste liegt (auch Outline mit Offset 0) - deshalb innerer Ring per
+    # inset-Schatten, bündig am 2px-Rand: eine durchgehende Linie.
+    assert "box-shadow: inset 0 0 0 3px var(--color-focus)" in ring
+    assert "outline:" not in ring
     for sel, body in _rules():
         if "outline: none" in body and re.search(r"(input|textarea|select)[^,]*:focus", sel):
             assert sel == "#question-form textarea:focus-visible", sel
