@@ -4563,6 +4563,7 @@ class FakeNode {
     this._text = '';
     this.listeners = {};
     this.dataset = {};
+    this.style = {};
     this.attrs = {};
   }
   get textContent() {
@@ -4701,7 +4702,7 @@ function summarize(strip) {
 }
 """
 
-_STRIP_FUNCS = ("safeImageSrc", "buildImageStrip")
+_STRIP_FUNCS = ("safeImageSrc", "buildImageFigure", "buildImageStrip")
 
 
 def _src(i):
