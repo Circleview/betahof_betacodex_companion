@@ -242,7 +242,7 @@ ACCENT_ALLOWED = {
     "#chat-messages a", "#chat-messages a:hover, #chat-messages a:focus-visible",
     ".external-link", ".external-link:hover", ".source-open-link", ".source-open-link:hover",
     ".author-link", ".author-link:hover", "details a", ".creative-disclaimer a", "#creative-sources a",
-    ".citation-card .citation-author-link:hover, .citation-card .citation-title-link:hover, .citation-card .external-link:hover", ".question-log-question-link:hover",
+    ".citation-card .citation-title-link:hover, .citation-card .citation-author-link:hover, .citation-card .external-link:hover", ".citation-author-link:hover", ".citation-title-link:hover", ".question-log-question-link:hover",
     ".question-log-answer-details summary:hover", ".site-footer a:hover",
     ".source-image a:hover img",
 }

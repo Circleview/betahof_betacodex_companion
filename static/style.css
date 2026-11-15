@@ -955,7 +955,7 @@ body:not(.chat-started) .site-footer {
      oben UND unten denselben Puffer zur jeweiligen Trennlinie hat - nur so
      zentriert justify-content:center wirklich zwischen den beiden Linien
      statt spürbar zu weit oben. */
-  margin-top: 1.5rem;
+  margin-top: auto;
 }
 
 body:not(.chat-started) #chat-column {
@@ -1701,8 +1701,9 @@ button.send-button {
   }
 
   #question-form {
-    padding-left: 0;
-    padding-right: 0;
+    /* Platz für den 3px-Fokusrahmen des Textfelds innerhalb der Leiste. */
+    padding-left: 0.5rem;
+    padding-right: 0.5rem;
   }
 
   /* Fix (2026-07-31, dritter Anlauf): sowohl die ursprüngliche Annahme
@@ -1790,7 +1791,10 @@ button.send-button {
    beim Hover) - fett ist bereits durch das umschließende <strong> gegeben. */
 .term-followup {
   cursor: pointer;
-  color: var(--color-accent);
+  color: var(--color-text);
+  font-weight: 700;
+  text-decoration: underline 1px;
+  text-underline-offset: 3px;
 }
 
 .term-followup:hover {
@@ -1915,13 +1919,20 @@ button.send-button {
   margin: 0.6rem 0 1rem;
 }
 
-/* Links auf der Cover-Fläche: accent-hover statt accent (Kontrast). */
+/* Links auf der Cover-Fläche (Mint): Tinte mit Unterstrich, Hover accent-hover
+   (Rot erreicht auf Cover-Farben keinen ausreichenden Kontrast). */
+.citation-card .citation-title-link,
+.citation-card .citation-author-link,
 .citation-card .external-link {
-  color: var(--color-accent-hover);
+  color: var(--color-text);
+  text-decoration: underline;
+  text-underline-offset: 3px;
 }
 
+.citation-card .citation-title-link:hover,
+.citation-card .citation-author-link:hover,
 .citation-card .external-link:hover {
-  color: var(--color-text);
+  color: var(--color-accent-hover);
 }
 
 .citation-card-heading {
@@ -4478,7 +4489,7 @@ details a {
 /* Zweitknopf: Rand Tinte, Hover Tinte-Fläche. */
 .footer-embed-copy {
   display: block;
-  margin-left: auto;
+  margin: 0.75rem 0 0 auto;
   padding: 0.6rem 1.25rem;
   border: 2px solid var(--color-text);
   border-radius: var(--radius);
