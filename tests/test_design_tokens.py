@@ -424,3 +424,39 @@ def test_accent_red_forbidden_on_cover_surfaces_links_use_accent_hover():
     assert {".creative-disclaimer a", ".citation-card .external-link"} <= seen
     for sel in (".citation-author-link:hover", ".citation-title-link:hover"):
         assert "var(--color-accent-hover)" in _field_rule(sel)
+
+
+# --- Favicon von betacodex.org ---
+import struct
+
+
+def _png_size(path):
+    data = path.read_bytes()
+    assert data[:8] == b"\x89PNG\r\n\x1a\n", path
+    return struct.unpack(">II", data[16:24])
+
+
+def test_every_html_page_links_svg_before_png_icon():
+    for f in sorted(STATIC.glob("*.html")):
+        html = f.read_text(encoding="utf-8")
+        svg = html.find('<link rel="icon" href="/icons/favicon.svg" type="image/svg+xml">')
+        png = html.find('<link rel="icon" type="image/png" href="/icons/favicon.png">')
+        assert 0 <= svg < png, f.name
+
+
+def test_icon_files_exist_with_expected_sizes_and_manifest_matches():
+    assert (STATIC / "icons" / "favicon.svg").read_text(encoding="utf-8").lstrip().startswith("<svg")
+    manifest = json.loads((STATIC / "manifest.json").read_text(encoding="utf-8"))
+    by_src = {i["src"]: i for i in manifest["icons"]}
+    for src in ("/icons/favicon.png", "/icons/apple-touch-icon.png"):
+        w, h = _png_size(STATIC / src.lstrip("/"))
+        assert by_src[src]["sizes"] == f"{w}x{h}", src
+    assert (_png_size(STATIC / "icons/favicon.png")) == (32, 32)
+    assert (_png_size(STATIC / "icons/apple-touch-icon.png")) == (180, 180)
+    assert by_src["/icons/favicon.svg"] == {"src": "/icons/favicon.svg", "sizes": "any", "type": "image/svg+xml"}
+
+
+def test_favicon_svg_reachable_with_early_access_gate(monkeypatch):
+    monkeypatch.setenv("EARLY_ACCESS_PASSWORD", "geheim123")
+    r = TestClient(main_module.app).get("/icons/favicon.svg")
+    assert r.status_code == 200 and r.headers["content-type"].startswith("image/svg+xml")
