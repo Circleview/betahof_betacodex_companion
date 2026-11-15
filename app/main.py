@@ -302,6 +302,7 @@ _EARLY_ACCESS_EXEMPT_PATHS = {
     # ab und navigiert stattdessen ohne Token, siehe dortiger Kommentar).
     "/embed.html",
     "/icons/favicon.png",
+    "/icons/favicon.svg",
     "/question.js",
     "/markdown.js",
     "/auth.js",
