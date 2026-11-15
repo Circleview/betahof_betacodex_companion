@@ -359,6 +359,7 @@ function buildEmbedSection() {
   const snippetArea = document.createElement('textarea');
   snippetArea.readOnly = true;
   snippetArea.className = 'footer-embed-snippet';
+  snippetArea.setAttribute('aria-label', t('footer.embedSnippetLabel'));
   snippetArea.value = buildEmbedSnippet(480);
   box.appendChild(snippetArea);
 

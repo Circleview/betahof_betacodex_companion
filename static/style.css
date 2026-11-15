@@ -113,6 +113,10 @@ html {
   .page-band {
     padding-block: 32px;
   }
+
+  html #question-form textarea {
+    max-height: 40dvh;
+  }
 }
 
 body {
@@ -190,7 +194,7 @@ h3 {
   display: inline-block;
   overflow: hidden;
   white-space: nowrap;
-  max-width: 320px;
+  max-width: 14em;
   opacity: 1;
   transform: translateX(0);
   transition: max-width 0.4s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.25s ease,
@@ -597,6 +601,14 @@ header h1 {
   font-weight: 600;
   color: var(--color-text-muted);
   cursor: pointer;
+  position: relative;
+}
+
+/* Trefferfläche >= 24px (WCAG 2.5.8), Optik und Layout unverändert. */
+.lang-button::after {
+  content: '';
+  position: absolute;
+  inset: -6px -4px;
 }
 
 .lang-button.active {
@@ -900,7 +912,8 @@ button[type="submit"]:disabled, .send-button:disabled, #popover-load:disabled, #
   font-size: 0.85rem;
 }
 
-section {
+section,
+main {
   margin-bottom: 3rem;
 }
 
@@ -1185,6 +1198,8 @@ body:not(.chat-started) #question-form {
      Ziehgriff, overflow:hidden das kurze Aufblitzen einer internen
      Scrollleiste während der Höhenänderung. */
   resize: none;
+  /* Obergrenze: Senden bleibt im Viewport; darüber scrollt das Feld (JS setzt overflow-y). */
+  max-height: 40vh;
   overflow: hidden;
   transition: height 0.15s ease;
 }
@@ -2391,6 +2406,13 @@ button.send-button {
   font-weight: 600;
   cursor: pointer;
   border-radius: var(--radius);
+  position: relative;
+}
+
+.alphabet-jump-btn::after {
+  content: '';
+  position: absolute;
+  inset: -3px;
 }
 
 .alphabet-jump-btn:hover {
@@ -4801,6 +4823,11 @@ details a {
   color: var(--color-accent-hover);
 }
 
+/* '#creative-sources a' (ID) würde sonst das Rot auf Sand erzwingen. */
+#creative-sources .creative-disclaimer a {
+  color: var(--color-accent-hover);
+}
+
 .creative-disclaimer--mobile {
   display: none;
 }
@@ -5206,6 +5233,16 @@ details a {
 
 /* Zweistufige Bestätigung des Neu-anfangen-Buttons (creative.js). Grundstil
    kommt von .feedback-btn. */
+#creative-new-btn {
+  position: relative;
+}
+
+#creative-new-btn::after {
+  content: '';
+  position: absolute;
+  inset: -3px;
+}
+
 #creative-new-btn.confirming {
   color: var(--color-text);
 }

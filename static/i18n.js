@@ -61,6 +61,9 @@ function applyStaticTranslations() {
   document.querySelectorAll('[data-i18n-placeholder]').forEach((el) => {
     el.setAttribute('placeholder', t(el.getAttribute('data-i18n-placeholder')));
   });
+  document.querySelectorAll('[data-i18n-aria-label]').forEach((el) => {
+    el.setAttribute('aria-label', t(el.getAttribute('data-i18n-aria-label')));
+  });
   document.querySelectorAll('[data-i18n-title]').forEach((el) => {
     const value = t(el.getAttribute('data-i18n-title'));
     el.setAttribute('title', value);

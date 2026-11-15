@@ -1176,7 +1176,11 @@ function autosizeQuestionInput() {
   // Jetzt an der tatsächlichen (durch die Klasse ggf. breiteren) Zielbreite
   // messen, damit die Boxhöhe zur wirklich benötigten Zeilenzahl passt.
   questionInput.style.height = 'auto';
-  questionInput.style.height = `${questionInput.scrollHeight}px`;
+  // Obergrenze aus dem CSS (max-height): darüber scrollt das Feld selbst.
+  const maxHeight = parseFloat(getComputedStyle(questionInput).maxHeight) || Infinity;
+  const needed = questionInput.scrollHeight;
+  questionInput.style.height = `${Math.min(needed, maxHeight)}px`;
+  questionInput.style.overflowY = needed > maxHeight ? 'auto' : 'hidden';
 }
 
 questionInput.addEventListener('input', autosizeQuestionInput);

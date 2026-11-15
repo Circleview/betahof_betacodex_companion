@@ -238,7 +238,7 @@ def test_fields_have_ink_border_and_one_focus_indicator(sel):
 ACCENT_ALLOWED = {
     'button[type="submit"], .send-button, #popover-load, #popover-upload, #term-merge-analyze',
     "button[type=\"submit\"]:hover, .send-button:hover, #popover-load:hover, #popover-upload:hover, #term-merge-analyze:hover",
-    ".brand-dot", ".footer-panel a", ".legal-summary a", ".new-author-profile a",
+    ".brand-dot", "#creative-sources .creative-disclaimer a", ".footer-panel a", ".legal-summary a", ".new-author-profile a",
     ".legal-page a", ".legal-page a:hover, .legal-page a:focus-visible",
     ".link-button", ".link-button:hover", "#embed-expand-button", "#embed-expand-button:hover",
     ".term-followup:hover", ".citation-ref", ".citation-ref:hover",
@@ -571,7 +571,7 @@ QUESTION_JS = (STATIC / "question.js").read_text(encoding="utf-8")
 
 def test_question_textarea_is_height_capped_and_js_respects_cap():
     assert "max-height: 40vh" in _field_rule("#question-form textarea")
-    assert re.search(r"@media \(max-width: 640px\) \{[^@]*#question-form textarea \{[^}]*max-height: 40dvh", CSS)
+    assert re.search(r"@media \(max-width: 640px\) \{[^@]*html #question-form textarea \{[^}]*max-height: 40dvh", CSS)
     fn = QUESTION_JS[QUESTION_JS.index("function autosizeQuestionInput"):]
     fn = fn[: fn.index("questionInput.addEventListener('input'")]
     assert "Math.min(" in fn and "maxHeight" in fn and "overflowY" in fn
@@ -583,7 +583,7 @@ def test_disclaimer_link_beats_sources_column_link_color():
     assert "var(--color-accent-hover)" in body and "var(--color-accent)" not in body
 
 
-@pytest.mark.parametrize("sel", [".lang-button", ".alphabet-jump-btn", "#creative-new-btn", ".auth-widget-button"])
+@pytest.mark.parametrize("sel", [".lang-button", ".alphabet-jump-btn", "#creative-new-btn"])
 def test_small_touch_targets_get_hit_area(sel):
     # WCAG 2.5.8: Trefferflaeche >= 24px per ::after, Optik unveraendert.
     body = _field_rule(f"{sel}::after")

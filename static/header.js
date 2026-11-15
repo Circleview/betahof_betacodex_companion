@@ -171,6 +171,7 @@ function applyNavTexts() {
     el.title = label;
     el.setAttribute('aria-label', label);
   });
+  document.querySelector('.header-actions')?.setAttribute('aria-label', t('nav.main'));
   const brandName = document.querySelector('#brand-link .brand-name');
   if (brandName) brandName.textContent = t('index.brandName');
 }
@@ -213,8 +214,9 @@ function renderHeaderShell() {
   brand.append(dot, name);
   h1.appendChild(brand);
 
-  const actions = document.createElement('div');
+  const actions = document.createElement('nav');
   actions.className = 'header-actions';
+  actions.setAttribute('aria-label', t('nav.main'));
   NAV_LINKS.forEach((link) => actions.appendChild(buildNavLink(link)));
   if (langSwitcher) actions.appendChild(langSwitcher);
   if (authWidget) actions.appendChild(authWidget);
