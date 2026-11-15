@@ -5530,3 +5530,17 @@ def test_dev_vergleich_js_guards():
     assert "'X-Lang'" in js and 'id="vg-lang"' in html
     assert "max_tokens" in js and "stop_reason" in js
     assert "quotes_expected" in js
+
+
+# Nutzerwunsch (2026-11-15, Idee af02ecb1): Der Modellname ist kein
+# Fachbegriff zum Vertiefen. Das Modell setzt ihn trotz Prompt-Regel fett,
+# deshalb entfernt renderMarkdown die Hervorhebung.
+@pytest.mark.parametrize("name", ["Beta-Kodex", "BetaCodex", "beta-kodex", "Betacodex"])
+def test_render_markdown_never_bolds_beta_kodex(name):
+    html = _run_render_markdown(f"Der **{name}** kennt **Teamautonomie**.")
+    assert html == f"<p>Der {name} kennt <strong>Teamautonomie</strong>.</p>"
+
+
+def test_render_markdown_keeps_bold_compound_with_beta_kodex():
+    html = _run_render_markdown("**Beta-Kodex-Gesetze** gelten.")
+    assert html == "<p><strong>Beta-Kodex-Gesetze</strong> gelten.</p>"
