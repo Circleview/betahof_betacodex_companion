@@ -65,6 +65,9 @@ Assistent das offen, statt zu spekulieren.
   das Bild unter dem Absatz (während des Streams eine schimmernde
   Platzhalter-Fläche) und lässt es in der Bildleiste weg. Marker fehlen in
   Kopieren, Vorlesen, MCP, Fragen-Log, Feedback und Verlauf.
+  Hat ein Ausschnitt kein eigenes Bild (z. B. weil der Bild-Anker im Text
+  fehlt), bietet der Server bis zu 2 Bilder derselben Quelle an (gekennzeichnet,
+  nur bei klarem Bezug; ohne Reindex, restricted-Grenze gilt weiter).
 - Bildleiste: Zitiert eine Antwort Quellen mit Bildern, zeigt der Chat bis zu
   6 davon (Bildunterschrift = Quelle, bei PDFs mit Seite, Klick öffnet die
   Quelle). Web-Bilder bleiben Links auf den Server der Quelle, PDF-Grafiken

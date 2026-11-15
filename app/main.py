@@ -4876,11 +4876,36 @@ def _chunk_images(meta: dict, is_web_fallback: bool = False) -> list[ImageRef]:
     return result
 
 
-def _apply_chunk_images(refs: list, metas: list[dict]) -> None:
+FALLBACK_IMAGES_PER_SOURCE = 2
+
+
+def _apply_chunk_images(refs: list, metas: list[dict], sources: dict | None = None) -> None:
     """Setzt `images` je ChunkRef aus den Chunk-Metadaten (nie aus Client-
-    Angaben). Die restricted-Grenze folgt separat in _limit_restricted_images."""
+    Angaben). Die restricted-Grenze folgt separat in _limit_restricted_images.
+    Quellen-Fallback (Idee fe44f080): hat der erste Ref einer Quelle kein
+    eigenes Bild, bekommt er höchstens 2 Bilder aus der Quelle selbst -
+    zuerst solche, die an keinem Chunk hängen; keine src doppelt."""
     for ref, meta in zip(refs, metas):
         ref.images = _chunk_images(meta, ref.is_web_fallback)
+    used = {image.src for ref in refs for image in ref.images}
+    handled: set[str] = set()
+    for ref in refs:
+        if ref.is_web_fallback or ref.source_id in handled:
+            continue
+        handled.add(ref.source_id)
+        entry_images = (sources or {}).get(ref.source_id, {}).get("images")
+        if ref.images or not isinstance(entry_images, list):
+            continue
+        candidates = _chunk_images({"images_json": json.dumps(entry_images), "source_id": ref.source_id})
+        on_chunks = {
+            image.src
+            for chunk_meta in vectorstore.get_source_chunks(ref.source_id)[2]
+            for image in _chunk_images({**chunk_meta, "source_id": ref.source_id})
+        }
+        candidates.sort(key=lambda image: image.src in on_chunks)  # stabil: Quellreihenfolge bleibt
+        fallback = [image for image in candidates if image.src not in used][:FALLBACK_IMAGES_PER_SOURCE]
+        ref.images = [image.model_copy(update={"from_source": True}) for image in fallback]
+        used.update(image.src for image in fallback)
 
 
 def _limit_restricted_images(refs: list, sources: dict, priority: list[int] | None = None) -> list[list]:
@@ -4968,7 +4993,7 @@ def _ask_event_stream(
     ) + "\n"
     # Idee fe44f080: das Modell kennt genau die Bilder, die auch gezeigt werden.
     llm_chunks = [
-        {**chunk, "images": [image.model_dump() for image in images]}
+        {**chunk, "images": [{**image.model_dump(), "from_source": image.from_source} for image in images]}
         for chunk, images in zip(llm_chunks, offered_images)
     ]
     offered_counts = [len(images) for images in offered_images]
@@ -5333,7 +5358,7 @@ def _ask_context(
             }
         )
 
-    _apply_chunk_images(chunk_refs, metadatas)
+    _apply_chunk_images(chunk_refs, metadatas, sources)
 
     # Backlog (2026-07-29): rein chunk-basierte Suche findet für biografische
     # Fragen ("Wer ist X?") keine passenden Textausschnitte, da Autor:innen-
@@ -5678,7 +5703,7 @@ def create_conversation_handoff(
             meta if (meta := metas_by_id.get(ref.chunk_id, {})).get("source_id") == ref.source_id else {}
             for ref in turn.sources
         ]
-        _apply_chunk_images(turn.sources, metas)
+        _apply_chunk_images(turn.sources, metas, all_sources)
         for ref in turn.sources:
             ref.url = ref.url if ref.url and ref.url.lower().startswith(("http://", "https://")) else None
             ref.listen_url = (

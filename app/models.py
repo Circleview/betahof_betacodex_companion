@@ -202,6 +202,9 @@ class ImageRef(BaseModel):
     src: str
     alt: str = Field("", max_length=300)
     page: Optional[int] = None
+    # Bild stammt nicht aus diesem Chunk, sondern aus der Quelle (nur fürs Modell,
+    # daher nie in der Antwort an den Client).
+    from_source: bool = Field(False, exclude=True)
 
 
 class ChunkRef(BaseModel):

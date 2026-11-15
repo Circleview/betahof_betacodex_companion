@@ -117,6 +117,9 @@ Die wichtigsten Regeln:
   `[bild:n.m]` mit gekürzter, bereinigter Bildbeschreibung (nie die Adresse). Passt ein
   Bild klar, setzt es höchstens einen Marker unter den Absatz. Der Server lässt nur den
   ersten gültigen Marker stehen, die Seite zeigt dort das Bild aus der Quellenliste.
+  Hängt an einem Ausschnitt kein eigenes Bild, bekommt er höchstens zwei Bilder aus derselben
+  Quelle (zuerst solche, die an keinem Ausschnitt hängen); sie sind für das Modell gekennzeichnet
+  und kommen nur in den Text, wenn Beschreibung oder Dateiname klar zur Aussage passen.
 - Geben die Ausschnitte nur einen Teil her, antwortet das Modell mit diesem Teil und
   nennt die Lücke am Ende. Nur wenn gar nichts passt, kommt ein fest vorgegebener
   Absage-Satz.
@@ -275,7 +278,7 @@ sind willkommen.
 
 Diese Tabelle wird aus dem Code erzeugt. Ändern sich Prompts oder Parameter, schlägt `tests/test_how_it_works_doc.py` fehl, bis der Text oben geprüft und `python scripts/how_it_works.py --write` gelaufen ist.
 
-<!-- fingerprint: 74b8ffe442da -->
+<!-- fingerprint: 3f06b77a70ab -->
 <!-- END generiert -->
 
 ## Wie dieses Dokument aktuell bleibt
