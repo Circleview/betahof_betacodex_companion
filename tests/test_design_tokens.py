@@ -227,7 +227,10 @@ def test_fields_have_ink_border_and_one_focus_indicator(sel):
     assert re.search(r"background:\s*var\(--color-bg\)", body)
     for s, b in _rules():
         if re.search(r":focus(?!-within)", s) and not s.startswith(".skip-link"):
-            assert "box-shadow" not in b, s
+            # Einzige Ausnahme: innerer Fokusring der Eingabeleiste (Tinte, kein Tint),
+            # siehe test_question_bar_focus_is_single_ring_on_the_bar_frame.
+            if s != "#question-form:has(textarea:focus)":
+                assert "box-shadow" not in b, s
             assert not re.search(r"border(-color)?:[^;]*var\(--color-accent", b), s
 
 
