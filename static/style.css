@@ -145,6 +145,14 @@ h1, .page-title, .brand-name {
   outline-offset: 2px;
 }
 
+/* Felder haben einen 2px-Tintenrand: der Fokusrahmen liegt darüber, damit
+   nur eine Linie sichtbar ist (keine Doppellinie). */
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  outline-offset: -2px;
+}
+
 h1 {
   font-size: 1.6rem;
   display: flex;
@@ -3076,6 +3084,23 @@ button.send-button {
   padding-right: 0.85rem;
 }
 
+/* Mobil hat der body nur 0.75rem Seitenpolster - der Warn-Hintergrund darf
+   nicht weiter hinausragen (sonst waagrechter Überlauf). */
+@media (max-width: 640px) {
+  #source-list li.source-row--unreachable,
+  .term-overview-sources li.source-row--unreachable {
+    padding-left: 0.75rem;
+    padding-right: 0.75rem;
+    margin-left: -0.75rem;
+    margin-right: -0.75rem;
+  }
+
+  #source-list.timeline-mode li.source-row--unreachable {
+    padding-right: 0.75rem;
+    margin-right: -0.75rem;
+  }
+}
+
 .warning-icon {
   color: var(--color-warning);
 }
@@ -3788,9 +3813,13 @@ button.send-button {
      dünner Akzent-Rahmen statt neutralem Rahmen + 3px links (bekanntes
      KI-generiert-Klischee) - die Tönung trägt die Abgrenzung mit, der
      Rahmen muss sie nicht mehr allein einseitig betonen. */
-  border: 1px solid var(--color-text);
+  border: 0;
   border-radius: var(--radius);
-  background: var(--color-surface);
+  background: var(--color-cover-sand);
+}
+
+.new-author-profile a {
+  color: var(--color-accent-hover);
 }
 
 .new-author-profile-body {
@@ -4411,9 +4440,14 @@ details a {
   position: relative;
   margin-top: 3rem;
   padding: 1.5rem 2.75rem 1.5rem 1.5rem;
-  border: 1px solid var(--color-border);
+  background: var(--color-cover-sand);
+  border: 0;
   border-radius: var(--radius);
   font-size: 0.9rem;
+}
+
+.footer-panel a {
+  color: var(--color-accent-hover);
 }
 
 .footer-panel label {
@@ -4715,11 +4749,15 @@ details a {
 .legal-summary {
   margin: 0 0 1.5rem;
   padding: 0.9rem 1.1rem;
-  border: 1px solid var(--color-text);
-  background: var(--color-surface);
+  border: 0;
+  background: var(--color-cover-sand);
   border-radius: var(--radius);
   font-size: 0.92rem;
   line-height: 1.55;
+}
+
+.legal-summary a {
+  color: var(--color-accent-hover);
 }
 
 .legal-summary p {
