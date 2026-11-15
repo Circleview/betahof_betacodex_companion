@@ -75,7 +75,7 @@ def contrast(a, b):
 LIGHT_EXPECTED = {
     "--color-bg": "#ffffff", "--color-surface": "#f7f5f1", "--color-text": "#1c1c1c",
     "--color-text-muted": "#4a4640", "--color-border": "#e6e2dc", "--color-accent": "#d92416",
-    "--color-accent-hover": "#a52a17", "--color-accent-tint": "rgba(217, 36, 22, 0.01)",
+    "--color-accent-hover": "#a52a17", "--color-accent-on-tint": "#a52a17", "--color-accent-tint": "rgba(217, 36, 22, 0.08)",
     "--color-on-accent": "#fff", "--color-focus": "#1c1c1c", "--color-success": "#2e7d32",
     "--color-danger": "#c62828", "--color-warning": "#9a6400", "--color-on-conversation": "#fff",
     "--radius": "0", "--graph-cluster-0": "#d92416",
@@ -83,7 +83,7 @@ LIGHT_EXPECTED = {
 DARK_EXPECTED = {
     "--color-bg": "#1c1c1c", "--color-surface": "#2a2622", "--color-text": "#e8e4de",
     "--color-text-muted": "#b0aaa2", "--color-border": "#3a3733", "--color-accent": "#f0604f",
-    "--color-accent-hover": "#f4806f", "--color-accent-tint": "rgba(240, 96, 79, 0.02)",
+    "--color-accent-hover": "#f4806f", "--color-accent-on-tint": "#f4806f", "--color-accent-tint": "rgba(240, 96, 79, 0.14)",
     "--color-on-accent": "#1c1c1c", "--color-focus": "#e8e4de", "--color-success": "#6cc070",
     "--color-danger": "#f07a6e", "--color-warning": "#e0a530", "--graph-cluster-0": "#f0604f",
 }
@@ -123,7 +123,7 @@ def test_contrast_pairs_meet_aa(tokens):
         assert contrast(t[fg], t[bg]) >= 4.5, (fg, bg)
     for base in ("--color-bg", "--color-surface"):
         tinted = _over(t["--color-accent-tint"], t[base])
-        assert contrast(t["--color-accent"], tinted) >= 4.5, base
+        assert contrast(t["--color-accent-on-tint"], tinted) >= 4.5, base
 
 
 def test_contrast_function_rejects_light_accent_on_dark():
@@ -196,3 +196,13 @@ def test_display_font_applied_to_titles_and_brand():
 def test_global_focus_visible_and_inputs_keep_outline():
     assert re.search(r":focus-visible\s*\{[^}]*outline:\s*3px solid var\(--color-focus\)", CSS)
     assert not re.search(r"(select:focus|input:focus, textarea:focus)\s*\{[^}]*outline:\s*none", CSS)
+
+
+def test_accent_text_on_tint_uses_on_tint_token():
+    # Regel mit color:var(--color-accent) UND background:var(--color-accent-tint) -> on-tint-Token
+    bad = []
+    for m in re.finditer(r"([^{}]+)\{([^{}]*)\}", re.sub(r"/\*.*?\*/", "", CSS, flags=re.S)):
+        body = m.group(2)
+        if re.search(r"(?<![-\w])color:\s*var\(--color-accent\)", body) and re.search(r"background(-color)?:\s*var\(--color-accent-tint\)", body):
+            bad.append(m.group(1).strip())
+    assert not bad, bad
