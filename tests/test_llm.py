@@ -759,7 +759,9 @@ def test_chat_system_prompt_order_rules_bridge_voice(lang):
 def test_voice_file_limits_and_forbidden_content():
     text = STIMME_FILE.read_text(encoding="utf-8")
     assert text.strip()
-    assert len(text) <= 4000
+    # 5000 statt 4000 (2026-11-15, Idee a6d28556): Die Wortwahl-Regel wirkt nur
+    # mit Vorher/Nachher-Beispielen; rund 150 Token mehr je Anfrage.
+    assert len(text) <= 5000
     for forbidden in (
         "---QUOTES---",
         "Die vorliegende Quellenlage gibt darauf keine Antwort",
