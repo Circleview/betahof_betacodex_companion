@@ -113,6 +113,8 @@ PAIRS = [
     ("--color-text-muted", "--color-surface"), ("--color-accent", "--color-bg"),
     ("--color-on-accent", "--color-accent"), ("--color-focus", "--color-bg"),
     ("--color-success", "--color-bg"), ("--color-danger", "--color-bg"),
+    ("--color-on-accent", "--color-warning"), ("--color-on-accent", "--color-accent-hover"),
+    ("--color-accent", "--color-surface"),
 ]
 
 
@@ -137,7 +139,7 @@ def _font_urls():
 
 def test_fonts_css_urls_point_to_existing_files_and_licenses_exist():
     urls = _font_urls()
-    assert len(urls) == 14
+    assert len(urls) == 8
     for u in urls:
         f = FONTS_CSS.parent / u
         assert f.is_file(), u
@@ -155,6 +157,8 @@ def test_fonts_served_over_http_even_with_early_access_gate(monkeypatch):
     c = TestClient(main_module.app)
     css = c.get("/fonts/fonts.css")
     assert css.status_code == 200 and css.headers["content-type"].startswith("text/css")
+    gate = c.get("/fonts/Inter/OFL.txt")
+    assert gate.headers["content-type"].startswith("text/html")
     for u in _font_urls():
         r = c.get("/fonts/" + u.removeprefix("./"))
         assert r.status_code == 200, u
@@ -179,7 +183,8 @@ def test_no_hard_coded_colors_outside_tokens():
     assert not bad, bad
 
 
-PAGE_TITLE_FILES = ["import", "explore", "creative", "costs", "changelog", "question-log", "users", "mcp"]
+PAGE_TITLE_FILES = ["import", "explore", "creative", "costs", "changelog", "question-log", "users", "mcp",
+                    "404", "datenschutz", "privacy", "impressum", "legal-notice", "early-access"]
 
 
 @pytest.mark.parametrize("name", PAGE_TITLE_FILES)
@@ -206,3 +211,19 @@ def test_accent_text_on_tint_uses_on_tint_token():
         if re.search(r"(?<![-\w])color:\s*var\(--color-accent\)", body) and re.search(r"background(-color)?:\s*var\(--color-accent-tint\)", body):
             bad.append(m.group(1).strip())
     assert not bad, bad
+
+
+def test_fonts_css_every_font_face_block_survives_comments():
+    css = re.sub(r"/\*.*?\*/", "", FONTS_CSS.read_text(), flags=re.S)
+    blocks = re.findall(r"@font-face\s*\{([^}]*)\}", css)
+    # Nichts ausser den Bloecken: ein vorzeitig endender Kommentar hinterlaesst Text vor dem ersten Block.
+    assert re.sub(r"@font-face\s*\{[^}]*\}", "", css).strip() == ""
+    assert len(blocks) == len(_font_urls())
+    for b in blocks:
+        assert "font-family" in b and "src" in b
+
+
+def test_only_used_font_weights_are_shipped():
+    names = {u.split("/")[-1] for u in _font_urls()}
+    assert not any(w in n for n in names for w in ("-500-", "oswald-latin-700", "oswald-latin-ext-700"))
+    assert not re.search(r"font-weight:\s*800", CSS)
