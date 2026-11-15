@@ -242,7 +242,7 @@ ACCENT_ALLOWED = {
     "#chat-messages a", "#chat-messages a:hover, #chat-messages a:focus-visible",
     ".external-link", ".external-link:hover", ".source-open-link", ".source-open-link:hover",
     ".author-link", ".author-link:hover", "details a", ".creative-disclaimer a", "#creative-sources a",
-    ".citation-card .citation-title-link:hover, .citation-card .citation-author-link:hover, .citation-card .external-link:hover", ".citation-author-link:hover", ".citation-title-link:hover", ".question-log-question-link:hover",
+    "#chat-messages .citation-card .citation-title-link:hover, #chat-messages .citation-card .citation-author-link:hover, #chat-messages .citation-card .external-link:hover", ".citation-author-link:hover", ".citation-title-link:hover", ".question-log-question-link:hover",
     ".question-log-answer-details summary:hover", ".site-footer a:hover",
     ".source-image a:hover img",
 }
@@ -461,12 +461,12 @@ def test_favicon_svg_reachable_with_early_access_gate(monkeypatch):
 
 
 def test_citation_card_links_are_ink_underlined_with_accent_hover():
-    ink = ".citation-card .citation-title-link, .citation-card .citation-author-link, .citation-card .external-link"
+    ink = "#chat-messages .citation-card .citation-title-link, #chat-messages .citation-card .citation-author-link, #chat-messages .citation-card .external-link"
     body = _field_rule(ink)
     assert "color: var(--color-text)" in body
     assert "text-decoration: underline" in body and "text-underline-offset: 3px" in body
     assert "var(--color-accent-hover)" in _field_rule(
-        ".citation-card .citation-title-link:hover, .citation-card .citation-author-link:hover, .citation-card .external-link:hover"
+        "#chat-messages .citation-card .citation-title-link:hover, #chat-messages .citation-card .citation-author-link:hover, #chat-messages .citation-card .external-link:hover"
     )
 
 

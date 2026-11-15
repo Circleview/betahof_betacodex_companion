@@ -1921,17 +1921,17 @@ button.send-button {
 
 /* Links auf der Cover-Fläche (Mint): Tinte mit Unterstrich, Hover accent-hover
    (Rot erreicht auf Cover-Farben keinen ausreichenden Kontrast). */
-.citation-card .citation-title-link,
-.citation-card .citation-author-link,
-.citation-card .external-link {
+#chat-messages .citation-card .citation-title-link,
+#chat-messages .citation-card .citation-author-link,
+#chat-messages .citation-card .external-link {
   color: var(--color-text);
   text-decoration: underline;
   text-underline-offset: 3px;
 }
 
-.citation-card .citation-title-link:hover,
-.citation-card .citation-author-link:hover,
-.citation-card .external-link:hover {
+#chat-messages .citation-card .citation-title-link:hover,
+#chat-messages .citation-card .citation-author-link:hover,
+#chat-messages .citation-card .external-link:hover {
   color: var(--color-accent-hover);
 }
 
