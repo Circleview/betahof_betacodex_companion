@@ -928,9 +928,31 @@ def test_filter_removes_invalid_markers(text):
     assert "[bild:" not in llm.filter_image_markers(text, [0, 1])
 
 
-def test_filter_leaves_nonsense_like_bild_x_alone():
-    text = "Aussage [2].\n\n[bild:x]"
-    assert llm.filter_image_markers(text, [0, 1]) == text
+@pytest.mark.parametrize(
+    "junk", ["[bild:x]", "[Bild:2.1]", "[BILD:2.1]", "[bild:2]", "[bild: 2.1]", "[bild:100.1]", "[bild:123.456789]"]
+)
+def test_filter_removes_bild_like_leftovers_case_insensitive(junk):
+    result = llm.filter_image_markers(f"Aussage [2].\n\n{junk}\n\nWeiter.", [0, 5])
+    assert result == "Aussage [2].\n\nWeiter."
+    assert llm.strip_image_markers(f"A.\n\n{junk} B") == "A.\n\nB"
+
+
+def test_filter_valid_marker_stays_strict_lowercase_two_digits():
+    assert llm.filter_image_markers("A [12].\n\n[bild:12.1]", [0] * 11 + [1]) == "A [12].\n\n[bild:12.1]"
+
+
+def test_drop_partial_marker_cuts_trailing_fragment_only():
+    assert llm.drop_partial_marker("Text [1]. [bild:1.") == "Text [1]. "
+    assert llm.drop_partial_marker("Text [bild:") == "Text "
+    assert llm.drop_partial_marker("Text [1].") == "Text [1]."
+    assert llm.drop_partial_marker("A [bild:1.1] B") == "A [bild:1.1] B"
+
+
+@pytest.mark.parametrize("sep", [" ", "\n"])
+def test_citation_correction_keeps_marker_intact_when_citation_follows_period(sep):
+    raw = f"Aussage A ist so.{sep}[1]\n\n[bild:1.1]\n\nNächster Satz ist so."
+    answer, _ = llm.parse_answer_and_quotes(raw)
+    assert "[bild:1.1]" in answer and "[bild:1 [" not in answer
 
 
 def test_filter_keeps_only_first_valid_marker_and_eats_whitespace_after_removed():

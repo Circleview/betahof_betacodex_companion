@@ -10574,3 +10574,47 @@ def test_answer_feedback_with_marker_hits_existing_log_entry_without_duplicate(c
 
     entries = question_log.list_entries()
     assert len(entries) == 1 and entries[0]["feedback"] == "good"
+
+
+@pytest.mark.parametrize("size", [None, 1, 3, 7])
+def test_ask_marker_after_citation_behind_period_stays_intact(client, monkeypatch, size):
+    _seed_image_chunks(client, [[_img(0)]])
+    raw = "Aussage A ist so. [1]\n\n[bild:1.1]\n\nNächster Absatz ist lang genug für den Holdback."
+
+    result = _stream_events(client, monkeypatch, raw, size)
+
+    assert "[bild:1.1]" in result["answer"] and "[bild:1 [" not in result["answer"]
+    assert "[bild:1.1]" in result["streamed_text"]
+
+
+@pytest.mark.parametrize("size", [None, 1, 5])
+def test_ask_long_digit_marker_is_removed_and_never_half_visible(client, monkeypatch, size):
+    _seed_image_chunks(client, [[_img(0)]])
+    raw = "Aussage [1].\n\n[bild:123.456789]\n\nNächster Absatz ist lang genug für den Holdback."
+
+    result = _stream_events(client, monkeypatch, raw, size)
+
+    assert "[bild" not in result["answer"] and "[bild" not in result["streamed_text"]
+    shown = ""
+    for piece in _deltas(result):
+        shown += piece
+        assert "[bild" not in shown and not shown.endswith("[")
+
+
+def test_ask_stream_ending_inside_marker_drops_the_fragment(client, monkeypatch):
+    monkeypatch.setattr(main_module, "IS_DEV_ENVIRONMENT", False)
+    _seed_image_chunks(client, [[_img(0)]])
+
+    result = _stream_events(client, monkeypatch, "Aussage [1].\n\n[bild:1.", 1, is_first_message=True)
+
+    assert result["answer"].strip() == "Aussage [1]." and "[bild" not in result["streamed_text"]
+    assert [e["answer"] for e in question_log.list_entries()] == ["Aussage [1]."]
+
+
+@pytest.mark.parametrize("junk", ["[Bild:1.1]", "[bild:1]", "[bild: 1.1]", "[bild:x]"])
+def test_ask_removes_bild_like_leftovers_from_answer(client, monkeypatch, junk):
+    _seed_image_chunks(client, [[_img(0)]])
+
+    result = _stream_events(client, monkeypatch, f"Aussage [1].\n\n{junk}\n\nNächster Absatz ist lang genug.", 1)
+
+    assert result["answer"] == result["streamed_text"] == "Aussage [1].\n\nNächster Absatz ist lang genug."

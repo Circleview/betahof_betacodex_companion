@@ -5812,3 +5812,12 @@ def test_inline_image_css_has_skeleton_shimmer_reduced_motion_and_mobile_rules()
     assert "@keyframes inline-image-shimmer" in css
     reduced = css.split("@media (prefers-reduced-motion: reduce)")
     assert any(".inline-source-image" in part.split("}\n}")[0] and "animation: none" in part.split("}\n}")[0] for part in reduced[1:])
+
+
+def test_inline_marker_with_three_digits_is_not_a_marker():
+    result = _run_inline(f"""
+const b = bubbleOf(para('A [1].'), para('[bild:123.1]'));
+placeInlineImage(b, {json.dumps([_img_source(1)])});
+console.log(JSON.stringify(all(b, (n) => n.tag === 'figure').length));
+""")
+    assert result == 0
