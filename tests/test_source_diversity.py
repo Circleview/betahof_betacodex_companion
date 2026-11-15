@@ -170,7 +170,7 @@ def _ctx_setup(monkeypatch, sources, pool, reserve=(), authors_by_text=None, aut
     monkeypatch.setattr(vectorstore, "query_web", lambda *a, **k: empty)
     monkeypatch.setattr(web_index, "excluded_page_ids", lambda: set())
     monkeypatch.setattr(terms, "list_terms", lambda: [])
-    monkeypatch.setattr(llm, "rewrite_followup_query", lambda q, h, lang, usage_email=None: f"{q} Schlegel" if authors_by_text else None)
+    monkeypatch.setattr(llm, "rewrite_followup_query", lambda q, h, lang, usage_email=None, channel="ask": f"{q} Schlegel" if authors_by_text else None)
     monkeypatch.setattr(authors, "find_mentioned", lambda text: ["Andreas Schlegel"] if authors_by_text and "Schlegel" in text else [])
     monkeypatch.setattr(authors, "list_authors", lambda: list(author_entries))
 

@@ -19,7 +19,7 @@ export function renderMarkdown(text) {
   // renderMarkdown keine Links. Nur http(s)- und interne (mit "/"
   // beginnende) Ziele erlaubt, gegen zufällige/eingeschleuste andere
   // Protokoll-Handler (z.B. javascript:) in KI-generiertem Freitext.
-  html = html.replace(/\[([^[\]]+)\]\(((?:https?:\/\/|\/)[^\s()]+)\)/g, '<a href="$2">$1</a>');
+  html = html.replace(/\[([^[\]]+)\]\(((?:https?:\/\/|\/(?!\/))[^\s()]+)\)/g, '<a href="$2">$1</a>');
   // Nutzerwunsch (2026-09-11): Überschriften dürfen nicht als klickbarer,
   // rot eingefärbter Schlagwort-Link (siehe question.js: makeTermsClickable,
   // .term-followup) enden. Schreibt das Modell eine Überschrift zusätzlich
@@ -33,6 +33,9 @@ export function renderMarkdown(text) {
   html = html.replace(/^### (.+)$/gm, (_, t) => `<strong class="md-heading">${stripEmphasisMarkers(t)}</strong>`);
   html = html.replace(/^## (.+)$/gm, (_, t) => `<strong class="md-heading">${stripEmphasisMarkers(t)}</strong>`);
   html = html.replace(/^# (.+)$/gm, (_, t) => `<strong class="md-heading">${stripEmphasisMarkers(t)}</strong>`);
+  // Nutzerwunsch (2026-11-15): Beta-Kodex/BetaCodex nie fett (sonst ein
+  // nutzloser Klick-Begriff); das Modell hält die Prompt-Regel nicht ein.
+  html = html.replace(/\*\*(beta-?[kc]odex)\*\*/gi, '$1');
   html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
   html = html.replace(/(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)/g, '<em>$1</em>');
   html = html.replace(/^[-*] (.+)$/gm, '&bull;&nbsp;$1');

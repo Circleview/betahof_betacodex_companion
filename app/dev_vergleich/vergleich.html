@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Antwortvergleich (Dev)</title>
+<link rel="stylesheet" href="/style.css">
+<link rel="stylesheet" href="/dev/vergleich.css">
+</head>
+<body class="vg">
+<main class="vg-main">
+  <h1>Antwortvergleich</h1>
+  <p class="vg-hint">Nur Dev. Jede Frage geht an alle Spalten, mit denselben Quellen. Die Datei <code>app/prompts/beraterstimme.md</code> wird bei jeder Frage neu gelesen.</p>
+  <form id="vg-form" class="vg-form">
+    <label for="vg-question">Frage</label>
+    <textarea id="vg-question" rows="3" required></textarea>
+    <div class="vg-actions">
+      <button type="submit" id="vg-send">Fragen</button>
+      <button type="button" id="vg-reset">Neu beginnen</button>
+      <label class="vg-check"><input type="checkbox" id="vg-sonnet"> Spalte 3: mit Stimme, Sonnet</label>
+      <label class="vg-check" for="vg-lang">Sprache
+        <select id="vg-lang"><option value="de">DE</option><option value="en">EN</option></select>
+      </label>
+    </div>
+  </form>
+  <p id="vg-status" class="vg-status" role="status"></p>
+  <div id="vg-columns" class="vg-columns"></div>
+</main>
+<script type="module" src="/dev/vergleich.js"></script>
+</body>
+</html>

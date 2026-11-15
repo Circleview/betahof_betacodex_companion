@@ -5514,3 +5514,33 @@ def test_source_lang_findable_title_contains_visible_and_original_title(lang, sr
 def test_import_js_until_found_placeholder_uses_findable_title():
     js_source = _import_js_source()
     assert "placeholder.textContent = `${findableTitle(s)} " in js_source
+
+
+def test_render_markdown_rejects_protocol_relative_link_target():
+    html = _run_render_markdown("[x](//fremd.example/pfad)")
+    assert "<a " not in html
+    assert '<a href="/creative.html?instruction=a">k</a>' in _run_render_markdown("[k](/creative.html?instruction=a)")
+
+
+def test_dev_vergleich_js_guards():
+    js = (Path(__file__).resolve().parent.parent / "app" / "dev_vergleich" / "vergleich.js").read_text()
+    html = (Path(__file__).resolve().parent.parent / "app" / "dev_vergleich" / "vergleich.html").read_text()
+    assert "sonnetEl.disabled" in js  # Kästchen nach Runde 1 gesperrt, Reset gibt frei
+    assert "slice(0, 8000)" in js  # Antwort im Verlauf wie static/question.js
+    assert "'X-Lang'" in js and 'id="vg-lang"' in html
+    assert "max_tokens" in js and "stop_reason" in js
+    assert "quotes_expected" in js
+
+
+# Nutzerwunsch (2026-11-15, Idee af02ecb1): Der Modellname ist kein
+# Fachbegriff zum Vertiefen. Das Modell setzt ihn trotz Prompt-Regel fett,
+# deshalb entfernt renderMarkdown die Hervorhebung.
+@pytest.mark.parametrize("name", ["Beta-Kodex", "BetaCodex", "beta-kodex", "Betacodex"])
+def test_render_markdown_never_bolds_beta_kodex(name):
+    html = _run_render_markdown(f"Der **{name}** kennt **Teamautonomie**.")
+    assert html == f"<p>Der {name} kennt <strong>Teamautonomie</strong>.</p>"
+
+
+def test_render_markdown_keeps_bold_compound_with_beta_kodex():
+    html = _run_render_markdown("**Beta-Kodex-Gesetze** gelten.")
+    assert html == "<p><strong>Beta-Kodex-Gesetze</strong> gelten.</p>"

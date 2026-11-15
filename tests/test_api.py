@@ -10375,3 +10375,57 @@ def test_language_backfill_does_not_count_stale_sources_as_failures(client, monk
     main_module._backfill_source_language_once()
 
     assert len(calls) == 8
+
+
+def test_ask_marks_web_chunks_with_is_web_for_the_model(client, monkeypatch):
+    monkeypatch.setattr(embeddings, "embed_passages", lambda texts: [[0.0, 1.0954] for _ in texts])
+    monkeypatch.setattr(embeddings, "embed_query", lambda text: [0.0, 0.0])
+    client.post("/api/sources", json={"title": "Kuratierte Quelle", "text": "Weit entfernt."})
+    vectorstore.add_web_chunks(
+        ["page-1::0"], ["Web-Text."], [[1.0, 0.0]],
+        [{"page_id": "page-1", "allowlist_entry_id": "entry-1", "url": "https://beispiel.org/a",
+          "title": "Web-Artikel", "position": 0}],
+    )
+    seen = {}
+
+    def fake_stream(question, chunks, *a, **k):
+        seen["chunks"] = chunks
+        return iter(["Antwort."])
+
+    monkeypatch.setattr(llm, "stream_answer_question", fake_stream)
+    client.post("/api/ask", json={"question": "Frage?", "top_k": 1})
+
+    assert [c.get("is_web") for c in seen["chunks"]] == [True]
+
+
+# --- Zitat-Zuordnung mit Markdown-Zeichen (Idee af02ecb1, Befund B) ---
+
+def test_find_quote_span_ignores_list_and_bold_markers_in_quote():
+    doc = "Einleitung.\n- **Social technologies derived from the BetaCodex**\n- Anderes Thema."
+    got = main_module._find_quote_span(doc, "- **Social technologies derived from the BetaCodex")
+    assert got is not None and "Social technologies derived from the BetaCodex" in got
+    assert "Anderes" not in got and "Einleitung" not in got
+    plain = "Einleitung.\nSocial technologies derived from the BetaCodex\nAnderes Thema."
+    assert main_module._find_quote_span(plain, "- **Social technologies derived from the BetaCodex") == (
+        "Social technologies derived from the BetaCodex"
+    )
+
+
+def test_find_quote_span_ignores_heading_marker_in_quote():
+    doc = "Vorspann.\n\nDie Zellstruktur ordnet Teams um Kunden. Ende."
+    assert main_module._find_quote_span(doc, "## Die Zellstruktur ordnet Teams um Kunden.") == (
+        "Die Zellstruktur ordnet Teams um Kunden."
+    )
+
+
+def test_find_quote_span_matches_when_only_the_text_has_markdown():
+    doc = "Davor. Das **System** arbeitet **dezentral** und schnell. Danach."
+    got = main_module._find_quote_span(doc, "Das System arbeitet dezentral und schnell")
+    assert got is not None and got.startswith("Das **System**") and got.endswith("schnell")
+
+
+def test_find_quote_span_plain_text_and_no_false_hit():
+    doc = "Teams entscheiden selbst. Budgets sind schädlich."
+    assert main_module._find_quote_span(doc, "Teams entscheiden selbst.") == "Teams entscheiden selbst."
+    assert main_module._find_quote_span(doc, "- **Budgets sind nützlich**") is None
+    assert main_module._find_quote_span(doc, "- ** **") is None
