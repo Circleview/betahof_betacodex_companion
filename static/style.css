@@ -986,6 +986,19 @@ body:not(.chat-started) #question-form {
   padding-right: 0.75rem;
 }
 
+/* Desktop wie google.com: das Mint-Band füllt den Platz bis zum Footer, das
+   Fragefeld sitzt etwas über der Mitte (größeres Polster unten). */
+@media (min-width: 900px) {
+  body:not(.chat-started) #frage-bereich {
+    flex: 1 0 auto;
+    padding-bottom: calc(56px + 14vh);
+  }
+
+  body:not(.chat-started) .site-footer {
+    margin-top: 0;
+  }
+}
+
 /* Basisverhalten (Mobile/Tablet, <900px): feste Höhe mit intern scrollendem
    #chat-messages - siehe ausführliche Begründung bei der 640px-Regel weiter
    unten. Ab 900px hebt die Desktop-Regel diese Höhenbegrenzung bewusst auf
