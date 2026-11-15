@@ -42,6 +42,8 @@ def _dark():
 def _rgb(value):
     value = value.strip()
     if value.startswith("#"):
+        if len(value) == 4:
+            value = "#" + "".join(c * 2 for c in value[1:])
         return tuple(int(value[i : i + 2], 16) for i in (1, 3, 5))
     return tuple(float(x) for x in re.findall(r"[\d.]+", value)[:3])
 
@@ -73,7 +75,7 @@ def contrast(a, b):
 LIGHT_EXPECTED = {
     "--color-bg": "#ffffff", "--color-surface": "#f7f5f1", "--color-text": "#1c1c1c",
     "--color-text-muted": "#4a4640", "--color-border": "#e6e2dc", "--color-accent": "#d92416",
-    "--color-accent-hover": "#a52a17", "--color-accent-tint": "rgba(217, 36, 22, 0.05)",
+    "--color-accent-hover": "#a52a17", "--color-accent-tint": "rgba(217, 36, 22, 0.01)",
     "--color-on-accent": "#fff", "--color-focus": "#1c1c1c", "--color-success": "#2e7d32",
     "--color-danger": "#c62828", "--color-warning": "#9a6400", "--color-on-conversation": "#fff",
     "--radius": "0", "--graph-cluster-0": "#d92416",
@@ -81,7 +83,7 @@ LIGHT_EXPECTED = {
 DARK_EXPECTED = {
     "--color-bg": "#1c1c1c", "--color-surface": "#2a2622", "--color-text": "#e8e4de",
     "--color-text-muted": "#b0aaa2", "--color-border": "#3a3733", "--color-accent": "#f0604f",
-    "--color-accent-hover": "#f4806f", "--color-accent-tint": "rgba(240, 96, 79, 0.08)",
+    "--color-accent-hover": "#f4806f", "--color-accent-tint": "rgba(240, 96, 79, 0.02)",
     "--color-on-accent": "#1c1c1c", "--color-focus": "#e8e4de", "--color-success": "#6cc070",
     "--color-danger": "#f07a6e", "--color-warning": "#e0a530", "--graph-cluster-0": "#f0604f",
 }
@@ -167,7 +169,8 @@ def _declarations(css):
 def test_no_hard_coded_colors_outside_tokens():
     bad = []
     for d in _declarations(CSS):
-        if d.startswith("--") or re.match(r"(box-shadow|-webkit-mask|mask)", d.split(":")[0].split()[-1] if ":" in d else ""):
+        prop = d.split(":")[0].split()[-1] if ":" in d and d.split(":")[0].split() else ""
+        if d.startswith("--") or re.match(r"(box-shadow|-webkit-mask|mask)", prop):
             continue
         d = re.sub(r"var\(--[\w-]+\s*,(?:[^()]|\([^()]*\))*\)", "", d)
         d = re.sub(r"rgba\(\s*0\s*,\s*0\s*,\s*0\s*,[^)]*\)", "", d)

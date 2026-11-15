@@ -1,12 +1,19 @@
+@import url("fonts/fonts.css");
+
 :root {
   --color-bg: #ffffff;
-  --color-surface: #f7f5f3;
-  --color-text: #232323;
-  --color-text-muted: #6b6b6b;
-  --color-border: #e3ded8;
-  --color-accent: #b22f1c;
-  --color-accent-hover: #8f2716;
-  --color-accent-tint: rgba(178, 47, 28, 0.08);
+  --color-surface: #f7f5f1;
+  --color-text: #1c1c1c;
+  --color-text-muted: #4a4640;
+  --color-border: #e6e2dc;
+  --color-accent: #d92416;
+  --color-accent-hover: #a52a17;
+  --color-accent-tint: rgba(217, 36, 22, 0.01);
+  --color-on-accent: #fff;
+  --color-on-conversation: #fff;
+  --color-focus: #1c1c1c;
+  --color-success: #2e7d32;
+  --color-danger: #c62828;
   --color-warning: #9a6400;
   --color-warning-tint: rgba(154, 100, 0, 0.1);
   /* Nutzerwunsch (Livegang-Vorbereitung, 2026-09-10): an betacodex.org/home
@@ -14,7 +21,8 @@
      gemessen: 2.5px, siehe button[type="submit"]-Regel weiter unten) - eine
      zentrale Variable, damit Eingabefelder/Textboxen/Panels/Popovers etc.
      konsistent mitziehen statt nur die Buttons. */
-  --radius: 2.5px;
+  --radius: 0;
+  --font-display: Oswald, "Arial Narrow", sans-serif;
   --font-sans: "Inter", -apple-system, "system-ui", "Segoe UI", Roboto,
     "Helvetica Neue", Arial, sans-serif;
   /* Explore-Modus (Nutzerwunsch 2026-08-23): eigene, gedeckte Cluster-Palette
@@ -22,7 +30,7 @@
      Terrakotta-Akzent passen statt eines bunten Regenbogens. Zyklisch per
      Knoten-Cluster-Index % 10 in explore.js zugewiesen (siehe
      .explore-node--cluster-N). */
-  --graph-cluster-0: #b22f1c;
+  --graph-cluster-0: #d92416;
   --graph-cluster-1: #2f6b4f;
   --graph-cluster-2: #4a5b8c;
   --graph-cluster-3: #a67c3d;
@@ -37,16 +45,20 @@
 @media (prefers-color-scheme: dark) {
   :root {
     --color-bg: #1c1c1c;
-    --color-surface: #262422;
-    --color-text: #ededed;
-    --color-text-muted: #a3a3a3;
+    --color-surface: #2a2622;
+    --color-text: #e8e4de;
+    --color-text-muted: #b0aaa2;
     --color-border: #3a3733;
-    --color-accent: #e2593f;
-    --color-accent-hover: #ef6c52;
-    --color-accent-tint: rgba(226, 89, 63, 0.14);
+    --color-accent: #f0604f;
+    --color-accent-hover: #f4806f;
+    --color-accent-tint: rgba(240, 96, 79, 0.02);
+    --color-on-accent: #1c1c1c;
+    --color-focus: #e8e4de;
+    --color-success: #6cc070;
+    --color-danger: #f07a6e;
     --color-warning: #e0a530;
     --color-warning-tint: rgba(224, 165, 48, 0.14);
-    --graph-cluster-0: #e2593f;
+    --graph-cluster-0: #f0604f;
     --graph-cluster-1: #4f9c74;
     --graph-cluster-2: #7a8ecf;
     --graph-cluster-3: #d1a35f;
@@ -83,9 +95,22 @@ body {
 }
 
 h1, h2, h3 {
-  font-weight: 800;
+  font-weight: 700;
   letter-spacing: -0.01em;
   line-height: 1.25;
+}
+
+/* Designsystem betacodex.org: Seitentitel und Markenname in Oswald. */
+h1, .page-title, .brand-name {
+  font-family: var(--font-display);
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+/* Sichtbarer Fokus überall (auch Eingabefelder). */
+:focus-visible {
+  outline: 3px solid var(--color-focus);
+  outline-offset: 2px;
 }
 
 h1 {
@@ -173,7 +198,7 @@ h3 {
   transform: translateY(-100%);
   z-index: 100;
   background: var(--color-accent);
-  color: #fff;
+  color: var(--color-on-accent);
   padding: 0.6rem 1rem;
   border-radius: var(--radius);
   text-decoration: none;
@@ -338,7 +363,7 @@ header h1 {
   padding: 0 0.15rem;
   border-radius: 999px;
   background: var(--color-warning);
-  color: #fff;
+  color: var(--color-on-accent);
   font-size: 0.65rem;
   font-weight: 700;
   line-height: 1;
@@ -603,7 +628,6 @@ select {
 }
 
 select:focus {
-  outline: none;
   border-color: var(--color-accent);
   box-shadow: 0 0 0 3px var(--color-accent-tint);
 }
@@ -668,7 +692,6 @@ select:focus {
 }
 
 input:focus, textarea:focus {
-  outline: none;
   border-color: var(--color-accent);
   box-shadow: 0 0 0 3px var(--color-accent-tint);
 }
@@ -758,12 +781,12 @@ button {
    ganzen App-weit konsistenten Wert. */
 button[type="submit"], .send-button, #popover-load, #popover-upload, #term-merge-analyze {
   background: var(--color-accent);
-  color: #fff;
+  color: var(--color-on-accent);
   border: none;
   border-radius: var(--radius);
   padding: 0.8rem 3rem;
   font-size: 0.95rem;
-  font-weight: 700;
+  font-weight: 600;
   cursor: pointer;
   transition: background 0.15s ease;
 }
@@ -1003,7 +1026,7 @@ body:not(.chat-started) #question-form {
 }
 
 .chat-bubble {
-  border-radius: 18px;
+  border-radius: var(--radius);
   padding: 0.75rem 1.1rem;
   max-width: 85%;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
@@ -1011,15 +1034,15 @@ body:not(.chat-started) #question-form {
 
 .chat-message--user .chat-bubble {
   background: var(--color-accent);
-  color: #fff;
-  border-bottom-right-radius: 6px;
+  color: var(--color-on-accent);
+  border-bottom-right-radius: var(--radius);
 }
 
 .chat-message--assistant .chat-bubble {
   background: var(--color-bg);
   border: 1px solid var(--color-border);
   max-width: 100%;
-  border-bottom-left-radius: 6px;
+  border-bottom-left-radius: var(--radius);
 }
 
 .chat-bubble p {
@@ -1259,7 +1282,7 @@ button.send-button {
 #embed-toolbar .lang-switcher {
   padding: 0.2rem 0.5rem;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.85);
+  background: color-mix(in srgb, var(--color-bg) 85%, transparent);
 }
 
 /* Klein und rot wie gefordert - gleiche Akzentfarbe wie .external-link. */
@@ -1268,7 +1291,7 @@ button.send-button {
   height: 26px;
   border-radius: 50%;
   border: none;
-  background: rgba(255, 255, 255, 0.85);
+  background: color-mix(in srgb, var(--color-bg) 85%, transparent);
   color: var(--color-accent);
   cursor: pointer;
   display: inline-flex;
@@ -1387,7 +1410,7 @@ button.send-button {
 }
 
 .copy-answer-btn.copied {
-  color: #2e7d32;
+  color: var(--color-success);
 }
 
 .copy-answer-btn .copy-check,
@@ -1424,7 +1447,7 @@ button.send-button {
 }
 
 .feedback-btn--sent {
-  color: #2e7d32;
+  color: var(--color-success);
   animation: feedback-sent-pop 0.4s ease;
 }
 
@@ -1932,7 +1955,7 @@ button.send-button {
   background: var(--color-accent-tint);
   color: var(--color-text);
   font-weight: 600;
-  border-radius: 3px;
+  border-radius: var(--radius);
   padding: 0.05em 0.15em;
 }
 
@@ -2293,7 +2316,7 @@ button.send-button {
   font-size: 0.8rem;
   font-weight: 600;
   cursor: pointer;
-  border-radius: 3px;
+  border-radius: var(--radius);
 }
 
 .alphabet-jump-btn:hover {
@@ -2451,10 +2474,10 @@ button.send-button {
   flex-shrink: 0;
 }
 
-.changelog-entry-icon--created { color: #2f7a3d; }
+.changelog-entry-icon--created { color: var(--color-success); }
 .changelog-entry-icon--updated { color: var(--color-text-muted); }
 .changelog-entry-icon--deleted { color: var(--color-accent); }
-.changelog-entry-icon--reverted { color: #8a6d1f; }
+.changelog-entry-icon--reverted { color: var(--color-warning); }
 
 .changelog-entity-icon {
   display: inline-flex;
@@ -2657,7 +2680,7 @@ button.send-button {
 .question-log-chat-chip[aria-pressed="true"] {
   background: var(--conversation-color, var(--color-accent));
   border-color: var(--conversation-color, var(--color-accent));
-  color: #fff;
+  color: var(--color-on-conversation);
 }
 
 .question-log-chat-bar {
@@ -2785,13 +2808,13 @@ button.send-button {
 }
 
 .question-log-feedback-badge--good {
-  background: rgba(46, 125, 50, 0.15);
-  color: #2e7d32;
+  background: color-mix(in srgb, var(--color-success) 15%, transparent);
+  color: var(--color-success);
 }
 
 .question-log-feedback-badge--bad {
-  background: rgba(198, 40, 40, 0.15);
-  color: #c62828;
+  background: color-mix(in srgb, var(--color-danger) 15%, transparent);
+  color: var(--color-danger);
 }
 
 /* Nutzerwunsch (2026-09-01, Nachtrag): Überschrift und Filter in einer
@@ -2840,7 +2863,7 @@ button.send-button {
 .question-log-filter-btn.active {
   background: var(--color-accent);
   border-color: var(--color-accent);
-  color: #fff;
+  color: var(--color-on-accent);
 }
 
 /* Fragen-Log mobil (Idee e1cd2bc6): 2-Spalten-Zeitstrahl (Linie | Inhalt),
@@ -3098,7 +3121,7 @@ button.send-button {
   padding: 0 0.2rem;
   border-radius: 999px;
   background: var(--color-accent);
-  color: #fff;
+  color: var(--color-on-accent);
   font-size: 0.65rem;
   font-weight: 700;
   line-height: 1.1rem;
@@ -3120,7 +3143,7 @@ button.send-button {
   height: 1.1rem;
   border-radius: 999px;
   background: var(--color-warning);
-  color: #fff;
+  color: var(--color-on-accent);
 }
 
 #jobs-popover {
@@ -3368,7 +3391,7 @@ button.send-button {
   padding: 0.4rem 0.5rem;
   margin: 0 -0.5rem;
   border-bottom: 1px solid var(--color-border);
-  border-radius: 4px;
+  border-radius: var(--radius);
 }
 
 /* Nutzerwunsch: beim Überfahren mit der Maus soll eindeutig erkennbar sein,
@@ -3425,7 +3448,7 @@ button.send-button {
   align-items: flex-start;
   padding: 0.5rem 0.65rem;
   margin: 0 0 0.6rem;
-  border-radius: 6px;
+  border-radius: var(--radius);
   background: var(--color-warning-tint);
   color: var(--color-text);
 }
@@ -3446,7 +3469,7 @@ button.send-button {
   padding: 0.5rem;
   margin: 0 -0.5rem;
   border-bottom: 1px solid var(--color-border);
-  border-radius: 4px;
+  border-radius: var(--radius);
 }
 
 .web-allowlist-candidate:hover {
@@ -3523,7 +3546,7 @@ button.send-button {
   gap: 1rem;
   padding: 0.6rem 0.7rem;
   margin-bottom: 0.4rem;
-  border-radius: 6px;
+  border-radius: var(--radius);
   background: var(--color-surface);
 }
 
@@ -3728,7 +3751,7 @@ button.send-button {
      KI-generiert-Klischee) - die Tönung trägt die Abgrenzung mit, der
      Rahmen muss sie nicht mehr allein einseitig betonen. */
   border: 1px solid var(--color-accent);
-  border-radius: 6px;
+  border-radius: var(--radius);
   background: var(--color-accent-tint);
 }
 
@@ -4959,8 +4982,8 @@ details a {
    Haken, der sich von links nach rechts einzeichnet (gleiches Grün wie
    .feedback-btn--sent). */
 #creative-copy-btn.copied {
-  color: #2e7d32;
-  border-color: #2e7d32;
+  color: var(--color-success);
+  border-color: var(--color-success);
 }
 
 #creative-copy-btn .copy-check {
@@ -5715,7 +5738,7 @@ details a {
 .costs-legend-swatch {
   width: 0.7rem;
   height: 0.7rem;
-  border-radius: 2px;
+  border-radius: var(--radius);
 }
 
 .costs-grid {
@@ -5746,7 +5769,6 @@ details a {
 .costs-hit:hover,
 .costs-hit:focus-visible {
   fill: var(--color-accent-tint);
-  outline: none;
 }
 
 .costs-tooltip {
@@ -5817,7 +5839,7 @@ details a {
 }
 
 .source-image a:focus-visible {
-  outline: 2px solid var(--color-accent);
+  outline: 3px solid var(--color-focus);
   outline-offset: 2px;
   border-radius: var(--radius);
 }
