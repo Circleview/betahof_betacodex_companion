@@ -536,3 +536,15 @@ def test_question_bar_focus_is_single_ring_on_the_bar_frame():
     for sel, body in _rules():
         if "outline: none" in body and re.search(r"(input|textarea|select)[^,]*:focus", sel):
             assert sel == "#question-form textarea:focus-visible", sel
+
+
+def test_start_band_fills_desktop_height_like_google():
+    # Nutzerwunsch: Startseite am Desktop wie google.com aufteilen - das Mint-Band
+    # füllt den Platz zwischen Header und Footer, das Fragefeld sitzt etwas über
+    # der Mitte statt in einem schmalen Streifen mit viel Weiß darunter.
+    css = re.sub(r"/\*.*?\*/", "", CSS, flags=re.S)
+    m = re.search(r"@media \(min-width: 900px\) \{\s*body:not\(\.chat-started\) #frage-bereich \{([^}]*)\}", css)
+    assert m, "Desktop-Regel für das Startband fehlt"
+    body = m.group(1)
+    assert re.search(r"flex:\s*1 0 auto", body)
+    assert re.search(r"padding-bottom:\s*calc\(", body)
