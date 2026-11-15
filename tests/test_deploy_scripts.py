@@ -218,7 +218,7 @@ def test_deploy_success_switches_color(env):
     assert "sudo -n /usr/bin/systemctl restart betacodex-green.service" in lines
     assert "sudo -n /usr/local/sbin/companion-farbe green" in lines
     assert "sudo -n /usr/bin/systemctl stop betacodex-blue.service" in lines
-    assert "systemctl --user stop betacodex-blue.service" in lines  # Übergang
+    assert not any("--user" in l for l in lines)  # Übergang User→System abgeschlossen (2026-11-15)
     assert lines.index("sudo -n /usr/local/sbin/companion-farbe green") < lines.index(
         "sudo -n /usr/bin/systemctl stop betacodex-blue.service")
     head = subprocess.run([REAL_GIT, "describe", "--tags", "--exact-match"],
@@ -268,13 +268,11 @@ def test_deploy_caddy_switch_failure_keeps_old(env):
     assert "sudo -n /usr/bin/systemctl stop betacodex-blue.service" not in lines
 
 
-def test_deploy_stops_old_user_unit_of_target_before_restart(env):
+def test_deploy_ruft_keine_user_units_mehr_auf(env):
     env.setup()
     r, log = env.run("v0.2.0")
     assert r.returncode == 0, r.stdout + r.stderr
-    lines = log.splitlines()
-    assert lines.index("systemctl --user stop betacodex-green.service") < lines.index(
-        "sudo -n /usr/bin/systemctl restart betacodex-green.service")
+    assert "systemctl --user" not in log
 
 
 def test_deploy_health_requires_deployed_tag(env):
@@ -318,7 +316,7 @@ def test_deploy_sh_static_rules():
     t = _read("deploy.sh")
     for bad in ("CADDYFILE", "DOMAIN", "/etc/caddy"):
         assert bad not in t, bad
-    assert t.count("XDG_RUNTIME_DIR") == 2  # nur Übergangszeilen
+    assert "XDG_RUNTIME_DIR" not in t and "--user" not in t  # nur noch System-Units
     assert "systemctl --user restart" not in t
     sudo_calls = re.findall(r"sudo -n (\S+ ?\S* ?\S*)", t)
     assert sudo_calls
