@@ -108,8 +108,8 @@ PAIRS = [
     ("--color-success", "--color-bg"), ("--color-danger", "--color-bg"),
     ("--color-on-accent", "--color-warning"), ("--color-on-accent", "--color-accent-hover"),
     ("--color-accent", "--color-surface"),
-    ("--color-accent", "--color-cover-sand"),
-] + [(fg, f"--color-cover-{c}") for c in ("sand", "rose", "mint", "aqua") for fg in ("--color-text", "--color-text-muted")]
+] + [(fg, f"--color-cover-{c}") for c in ("sand", "rose", "mint", "aqua")
+     for fg in ("--color-text", "--color-text-muted", "--color-accent-hover")]
 
 
 @pytest.mark.parametrize("tokens", [_light, _dark], ids=["hell", "dunkel"])
@@ -242,7 +242,7 @@ ACCENT_ALLOWED = {
     "#chat-messages a", "#chat-messages a:hover, #chat-messages a:focus-visible",
     ".external-link", ".external-link:hover", ".source-open-link", ".source-open-link:hover",
     ".author-link", ".author-link:hover", "details a", ".creative-disclaimer a", "#creative-sources a",
-    ".citation-author-link:hover", ".citation-title-link:hover", ".question-log-question-link:hover",
+    ".citation-author-link:hover", ".citation-title-link:hover", ".citation-card .external-link", ".citation-card .external-link:hover", ".question-log-question-link:hover",
     ".question-log-answer-details summary:hover", ".site-footer a:hover",
     ".source-image a:hover img",
 }
@@ -374,9 +374,9 @@ def test_creative_disclaimer_not_on_sand_band():
 
 
 # --- Zitat-Box (Cover-Sand) ---
-def test_citation_card_is_sand_surface_without_frame():
+def test_citation_card_is_mint_surface_without_frame():
     body = _field_rule(".citation-card")
-    assert "background: var(--color-cover-sand)" in body
+    assert "background: var(--color-cover-mint)" in body
     assert re.search(r"border:\s*0\b", body)
 
 
@@ -410,3 +410,17 @@ def test_embed_copy_button_is_secondary_ink_button():
     css = " ".join(CSS.split())
     assert re.search(r"\.footer-embed-copy \{[^}]*border: 2px solid var\(--color-text\)", css)
     assert re.search(r"\.footer-embed-copy:hover \{[^}]*background: var\(--color-text\)", css)
+
+
+def test_accent_red_forbidden_on_cover_surfaces_links_use_accent_hover():
+    # Rot (#d92416) erreicht auf Cover-Farben nur ~3.8-4.5; Links dort in accent-hover.
+    cover_links = {".creative-disclaimer a", ".citation-card .external-link", ".citation-card a"}
+    seen = set()
+    for sel, body in _rules():
+        if sel in cover_links:
+            seen.add(sel)
+            assert "var(--color-accent)" not in body, sel
+            assert "var(--color-accent-hover)" in body, sel
+    assert {".creative-disclaimer a", ".citation-card .external-link"} <= seen
+    for sel in (".citation-author-link:hover", ".citation-title-link:hover"):
+        assert "var(--color-accent-hover)" in _field_rule(sel)

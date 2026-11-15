@@ -93,7 +93,7 @@ const VIEW_ICON =
   "</svg>";
 
 // Gleiches Muster wie .jobs-bar-close (import.js/style.css) und
-// .footer-feedback-panel-close (footer.js) - Schließen-Kreuz oben rechts.
+// .footer-panel-close (footer.js) - Schließen-Kreuz oben rechts.
 const CLOSE_ICON =
   '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" ' +
   'stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +

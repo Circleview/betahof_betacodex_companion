@@ -201,7 +201,7 @@ function isMobileAuthLayout() {
 
 // Backlog #183: auf Mobile klappt der Login-/Konto-Bereich als eigenständiger,
 // vollbreiter Block direkt unter der Kopfzeile auf statt als Popover -
-// gleiches Muster wie .footer-feedback-panel/#search-bar/#jobs-bar. Bleibt
+// gleiches Muster wie .footer-panel/#search-bar/#jobs-bar. Bleibt
 // über einen Seiten-Reload/erneutes renderWidget() hinweg dasselbe
 // DOM-Element (per ID gesucht), damit nicht bei jedem Rendern ein weiterer
 // Block hinter der Kopfzeile angehängt wird.

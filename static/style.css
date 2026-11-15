@@ -13,6 +13,9 @@
   --color-focus: #1c1c1c;
   --color-success: #2e7d32;
   --color-cover-sand: #f7f3ea;
+  --color-cover-rose: #f3dcd5;
+  --color-cover-mint: #d5e8e2;
+  --color-cover-aqua: #cfe3e6;
   --color-danger: #c62828;
   --color-warning: #9a6400;
   --color-warning-tint: rgba(154, 100, 0, 0.1);
@@ -55,6 +58,9 @@
     --color-focus: #e8e4de;
     --color-success: #6cc070;
     --color-cover-sand: #302b25;
+    --color-cover-rose: #3a2b28;
+    --color-cover-mint: #26342f;
+    --color-cover-aqua: #263339;
     --color-danger: #f07a6e;
     --color-warning: #e0a530;
     --color-warning-tint: rgba(224, 165, 48, 0.14);
@@ -81,6 +87,32 @@
    zu scrollen. */
 html {
   scroll-behavior: smooth;
+  /* Farbbänder (.page-band) brechen per 100vw aus der Spalte aus; die
+     Scrollbar-Breite würde sonst waagrechtes Scrollen auslösen. */
+  overflow-x: clip;
+}
+
+/* Farbband je Bereich wie .bcx-hero--* auf betacodex.org: vollbreit,
+   direkt unter dem Header. Inhalt bleibt in der Spaltenbreite. */
+.page-band {
+  margin-inline: calc(50% - 50vw);
+  padding-inline: calc(50vw - 50%);
+  padding-block: 56px;
+  margin-bottom: 2rem;
+}
+
+.page-band--sand { background: var(--color-cover-sand); }
+.page-band--rose { background: var(--color-cover-rose); }
+.page-band--mint { background: var(--color-cover-mint); }
+.page-band--aqua { background: var(--color-cover-aqua); }
+
+.page-band > :first-child { margin-top: 0; }
+.page-band > :last-child { margin-bottom: 0; }
+
+@media (max-width: 640px) {
+  .page-band {
+    padding-block: 32px;
+  }
 }
 
 body {
@@ -467,7 +499,7 @@ header h1 {
 
 /* Backlog #183: auf Mobile klappt der Login-/Konto-Bereich als eigenständiger,
    vollbreiter Block direkt unter der Kopfzeile auf statt als Popover -
-   gleiches Muster wie .footer-feedback-panel/#search-bar/#jobs-bar (siehe
+   gleiches Muster wie .footer-panel/#search-bar/#jobs-bar (siehe
    dortige Kommentare): ein position:static-Popover als Flex-Item von
    .header-actions würde beim Öffnen sonst alle anderen Icons der Kopfzeile
    verschieben. Erscheint als Geschwister-Element direkt NACH <header
@@ -895,6 +927,12 @@ body:has(#frage-bereich) {
    (Sidebar, Nachrichtenverlauf, die Chat-Box mit Rahmen). Gilt unverändert
    für Desktop und Mobile. */
 body:not(.chat-started) #frage-bereich {
+  /* Farbband Mint (siehe .page-band): vollbreit unter dem Header, Fragefeld
+     darin; im Konversationsmodus entfällt es. */
+  flex: 0 0 auto;
+  margin-inline: calc(50% - 50vw);
+  padding: 56px calc(50vw - 50%);
+  background: var(--color-cover-mint);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1870,11 +1908,20 @@ button.send-button {
    durchgehender Akzent-Rahmen statt neutralem Rahmen + 3px links. */
 .citation-card {
   position: relative;
-  background: var(--color-bg);
-  border: 1px solid var(--color-text);
+  background: var(--color-cover-mint);
+  border: 0;
   border-radius: var(--radius);
   padding: 0.9rem 2.5rem 0.9rem 1rem;
   margin: 0.6rem 0 1rem;
+}
+
+/* Links auf der Cover-Fläche: accent-hover statt accent (Kontrast). */
+.citation-card .external-link {
+  color: var(--color-accent-hover);
+}
+
+.citation-card .external-link:hover {
+  color: var(--color-text);
 }
 
 .citation-card-heading {
@@ -1899,7 +1946,7 @@ button.send-button {
 }
 
 .citation-author-link:hover {
-  color: var(--color-accent);
+  color: var(--color-accent-hover);
 }
 
 /* Nutzerwunsch: der Titel soll wie bei den übrigen Quellen anklickbar sein
@@ -1914,7 +1961,7 @@ button.send-button {
 }
 
 .citation-title-link:hover {
-  color: var(--color-accent);
+  color: var(--color-accent-hover);
 }
 
 .citation-card-text {
@@ -3173,7 +3220,7 @@ button.send-button {
 /* Backlog: LLM/Internet-Fallback bei dünner Quellenlage - Pflegebereich für
    die freigegebenen externen Domains/Pfade, per typ-web-allowlist-Button
    auf-/zuklappbar. Gleiches "normaler Seitenfluss statt Popover"-Muster wie
-   .footer-feedback-panel/#search-bar/#jobs-bar (siehe deren Kommentare) -
+   .footer-panel/#search-bar/#jobs-bar (siehe deren Kommentare) -
    robust bei jeder Bildschirmbreite. */
 #web-allowlist-bereich {
   padding: 1.5rem;
@@ -4203,14 +4250,9 @@ details a {
   }
 
   /* Backlog #75: Embed-Snippet ist für die Website-Pflege am Desktop gedacht
-     (Copy-Paste in fremden HTML-Code) - auf Mobile ohnehin kaum sinnvoll
-     nutzbar, deshalb dort ausgeblendet. !important nötig (Fix 2026-08-29,
-     wie bei #jobs-popover/#reindex-bereich oben): die spätere, unbedingte
-     .footer-embed-Regel (display: inline-flex, siehe weiter unten in dieser
-     Datei) hatte bei gleicher Spezifität als später stehende Regel sonst
-     gewonnen und den Mobile-Ausblendungsversuch wirkungslos gemacht - fiel
-     erst auf, als das Embed-Feature-Flag aktiviert wurde. */
-  .footer-embed {
+     (Copy-Paste in fremden HTML-Code) - auf Mobile ausgeblendet. */
+  .footer-embed-trigger,
+  #footer-embed-panel {
     display: none !important;
   }
 
@@ -4336,14 +4378,14 @@ details a {
 /* Backlog #85: Feedback-Trigger statt reinem GitHub-Issues-Link - soll
    weiterhin wie die übrigen Footer-Links aussehen, nicht wie ein
    hervorgehobener .link-button (Standard: fett, unterstrichen). */
-.footer-feedback-trigger {
+.footer-trigger {
   color: var(--color-text-muted);
   font-weight: inherit;
   font-size: inherit;
   text-decoration: none;
 }
 
-.footer-feedback-trigger:hover {
+.footer-trigger:hover {
   color: var(--color-text);
 }
 
@@ -4354,7 +4396,7 @@ details a {
    Element VOR <footer id="site-footer"> im DOM (siehe ensureFeedbackPanel
    in footer.js), erscheint dadurch automatisch oberhalb von dessen
    Trennlinie (border-top), ohne dass extra Positionierung nötig wäre. */
-.footer-feedback-panel {
+.footer-panel {
   position: relative;
   margin-top: 3rem;
   padding: 1.5rem 2.75rem 1.5rem 1.5rem;
@@ -4363,21 +4405,21 @@ details a {
   font-size: 0.9rem;
 }
 
-.footer-feedback-panel label {
+.footer-panel label {
   margin-bottom: 1.25rem;
 }
 
 /* Fix (2026-09-10, Nutzerfeedback): full-width wirkte in Kombination mit
    dem größeren Padding der betacodex.org-angeglichenen Buttons überdimensioniert -
    normale Buttongröße, rechtsbündig unter dem Formular statt gestreckt. */
-.footer-feedback-panel button[type="submit"] {
+.footer-panel button[type="submit"] {
   display: block;
   margin-left: auto;
 }
 
 /* Gleiches Muster wie .jobs-bar-close (import.js/style.css) - Schließen-
    Kreuz oben rechts im Panel. */
-.footer-feedback-panel-close {
+.footer-panel-close {
   position: absolute;
   top: 0.5rem;
   right: 0.5rem;
@@ -4393,7 +4435,7 @@ details a {
   cursor: pointer;
 }
 
-.footer-feedback-panel-close:hover {
+.footer-panel-close:hover {
   color: var(--color-text);
 }
 
@@ -4402,62 +4444,30 @@ details a {
    Panel zwei Abstände (Panel- + site-footer-margin-top) hintereinander.
    Ist das Panel (wie im Regelfall) unsichtbar/nicht vorhanden, bleibt der
    ursprüngliche Abstand von .site-footer selbst unverändert bestehen. */
-.footer-feedback-panel:not(.hidden) + .site-footer {
+.footer-panel:not(.hidden) + .site-footer {
   margin-top: 1rem;
 }
 
-/* Backlog #75: Embed-Snippet-Popover - bleibt bewusst beim Popover-Muster
-   (Trigger-Button + nach oben öffnendes .popover), da hier kein Clipping-
-   Risiko besteht wie beim Feedback-Bereich oben. */
-.footer-embed {
-  position: relative;
-  display: inline-flex;
-  flex-direction: column;
-}
-
-.footer-embed > .link-button {
-  color: var(--color-text-muted);
-  font-weight: inherit;
-  font-size: inherit;
-  text-decoration: none;
-}
-
-.footer-embed > .link-button:hover {
-  color: var(--color-accent);
-}
-
-.embed-popover {
-  top: auto;
-  bottom: calc(100% + 18px);
-  left: 0;
-  transform: none;
-}
-
-.embed-popover .popover-arrow {
-  top: auto;
-  bottom: -7px;
-  left: 12px;
-  transform: rotate(225deg);
-}
-
-.embed-popover-heading {
+/* Einbetten-Bereich: gleiche Basisklasse .footer-panel wie das Feedback;
+   der Auslöser nutzt .footer-trigger. */
+.footer-embed-panel-heading {
   margin-top: 0;
   font-weight: 600;
   color: var(--color-text);
 }
 
-.embed-popover label {
+.footer-embed-panel label {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 0.75rem;
 }
 
-.embed-popover input[type="number"] {
+.footer-embed-panel input[type="number"] {
   width: 5rem;
 }
 
-.embed-snippet {
+.footer-embed-snippet {
   width: 100%;
   min-height: 4.5rem;
   font-family: monospace;
@@ -4465,8 +4475,42 @@ details a {
   resize: vertical;
 }
 
-.embed-popover button[type="button"]:last-child {
-  width: 100%;
+/* Zweitknopf: Rand Tinte, Hover Tinte-Fläche. */
+.footer-embed-copy {
+  display: block;
+  margin-left: auto;
+  padding: 0.6rem 1.25rem;
+  border: 2px solid var(--color-text);
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--color-text);
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.footer-embed-copy:hover {
+  background: var(--color-text);
+  color: var(--color-bg);
+}
+
+/* Bereiche fahren von unten nach oben ein: sie stehen im DOM vor der
+   Footer-Zeile, footer.js scrollt beim Öffnen die Footer-Zeile mit ins Bild. */
+@keyframes footer-panel-rise {
+  from {
+    opacity: 0;
+    transform: translateY(1rem);
+  }
+}
+
+.footer-panel:not(.hidden) {
+  animation: footer-panel-rise 0.25s ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .footer-panel:not(.hidden) {
+    animation: none;
+  }
 }
 
 /* Nutzerwunsch (2026-08-23): "Explore"-Modus - Schlagwort-/Autor:innen-
@@ -4676,7 +4720,7 @@ details a {
 }
 
 .creative-disclaimer a {
-  color: var(--color-accent);
+  color: var(--color-accent-hover);
 }
 
 .creative-disclaimer--mobile {
