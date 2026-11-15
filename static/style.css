@@ -2022,7 +2022,10 @@ button.send-button {
 }
 
 .citation-highlight {
-  background: var(--color-surface);
+  /* Textmarker im Ton der Mint-Zitat-Box statt Stein-Flicken (v0.93.1). */
+  background: color-mix(in srgb, var(--color-text) 10%, var(--color-cover-mint));
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
   color: var(--color-text);
   font-weight: 600;
   border-radius: var(--radius);
