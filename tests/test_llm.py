@@ -973,3 +973,24 @@ def test_filter_ignores_markers_in_quotes_block():
 def test_strip_image_markers_removes_all():
     text = "A [1].\n\n[bild:1.1]\n\nB [bild:2.7] C."
     assert llm.strip_image_markers(text) == "A [1].\n\nB C."
+
+
+def test_context_marks_images_from_same_source_separately():
+    chunk = _chunk(
+        [
+            {"src": "https://i.example.org/a.jpg", "alt": "Eigen", "page": None},
+            {"src": "https://i.example.org/b.jpg", "alt": "Fremd", "page": None, "from_source": True},
+        ]
+    )
+
+    lines = [l for l in llm._build_context([chunk], "de", None).splitlines() if l.startswith("Bilder")]
+
+    assert lines == [
+        "Bilder: [bild:1.1] „Eigen“ (Datei: a.jpg)",
+        "Bilder (aus derselben Quelle, nicht aus diesem Ausschnitt): [bild:1.2] „Fremd“ (Datei: b.jpg)",
+    ]
+
+
+@pytest.mark.parametrize("lang, phrase", [("de", "aus derselben Quelle"), ("en", "from the same source")])
+def test_prompt_has_same_source_image_rule(lang, phrase):
+    assert phrase in llm.SYSTEM_PROMPTS[lang]

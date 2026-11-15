@@ -10618,3 +10618,132 @@ def test_ask_removes_bild_like_leftovers_from_answer(client, monkeypatch, junk):
     result = _stream_events(client, monkeypatch, f"Aussage [1].\n\n{junk}\n\nNächster Absatz ist lang genug.", 1)
 
     assert result["answer"] == result["streamed_text"] == "Aussage [1].\n\nNächster Absatz ist lang genug."
+
+
+# --- Inline-Bild: Quellen-Fallback für Refs ohne eigenes Chunk-Bild (Nachtrag Nutzer 2) ---
+
+
+def _url_item(n, alt=""):
+    return {"kind": "url", "url": f"https://img.example.org/{n}.jpg", "alt": alt, "page": None}
+
+
+def _fb_ref(source_id, i=0, web=False):
+    from app.models import ChunkRef
+
+    return ChunkRef(chunk_id=f"{source_id}::{i}", source_id=source_id, title=source_id, position=i, text="t", is_web_fallback=web)
+
+
+def _fb_apply(monkeypatch, refs, metas, sources, stored_metas=None):
+    monkeypatch.setattr(
+        vectorstore, "get_source_chunks", lambda sid: ([], [], (stored_metas or {}).get(sid, []))
+    )
+    main_module._apply_chunk_images(refs, metas, sources)
+    return [[(i.src.rsplit("/", 1)[-1], i.from_source) for i in r.images] for r in refs]
+
+
+def test_fallback_gives_ref_without_images_two_source_images_unassigned_first(monkeypatch):
+    sources = {"S": {"images": [_url_item(1), _url_item(2), _url_item(3)]}}
+    stored = {"S": [{"images_json": json.dumps([_url_item(1)])}]}  # Bild 1 hängt schon an einem Chunk
+
+    result = _fb_apply(monkeypatch, [_fb_ref("S")], [{"source_id": "S"}], sources, stored)
+
+    assert result == [[("2.jpg", True), ("3.jpg", True)]]
+
+
+def test_fallback_tops_up_with_assigned_images_in_source_order(monkeypatch):
+    sources = {"S": {"images": [_url_item(1), _url_item(2)]}}
+    stored = {"S": [{"images_json": json.dumps([_url_item(1), _url_item(2)])}]}
+
+    assert _fb_apply(monkeypatch, [_fb_ref("S")], [{"source_id": "S"}], sources, stored) == [[("1.jpg", True), ("2.jpg", True)]]
+
+
+def test_fallback_not_for_ref_with_own_image_or_second_ref_of_same_source(monkeypatch):
+    sources = {"S": {"images": [_url_item(1), _url_item(2)]}, "T": {"images": [_url_item(5)]}}
+    own = {"source_id": "S", "images_json": json.dumps([_url_item(9)])}
+    refs = [_fb_ref("S", 0), _fb_ref("S", 1), _fb_ref("T", 0), _fb_ref("T", 1)]
+
+    result = _fb_apply(monkeypatch, refs, [own, {"source_id": "S"}, {"source_id": "T"}, {"source_id": "T"}], sources)
+
+    assert result == [[("9.jpg", False)], [], [("5.jpg", True)], []]
+
+
+def test_fallback_never_repeats_a_src_across_refs(monkeypatch):
+    sources = {"A": {"images": [_url_item(1), _url_item(2)]}, "B": {"images": [_url_item(1), _url_item(3)]}}
+
+    result = _fb_apply(monkeypatch, [_fb_ref("A"), _fb_ref("B")], [{"source_id": "A"}, {"source_id": "B"}], sources)
+
+    assert result == [[("1.jpg", True), ("2.jpg", True)], [("3.jpg", True)]]
+
+
+def test_fallback_skips_web_fallback_refs_and_sources_without_images(monkeypatch):
+    sources = {"W": {"images": [_url_item(1)]}}
+
+    assert _fb_apply(monkeypatch, [_fb_ref("W", web=True), _fb_ref("X")], [{}, {"source_id": "X"}], sources) == [[], []]
+
+
+def test_fallback_drops_broken_or_unsafe_source_entries(monkeypatch):
+    bad = [5, "x", {"kind": "url", "url": "javascript:alert(1)"}, {"kind": "url", "url": "http://insecure.example/a.jpg"},
+           {"kind": "file", "file": "../x"}, {"kind": "x"}]
+    sources = {"S": {"images": bad + [_url_item(7)]}, "K": {"images": "kaputt"}}
+
+    result = _fb_apply(monkeypatch, [_fb_ref("S"), _fb_ref("K")], [{"source_id": "S"}, {"source_id": "K"}], sources)
+
+    assert result == [[("7.jpg", True)], []]
+
+
+def test_fallback_file_image_gets_local_endpoint_src(monkeypatch):
+    name = "b" * 32 + ".webp"
+    sources = {"S": {"images": [{"kind": "file", "file": name, "alt": "", "page": 3}]}}
+
+    monkeypatch.setattr(vectorstore, "get_source_chunks", lambda sid: ([], [], []))
+    refs = [_fb_ref("S")]
+    main_module._apply_chunk_images(refs, [{"source_id": "S"}], sources)
+
+    assert [(i.src, i.page) for i in refs[0].images] == [(f"/api/sources/S/images/{name}", 3)]
+
+
+def _give_source_images(source_id, items):
+    sources = main_module._load_sources()
+    sources[source_id]["images"] = items
+    main_module._save_sources(sources)
+
+
+def test_ask_offers_fallback_images_to_model_marked_as_same_source(client, monkeypatch):
+    source_id = _seed_image_chunks(client, [None])
+    _give_source_images(source_id, [_url_item(1, "Zellstruktur")])
+    captured = []
+
+    def fake_stream(question, chunks, **kwargs):
+        captured.append(llm._build_context(chunks, "de", None))
+        return iter(["Antwort [1]."])
+
+    monkeypatch.setattr(llm, "stream_answer_question", fake_stream)
+    response = client.post("/api/ask", json={"question": "Frage?"})
+
+    assert "Bilder (aus derselben Quelle, nicht aus diesem Ausschnitt): [bild:1.1] „Zellstruktur“" in captured[0]
+    done = ask_result(response)["sources"][0]
+    assert done["images"] == [{"src": "https://img.example.org/1.jpg", "alt": "Zellstruktur", "page": None}]
+
+
+def test_ask_fallback_respects_restricted_limit(client, monkeypatch):
+    source_id = _seed_image_chunks(client, [None, None], restricted=True)
+    _give_source_images(source_id, [_url_item(1), _url_item(2)])
+
+    events = _ask_events(client, monkeypatch, top_k=5)
+
+    for kind in ("sources", "done"):
+        refs = next(e for e in events if e["type"] == kind)["sources"]
+        assert sum(len(r["images"]) for r in refs) == 1
+
+
+def test_handoff_returns_same_fallback_images_as_ask(client, monkeypatch):
+    source_id = _seed_image_chunks(client, [None])
+    _give_source_images(source_id, [_url_item(1), _url_item(2)])
+    ask_images = next(e for e in _ask_events(client, monkeypatch) if e["type"] == "done")["sources"][0]["images"]
+    turn = {"question": "F?", "answer": "A.", "sources": [
+        {"chunk_id": f"{source_id}::0", "source_id": source_id, "title": "Q", "position": 0, "text": "t", "images": []}]}
+    token = client.post("/api/conversation-handoff", json={"history": [turn]}).json()["token"]
+
+    sources = client.get(f"/api/conversation-handoff/{token}").json()["history"][0]["sources"]
+
+    assert len(ask_images) == 2 and sources[0]["images"] == ask_images
