@@ -58,6 +58,13 @@ Assistent das offen, statt zu spekulieren.
   tatsächlich verwendete Textstelle – ein Klick springt zur passierten
   Original-Quelle und hebt die exakte Textpassage hervor, bei
   Video/Audio-Quellen inklusive Zeitstempel.
+- Inline-Bild: Das Modell kennt die gezeigten Quellen-Bilder (Alt-Text,
+  Dateiname, Seite) und setzt höchstens EINEN Marker `[bild:n.m]` (Ausschnitt
+  n, Bild m) hinter den Absatz, den das Bild klar veranschaulicht – kein Bild
+  wird erzwungen. Der Server filtert ungültige/weitere Marker; der Chat zeigt
+  das Bild unter dem Absatz (während des Streams eine schimmernde
+  Platzhalter-Fläche) und lässt es in der Bildleiste weg. Marker fehlen in
+  Kopieren, Vorlesen, MCP, Fragen-Log, Feedback und Verlauf.
 - Bildleiste: Zitiert eine Antwort Quellen mit Bildern, zeigt der Chat bis zu
   6 davon (Bildunterschrift = Quelle, bei PDFs mit Seite, Klick öffnet die
   Quelle). Web-Bilder bleiben Links auf den Server der Quelle, PDF-Grafiken
