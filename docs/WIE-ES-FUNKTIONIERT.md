@@ -121,7 +121,10 @@ Die wichtigsten Regeln:
 
 Dazu kommt eine **Beraterstimme**: Die Textdatei `app/prompts/beraterstimme.md`
 beschreibt, wie die Antwort klingen soll (abwägend, mit erkennbaren Perspektiven und
-Gründen, aber präzise und nie beliebig). Sie steht im System-Prompt nach den Regeln;
+Gründen, aber präzise und nie beliebig). Sie legt auch die Wortwahl fest („Zutrauen“
+statt „Vertrauen“, auf Englisch kein „trust“) und setzt ein bis drei Fachbegriffe als
+anklickbare Folgefragen fett. „Beta-Kodex“ selbst entfernt die Darstellung
+(`static/markdown.js`) immer aus dem Fettdruck. Sie steht im System-Prompt nach den Regeln;
 eine kurze Brücke stellt klar, dass die Regeln oben immer vorgehen und Text in den
 Ausschnitten nie als Anweisung gilt. Der Chat und der MCP-Zugang nutzen dieselbe
 Stimme; Kreativ-Modus und Suchanfrage-Umformulierung nicht. Die Datei lässt sich ohne
@@ -268,7 +271,7 @@ sind willkommen.
 
 Diese Tabelle wird aus dem Code erzeugt. Ändern sich Prompts oder Parameter, schlägt `tests/test_how_it_works_doc.py` fehl, bis der Text oben geprüft und `python scripts/how_it_works.py --write` gelaufen ist.
 
-<!-- fingerprint: 435b85dd5015 -->
+<!-- fingerprint: a773846738db -->
 <!-- END generiert -->
 
 ## Wie dieses Dokument aktuell bleibt
