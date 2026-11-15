@@ -1,12 +1,22 @@
+@import url("fonts/fonts.css");
+
 :root {
   --color-bg: #ffffff;
-  --color-surface: #f7f5f3;
-  --color-text: #232323;
-  --color-text-muted: #6b6b6b;
-  --color-border: #e3ded8;
-  --color-accent: #b22f1c;
-  --color-accent-hover: #8f2716;
-  --color-accent-tint: rgba(178, 47, 28, 0.08);
+  --color-surface: #f7f5f1;
+  --color-text: #1c1c1c;
+  --color-text-muted: #4a4640;
+  --color-border: #e6e2dc;
+  --color-accent: #d92416;
+  --color-accent-hover: #a52a17;
+  --color-on-accent: #fff;
+  --color-on-conversation: #fff;
+  --color-focus: #1c1c1c;
+  --color-success: #2e7d32;
+  --color-cover-sand: #f7f3ea;
+  --color-cover-rose: #f3dcd5;
+  --color-cover-mint: #d5e8e2;
+  --color-cover-aqua: #cfe3e6;
+  --color-danger: #c62828;
   --color-warning: #9a6400;
   --color-warning-tint: rgba(154, 100, 0, 0.1);
   /* Nutzerwunsch (Livegang-Vorbereitung, 2026-09-10): an betacodex.org/home
@@ -14,7 +24,8 @@
      gemessen: 2.5px, siehe button[type="submit"]-Regel weiter unten) - eine
      zentrale Variable, damit Eingabefelder/Textboxen/Panels/Popovers etc.
      konsistent mitziehen statt nur die Buttons. */
-  --radius: 2.5px;
+  --radius: 0;
+  --font-display: Oswald, "Arial Narrow", sans-serif;
   --font-sans: "Inter", -apple-system, "system-ui", "Segoe UI", Roboto,
     "Helvetica Neue", Arial, sans-serif;
   /* Explore-Modus (Nutzerwunsch 2026-08-23): eigene, gedeckte Cluster-Palette
@@ -22,7 +33,7 @@
      Terrakotta-Akzent passen statt eines bunten Regenbogens. Zyklisch per
      Knoten-Cluster-Index % 10 in explore.js zugewiesen (siehe
      .explore-node--cluster-N). */
-  --graph-cluster-0: #b22f1c;
+  --graph-cluster-0: #d92416;
   --graph-cluster-1: #2f6b4f;
   --graph-cluster-2: #4a5b8c;
   --graph-cluster-3: #a67c3d;
@@ -37,16 +48,23 @@
 @media (prefers-color-scheme: dark) {
   :root {
     --color-bg: #1c1c1c;
-    --color-surface: #262422;
-    --color-text: #ededed;
-    --color-text-muted: #a3a3a3;
+    --color-surface: #2a2622;
+    --color-text: #e8e4de;
+    --color-text-muted: #b0aaa2;
     --color-border: #3a3733;
-    --color-accent: #e2593f;
-    --color-accent-hover: #ef6c52;
-    --color-accent-tint: rgba(226, 89, 63, 0.14);
+    --color-accent: #f0604f;
+    --color-accent-hover: #f4806f;
+    --color-on-accent: #1c1c1c;
+    --color-focus: #e8e4de;
+    --color-success: #6cc070;
+    --color-cover-sand: #302b25;
+    --color-cover-rose: #3a2b28;
+    --color-cover-mint: #26342f;
+    --color-cover-aqua: #263339;
+    --color-danger: #f07a6e;
     --color-warning: #e0a530;
     --color-warning-tint: rgba(224, 165, 48, 0.14);
-    --graph-cluster-0: #e2593f;
+    --graph-cluster-0: #f0604f;
     --graph-cluster-1: #4f9c74;
     --graph-cluster-2: #7a8ecf;
     --graph-cluster-3: #d1a35f;
@@ -69,6 +87,32 @@
    zu scrollen. */
 html {
   scroll-behavior: smooth;
+  /* Farbbänder (.page-band) brechen per 100vw aus der Spalte aus; die
+     Scrollbar-Breite würde sonst waagrechtes Scrollen auslösen. */
+  overflow-x: clip;
+}
+
+/* Farbband je Bereich wie .bcx-hero--* auf betacodex.org: vollbreit,
+   direkt unter dem Header. Inhalt bleibt in der Spaltenbreite. */
+.page-band {
+  margin-inline: calc(50% - 50vw);
+  padding-inline: calc(50vw - 50%);
+  padding-block: 56px;
+  margin-bottom: 2rem;
+}
+
+.page-band--sand { background: var(--color-cover-sand); }
+.page-band--rose { background: var(--color-cover-rose); }
+.page-band--mint { background: var(--color-cover-mint); }
+.page-band--aqua { background: var(--color-cover-aqua); }
+
+.page-band > :first-child { margin-top: 0; }
+.page-band > :last-child { margin-bottom: 0; }
+
+@media (max-width: 640px) {
+  .page-band {
+    padding-block: 32px;
+  }
 }
 
 body {
@@ -83,9 +127,30 @@ body {
 }
 
 h1, h2, h3 {
-  font-weight: 800;
+  font-weight: 700;
   letter-spacing: -0.01em;
   line-height: 1.25;
+}
+
+/* Designsystem betacodex.org: Seitentitel und Markenname in Oswald. */
+h1, .page-title, .brand-name {
+  font-family: var(--font-display);
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+/* Sichtbarer Fokus überall (auch Eingabefelder). */
+:focus-visible {
+  outline: 3px solid var(--color-focus);
+  outline-offset: 2px;
+}
+
+/* Felder haben einen 2px-Tintenrand: der Fokusring (3px, Abstand 0) liegt
+   bündig daran - eine durchgehende 5px-Linie, keine Lücke, keine Doppellinie. */
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  outline-offset: 0;
 }
 
 h1 {
@@ -172,8 +237,8 @@ h3 {
   left: 0.5rem;
   transform: translateY(-100%);
   z-index: 100;
-  background: var(--color-accent);
-  color: #fff;
+  background: var(--color-text);
+  color: var(--color-bg);
   padding: 0.6rem 1rem;
   border-radius: var(--radius);
   text-decoration: none;
@@ -338,7 +403,7 @@ header h1 {
   padding: 0 0.15rem;
   border-radius: 999px;
   background: var(--color-warning);
-  color: #fff;
+  color: var(--color-on-accent);
   font-size: 0.65rem;
   font-weight: 700;
   line-height: 1;
@@ -355,9 +420,9 @@ header h1 {
 #creative-link:hover,
 #question-log-link:hover,
 #changelog-link:hover {
-  border-color: var(--color-accent);
-  color: var(--color-accent);
-  background: var(--color-accent-tint);
+  border-color: var(--color-text);
+  background: var(--color-text);
+  color: var(--color-bg);
 }
 
 @media (max-width: 480px) {
@@ -391,7 +456,7 @@ header h1 {
 }
 
 .auth-widget-button--active {
-  color: var(--color-accent);
+  color: var(--color-text);
 }
 
 /* Rechtsbündig statt zentriert - das Auth-Icon ist inzwischen immer das
@@ -442,7 +507,7 @@ header h1 {
 
 /* Backlog #183: auf Mobile klappt der Login-/Konto-Bereich als eigenständiger,
    vollbreiter Block direkt unter der Kopfzeile auf statt als Popover -
-   gleiches Muster wie .footer-feedback-panel/#search-bar/#jobs-bar (siehe
+   gleiches Muster wie .footer-panel/#search-bar/#jobs-bar (siehe
    dortige Kommentare): ein position:static-Popover als Flex-Item von
    .header-actions würde beim Öffnen sonst alle anderen Icons der Kopfzeile
    verschieben. Erscheint als Geschwister-Element direkt NACH <header
@@ -473,7 +538,7 @@ header h1 {
 }
 
 .auth-flow-panel-close:hover {
-  color: var(--color-accent);
+  color: var(--color-text);
 }
 
 @media (min-width: 481px) {
@@ -535,13 +600,13 @@ header h1 {
 }
 
 .lang-button.active {
-  color: var(--color-accent);
+  color: var(--color-text);
   text-decoration: underline;
   text-underline-offset: 2px;
 }
 
 .lang-button:hover {
-  color: var(--color-accent);
+  color: var(--color-text);
 }
 
 label {
@@ -562,7 +627,7 @@ input, textarea {
   font-size: 1rem;
   color: var(--color-text);
   background: var(--color-bg);
-  border: 1px solid var(--color-border);
+  border: 2px solid var(--color-text);
   border-radius: var(--radius);
   padding: 0.65rem 0.8rem;
   box-sizing: border-box;
@@ -596,16 +661,10 @@ select {
   font-size: 1rem;
   color: var(--color-text);
   background: var(--color-bg);
-  border: 1px solid var(--color-border);
+  border: 2px solid var(--color-text);
   border-radius: var(--radius);
   padding: 0.65rem 0.8rem;
   box-sizing: border-box;
-}
-
-select:focus {
-  outline: none;
-  border-color: var(--color-accent);
-  box-shadow: 0 0 0 3px var(--color-accent-tint);
 }
 
 /* Sprachzeile: beide Felder gleich breit (Titelzeile gibt dem Titel 2/3). */
@@ -631,8 +690,9 @@ select:focus {
 }
 
 .magic-button:hover {
-  color: var(--color-accent);
-  border-color: var(--color-accent);
+  border-color: var(--color-text);
+  background: var(--color-text);
+  color: var(--color-bg);
 }
 
 .magic-button:disabled {
@@ -667,12 +727,6 @@ select:focus {
   background: var(--color-surface);
 }
 
-input:focus, textarea:focus {
-  outline: none;
-  border-color: var(--color-accent);
-  box-shadow: 0 0 0 3px var(--color-accent-tint);
-}
-
 textarea {
   resize: vertical;
 }
@@ -690,7 +744,7 @@ textarea {
   margin-top: 0;
   padding: 0;
   border: none;
-  accent-color: var(--color-accent);
+  accent-color: var(--color-text);
 }
 
 .audio-preview-player {
@@ -724,12 +778,13 @@ textarea {
 }
 
 .markup-button:hover {
-  border-color: var(--color-accent);
-  color: var(--color-accent);
+  border-color: var(--color-text);
+  background: var(--color-text);
+  color: var(--color-bg);
 }
 
 .markup-button.markup-bold {
-  font-weight: 800;
+  font-weight: 700;
 }
 
 .markup-button.markup-italic {
@@ -758,12 +813,12 @@ button {
    ganzen App-weit konsistenten Wert. */
 button[type="submit"], .send-button, #popover-load, #popover-upload, #term-merge-analyze {
   background: var(--color-accent);
-  color: #fff;
+  color: var(--color-on-accent);
   border: none;
   border-radius: var(--radius);
   padding: 0.8rem 3rem;
   font-size: 0.95rem;
-  font-weight: 700;
+  font-weight: 600;
   cursor: pointer;
   transition: background 0.15s ease;
 }
@@ -880,6 +935,12 @@ body:has(#frage-bereich) {
    (Sidebar, Nachrichtenverlauf, die Chat-Box mit Rahmen). Gilt unverändert
    für Desktop und Mobile. */
 body:not(.chat-started) #frage-bereich {
+  /* Farbband Mint (siehe .page-band): vollbreit unter dem Header, Fragefeld
+     darin; im Konversationsmodus entfällt es. */
+  flex: 0 0 auto;
+  margin-inline: calc(50% - 50vw);
+  padding: 56px calc(50vw - 50%);
+  background: var(--color-cover-mint);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -902,7 +963,7 @@ body:not(.chat-started) .site-footer {
      oben UND unten denselben Puffer zur jeweiligen Trennlinie hat - nur so
      zentriert justify-content:center wirklich zwischen den beiden Linien
      statt spürbar zu weit oben. */
-  margin-top: 1.5rem;
+  margin-top: auto;
 }
 
 body:not(.chat-started) #chat-column {
@@ -921,9 +982,22 @@ body:not(.chat-started) #chat-column {
 }
 
 body:not(.chat-started) #question-form {
-  border-top: none;
-  padding-left: 0;
-  padding-right: 0;
+  padding-left: 0.75rem;
+  padding-right: 0.75rem;
+}
+
+/* Desktop wie google.com: das Mint-Band füllt den Platz bis zum Footer, das
+   Fragefeld sitzt etwas über der Mitte (größeres Polster unten). */
+@media (min-width: 900px) {
+  body:not(.chat-started) #frage-bereich {
+    flex: 1 0 auto;
+    padding-bottom: calc(56px + 14vh);
+  }
+
+  body:not(.chat-started) .site-footer {
+    margin-top: 0;
+    border-top: 0;
+  }
 }
 
 /* Basisverhalten (Mobile/Tablet, <900px): feste Höhe mit intern scrollendem
@@ -1003,23 +1077,23 @@ body:not(.chat-started) #question-form {
 }
 
 .chat-bubble {
-  border-radius: 18px;
+  border-radius: var(--radius);
   padding: 0.75rem 1.1rem;
   max-width: 85%;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
 }
 
 .chat-message--user .chat-bubble {
-  background: var(--color-accent);
-  color: #fff;
-  border-bottom-right-radius: 6px;
+  background: var(--color-text);
+  color: var(--color-bg);
+  border-bottom-right-radius: var(--radius);
 }
 
 .chat-message--assistant .chat-bubble {
   background: var(--color-bg);
   border: 1px solid var(--color-border);
   max-width: 100%;
-  border-bottom-left-radius: 6px;
+  border-bottom-left-radius: var(--radius);
 }
 
 .chat-bubble p {
@@ -1081,7 +1155,9 @@ body:not(.chat-started) #question-form {
      darunter verschwinden - max() behält auf normalen Geräten weiterhin
      den regulären 1rem-Abstand. */
   padding-bottom: max(1rem, env(safe-area-inset-bottom));
-  border-top: 1px solid var(--color-border);
+  /* Eine Linie Tinte (2px) um die ganze Leiste, wie .bcx-search input auf
+     betacodex.org; das Textfeld darin hat keinen eigenen Rand. */
+  border: 2px solid var(--color-text);
   background: var(--color-bg);
   flex-shrink: 0;
 }
@@ -1094,9 +1170,10 @@ body:not(.chat-started) #question-form {
      Bildschirmen (Flexbox-Standard: min-width:auto orientiert sich am
      Inhalt/Intrinsic-Wert des Elements, nicht an der gesetzten width). */
   min-width: 0;
+  border: 0;
   border-radius: var(--radius);
   padding: 0.7rem 1.25rem;
-  background: var(--color-surface);
+  background: var(--color-bg);
   /* Ohne dies erbt das Feld font-size: 0.95rem (~15px) von der generischen
      input/textarea-Regel - iOS Safari zoomt beim Fokussieren automatisch in
      jedes Feld mit weniger als 16px Schriftgröße hinein (der gemeldete
@@ -1112,6 +1189,18 @@ body:not(.chat-started) #question-form {
   transition: height 0.15s ease;
 }
 
+/* Eine Fokuslinie: das randlose Textfeld hat keinen eigenen Ring, stattdessen
+   liegt ein 3px-Ring in Tinte genau auf dem Rahmen der Leiste. */
+#question-form textarea:focus-visible {
+  outline: none;
+}
+
+/* Innerer Ring statt Outline: #chat-column hat overflow: hidden und schneidet
+   alles außerhalb der Leiste ab - der Outline war dadurch unsichtbar. */
+#question-form:has(textarea:focus) {
+  box-shadow: inset 0 0 0 3px var(--color-focus);
+}
+
 /* Backlog #190: während der Aufnahme (Live-Transkript) ist das Feld
    read-only (siehe question.js onListeningChange) - dezenter optischer
    Hinweis, dass Tippen gerade nicht greift. */
@@ -1124,32 +1213,15 @@ body:not(.chat-started) #question-form {
    wächst das Feld auf volle Breite (siehe autosizeQuestionInput in
    question.js, das diese Klasse setzt) - Mikro-/Senden-Button rutschen
    dadurch als flex-wrap-Umbruch automatisch in eine zweite Zeile und werden
-   per justify-content rechtsbündig ausgerichtet. */
+   per justify-content rechtsbündig ausgerichtet. Gilt in allen Breiten und
+   in jedem Zustand (Nutzerentscheid): Text läuft immer über Mikrofon/Absenden
+   unter dem Feld, nie daneben. */
 #question-form.question-form--expanded textarea {
   flex-basis: 100%;
 }
 
 #question-form.question-form--expanded {
   justify-content: flex-end;
-}
-
-@media (min-width: 900px) {
-  /* Das Verschieben der Buttons unter das Feld ist für den schmalen,
-     zentrierten Startzustand gedacht (erste Frage, siehe body:not(
-     .chat-started) weiter oben). Läuft die Konversation bereits (volle
-     Breite, sticky Eingabezeile unten am Desktop), bleiben Mikro-/Senden-
-     Button stattdessen rechts stehen - das Feld wächst dort nur noch nach
-     unten, ohne die Buttons zu verdrängen. */
-  body.chat-started #question-form.question-form--expanded textarea {
-    flex-basis: 0%;
-  }
-
-  body.chat-started #question-form.question-form--expanded {
-    justify-content: normal;
-    /* Buttons bleiben an der letzten Textzeile "unten" statt vertikal
-       mittig in der jetzt höheren Box zu schweben. */
-    align-items: flex-end;
-  }
 }
 
 /* Backlog (2026-08-09): #turnstile-container im Frage-Formular ist bewusst
@@ -1229,8 +1301,9 @@ button.send-button {
 }
 
 .mic-button:hover {
-  border-color: var(--color-accent);
-  color: var(--color-accent);
+  border-color: var(--color-text);
+  background: var(--color-text);
+  color: var(--color-bg);
 }
 
 /* Nutzerwunsch (2026-08-30/31): "Vollständig öffnen"-Icon UND Sprach-
@@ -1259,7 +1332,7 @@ button.send-button {
 #embed-toolbar .lang-switcher {
   padding: 0.2rem 0.5rem;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.85);
+  background: color-mix(in srgb, var(--color-bg) 85%, transparent);
 }
 
 /* Klein und rot wie gefordert - gleiche Akzentfarbe wie .external-link. */
@@ -1268,7 +1341,7 @@ button.send-button {
   height: 26px;
   border-radius: 50%;
   border: none;
-  background: rgba(255, 255, 255, 0.85);
+  background: color-mix(in srgb, var(--color-bg) 85%, transparent);
   color: var(--color-accent);
   cursor: pointer;
   display: inline-flex;
@@ -1325,11 +1398,11 @@ button.send-button {
 }
 
 .speak-answer-btn:hover {
-  color: var(--color-accent);
+  color: var(--color-text);
 }
 
 .speak-answer-btn.speaking {
-  color: var(--color-accent);
+  color: var(--color-text);
 }
 
 /* Vorlesegeschwindigkeit: schaltet per Klick durch SPEECH_RATES (speech.js)
@@ -1351,7 +1424,7 @@ button.send-button {
 }
 
 .speed-answer-btn:hover {
-  color: var(--color-accent);
+  color: var(--color-text);
 }
 
 /* Nutzerwunsch (2026-09-01): Daumen-hoch/-runter je Antwort, auf Höhe der
@@ -1383,11 +1456,11 @@ button.send-button {
 }
 
 .copy-answer-btn:hover {
-  color: var(--color-accent);
+  color: var(--color-text);
 }
 
 .copy-answer-btn.copied {
-  color: #2e7d32;
+  color: var(--color-success);
 }
 
 .copy-answer-btn .copy-check,
@@ -1411,7 +1484,7 @@ button.send-button {
 }
 
 .feedback-btn:hover:not(:disabled) {
-  color: var(--color-accent);
+  color: var(--color-text);
 }
 
 /* Nutzerwunsch (2026-09-01, Nachtrag): nach erfolgreichem Absenden bleiben
@@ -1424,7 +1497,7 @@ button.send-button {
 }
 
 .feedback-btn--sent {
-  color: #2e7d32;
+  color: var(--color-success);
   animation: feedback-sent-pop 0.4s ease;
 }
 
@@ -1549,7 +1622,7 @@ button.send-button {
   body.chat-started #question-form {
     position: sticky;
     bottom: max(1rem, env(safe-area-inset-bottom));
-    border: 1px solid var(--color-border);
+    border: 2px solid var(--color-text);
     border-radius: var(--radius);
     box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
     z-index: 1;
@@ -1579,7 +1652,7 @@ button.send-button {
   body.chat-started #question-form {
     position: sticky;
     bottom: max(1rem, env(safe-area-inset-bottom));
-    border: 1px solid var(--color-border);
+    border: 2px solid var(--color-text);
     border-radius: var(--radius);
     box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
     z-index: 1;
@@ -1662,8 +1735,9 @@ button.send-button {
   }
 
   #question-form {
-    padding-left: 0;
-    padding-right: 0;
+    /* Platz für den 3px-Fokusrahmen des Textfelds innerhalb der Leiste. */
+    padding-left: 0.5rem;
+    padding-right: 0.5rem;
   }
 
   /* Fix (2026-07-31, dritter Anlauf): sowohl die ursprüngliche Annahme
@@ -1751,7 +1825,10 @@ button.send-button {
    beim Hover) - fett ist bereits durch das umschließende <strong> gegeben. */
 .term-followup {
   cursor: pointer;
-  color: var(--color-accent);
+  color: var(--color-text);
+  font-weight: 700;
+  text-decoration: underline 1px;
+  text-underline-offset: 3px;
 }
 
 .term-followup:hover {
@@ -1869,11 +1946,27 @@ button.send-button {
    durchgehender Akzent-Rahmen statt neutralem Rahmen + 3px links. */
 .citation-card {
   position: relative;
-  background: var(--color-bg);
-  border: 1px solid var(--color-accent);
+  background: var(--color-cover-mint);
+  border: 0;
   border-radius: var(--radius);
   padding: 0.9rem 2.5rem 0.9rem 1rem;
   margin: 0.6rem 0 1rem;
+}
+
+/* Links auf der Cover-Fläche (Mint): Tinte mit Unterstrich, Hover accent-hover
+   (Rot erreicht auf Cover-Farben keinen ausreichenden Kontrast). */
+#chat-messages .citation-card .citation-title-link,
+#chat-messages .citation-card .citation-author-link,
+#chat-messages .citation-card .external-link {
+  color: var(--color-text);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+#chat-messages .citation-card .citation-title-link:hover,
+#chat-messages .citation-card .citation-author-link:hover,
+#chat-messages .citation-card .external-link:hover {
+  color: var(--color-accent-hover);
 }
 
 .citation-card-heading {
@@ -1898,7 +1991,7 @@ button.send-button {
 }
 
 .citation-author-link:hover {
-  color: var(--color-accent);
+  color: var(--color-accent-hover);
 }
 
 /* Nutzerwunsch: der Titel soll wie bei den übrigen Quellen anklickbar sein
@@ -1913,7 +2006,7 @@ button.send-button {
 }
 
 .citation-title-link:hover {
-  color: var(--color-accent);
+  color: var(--color-accent-hover);
 }
 
 .citation-card-text {
@@ -1929,10 +2022,10 @@ button.send-button {
 }
 
 .citation-highlight {
-  background: var(--color-accent-tint);
+  background: var(--color-surface);
   color: var(--color-text);
   font-weight: 600;
-  border-radius: 3px;
+  border-radius: var(--radius);
   padding: 0.05em 0.15em;
 }
 
@@ -1964,7 +2057,7 @@ button.send-button {
 
 @keyframes source-highlight-flash {
   0%, 15% {
-    box-shadow: inset 0 0 0 2px var(--color-accent);
+    box-shadow: inset 0 0 0 2px var(--color-text);
   }
   100% {
     box-shadow: inset 0 0 0 2px transparent;
@@ -2024,7 +2117,7 @@ button.send-button {
 
 .source-summary-icon {
   display: inline-flex;
-  color: var(--color-accent);
+  color: var(--color-text);
   vertical-align: middle;
 }
 
@@ -2206,7 +2299,7 @@ button.send-button {
 }
 
 .jobs-bar-close:hover {
-  color: var(--color-accent);
+  color: var(--color-text);
 }
 
 #jobs-bar-list {
@@ -2261,14 +2354,15 @@ button.send-button {
 }
 
 .sort-button:hover {
-  border-color: var(--color-accent);
-  color: var(--color-accent);
+  border-color: var(--color-text);
+  background: var(--color-text);
+  color: var(--color-bg);
 }
 
 .sort-button.active {
-  border-color: var(--color-accent);
-  color: var(--color-accent);
-  background: var(--color-accent-tint);
+  border-color: var(--color-text);
+  color: var(--color-text);
+  background: var(--color-surface);
 }
 
 /* Backlog #65: Alphabet-Sprungleiste - nur in der Autor:innen-Sortierung
@@ -2289,16 +2383,16 @@ button.send-button {
   padding: 0.15rem 0.2rem;
   border: none;
   background: none;
-  color: var(--color-accent);
+  color: var(--color-text);
   font-size: 0.8rem;
   font-weight: 600;
   cursor: pointer;
-  border-radius: 3px;
+  border-radius: var(--radius);
 }
 
 .alphabet-jump-btn:hover {
-  color: var(--color-accent-hover);
-  background: var(--color-accent-tint);
+  color: var(--color-text);
+  background: var(--color-surface);
 }
 
 .alphabet-jump-btn:disabled {
@@ -2357,7 +2451,7 @@ button.send-button {
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: var(--color-accent);
+  background: var(--color-text);
   z-index: 1;
 }
 
@@ -2434,7 +2528,7 @@ button.send-button {
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: var(--color-accent);
+  background: var(--color-text);
   z-index: 1;
 }
 
@@ -2451,10 +2545,10 @@ button.send-button {
   flex-shrink: 0;
 }
 
-.changelog-entry-icon--created { color: #2f7a3d; }
+.changelog-entry-icon--created { color: var(--color-success); }
 .changelog-entry-icon--updated { color: var(--color-text-muted); }
-.changelog-entry-icon--deleted { color: var(--color-accent); }
-.changelog-entry-icon--reverted { color: #8a6d1f; }
+.changelog-entry-icon--deleted { color: var(--color-danger); }
+.changelog-entry-icon--reverted { color: var(--color-warning); }
 
 .changelog-entity-icon {
   display: inline-flex;
@@ -2465,7 +2559,7 @@ button.send-button {
 .changelog-ai-badge {
   display: inline-flex;
   flex-shrink: 0;
-  color: var(--color-accent);
+  color: var(--color-text);
 }
 
 .changelog-actor {
@@ -2657,7 +2751,7 @@ button.send-button {
 .question-log-chat-chip[aria-pressed="true"] {
   background: var(--conversation-color, var(--color-accent));
   border-color: var(--conversation-color, var(--color-accent));
-  color: #fff;
+  color: var(--color-on-conversation);
 }
 
 .question-log-chat-bar {
@@ -2683,7 +2777,7 @@ button.send-button {
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: var(--color-accent);
+  background: var(--color-text);
   z-index: 1;
 }
 
@@ -2785,13 +2879,13 @@ button.send-button {
 }
 
 .question-log-feedback-badge--good {
-  background: rgba(46, 125, 50, 0.15);
-  color: #2e7d32;
+  background: color-mix(in srgb, var(--color-success) 15%, transparent);
+  color: var(--color-success);
 }
 
 .question-log-feedback-badge--bad {
-  background: rgba(198, 40, 40, 0.15);
-  color: #c62828;
+  background: color-mix(in srgb, var(--color-danger) 15%, transparent);
+  color: var(--color-danger);
 }
 
 /* Nutzerwunsch (2026-09-01, Nachtrag): Überschrift und Filter in einer
@@ -2838,9 +2932,9 @@ button.send-button {
 }
 
 .question-log-filter-btn.active {
-  background: var(--color-accent);
-  border-color: var(--color-accent);
-  color: #fff;
+  background: var(--color-surface);
+  border-color: var(--color-text);
+  color: var(--color-text);
 }
 
 /* Fragen-Log mobil (Idee e1cd2bc6): 2-Spalten-Zeitstrahl (Linie | Inhalt),
@@ -2933,7 +3027,7 @@ button.send-button {
 }
 
 .icon-button:hover {
-  color: var(--color-accent);
+  color: var(--color-text);
 }
 
 .icon-button:disabled {
@@ -3016,6 +3110,23 @@ button.send-button {
   padding-right: 0.85rem;
 }
 
+/* Mobil hat der body nur 0.75rem Seitenpolster - der Warn-Hintergrund darf
+   nicht weiter hinausragen (sonst waagrechter Überlauf). */
+@media (max-width: 640px) {
+  #source-list li.source-row--unreachable,
+  .term-overview-sources li.source-row--unreachable {
+    padding-left: 0.75rem;
+    padding-right: 0.75rem;
+    margin-left: -0.75rem;
+    margin-right: -0.75rem;
+  }
+
+  #source-list.timeline-mode li.source-row--unreachable {
+    padding-right: 0.75rem;
+    margin-right: -0.75rem;
+  }
+}
+
 .warning-icon {
   color: var(--color-warning);
 }
@@ -3054,8 +3165,9 @@ button.send-button {
 }
 
 .verify-link-button:hover:not(:disabled) {
-  color: var(--color-accent);
-  border-color: var(--color-accent);
+  border-color: var(--color-text);
+  background: var(--color-text);
+  color: var(--color-bg);
 }
 
 .verify-link-button:disabled {
@@ -3097,8 +3209,8 @@ button.send-button {
   height: 1.1rem;
   padding: 0 0.2rem;
   border-radius: 999px;
-  background: var(--color-accent);
-  color: #fff;
+  background: var(--color-text);
+  color: var(--color-bg);
   font-size: 0.65rem;
   font-weight: 700;
   line-height: 1.1rem;
@@ -3120,7 +3232,7 @@ button.send-button {
   height: 1.1rem;
   border-radius: 999px;
   background: var(--color-warning);
-  color: #fff;
+  color: var(--color-on-accent);
 }
 
 #jobs-popover {
@@ -3170,7 +3282,7 @@ button.send-button {
 /* Backlog: LLM/Internet-Fallback bei dünner Quellenlage - Pflegebereich für
    die freigegebenen externen Domains/Pfade, per typ-web-allowlist-Button
    auf-/zuklappbar. Gleiches "normaler Seitenfluss statt Popover"-Muster wie
-   .footer-feedback-panel/#search-bar/#jobs-bar (siehe deren Kommentare) -
+   .footer-panel/#search-bar/#jobs-bar (siehe deren Kommentare) -
    robust bei jeder Bildschirmbreite. */
 #web-allowlist-bereich {
   padding: 1.5rem;
@@ -3368,7 +3480,7 @@ button.send-button {
   padding: 0.4rem 0.5rem;
   margin: 0 -0.5rem;
   border-bottom: 1px solid var(--color-border);
-  border-radius: 4px;
+  border-radius: var(--radius);
 }
 
 /* Nutzerwunsch: beim Überfahren mit der Maus soll eindeutig erkennbar sein,
@@ -3425,7 +3537,7 @@ button.send-button {
   align-items: flex-start;
   padding: 0.5rem 0.65rem;
   margin: 0 0 0.6rem;
-  border-radius: 6px;
+  border-radius: var(--radius);
   background: var(--color-warning-tint);
   color: var(--color-text);
 }
@@ -3446,7 +3558,7 @@ button.send-button {
   padding: 0.5rem;
   margin: 0 -0.5rem;
   border-bottom: 1px solid var(--color-border);
-  border-radius: 4px;
+  border-radius: var(--radius);
 }
 
 .web-allowlist-candidate:hover {
@@ -3523,7 +3635,7 @@ button.send-button {
   gap: 1rem;
   padding: 0.6rem 0.7rem;
   margin-bottom: 0.4rem;
-  border-radius: 6px;
+  border-radius: var(--radius);
   background: var(--color-surface);
 }
 
@@ -3613,7 +3725,7 @@ button.send-button {
 
 .relevance-slider-value {
   font-weight: 700;
-  color: var(--color-accent);
+  color: var(--color-text);
 }
 
 .relevance-slider {
@@ -3642,7 +3754,7 @@ button.send-button {
   width: 16px;
   height: 16px;
   border-radius: 50%;
-  background: var(--color-accent);
+  background: var(--color-text);
   margin-top: -6px;
   border: none;
 }
@@ -3651,7 +3763,7 @@ button.send-button {
   width: 16px;
   height: 16px;
   border-radius: 50%;
-  background: var(--color-accent);
+  background: var(--color-text);
   border: none;
 }
 
@@ -3727,9 +3839,13 @@ button.send-button {
      dünner Akzent-Rahmen statt neutralem Rahmen + 3px links (bekanntes
      KI-generiert-Klischee) - die Tönung trägt die Abgrenzung mit, der
      Rahmen muss sie nicht mehr allein einseitig betonen. */
-  border: 1px solid var(--color-accent);
-  border-radius: 6px;
-  background: var(--color-accent-tint);
+  border: 0;
+  border-radius: var(--radius);
+  background: var(--color-cover-sand);
+}
+
+.new-author-profile a {
+  color: var(--color-accent-hover);
 }
 
 .new-author-profile-body {
@@ -4095,9 +4211,9 @@ details a {
 }
 
 .circle-button:hover {
-  border-color: var(--color-accent);
-  color: var(--color-accent);
-  background: var(--color-accent-tint);
+  border-color: var(--color-text);
+  background: var(--color-text);
+  color: var(--color-bg);
 }
 
 .circle-button--sm {
@@ -4200,14 +4316,9 @@ details a {
   }
 
   /* Backlog #75: Embed-Snippet ist für die Website-Pflege am Desktop gedacht
-     (Copy-Paste in fremden HTML-Code) - auf Mobile ohnehin kaum sinnvoll
-     nutzbar, deshalb dort ausgeblendet. !important nötig (Fix 2026-08-29,
-     wie bei #jobs-popover/#reindex-bereich oben): die spätere, unbedingte
-     .footer-embed-Regel (display: inline-flex, siehe weiter unten in dieser
-     Datei) hatte bei gleicher Spezifität als später stehende Regel sonst
-     gewonnen und den Mobile-Ausblendungsversuch wirkungslos gemacht - fiel
-     erst auf, als das Embed-Feature-Flag aktiviert wurde. */
-  .footer-embed {
+     (Copy-Paste in fremden HTML-Code) - auf Mobile ausgeblendet. */
+  .footer-embed-trigger,
+  #footer-embed-panel {
     display: none !important;
   }
 
@@ -4333,15 +4444,15 @@ details a {
 /* Backlog #85: Feedback-Trigger statt reinem GitHub-Issues-Link - soll
    weiterhin wie die übrigen Footer-Links aussehen, nicht wie ein
    hervorgehobener .link-button (Standard: fett, unterstrichen). */
-.footer-feedback-trigger {
+.footer-trigger {
   color: var(--color-text-muted);
   font-weight: inherit;
   font-size: inherit;
   text-decoration: none;
 }
 
-.footer-feedback-trigger:hover {
-  color: var(--color-accent);
+.footer-trigger:hover {
+  color: var(--color-text);
 }
 
 /* Fix: statt eines Popovers (position:absolute) klappt der Feedback-
@@ -4351,30 +4462,35 @@ details a {
    Element VOR <footer id="site-footer"> im DOM (siehe ensureFeedbackPanel
    in footer.js), erscheint dadurch automatisch oberhalb von dessen
    Trennlinie (border-top), ohne dass extra Positionierung nötig wäre. */
-.footer-feedback-panel {
+.footer-panel {
   position: relative;
   margin-top: 3rem;
   padding: 1.5rem 2.75rem 1.5rem 1.5rem;
-  border: 1px solid var(--color-border);
+  background: var(--color-cover-sand);
+  border: 0;
   border-radius: var(--radius);
   font-size: 0.9rem;
 }
 
-.footer-feedback-panel label {
+.footer-panel a {
+  color: var(--color-accent-hover);
+}
+
+.footer-panel label {
   margin-bottom: 1.25rem;
 }
 
 /* Fix (2026-09-10, Nutzerfeedback): full-width wirkte in Kombination mit
    dem größeren Padding der betacodex.org-angeglichenen Buttons überdimensioniert -
    normale Buttongröße, rechtsbündig unter dem Formular statt gestreckt. */
-.footer-feedback-panel button[type="submit"] {
+.footer-panel button[type="submit"] {
   display: block;
   margin-left: auto;
 }
 
 /* Gleiches Muster wie .jobs-bar-close (import.js/style.css) - Schließen-
    Kreuz oben rechts im Panel. */
-.footer-feedback-panel-close {
+.footer-panel-close {
   position: absolute;
   top: 0.5rem;
   right: 0.5rem;
@@ -4390,8 +4506,8 @@ details a {
   cursor: pointer;
 }
 
-.footer-feedback-panel-close:hover {
-  color: var(--color-accent);
+.footer-panel-close:hover {
+  color: var(--color-text);
 }
 
 /* Nur wenn das Panel tatsächlich sichtbar ist, übernimmt SEIN margin-top
@@ -4399,62 +4515,30 @@ details a {
    Panel zwei Abstände (Panel- + site-footer-margin-top) hintereinander.
    Ist das Panel (wie im Regelfall) unsichtbar/nicht vorhanden, bleibt der
    ursprüngliche Abstand von .site-footer selbst unverändert bestehen. */
-.footer-feedback-panel:not(.hidden) + .site-footer {
+.footer-panel:not(.hidden) + .site-footer {
   margin-top: 1rem;
 }
 
-/* Backlog #75: Embed-Snippet-Popover - bleibt bewusst beim Popover-Muster
-   (Trigger-Button + nach oben öffnendes .popover), da hier kein Clipping-
-   Risiko besteht wie beim Feedback-Bereich oben. */
-.footer-embed {
-  position: relative;
-  display: inline-flex;
-  flex-direction: column;
-}
-
-.footer-embed > .link-button {
-  color: var(--color-text-muted);
-  font-weight: inherit;
-  font-size: inherit;
-  text-decoration: none;
-}
-
-.footer-embed > .link-button:hover {
-  color: var(--color-accent);
-}
-
-.embed-popover {
-  top: auto;
-  bottom: calc(100% + 18px);
-  left: 0;
-  transform: none;
-}
-
-.embed-popover .popover-arrow {
-  top: auto;
-  bottom: -7px;
-  left: 12px;
-  transform: rotate(225deg);
-}
-
-.embed-popover-heading {
+/* Einbetten-Bereich: gleiche Basisklasse .footer-panel wie das Feedback;
+   der Auslöser nutzt .footer-trigger. */
+.footer-embed-panel-heading {
   margin-top: 0;
   font-weight: 600;
   color: var(--color-text);
 }
 
-.embed-popover label {
+.footer-embed-panel label {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 0.75rem;
 }
 
-.embed-popover input[type="number"] {
+.footer-embed-panel input[type="number"] {
   width: 5rem;
 }
 
-.embed-snippet {
+.footer-embed-snippet {
   width: 100%;
   min-height: 4.5rem;
   font-family: monospace;
@@ -4462,8 +4546,42 @@ details a {
   resize: vertical;
 }
 
-.embed-popover button[type="button"]:last-child {
-  width: 100%;
+/* Zweitknopf: Rand Tinte, Hover Tinte-Fläche. */
+.footer-embed-copy {
+  display: block;
+  margin: 0.75rem 0 0 auto;
+  padding: 0.6rem 1.25rem;
+  border: 2px solid var(--color-text);
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--color-text);
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.footer-embed-copy:hover {
+  background: var(--color-text);
+  color: var(--color-bg);
+}
+
+/* Bereiche fahren von unten nach oben ein: sie stehen im DOM vor der
+   Footer-Zeile, footer.js scrollt beim Öffnen die Footer-Zeile mit ins Bild. */
+@keyframes footer-panel-rise {
+  from {
+    opacity: 0;
+    transform: translateY(1rem);
+  }
+}
+
+.footer-panel:not(.hidden) {
+  animation: footer-panel-rise 0.25s ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .footer-panel:not(.hidden) {
+    animation: none;
+  }
 }
 
 /* Nutzerwunsch (2026-08-23): "Explore"-Modus - Schlagwort-/Autor:innen-
@@ -4586,7 +4704,7 @@ details a {
    angeklickt wurde (statt nur die anderen zu dimmen) - Ring in der
    Akzentfarbe, dickerer Rand als der normale stroke. */
 .explore-node--selected .explore-node-circle {
-  stroke: var(--color-accent);
+  stroke: var(--color-text);
   stroke-width: 3px;
 }
 
@@ -4608,14 +4726,14 @@ details a {
 
 .explore-node-open-icon path {
   fill: none;
-  stroke: var(--color-accent);
+  stroke: var(--color-text);
   stroke-width: 1.3px;
   stroke-linecap: round;
   stroke-linejoin: round;
 }
 
 .explore-node-open-icon:hover path {
-  stroke: var(--color-accent-hover);
+  stroke: var(--color-text);
 }
 
 /* Nutzerwunsch (2026-08-26): Kreativ-Modus - eigene, klar abgetrennte Seite
@@ -4637,7 +4755,8 @@ details a {
 .creative-disclaimer {
   margin: 0 0 1.25rem;
   padding: 0.6rem 0.85rem;
-  background: var(--color-warning-tint);
+  background: var(--color-cover-sand);
+  border-top: 4px solid var(--color-text);
   border-radius: var(--radius);
   font-size: 0.8rem;
   color: var(--color-text);
@@ -4656,11 +4775,15 @@ details a {
 .legal-summary {
   margin: 0 0 1.5rem;
   padding: 0.9rem 1.1rem;
-  border: 1px solid var(--color-accent);
-  background: var(--color-accent-tint);
+  border: 0;
+  background: var(--color-cover-sand);
   border-radius: var(--radius);
   font-size: 0.92rem;
   line-height: 1.55;
+}
+
+.legal-summary a {
+  color: var(--color-accent-hover);
 }
 
 .legal-summary p {
@@ -4672,7 +4795,7 @@ details a {
 }
 
 .creative-disclaimer a {
-  color: var(--color-accent);
+  color: var(--color-accent-hover);
 }
 
 .creative-disclaimer--mobile {
@@ -4709,8 +4832,6 @@ details a {
 .creative-field-label {
   display: block;
   margin: 0.75rem 0 0.5rem;
-  font-size: 1.05rem;
-  font-weight: 700;
   color: var(--color-text);
 }
 
@@ -4798,8 +4919,9 @@ details a {
 }
 
 .creative-toolbar button:hover:not(:disabled) {
-  color: var(--color-accent);
-  border-color: var(--color-accent);
+  border-color: var(--color-text);
+  background: var(--color-text);
+  color: var(--color-bg);
 }
 
 .creative-toolbar button:disabled {
@@ -4844,7 +4966,7 @@ details a {
 
 #creative-error {
   margin-top: 0.5rem;
-  color: var(--color-accent);
+  color: var(--color-danger);
 }
 
 /* Nutzerwunsch (2026-08-30): abschnittsweises Überarbeiten auf
@@ -4890,8 +5012,9 @@ details a {
 }
 
 .creative-section-revise-btn:hover {
-  border-color: var(--color-accent);
-  color: var(--color-accent);
+  border-color: var(--color-text);
+  background: var(--color-text);
+  color: var(--color-bg);
 }
 
 .creative-section-revise-panel {
@@ -4899,7 +5022,7 @@ details a {
   padding: 0.75rem;
   border: 1px solid var(--color-border);
   border-radius: var(--radius);
-  background: var(--color-accent-tint);
+  background: var(--color-surface);
 }
 
 .creative-section-revise-heading {
@@ -4915,7 +5038,7 @@ details a {
 }
 
 #creative-sources h3 {
-  font-size: 0.85rem;
+  font-size: 0.8rem;
   text-transform: uppercase;
   letter-spacing: 0.02em;
   color: var(--color-text-muted);
@@ -4949,6 +5072,75 @@ details a {
   font-size: 0.75rem;
 }
 
+/* Eyebrow wie .bcx-eyebrow auf betacodex.org. */
+.creative-eyebrow {
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--color-text);
+  margin: 0 0 0.5rem;
+}
+
+.creative-field-label.creative-eyebrow {
+  margin-top: 1.25rem;
+}
+
+/* Schritte wie .bcx-steps/.bcx-step. */
+.creative-steps {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1.5rem;
+  list-style: none;
+  margin: 1.25rem 0 2rem;
+  padding: 0;
+}
+
+.creative-step {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  border-top: 4px solid var(--color-text);
+  padding-top: 20px;
+}
+
+.creative-step__no {
+  font-family: var(--font-display);
+  font-size: 48px;
+  line-height: 0.9;
+  font-weight: 700;
+  color: var(--color-text);
+}
+
+.creative-step__title {
+  font-size: 1.2rem;
+  line-height: 1.3;
+  font-weight: 700;
+}
+
+.creative-step__text {
+  font-size: 1rem;
+  line-height: 1.5;
+  color: var(--color-text-muted);
+}
+
+@media (max-width: 640px) {
+  .creative-steps {
+    grid-template-columns: 1fr;
+    gap: 1.25rem;
+  }
+}
+
+/* Leerzustand: Hinweis nur, solange die Quellenliste davor leer ist. */
+.creative-sources-placeholder {
+  margin: 0;
+  color: var(--color-text-muted);
+}
+
+#creative-sources ul:not(:empty) + .creative-sources-placeholder {
+  display: none;
+}
+
 .creative-heading-row {
   display: flex;
   align-items: center;
@@ -4959,8 +5151,8 @@ details a {
    Haken, der sich von links nach rechts einzeichnet (gleiches Grün wie
    .feedback-btn--sent). */
 #creative-copy-btn.copied {
-  color: #2e7d32;
-  border-color: #2e7d32;
+  color: var(--color-success);
+  border-color: var(--color-success);
 }
 
 #creative-copy-btn .copy-check {
@@ -5002,17 +5194,17 @@ details a {
 
 @keyframes creative-attention-flash {
   35% {
-    color: var(--color-accent);
-    border-color: var(--color-accent);
-    background: var(--color-accent-tint);
-    box-shadow: 0 0 0 4px color-mix(in srgb, var(--color-accent) 35%, transparent);
+    color: var(--color-text);
+    border-color: var(--color-text);
+    background: var(--color-surface);
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--color-text) 35%, transparent);
   }
 }
 
 /* Zweistufige Bestätigung des Neu-anfangen-Buttons (creative.js). Grundstil
    kommt von .feedback-btn. */
 #creative-new-btn.confirming {
-  color: var(--color-accent);
+  color: var(--color-text);
 }
 
 .creative-new-confirm {
@@ -5143,7 +5335,7 @@ details a {
 .term-overview-bar-fill {
   display: block;
   height: 100%;
-  background: var(--color-accent);
+  background: var(--color-text);
 }
 
 .term-overview-count {
@@ -5281,7 +5473,7 @@ details a {
    (button[type="submit"]) - dieselbe Zeile trägt schon "Widerrufen". */
 .mcp-limits-form button[type="submit"] {
   background: none;
-  color: var(--color-accent);
+  color: var(--color-text);
   padding: 0;
   font-size: inherit;
   font-weight: 600;
@@ -5484,7 +5676,7 @@ details a {
 
 .creative-cooldown-info:hover,
 .creative-cooldown-info:focus-visible {
-  color: var(--color-accent);
+  color: var(--color-text);
 }
 
 /* Nutzerverwaltung als eigene Seite (static/users.html, 2026-09-26). */
@@ -5607,7 +5799,7 @@ details a {
 
 .users-row-status {
   margin: 0.25rem 0 0;
-  color: var(--color-accent);
+  color: var(--color-text);
   font-size: 0.85rem;
 }
 
@@ -5715,7 +5907,7 @@ details a {
 .costs-legend-swatch {
   width: 0.7rem;
   height: 0.7rem;
-  border-radius: 2px;
+  border-radius: var(--radius);
 }
 
 .costs-grid {
@@ -5745,8 +5937,7 @@ details a {
 
 .costs-hit:hover,
 .costs-hit:focus-visible {
-  fill: var(--color-accent-tint);
-  outline: none;
+  fill: var(--color-surface);
 }
 
 .costs-tooltip {
@@ -5817,7 +6008,7 @@ details a {
 }
 
 .source-image a:focus-visible {
-  outline: 2px solid var(--color-accent);
+  outline: 3px solid var(--color-focus);
   outline-offset: 2px;
   border-radius: var(--radius);
 }

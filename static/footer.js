@@ -93,11 +93,59 @@ function ensureFeedbackPanel() {
     if (!footer) return null;
     panel = document.createElement('div');
     panel.id = 'footer-feedback-panel';
-    panel.className = 'footer-feedback-panel hidden';
+    panel.className = 'footer-panel hidden';
     footer.parentNode.insertBefore(panel, footer);
   }
   return panel;
 }
+
+function ensureEmbedPanel() {
+  let panel = document.getElementById('footer-embed-panel');
+  if (!panel) {
+    const footer = document.getElementById('site-footer');
+    if (!footer) return null;
+    panel = document.createElement('div');
+    panel.id = 'footer-embed-panel';
+    panel.className = 'footer-panel footer-embed-panel hidden';
+    footer.parentNode.insertBefore(panel, footer);
+  }
+  return panel;
+}
+
+// Feedback- und Einbetten-Bereich: nie beide offen. Beide stehen im DOM vor
+// der Footer-Zeile und wachsen dadurch nach oben; beim Öffnen wird die
+// Footer-Zeile mit ins Bild gescrollt, damit die Links an ihrer Stelle
+// bleiben und der ganze Bereich sichtbar ist.
+const FOOTER_PANEL_IDS = ['footer-feedback-panel', 'footer-embed-panel'];
+const footerPanelTriggers = {};
+
+function closeFooterPanels(exceptId) {
+  FOOTER_PANEL_IDS.forEach((id) => {
+    if (id !== exceptId) document.getElementById(id)?.classList.add('hidden');
+  });
+}
+
+function openFooterPanel(panel, focusTarget) {
+  closeFooterPanels(panel.id);
+  panel.classList.remove('hidden');
+  document.getElementById('site-footer')?.scrollIntoView({ block: 'end', behavior: 'instant' });
+  panel.scrollIntoView({ block: 'nearest', behavior: 'instant' });
+  focusTarget?.focus({ preventScroll: true });
+}
+
+function closeFooterPanel(panel) {
+  panel.classList.add('hidden');
+  const trigger = footerPanelTriggers[panel.id];
+  if (trigger) trigger.focus();
+}
+
+document.addEventListener('keydown', (e) => {
+  if (e.key !== 'Escape') return;
+  const open = FOOTER_PANEL_IDS.map((id) => document.getElementById(id)).find(
+    (panel) => panel && !panel.classList.contains('hidden')
+  );
+  if (open) closeFooterPanel(open);
+});
 
 // Wrapper, dessen Inhalt zwischen Formular und Cooldown-Ansicht wechselt.
 function buildFeedbackSection() {
@@ -203,37 +251,39 @@ function buildFeedbackForm(box) {
   return form;
 }
 
-function buildFeedbackPanelCloseButton(panel) {
+function buildFooterPanelCloseButton(panel) {
   const closeBtn = document.createElement('button');
   closeBtn.type = 'button';
-  closeBtn.className = 'footer-feedback-panel-close';
+  closeBtn.className = 'footer-panel-close';
   const label = t('import.closeButtonTitle');
   closeBtn.title = label;
   closeBtn.setAttribute('aria-label', label);
   closeBtn.innerHTML = CLOSE_ICON;
-  closeBtn.addEventListener('click', () => panel.classList.add('hidden'));
+  closeBtn.addEventListener('click', () => closeFooterPanel(panel));
   return closeBtn;
 }
 
 function buildFeedbackTrigger() {
   const trigger = document.createElement('button');
   trigger.type = 'button';
-  trigger.className = 'footer-feedback-trigger link-button';
+  trigger.className = 'footer-trigger link-button';
+  footerPanelTriggers['footer-feedback-panel'] = trigger;
   trigger.textContent = t('footer.feedback');
   trigger.addEventListener('click', () => {
     const panel = ensureFeedbackPanel();
     if (!panel) return;
-    const wasHidden = panel.classList.contains('hidden');
-    panel.classList.toggle('hidden');
-    if (wasHidden) renderFeedbackTurnstileWidget();
+    if (!panel.classList.contains('hidden')) {
+      closeFooterPanel(panel);
+      return;
+    }
+    openFooterPanel(panel, panel.querySelector('textarea, input'));
+    renderFeedbackTurnstileWidget();
   });
   return trigger;
 }
 
-// Backlog #75: Popover fürs Embed-Snippet - Trigger-Button öffnet ein
-// Popover, Klick außerhalb schließt es (bleibt bewusst bei diesem Muster,
-// anders als der Feedback-Bereich - hier gibt es keine nach oben
-// überstehenden Inhalte, das Clipping-Risiko besteht also nicht). Der
+// Backlog #75: Embed-Snippet im Footer-Bereich (#footer-embed-panel, wie das
+// Feedback). Der
 // Breiten-Eingabewert wirkt jetzt als max-width statt als feste Breite -
 // eine schmale Standardbreite unter der 900px-Schwelle, ab der die Quellen-
 // Sidebar im Embed erscheint (siehe static/style.css), passt für die
@@ -268,26 +318,31 @@ function buildEmbedSnippet(width) {
   );
 }
 
-function buildEmbedWidget() {
-  const wrapper = document.createElement('span');
-  wrapper.className = 'footer-embed';
-
+function buildEmbedTrigger() {
   const trigger = document.createElement('button');
   trigger.type = 'button';
-  trigger.className = 'link-button';
+  trigger.className = 'footer-trigger footer-embed-trigger link-button';
   trigger.textContent = t('footer.embed');
-  wrapper.appendChild(trigger);
+  footerPanelTriggers['footer-embed-panel'] = trigger;
+  trigger.addEventListener('click', () => {
+    const panel = ensureEmbedPanel();
+    if (!panel) return;
+    if (!panel.classList.contains('hidden')) {
+      closeFooterPanel(panel);
+      return;
+    }
+    openFooterPanel(panel, panel.querySelector('input'));
+  });
+  return trigger;
+}
 
-  const popover = document.createElement('div');
-  popover.className = 'popover embed-popover hidden';
-  const arrow = document.createElement('div');
-  arrow.className = 'popover-arrow';
-  popover.appendChild(arrow);
+function buildEmbedSection() {
+  const box = document.createElement('div');
 
   const heading = document.createElement('p');
-  heading.className = 'embed-popover-heading';
+  heading.className = 'footer-embed-panel-heading';
   heading.textContent = t('footer.embedHeading');
-  popover.appendChild(heading);
+  box.appendChild(heading);
 
   const widthLabel = document.createElement('label');
   const widthLabelSpan = document.createElement('span');
@@ -299,13 +354,13 @@ function buildEmbedWidget() {
   widthInput.step = '10';
   widthInput.value = '480';
   widthLabel.appendChild(widthInput);
-  popover.appendChild(widthLabel);
+  box.appendChild(widthLabel);
 
   const snippetArea = document.createElement('textarea');
   snippetArea.readOnly = true;
-  snippetArea.className = 'embed-snippet';
+  snippetArea.className = 'footer-embed-snippet';
   snippetArea.value = buildEmbedSnippet(480);
-  popover.appendChild(snippetArea);
+  box.appendChild(snippetArea);
 
   widthInput.addEventListener('input', () => {
     snippetArea.value = buildEmbedSnippet(parseInt(widthInput.value, 10));
@@ -313,6 +368,7 @@ function buildEmbedWidget() {
 
   const copyBtn = document.createElement('button');
   copyBtn.type = 'button';
+  copyBtn.className = 'footer-embed-copy';
   copyBtn.textContent = t('footer.embedCopyButton');
   copyBtn.addEventListener('click', async () => {
     try {
@@ -326,27 +382,9 @@ function buildEmbedWidget() {
       }, 2000);
     }
   });
-  popover.appendChild(copyBtn);
-
-  wrapper.appendChild(popover);
-
-  trigger.addEventListener('click', (e) => {
-    e.stopPropagation();
-    popover.classList.toggle('hidden');
-  });
-
-  return wrapper;
+  box.appendChild(copyBtn);
+  return box;
 }
-
-// Nur noch fürs Embed-Popover relevant - der Feedback-Bereich schließt sich
-// (wie die Volltextsuche in import.js) nicht mehr automatisch bei Klick
-// außerhalb, sondern nur über den eigenen Auslöser-Button.
-document.addEventListener('click', (e) => {
-  const container = document.querySelector('.footer-embed');
-  if (container && !container.contains(e.target)) {
-    container.querySelector('.popover')?.classList.add('hidden');
-  }
-});
 
 // Der Footer sieht auf jeder Seite identisch aus - der Hinweistext steht
 // deshalb immer fest im Footer, unabhängig von Bildschirmbreite oder Seite.
@@ -364,8 +402,20 @@ function renderFooter() {
   resetFeedbackTurnstile();
   const feedbackPanel = ensureFeedbackPanel();
   if (feedbackPanel) {
-    feedbackPanel.replaceChildren(buildFeedbackPanelCloseButton(feedbackPanel), buildFeedbackSection());
+    feedbackPanel.replaceChildren(buildFooterPanelCloseButton(feedbackPanel), buildFeedbackSection());
     feedbackPanel.classList.add('hidden');
+  }
+
+  // Einbetten-Bereich nur bei aktivem EMBED_ENABLED; sonst ein evtl. altes
+  // Panel entfernen (Footer wird bei jedem Sprachwechsel neu aufgebaut).
+  if (embedEnabled) {
+    const embedPanel = ensureEmbedPanel();
+    if (embedPanel) {
+      embedPanel.replaceChildren(buildFooterPanelCloseButton(embedPanel), buildEmbedSection());
+      embedPanel.classList.add('hidden');
+    }
+  } else {
+    document.getElementById('footer-embed-panel')?.remove();
   }
 
   const taglineSpan = document.createElement('span');
@@ -408,7 +458,7 @@ function renderFooter() {
   // Nutzerwunsch (2026-08-30): Reihenfolge Feedback -> betacodex.org ->
   // Einbetten (nur falls aktiv) -> Version, Rest unverändert.
   const children = [taglineSpan, buildFeedbackTrigger(), buildLink('https://betacodex.org', 'betacodex.org')];
-  if (embedEnabled) children.push(buildEmbedWidget());
+  if (embedEnabled) children.push(buildEmbedTrigger());
   children.push(versionLink, impressumLink, privacyPolicyLink);
   footer.replaceChildren(...children);
 }

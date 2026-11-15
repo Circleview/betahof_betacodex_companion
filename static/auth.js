@@ -20,7 +20,7 @@ const AUTH_ICON_LOGGED_IN =
   'stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
   '<path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>' +
   '<circle cx="12" cy="7" r="4"></circle>' +
-  '<circle cx="18.5" cy="18.5" r="4.5" fill="var(--color-accent)" stroke="var(--color-bg)" stroke-width="1.5"></circle>' +
+  '<circle cx="18.5" cy="18.5" r="4.5" fill="var(--color-text)" stroke="var(--color-bg)" stroke-width="1.5"></circle>' +
   '<path d="M16.6 18.6l1.3 1.3 2.2-2.6" stroke="var(--color-bg)" stroke-width="1.6"></path>' +
   '</svg>';
 
@@ -201,7 +201,7 @@ function isMobileAuthLayout() {
 
 // Backlog #183: auf Mobile klappt der Login-/Konto-Bereich als eigenständiger,
 // vollbreiter Block direkt unter der Kopfzeile auf statt als Popover -
-// gleiches Muster wie .footer-feedback-panel/#search-bar/#jobs-bar. Bleibt
+// gleiches Muster wie .footer-panel/#search-bar/#jobs-bar. Bleibt
 // über einen Seiten-Reload/erneutes renderWidget() hinweg dasselbe
 // DOM-Element (per ID gesucht), damit nicht bei jedem Rendern ein weiterer
 // Block hinter der Kopfzeile angehängt wird.

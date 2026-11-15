@@ -13,6 +13,7 @@
 <meta name="twitter:card" content="summary">
 <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#1c1c1c" media="(prefers-color-scheme: dark)">
+<link rel="icon" href="/icons/favicon.svg" type="image/svg+xml">
 <link rel="icon" type="image/png" href="/icons/favicon.png">
 <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
 <link rel="manifest" href="/manifest.json">
@@ -30,7 +31,9 @@
   <span id="auth-widget" class="auth-widget"></span>
 </header>
 
-<h2 id="import-page-heading" data-i18n="import.title"></h2>
+<div class="page-band page-band--rose">
+  <h2 class="page-title" id="import-page-heading" data-i18n="import.title"></h2>
+</div>
 
 <datalist id="author-suggestions"></datalist>
 
@@ -99,7 +102,7 @@
           <button type="button" id="typ-jobs" class="circle-button circle-button--sm hidden" data-i18n-title="import.jobsIconTitle">
             <svg id="jobs-icon-ring" viewBox="0 0 24 24" width="20" height="20">
               <circle cx="12" cy="12" r="9" fill="none" stroke="var(--color-border)" stroke-width="3"></circle>
-              <circle id="jobs-icon-progress" cx="12" cy="12" r="9" fill="none" stroke="var(--color-accent)"
+              <circle id="jobs-icon-progress" cx="12" cy="12" r="9" fill="none" stroke="var(--color-text)"
                 stroke-width="3" stroke-linecap="round" stroke-dasharray="56.5" stroke-dashoffset="56.5"
                 transform="rotate(-90 12 12)"></circle>
             </svg>
@@ -144,7 +147,7 @@
                Eintrag läuft (siehe renderWebAllowlistIcon in import.js). -->
           <svg id="web-allowlist-icon-ring" class="web-allowlist-icon-ring hidden" viewBox="0 0 32 32" width="32" height="32">
             <circle cx="16" cy="16" r="14" fill="none" stroke="var(--color-border)" stroke-width="2"></circle>
-            <circle id="web-allowlist-icon-progress" cx="16" cy="16" r="14" fill="none" stroke="var(--color-accent)"
+            <circle id="web-allowlist-icon-progress" cx="16" cy="16" r="14" fill="none" stroke="var(--color-text)"
               stroke-width="2" stroke-linecap="round" stroke-dasharray="87.9" stroke-dashoffset="87.9"
               transform="rotate(-90 16 16)"></circle>
           </svg>
