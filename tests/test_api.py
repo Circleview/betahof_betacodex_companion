@@ -10429,3 +10429,146 @@ def test_find_quote_span_plain_text_and_no_false_hit():
     assert main_module._find_quote_span(doc, "Teams entscheiden selbst.") == "Teams entscheiden selbst."
     assert main_module._find_quote_span(doc, "- **Budgets sind nützlich**") is None
     assert main_module._find_quote_span(doc, "- ** **") is None
+
+
+# --- Inline-Bild (Idee fe44f080): Modell-Angebot, Marker-Stream, Verlauf, Feedback ---
+
+
+def _img(n):
+    return {"kind": "url", "url": f"https://img.example.org/{n}.jpg", "alt": f"Bild {n}", "page": None}
+
+
+def _stream_events(client, monkeypatch, raw, size=None, top_k=5, **kw):
+    pieces = [raw] if size is None else [raw[i : i + size] for i in range(0, len(raw), size)]
+    monkeypatch.setattr(llm, "stream_answer_question", lambda *a, **k: iter(pieces))
+    response = client.post("/api/ask", json={"question": "Frage?", "top_k": top_k, **kw})
+    return ask_result(response)
+
+
+def _deltas(result):
+    return [e["text"] for e in result["events"] if e["type"] == "delta"]
+
+
+def test_ask_offers_images_to_model_in_chunks(client, monkeypatch):
+    _seed_image_chunks(client, [[_img(0), _img(1)], None])
+    captured = []
+
+    def fake_stream(question, chunks, **kwargs):
+        captured.append(chunks)
+        return iter(["Antwort [1]."])
+
+    monkeypatch.setattr(llm, "stream_answer_question", fake_stream)
+    client.post("/api/ask", json={"question": "Frage?", "top_k": 5})
+
+    images = [c.get("images") or [] for c in captured[0]]
+    assert [[i["src"] for i in imgs] for imgs in images] == [["https://img.example.org/0.jpg", "https://img.example.org/1.jpg"], []]
+    assert images[0][0]["alt"] == "Bild 0"
+
+
+def test_ask_offers_restricted_source_at_most_one_image_to_model(client, monkeypatch):
+    _seed_image_chunks(client, [[_img(0), _img(1)], [_img(2)], [_img(3)]], restricted=True)
+    captured = []
+    monkeypatch.setattr(llm, "stream_answer_question", lambda q, chunks, **k: captured.append(chunks) or iter(["A [1]."]))
+
+    client.post("/api/ask", json={"question": "Frage?", "top_k": 5})
+
+    assert sum(len(c.get("images") or []) for c in captured[0]) == 1
+
+
+@pytest.mark.parametrize("size", [None, 1, 2, 3, 7])
+def test_ask_keeps_valid_inline_marker_and_never_streams_half_marker(client, monkeypatch, size):
+    _seed_image_chunks(client, [[_img(0)]])
+    raw = "Erster Absatz [1].\n\n[bild:1.1]\n\nZweiter Absatz ohne Beleg, aber lang genug für den Holdback."
+
+    result = _stream_events(client, monkeypatch, raw, size)
+
+    assert result["answer"] == raw
+    assert result["streamed_text"] == raw
+    start = raw.index("[bild:")
+    shown = ""
+    for piece in _deltas(result):
+        shown += piece
+        assert not (start < len(shown) < start + len("[bild:1.1]")), shown
+
+
+def test_ask_streams_same_text_chunked_and_unchunked(client, monkeypatch):
+    _seed_image_chunks(client, [[_img(0)]])
+    raw = "A [1].\n\n[bild:1.1]\n\nB [1].\n\n[bild:1.1]\n\nC.\n\n---QUOTES---\n[1]: \"A\"\n"
+    whole = _stream_events(client, monkeypatch, raw)
+    chunked = _stream_events(client, monkeypatch, raw, 1)
+
+    assert chunked["answer"] == whole["answer"] and chunked["streamed_text"] == whole["streamed_text"]
+    assert whole["answer"].count("[bild:") == 1
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        "[bild:1.1]\n\nAussage [1].",
+        "Aussage [1].\n\n[bild:2.1]",
+        "Aussage [1].\n\n[bild:1.2]",
+        "Aussage [1].\n\n[bild:7.7] mehr Text, damit der Holdback greift.",
+    ],
+)
+def test_ask_removes_invalid_markers_everywhere(client, monkeypatch, raw):
+    _seed_image_chunks(client, [[_img(0)]])
+    result = _stream_events(client, monkeypatch, raw, 1)
+
+    assert "[bild:" not in result["answer"]
+    assert "[bild" not in result["streamed_text"]
+    shown = ""
+    for piece in _deltas(result):
+        shown += piece
+        assert "[bild" not in shown
+
+
+def test_ask_removed_marker_keeps_already_streamed_prefix_stable(client, monkeypatch):
+    _seed_image_chunks(client, [[_img(0)]])
+    raw = "Absatz [1].   \n\n\n[bild:9.9]  \n\nNächster Absatz, lang genug für den Holdback."
+
+    result = _stream_events(client, monkeypatch, raw, 1)
+
+    assert result["streamed_text"] == result["answer"] == "Absatz [1].   \n\n\nNächster Absatz, lang genug für den Holdback."
+
+
+def test_done_keeps_restricted_image_at_chunk_with_marker(client, monkeypatch):
+    _seed_image_chunks(client, [[_img(0)], [_img(1)], [_img(2)]], restricted=True)
+    raw = "Zweite Aussage [2]. Erste Aussage [1].\n\n[bild:1.1]"
+
+    result = _stream_events(client, monkeypatch, raw)
+
+    assert [len(r["images"]) for r in result["sources"]] == [1, 0, 0]
+    assert result["sources"][0]["images"][0]["src"] == "https://img.example.org/0.jpg"
+    assert "[bild:1.1]" in result["answer"]
+
+
+def test_ask_log_answer_has_no_marker(client, monkeypatch):
+    monkeypatch.setattr(main_module, "IS_DEV_ENVIRONMENT", False)
+    _seed_image_chunks(client, [[_img(0)]])
+
+    _stream_events(client, monkeypatch, "A [1].\n\n[bild:1.1]\n\nB.", is_first_message=True)
+
+    assert [e["answer"] for e in question_log.list_entries()] == ["A [1].\n\nB."]
+
+
+def test_ask_strips_image_markers_from_history_for_model_and_rewrite(client, monkeypatch):
+    history = [{"question": "F?", "answer": "A [1].\n\n[bild:1.1]\n\nB."}]
+
+    _, captured = _ask_with_history(client, monkeypatch, history)
+
+    assert captured["answer"] == [{"question": "F?", "answer": "A [1].\n\nB."}]
+    assert captured["rewrite"] == [{"question": "F?", "answer": "A [1].\n\nB."}]
+
+
+def test_answer_feedback_with_marker_hits_existing_log_entry_without_duplicate(client, monkeypatch):
+    monkeypatch.setattr(main_module, "IS_DEV_ENVIRONMENT", False)
+    _seed_image_chunks(client, [[_img(0)]])
+    _stream_events(client, monkeypatch, "A [1].\n\n[bild:1.1]\n\nB.", is_first_message=True, conversation_id=CID)
+
+    client.post(
+        "/api/answer-feedback",
+        json={"question": "Frage?", "answer": "A [1].\n\n[bild:1.1]\n\nB.", "feedback": "good", "conversation_id": CID},
+    )
+
+    entries = question_log.list_entries()
+    assert len(entries) == 1 and entries[0]["feedback"] == "good"
