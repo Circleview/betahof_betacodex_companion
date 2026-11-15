@@ -297,7 +297,7 @@ def test_creative_steps_and_labels_in_html_and_both_languages():
     assert I18N["de"]["creative.step2Text"] == "Lies den Entwurf und die Quellen rechts."
     assert I18N["de"]["creative.sourcesPlaceholder"] == "Erscheint nach dem ersten Entwurf."
     assert I18N["en"]["creative.sourcesPlaceholder"] == "Appears after the first draft."
-    assert 'for="creative-instruction" class="creative-field-label"' in CREATIVE
+    assert 'for="creative-instruction" class="creative-field-label creative-eyebrow"' in CREATIVE
     assert CREATIVE.count('data-i18n="creative.instructionLabel"') == 1
 
 
