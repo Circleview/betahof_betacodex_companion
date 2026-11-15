@@ -8,7 +8,8 @@
   --color-border: #e6e2dc;
   --color-accent: #d92416;
   --color-accent-hover: #a52a17;
-  --color-accent-tint: rgba(217, 36, 22, 0.01);
+  --color-accent-on-tint: #a52a17;
+  --color-accent-tint: rgba(217, 36, 22, 0.08);
   --color-on-accent: #fff;
   --color-on-conversation: #fff;
   --color-focus: #1c1c1c;
@@ -51,7 +52,8 @@
     --color-border: #3a3733;
     --color-accent: #f0604f;
     --color-accent-hover: #f4806f;
-    --color-accent-tint: rgba(240, 96, 79, 0.02);
+    --color-accent-on-tint: #f4806f;
+    --color-accent-tint: rgba(240, 96, 79, 0.14);
     --color-on-accent: #1c1c1c;
     --color-focus: #e8e4de;
     --color-success: #6cc070;
@@ -381,7 +383,7 @@ header h1 {
 #question-log-link:hover,
 #changelog-link:hover {
   border-color: var(--color-accent);
-  color: var(--color-accent);
+  color: var(--color-accent-on-tint);
   background: var(--color-accent-tint);
 }
 
@@ -2290,7 +2292,7 @@ button.send-button {
 
 .sort-button.active {
   border-color: var(--color-accent);
-  color: var(--color-accent);
+  color: var(--color-accent-on-tint);
   background: var(--color-accent-tint);
 }
 
@@ -4119,7 +4121,7 @@ details a {
 
 .circle-button:hover {
   border-color: var(--color-accent);
-  color: var(--color-accent);
+  color: var(--color-accent-on-tint);
   background: var(--color-accent-tint);
 }
 
@@ -5025,7 +5027,7 @@ details a {
 
 @keyframes creative-attention-flash {
   35% {
-    color: var(--color-accent);
+    color: var(--color-accent-on-tint);
     border-color: var(--color-accent);
     background: var(--color-accent-tint);
     box-shadow: 0 0 0 4px color-mix(in srgb, var(--color-accent) 35%, transparent);
