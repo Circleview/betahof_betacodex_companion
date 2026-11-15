@@ -145,12 +145,12 @@ h1, .page-title, .brand-name {
   outline-offset: 2px;
 }
 
-/* Felder haben einen 2px-Tintenrand: der Fokusrahmen liegt darüber, damit
-   nur eine Linie sichtbar ist (keine Doppellinie). */
+/* Felder haben einen 2px-Tintenrand: der Fokusring (3px, Abstand 0) liegt
+   bündig daran - eine durchgehende 5px-Linie, keine Lücke, keine Doppellinie. */
 input:focus-visible,
 textarea:focus-visible,
 select:focus-visible {
-  outline-offset: -2px;
+  outline-offset: 0;
 }
 
 h1 {
@@ -1183,7 +1183,7 @@ body:not(.chat-started) #question-form {
 
 #question-form:has(textarea:focus) {
   outline: 3px solid var(--color-focus);
-  outline-offset: -2px;
+  outline-offset: 0;
 }
 
 /* Backlog #190: während der Aufnahme (Live-Transkript) ist das Feld
