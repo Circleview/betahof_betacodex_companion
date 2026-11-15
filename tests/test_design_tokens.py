@@ -70,6 +70,7 @@ LIGHT_EXPECTED = {
     "--color-on-accent": "#fff", "--color-focus": "#1c1c1c", "--color-success": "#2e7d32",
     "--color-danger": "#c62828", "--color-warning": "#9a6400", "--color-on-conversation": "#fff",
     "--radius": "0", "--graph-cluster-0": "#d92416", "--color-cover-sand": "#f7f3ea",
+    "--color-cover-rose": "#f3dcd5", "--color-cover-mint": "#d5e8e2", "--color-cover-aqua": "#cfe3e6",
 }
 DARK_EXPECTED = {
     "--color-bg": "#1c1c1c", "--color-surface": "#2a2622", "--color-text": "#e8e4de",
@@ -77,6 +78,7 @@ DARK_EXPECTED = {
     "--color-accent-hover": "#f4806f",
     "--color-on-accent": "#1c1c1c", "--color-focus": "#e8e4de", "--color-success": "#6cc070",
     "--color-danger": "#f07a6e", "--color-warning": "#e0a530", "--graph-cluster-0": "#f0604f", "--color-cover-sand": "#302b25",
+    "--color-cover-rose": "#3a2b28", "--color-cover-mint": "#26342f", "--color-cover-aqua": "#263339",
 }
 
 
@@ -106,8 +108,8 @@ PAIRS = [
     ("--color-success", "--color-bg"), ("--color-danger", "--color-bg"),
     ("--color-on-accent", "--color-warning"), ("--color-on-accent", "--color-accent-hover"),
     ("--color-accent", "--color-surface"),
-    ("--color-text", "--color-cover-sand"), ("--color-text-muted", "--color-cover-sand"),
-]
+    ("--color-accent", "--color-cover-sand"),
+] + [(fg, f"--color-cover-{c}") for c in ("sand", "rose", "mint", "aqua") for fg in ("--color-text", "--color-text-muted")]
 
 
 @pytest.mark.parametrize("tokens", [_light, _dark], ids=["hell", "dunkel"])
@@ -241,7 +243,7 @@ ACCENT_ALLOWED = {
     ".external-link", ".external-link:hover", ".source-open-link", ".source-open-link:hover",
     ".author-link", ".author-link:hover", "details a", ".creative-disclaimer a", "#creative-sources a",
     ".citation-author-link:hover", ".citation-title-link:hover", ".question-log-question-link:hover",
-    ".question-log-answer-details summary:hover", ".site-footer a:hover", ".footer-embed > .link-button:hover",
+    ".question-log-answer-details summary:hover", ".site-footer a:hover",
     ".source-image a:hover img",
 }
 
@@ -294,7 +296,7 @@ def test_creative_steps_and_labels_in_html_and_both_languages():
         for lang in ("de", "en"):
             assert I18N[lang].get(key), (lang, key)
     assert I18N["de"]["creative.step1Title"] == "Anweisung geben"
-    assert I18N["de"]["creative.step2Text"] == "Lies den Entwurf und die Quellen rechts."
+    assert I18N["de"]["creative.step2Text"] == "Lies den Entwurf und die Quellen."
     assert I18N["de"]["creative.sourcesPlaceholder"] == "Erscheint nach dem ersten Entwurf."
     assert I18N["en"]["creative.sourcesPlaceholder"] == "Appears after the first draft."
     assert 'for="creative-instruction" class="creative-field-label creative-eyebrow"' in CREATIVE
@@ -322,3 +324,89 @@ def test_creative_sources_placeholder_only_when_list_empty():
 
 def test_brand_dot_stays_red():
     assert "background: var(--color-accent)" in _field_rule(".brand-dot")
+
+
+# --- Farbband je Bereich (E-G) ---
+def test_cover_tokens_distinct_in_both_schemes():
+    for tokens in (_light(), _dark()):
+        vals = [tokens[f"--color-cover-{c}"] for c in ("sand", "rose", "mint", "aqua")]
+        assert len(set(vals)) == 4
+
+
+def test_page_band_breaks_out_of_column_without_horizontal_scroll():
+    body = _field_rule(".page-band")
+    assert "margin-inline: calc(50% - 50vw)" in body and "padding-inline: calc(50vw - 50%)" in body
+    assert re.search(r"padding-block:\s*(56px|3\.5rem)", body)
+    assert any(s == "html" and "overflow-x: clip" in b for s, b in _rules())
+    mobile = re.search(r"@media \(max-width: 640px\) \{\s*\.page-band \{[^}]*padding-block:\s*(32px|2rem)", CSS)
+    assert mobile
+
+
+@pytest.mark.parametrize("page,color", [("creative", "sand"), ("explore", "aqua"), ("import", "rose")])
+def test_band_pages_wrap_title_in_colored_band(page, color):
+    html = (STATIC / f"{page}.html").read_text(encoding="utf-8")
+    m = re.search(rf'<div class="page-band page-band--{color}">(.*?)</div>\s*(?=<(?:div|form|section|aside|datalist|/section))', html, re.S)
+    assert m and 'class="page-title' in m.group(1), page
+    assert _field_rule(f".page-band--{color}").count(f"var(--color-cover-{color})") == 1
+    if page == "creative":
+        assert 'class="creative-steps"' in m.group(1)
+
+
+@pytest.mark.parametrize("page", ["costs", "mcp", "users", "question-log", "changelog", "datenschutz", "privacy", "impressum", "legal-notice", "404", "early-access", "embed", "index"])
+def test_other_pages_have_no_band_markup(page):
+    assert "page-band" not in (STATIC / f"{page}.html").read_text(encoding="utf-8")
+
+
+def test_home_start_state_band_is_mint_and_gone_in_chat():
+    body = _field_rule("body:not(.chat-started) #frage-bereich")
+    assert "background: var(--color-cover-mint)" in body
+    assert "margin-inline: calc(50% - 50vw)" in body
+    for sel, b in _rules():
+        if sel.startswith("body.chat-started #frage-bereich"):
+            assert "cover" not in b
+
+
+def test_creative_disclaimer_not_on_sand_band():
+    # Hinweisbox liegt in der Seitenspalte ausserhalb des Sand-Bands.
+    html = (STATIC / "creative.html").read_text(encoding="utf-8")
+    band = re.search(r'<div class="page-band page-band--sand">(.*?)</div>\s*(?=<div id="creative-layout")', html, re.S).group(1)
+    assert "creative-disclaimer" not in band
+
+
+# --- Zitat-Box (Cover-Sand) ---
+def test_citation_card_is_sand_surface_without_frame():
+    body = _field_rule(".citation-card")
+    assert "background: var(--color-cover-sand)" in body
+    assert re.search(r"border:\s*0\b", body)
+
+
+# --- Footer-Bereiche (Feedback + Einbetten fahren nach oben aus) ---
+FOOTER_JS = (STATIC / "footer.js").read_text(encoding="utf-8")
+
+
+def test_footer_panels_share_base_class_and_embed_popover_is_gone():
+    assert "footer-embed-panel" in FOOTER_JS and "footer-feedback-panel" in FOOTER_JS
+    assert "embed-popover" not in FOOTER_JS and "popover-arrow" not in FOOTER_JS
+    assert "embed-popover" not in CSS and "footer-feedback-panel" not in CSS
+    assert ".footer-panel {" in CSS or re.search(r"\.footer-panel\s*\{", CSS)
+
+
+def test_footer_panels_close_each_other_on_escape_and_return_focus():
+    assert "function closeFooterPanels" in FOOTER_JS
+    assert "'Escape'" in FOOTER_JS
+    assert "trigger.focus()" in FOOTER_JS
+    assert "scrollIntoView" in FOOTER_JS
+    # Panels liegen im DOM VOR der Footer-Zeile.
+    assert "footer.parentNode.insertBefore(panel, footer)" in FOOTER_JS
+
+
+def test_footer_panel_rises_with_reduced_motion_fallback():
+    assert "@keyframes footer-panel-rise" in CSS
+    m = re.search(r"prefers-reduced-motion: reduce\) \{[^@]*\.footer-panel:not\(\.hidden\)\s*\{[^}]*animation:\s*none", CSS)
+    assert m
+
+
+def test_embed_copy_button_is_secondary_ink_button():
+    css = " ".join(CSS.split())
+    assert re.search(r"\.footer-embed-copy \{[^}]*border: 2px solid var\(--color-text\)", css)
+    assert re.search(r"\.footer-embed-copy:hover \{[^}]*background: var\(--color-text\)", css)
