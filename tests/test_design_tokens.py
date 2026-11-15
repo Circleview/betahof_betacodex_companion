@@ -488,6 +488,8 @@ def test_term_followup_is_ink_bold_thin_underline_hover_accent_hover():
 def test_field_focus_outline_overlaps_border_single_line():
     found = False
     for sel, body in _rules():
+        if sel == "#question-form textarea:focus-visible":
+            continue  # Ausnahme: Ring liegt auf der Leiste (eigener Test)
         if re.search(r"(input|textarea|select)[^,]*:focus-visible", sel):
             m = re.search(r"outline-offset:\s*(-?\d+)px", body)
             assert m and int(m.group(1)) <= 0, sel
