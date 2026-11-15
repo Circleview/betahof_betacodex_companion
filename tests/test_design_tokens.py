@@ -75,7 +75,7 @@ def contrast(a, b):
 LIGHT_EXPECTED = {
     "--color-bg": "#ffffff", "--color-surface": "#f7f5f1", "--color-text": "#1c1c1c",
     "--color-text-muted": "#4a4640", "--color-border": "#e6e2dc", "--color-accent": "#d92416",
-    "--color-accent-hover": "#a52a17", "--color-accent-on-tint": "#a52a17", "--color-accent-tint": "rgba(217, 36, 22, 0.08)",
+    "--color-accent-hover": "#a52a17",
     "--color-on-accent": "#fff", "--color-focus": "#1c1c1c", "--color-success": "#2e7d32",
     "--color-danger": "#c62828", "--color-warning": "#9a6400", "--color-on-conversation": "#fff",
     "--radius": "0", "--graph-cluster-0": "#d92416",
@@ -83,7 +83,7 @@ LIGHT_EXPECTED = {
 DARK_EXPECTED = {
     "--color-bg": "#1c1c1c", "--color-surface": "#2a2622", "--color-text": "#e8e4de",
     "--color-text-muted": "#b0aaa2", "--color-border": "#3a3733", "--color-accent": "#f0604f",
-    "--color-accent-hover": "#f4806f", "--color-accent-on-tint": "#f4806f", "--color-accent-tint": "rgba(240, 96, 79, 0.14)",
+    "--color-accent-hover": "#f4806f",
     "--color-on-accent": "#1c1c1c", "--color-focus": "#e8e4de", "--color-success": "#6cc070",
     "--color-danger": "#f07a6e", "--color-warning": "#e0a530", "--graph-cluster-0": "#f0604f",
 }
@@ -123,9 +123,6 @@ def test_contrast_pairs_meet_aa(tokens):
     t = tokens()
     for fg, bg in PAIRS:
         assert contrast(t[fg], t[bg]) >= 4.5, (fg, bg)
-    for base in ("--color-bg", "--color-surface"):
-        tinted = _over(t["--color-accent-tint"], t[base])
-        assert contrast(t["--color-accent-on-tint"], tinted) >= 4.5, base
 
 
 def test_contrast_function_rejects_light_accent_on_dark():
@@ -203,15 +200,6 @@ def test_global_focus_visible_and_inputs_keep_outline():
     assert not re.search(r"(select:focus|input:focus, textarea:focus)\s*\{[^}]*outline:\s*none", CSS)
 
 
-def test_accent_text_on_tint_uses_on_tint_token():
-    # Regel mit color:var(--color-accent) UND background:var(--color-accent-tint) -> on-tint-Token
-    bad = []
-    for m in re.finditer(r"([^{}]+)\{([^{}]*)\}", re.sub(r"/\*.*?\*/", "", CSS, flags=re.S)):
-        body = m.group(2)
-        if re.search(r"(?<![-\w])color:\s*var\(--color-accent\)", body) and re.search(r"background(-color)?:\s*var\(--color-accent-tint\)", body):
-            bad.append(m.group(1).strip())
-    assert not bad, bad
-
 
 def test_fonts_css_every_font_face_block_survives_comments():
     css = re.sub(r"/\*.*?\*/", "", FONTS_CSS.read_text(), flags=re.S)
@@ -227,3 +215,55 @@ def test_only_used_font_weights_are_shipped():
     names = {u.split("/")[-1] for u in _font_urls()}
     assert not any(w in n for n in names for w in ("-500-", "oswald-latin-700", "oswald-latin-ext-700"))
     assert not re.search(r"font-weight:\s*800", CSS)
+
+
+def _rules():
+    css = re.sub(r"/\*.*?\*/", "", CSS, flags=re.S)
+    return [(" ".join(m.group(1).split()), m.group(2)) for m in re.finditer(r"([^{}]+)\{([^{}]*)\}", css)]
+
+
+def _field_rule(sel):
+    return next(b for s, b in _rules() if s == sel)
+
+
+@pytest.mark.parametrize("sel", ["input, textarea", "select"])
+def test_fields_have_ink_border_and_one_focus_indicator(sel):
+    body = _field_rule(sel)
+    assert re.search(r"border:\s*2px solid var\(--color-text\)", body)
+    assert re.search(r"background:\s*var\(--color-bg\)", body)
+    for s, b in _rules():
+        if re.search(r":focus(?!-within)", s) and not s.startswith(".skip-link"):
+            assert "box-shadow" not in b, s
+            assert not re.search(r"border(-color)?:[^;]*var\(--color-accent", b), s
+
+
+# Rot (--color-accent) nur: Primaerknopf, Textlinks, Titel-/Linkkarten-Hover, Graph/Konversation.
+ACCENT_ALLOWED = {
+    'button[type="submit"], .send-button, #popover-load, #popover-upload, #term-merge-analyze',
+    ".legal-page a", ".legal-page a:hover, .legal-page a:focus-visible",
+    ".link-button", ".link-button:hover", "#embed-expand-button", "#embed-expand-button:hover",
+    ".term-followup", ".term-followup:hover", ".citation-ref", ".citation-ref:hover",
+    "#chat-messages a", "#chat-messages a:hover, #chat-messages a:focus-visible",
+    ".external-link", ".external-link:hover", ".source-open-link", ".source-open-link:hover",
+    ".author-link", ".author-link:hover", "details a", ".creative-disclaimer a", "#creative-sources a",
+    ".citation-author-link:hover", ".citation-title-link:hover", ".question-log-question-link:hover",
+    ".question-log-answer-details summary:hover", ".site-footer a:hover", ".footer-embed > .link-button:hover",
+    ".source-image a:hover img",
+}
+
+
+def test_accent_red_only_on_allowed_selectors():
+    bad = []
+    for s, b in _rules():
+        if s.startswith("--") or re.fullmatch(r"(:root|[\d%, ]+)", s):
+            continue
+        if re.search(r"var\(--color-accent(-hover)?\)", b) and not any(
+            s == a or s.startswith(a + ":hover") for a in ACCENT_ALLOWED
+        ) and "conversation-color" not in b:
+            bad.append(s[:80])
+    assert not bad, bad
+
+
+def test_tint_tokens_unused_and_removed():
+    assert "--color-accent-tint" not in CSS
+    assert "--color-accent-on-tint" not in CSS
