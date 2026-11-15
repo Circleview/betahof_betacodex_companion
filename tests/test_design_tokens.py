@@ -492,7 +492,7 @@ def test_field_focus_outline_overlaps_border_single_line():
             continue  # Ausnahme: Ring liegt auf der Leiste (eigener Test)
         if re.search(r"(input|textarea|select)[^,]*:focus-visible", sel):
             m = re.search(r"outline-offset:\s*(-?\d+)px", body)
-            assert m and int(m.group(1)) <= 0, sel
+            assert m and int(m.group(1)) == 0, sel
             found = True
     assert found
 
@@ -525,7 +525,7 @@ def test_question_bar_focus_is_single_ring_on_the_bar_frame():
     # Textfeld der Eingabeleiste - nur zusammen mit dem Ring auf der Leiste selbst.
     assert "outline: none" in _field_rule("#question-form textarea:focus-visible")
     ring = _field_rule("#question-form:has(textarea:focus)")
-    assert "outline: 3px solid var(--color-focus)" in ring and "outline-offset: -2px" in ring
+    assert "outline: 3px solid var(--color-focus)" in ring and "outline-offset: 0" in ring
     for sel, body in _rules():
         if "outline: none" in body and re.search(r"(input|textarea|select)[^,]*:focus", sel):
             assert sel == "#question-form textarea:focus-visible", sel
