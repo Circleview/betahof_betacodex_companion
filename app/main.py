@@ -3395,7 +3395,7 @@ def submit_answer_feedback(
     if _should_log_question_event(request):
         question_log.log_feedback(
             _truncate_for_log(payload.question, ANSWER_FEEDBACK_MAX_QUESTION_CHARS),
-            _truncate_for_log(payload.answer, ANSWER_FEEDBACK_MAX_ANSWER_CHARS),
+            _truncate_for_log(llm.strip_image_markers(payload.answer), ANSWER_FEEDBACK_MAX_ANSWER_CHARS),
             payload.feedback,
             payload.mode,
             _valid_conversation_id(payload.conversation_id),
@@ -4334,7 +4334,11 @@ _ASK_QUOTES_MARKER = "---QUOTES---"
 # dass ein noch unvollständiger {{CREATIVE_LINK}}-Platzhalter (siehe
 # llm.CREATIVE_LINK_PLACEHOLDER) am Puffer-Ende teilweise sichtbar wird,
 # bevor er komplett angekommen und ersetzt werden kann.
-_ASK_STREAM_HOLDBACK = max(len(_ASK_QUOTES_MARKER), len(llm.CREATIVE_LINK_PLACEHOLDER))
+# Der Bildmarker [bild:nn.mm] (höchstens 12 Zeichen) passt ebenfalls hinein
+# (Idee fe44f080); ein vollständiger Marker, den der Schnitt träfe, wird
+# in _ask_event_stream vorgezogen.
+_PENDING_IMAGE_MARKER_RE = re.compile(r"\[bild:[0-9]+\.[0-9]+\]\s*\Z")
+_ASK_STREAM_HOLDBACK = max(len(_ASK_QUOTES_MARKER), len(llm.CREATIVE_LINK_PLACEHOLDER), len("[bild:99.99]"))
 
 # Backlog #51: der Relevanzscore (1-10, Slider in der Quellen-Bearbeitung)
 # wirkte bislang nur als gespeichertes Metadatum, ohne Einfluss auf die
@@ -4950,19 +4954,24 @@ def _ask_event_stream(
     # spürbar länger dauern kann. highlighted_texts ist hier noch leer und
     # wird unten im "done"-Event für dieselben Quellen nachgereicht.
     sources_by_id = _load_sources()
+    offered_images = _limit_restricted_images(chunk_refs, sources_by_id)
     yield json.dumps(
         {
             "type": "sources",
             "sources": [
                 r.model_dump()
                 for r in _redact_restricted_refs(
-                    _with_images(chunk_refs, _limit_restricted_images(chunk_refs, sources_by_id)),
-                    sources_by_id,
-                    can_view_full_text,
+                    _with_images(chunk_refs, offered_images), sources_by_id, can_view_full_text
                 )
             ],
         }
     ) + "\n"
+    # Idee fe44f080: das Modell kennt genau die Bilder, die auch gezeigt werden.
+    llm_chunks = [
+        {**chunk, "images": [image.model_dump() for image in images]}
+        for chunk, images in zip(llm_chunks, offered_images)
+    ]
+    offered_counts = [len(images) for images in offered_images]
 
     buffer = ""
     sent_len = 0
@@ -4992,11 +5001,23 @@ def _ask_event_stream(
             # across_chunks). Nach dieser Ersetzung kann im restlichen Puffer
             # nur noch höchstens ein noch UNVOLLSTÄNDIGES Fragment auftreten.
             buffer = buffer.replace(llm.CREATIVE_LINK_PLACEHOLDER, creative_link_url)
+            # Ein Marker, dem bisher nur Leerraum folgt, ist noch unentschieden:
+            # der Filter schluckt Leerraum DANACH, der erst später ankommt. Er
+            # wird erst gefiltert und gesendet, wenn echter Text folgt.
+            pending = _PENDING_IMAGE_MARKER_RE.search(buffer)
+            pending_start = pending.start() if pending else len(buffer)
+            buffer = llm.filter_image_markers(buffer[:pending_start], offered_counts) + buffer[pending_start:]
+            pending_start = len(buffer) - (len(pending.group(0)) if pending else 0)
             marker_index = buffer.find(_ASK_QUOTES_MARKER)
             if marker_index != -1:
                 visible_raw = buffer[:marker_index]
             else:
-                visible_raw = buffer[: max(0, len(buffer) - _ASK_STREAM_HOLDBACK)]
+                cut = min(max(0, len(buffer) - _ASK_STREAM_HOLDBACK), pending_start)
+                # Ein vollständiger (gültiger) Bildmarker wird nie zerschnitten.
+                for match in llm.IMAGE_MARKER_RE.finditer(buffer):
+                    if match.start() < cut < match.start() + len(match.group(0).rstrip()):
+                        cut = match.start()
+                visible_raw = buffer[:cut]
 
             if not label_resolved:
                 if marker_index == -1 and len(visible_raw) < _ASK_LABEL_CHECK_MIN_LEN:
@@ -5031,6 +5052,7 @@ def _ask_event_stream(
         yield json.dumps({"type": "error", "message": i18n.get_message("ask_llm_failed", lang)}) + "\n"
         return
 
+    buffer = llm.filter_image_markers(buffer, offered_counts)
     raw_answer_text, quotes_by_citation = llm.parse_answer_and_quotes(buffer)
     answer_text, _ = _drop_no_answer_lead(raw_answer_text, final=True)
     answer_text = answer_text.replace(llm.CREATIVE_LINK_PLACEHOLDER, creative_link_url)
@@ -5047,6 +5069,7 @@ def _ask_event_stream(
     # zweiter, doppelter Eintrag, siehe question_log.add_event_type).
     # Reine Absage: ins Fragen-Log der kurze Satz statt der langen Erklärung.
     log_answer = raw_answer_text.strip() if answer_text in NO_ANSWER_EXPLANATIONS.values() else answer_text
+    log_answer = llm.strip_image_markers(log_answer)
     log_answer = _truncate_for_log(log_answer, ANSWER_FEEDBACK_MAX_ANSWER_CHARS)
     # Der Satz kommt in der Sprache der Frage, nicht zwingend der Oberfläche.
     if log_id and should_log_question_events and any(p in raw_answer_text for p in NO_ANSWER_PHRASES.values()):
@@ -5089,7 +5112,13 @@ def _ask_event_stream(
         chunk_ref.highlighted_texts = [local_highlight] if local_highlight else []
 
     # Das eine restricted-Bild gehört an den ersten ZITIERTEN Ref der Quelle.
-    cited = [int(n) - 1 for n in _CITATION_NUMBER_RE.findall(answer_text) if 0 < int(n) <= len(chunk_refs)]
+    # Idee fe44f080: das Bild am Marker-Chunk bleibt dort, auch wenn eine
+    # andere Quelle derselben restricted-Quelle früher zitiert wird.
+    inline = llm.IMAGE_MARKER_RE.search(answer_text)
+    inline_chunk = [int(inline.group(1)) - 1] if inline else []
+    cited = inline_chunk + [
+        int(n) - 1 for n in _CITATION_NUMBER_RE.findall(answer_text) if 0 < int(n) <= len(chunk_refs)
+    ]
     done_refs = _with_images(chunk_refs, _limit_restricted_images(chunk_refs, sources_by_id, cited))
     yield json.dumps(
         {
@@ -5348,6 +5377,8 @@ def ask(question: QuestionIn, request: Request, x_lang: str = Header(default=i18
         )
 
     history = _trim_history([turn.model_dump() for turn in question.history])
+    for turn in history:  # Idee fe44f080: Bildmarker gehören nicht in den Modell-Verlauf
+        turn["answer"] = llm.strip_image_markers(turn["answer"])
     # ponytail: Dev-Umschalter für A/B ohne zweite Instanz - ?vielfalt=aus in
     # der Seiten-URL (kommt per Referer), nur wenn IS_DEV_ENVIRONMENT; Prod
     # ignoriert ihn. Ohne eigenes Feld/Frontend; Ablösung, wenn der Test vorbei ist.

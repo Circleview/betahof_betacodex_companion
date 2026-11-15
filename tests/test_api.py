@@ -9627,17 +9627,19 @@ def test_ask_web_fallback_refs_have_no_images():
 
 
 def test_ask_prompt_contains_no_image_url(client, monkeypatch):
+    # Idee fe44f080: Alt-Text und Dateiname dürfen in den Prompt, die URL nie.
     _seed_image_chunks(client, [[{"kind": "url", "url": "https://img.example.org/geheim-bild.jpg", "alt": "Bildtext", "page": None}]])
     captured = []
 
-    def fake_stream(*args, **kwargs):
-        captured.append(repr((args, kwargs)))
+    def fake_stream(question, chunks, **kwargs):
+        captured.append(llm._build_context(chunks, "de", None))
         return iter(["Antwort [1]."])
 
     monkeypatch.setattr(llm, "stream_answer_question", fake_stream)
     client.post("/api/ask", json={"question": "Frage?"})
 
-    assert captured and "geheim-bild" not in captured[0] and "Bildtext" not in captured[0]
+    assert "[bild:1.1] „Bildtext“ (Datei: geheim-bild.jpg)" in captured[0]
+    assert "https://" not in captured[0].split("Bilder:")[1]
 
 
 # --- Handoff ---
