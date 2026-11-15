@@ -491,7 +491,7 @@ def test_field_focus_outline_overlaps_border_single_line():
         if sel == "#question-form textarea:focus-visible":
             continue  # Ausnahme: Ring liegt auf der Leiste (eigener Test)
         if re.search(r"(input|textarea|select)[^,]*:focus-visible", sel):
-            m = re.search(r"outline-offset:\s*(-?\d+)px", body)
+            m = re.search(r"outline-offset:\s*(-?\d+)(?:px)?", body)
             assert m and int(m.group(1)) == 0, sel
             found = True
     assert found
