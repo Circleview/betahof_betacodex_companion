@@ -548,3 +548,6 @@ def test_start_band_fills_desktop_height_like_google():
     body = m.group(1)
     assert re.search(r"flex:\s*1 0 auto", body)
     assert re.search(r"padding-bottom:\s*calc\(", body)
+    # Band reicht bis an den Footer - dessen Haarlinie entfällt dort.
+    f = re.search(r"@media \(min-width: 900px\) \{[^@]*?body:not\(\.chat-started\) \.site-footer \{([^}]*)\}", css)
+    assert f and re.search(r"border-top:\s*0", f.group(1))
