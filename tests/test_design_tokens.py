@@ -563,3 +563,51 @@ def test_citation_highlight_is_darker_mint_marker():
         mint, text = _rgb(t["--color-cover-mint"]), _rgb(t["--color-text"])
         mark = tuple(0.1 * a + 0.9 * b for a, b in zip(text, mint))
         assert contrast(t["--color-text"], mark) >= 4.5
+
+
+# --- v0.93.1: Audit-Befunde ---
+QUESTION_JS = (STATIC / "question.js").read_text(encoding="utf-8")
+
+
+def test_question_textarea_is_height_capped_and_js_respects_cap():
+    assert "max-height: 40vh" in _field_rule("#question-form textarea")
+    assert re.search(r"@media \(max-width: 640px\) \{[^@]*#question-form textarea \{[^}]*max-height: 40dvh", CSS)
+    fn = QUESTION_JS[QUESTION_JS.index("function autosizeQuestionInput"):]
+    fn = fn[: fn.index("questionInput.addEventListener('input'")]
+    assert "Math.min(" in fn and "maxHeight" in fn and "overflowY" in fn
+
+
+def test_disclaimer_link_beats_sources_column_link_color():
+    # '#creative-sources a' (ID-Spezifitaet) ueberstimmte '.creative-disclaimer a' -> Rot auf Sand.
+    body = _field_rule("#creative-sources .creative-disclaimer a")
+    assert "var(--color-accent-hover)" in body and "var(--color-accent)" not in body
+
+
+@pytest.mark.parametrize("sel", [".lang-button", ".alphabet-jump-btn", "#creative-new-btn", ".auth-widget-button"])
+def test_small_touch_targets_get_hit_area(sel):
+    # WCAG 2.5.8: Trefferflaeche >= 24px per ::after, Optik unveraendert.
+    body = _field_rule(f"{sel}::after")
+    assert "content: ''" in body and re.search(r"inset:\s*-\d", body)
+    assert re.search(r"position:\s*relative", _field_rule(sel))
+
+
+def test_brand_name_scales_with_text_zoom():
+    body = _field_rule(".brand-name")
+    assert re.search(r"max-width:\s*\d+(\.\d+)?em", body) and "320px" not in body
+
+
+@pytest.mark.parametrize("f", sorted(p.name for p in STATIC.glob("*.html")))
+def test_every_page_has_main_landmark(f):
+    assert len(re.findall(r"<main[\s>]", (STATIC / f).read_text(encoding="utf-8"))) == 1
+
+
+def test_header_nav_landmark_and_labels_bilingual():
+    hdr = (STATIC / "header.js").read_text(encoding="utf-8")
+    assert "createElement('nav')" in hdr and "aria-label" in hdr and "nav.main" in hdr
+    assert I18N["de"]["nav.main"] == "Hauptnavigation" and I18N["en"]["nav.main"] == "Main navigation"
+    for k in ("index.questionAriaLabel", "footer.embedSnippetLabel"):
+        assert I18N["de"].get(k) and I18N["en"].get(k), k
+    assert "data-i18n-aria-label" in (STATIC / "i18n.js").read_text(encoding="utf-8")
+    for page in ("index", "embed"):
+        assert 'data-i18n-aria-label="index.questionAriaLabel"' in (STATIC / f"{page}.html").read_text(encoding="utf-8")
+    assert "footer.embedSnippetLabel" in FOOTER_JS
