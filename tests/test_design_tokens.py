@@ -235,7 +235,7 @@ def test_fields_have_ink_border_and_one_focus_indicator(sel):
 ACCENT_ALLOWED = {
     'button[type="submit"], .send-button, #popover-load, #popover-upload, #term-merge-analyze',
     "button[type=\"submit\"]:hover, .send-button:hover, #popover-load:hover, #popover-upload:hover, #term-merge-analyze:hover",
-    ".brand-dot",
+    ".brand-dot", ".footer-panel a", ".legal-summary a", ".new-author-profile a",
     ".legal-page a", ".legal-page a:hover, .legal-page a:focus-visible",
     ".link-button", ".link-button:hover", "#embed-expand-button", "#embed-expand-button:hover",
     ".term-followup:hover", ".citation-ref", ".citation-ref:hover",
@@ -482,3 +482,37 @@ def test_term_followup_is_ink_bold_thin_underline_hover_accent_hover():
     assert "text-decoration: underline 1px" in body and "text-underline-offset: 3px" in body
     assert "var(--color-accent-hover)" in _field_rule(".term-followup:hover")
     assert "var(--color-accent)" in _field_rule(".citation-ref")
+
+
+# --- Nachbesserung: Fokus, Startseite, Cover-Flaechen, Ueberlauf ---
+def test_field_focus_outline_overlaps_border_single_line():
+    found = False
+    for sel, body in _rules():
+        if re.search(r"(input|textarea|select)[^,]*:focus-visible", sel):
+            m = re.search(r"outline-offset:\s*(-?\d+)px", body)
+            assert m and int(m.group(1)) <= 0, sel
+            found = True
+    assert found
+
+
+def test_home_start_state_footer_sits_at_bottom():
+    assert "margin-top: auto" in _field_rule("body:not(.chat-started) .site-footer")
+
+
+@pytest.mark.parametrize("sel", [".footer-panel", ".new-author-profile", ".legal-summary"])
+def test_boxes_are_sand_surfaces_without_frame(sel):
+    body = _field_rule(sel)
+    assert "background: var(--color-cover-sand)" in body
+    assert re.search(r"border:\s*0\b", body)
+
+
+@pytest.mark.parametrize("sel", [".footer-panel a", ".legal-summary a", ".new-author-profile a"])
+def test_links_on_sand_boxes_use_accent_hover(sel):
+    body = _field_rule(sel)
+    assert "var(--color-accent-hover)" in body and "var(--color-accent)" not in body
+
+
+def test_unreachable_row_bleed_fits_mobile_body_padding():
+    # Mobile-Body-Padding 0.75rem: der Warn-Hintergrund darf nicht weiter hinausragen.
+    m = re.search(r"@media \(max-width: 640px\) \{(?:(?!\n\}).)*?source-row--unreachable(?:(?!\n\}).)*?margin-right:\s*-0\.75rem", CSS, re.S)
+    assert m
