@@ -498,7 +498,7 @@ mobile-first, mit gemeinsamen Komponenten für Header/Footer
 (`header.js`/`footer.js` + `init-*.js`, auf allen Seiten eingebunden) und
 einem eigenen i18n-Modul für die zweisprachige Oberfläche
 (`static/i18n/{de,en}.json`). Design orientiert sich an betacodex.org
-(Systemfont-Stack, Terrakotta-Akzent, ruhiger Dark-Mode-Support).
+(Inter und Oswald selbst gehostet, Beta-Rot, eckig, Dark Mode aus Ink-Tönen).
 
 **Tests:** `pytest`-Suite (aktuell 487 Tests, Embeddings/LLM/externe APIs
 dabei gemockt) plus Node-basierte Tests für Frontend-Logik
@@ -816,7 +816,7 @@ Der allererste, vertikale Durchstich lief mit folgendem Funktionsumfang:
 - **Quellen bearbeiten**: Klick auf das Stift-Icon einer Quelle öffnet ein Akkordeon direkt unter dem jeweiligen Listeneintrag (`PUT /api/sources/{id}`) – Bearbeitung passiert inline in der Liste, ohne Sprung zu einem separaten Formular. Titel/Autor/Datum/URL/Text werden neu gespeichert, die Chunks in Chroma komplett neu erzeugt und die Autor:innen-Registry entsprechend nachgeführt
 - **Autor:innen-Verzeichnis** (`app/authors.py`, `GET /api/authors`): wird bei jedem Import/Update automatisch mitgeführt, normalisiert Groß-/Kleinschreibung und Leerzeichen, behält aber die zuerst gesehene Schreibweise als Anzeigename, alphabetisch sortiert
 - **Rollen/Rechte (Test-Stand)**: vier Rollen – kein Login/keine Rolle (Assistant-Mode: Fragen stellen, Quellen lesen, immer offen), `quellen_pfleger` (darf Quellen anlegen/bearbeiten), `user_admin`, `system_admin`. Da es noch kein echtes Login gab, ließ sich die aktive Test-Rolle über einen Dropdown manuell umschalten (`X-Dev-User`-Header) – rein für die Entwicklung, kein Sicherheitsmechanismus
-- **Design**: An `betacodex.org` angelehnt (Systemfont-Stack mit Inter zuerst, Textfarbe `#232323`, Akzent-Terrakotta `#B22F1C`, großzügiger Weißraum, ruhige Buttons/Inputs, einfaches Dark-Mode-Pendant über `prefers-color-scheme`)
+- **Design**: Designsystem von `betacodex.org` (Inter und Oswald selbst gehostet unter `static/fonts/`, Textfarbe `#1c1c1c`, Beta-Rot `#d92416` / dunkel `#f0604f`, eckige Ecken, 3px-Fokusrahmen, Dark Mode aus Ink-Tönen über `prefers-color-scheme`)
 - **Tests**: `pytest`-Suite (`tests/`) für Chunking, Vectorstore-Roundtrip, URL-Extraktion (gemocktes `trafilatura`), Autor:innen-Registry und alle API-Endpunkte (Embeddings/LLM dabei gemockt, damit Tests schnell und ohne API-Key laufen)
 - **Inhalt**: Die 9 Artikel aus dem [betahof.de-Magazin](https://www.betahof.de/magazin/) wurden über die URL-Import-Pipeline eingespeist
 
