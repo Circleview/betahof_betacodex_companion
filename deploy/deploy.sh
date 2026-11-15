@@ -25,8 +25,6 @@ source venv/bin/activate
 pip install -q -r requirements.txt
 deactivate
 echo "==> Starte $target neu"
-# ponytail: Übergang User→System-Unit, nach Abschluss entfernen (alte User-Unit der Zielfarbe belegt nach Reboot den Port)
-XDG_RUNTIME_DIR="/run/user/$(id -u)" systemctl --user stop "betacodex-$target.service" 2>/dev/null || true
 sudo -n /usr/bin/systemctl restart "betacodex-$target.service"
 # Early-Access-Login (Backlog #114): Passwort nur per stdin an curl, nie als Argument.
 early_access_password="$(grep -m1 '^EARLY_ACCESS_PASSWORD=' "$BASE/shared/.env" | cut -d= -f2-)"
@@ -45,6 +43,4 @@ sudo -n /usr/local/sbin/companion-farbe "$target" || { echo "FEHLER: Caddy-Umsch
 echo -n "$target" > "$ACTIVE_FILE"
 echo "==> Stoppe alte Farbe ($current)"
 sudo -n /usr/bin/systemctl stop "betacodex-$current.service"
-# ponytail: Übergang User→System-Unit, nach Abschluss entfernen
-XDG_RUNTIME_DIR="/run/user/$(id -u)" systemctl --user stop "betacodex-$current.service" 2>/dev/null || true
 echo "==> Deploy abgeschlossen: $target ist jetzt aktiv (Tag $TAG)"
