@@ -48,15 +48,6 @@ def _rgb(value):
     return tuple(float(x) for x in re.findall(r"[\d.]+", value)[:3])
 
 
-def _alpha(value):
-    return float(re.findall(r"[\d.]+", value)[3])
-
-
-def _over(fg_rgba, bg_hex):
-    a = _alpha(fg_rgba)
-    return tuple(a * f + (1 - a) * b for f, b in zip(_rgb(fg_rgba), _rgb(bg_hex)))
-
-
 def _lum(rgb):
     def ch(c):
         c = c / 255
@@ -240,6 +231,7 @@ def test_fields_have_ink_border_and_one_focus_indicator(sel):
 # Rot (--color-accent) nur: Primaerknopf, Textlinks, Titel-/Linkkarten-Hover, Graph/Konversation.
 ACCENT_ALLOWED = {
     'button[type="submit"], .send-button, #popover-load, #popover-upload, #term-merge-analyze',
+    "button[type=\"submit\"]:hover, .send-button:hover, #popover-load:hover, #popover-upload:hover, #term-merge-analyze:hover",
     ".legal-page a", ".legal-page a:hover, .legal-page a:focus-visible",
     ".link-button", ".link-button:hover", "#embed-expand-button", "#embed-expand-button:hover",
     ".term-followup", ".term-followup:hover", ".citation-ref", ".citation-ref:hover",

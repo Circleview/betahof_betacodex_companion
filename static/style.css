@@ -8,8 +8,6 @@
   --color-border: #e6e2dc;
   --color-accent: #d92416;
   --color-accent-hover: #a52a17;
-  --color-accent-on-tint: #a52a17;
-  --color-accent-tint: rgba(217, 36, 22, 0.08);
   --color-on-accent: #fff;
   --color-on-conversation: #fff;
   --color-focus: #1c1c1c;
@@ -52,8 +50,6 @@
     --color-border: #3a3733;
     --color-accent: #f0604f;
     --color-accent-hover: #f4806f;
-    --color-accent-on-tint: #f4806f;
-    --color-accent-tint: rgba(240, 96, 79, 0.14);
     --color-on-accent: #1c1c1c;
     --color-focus: #e8e4de;
     --color-success: #6cc070;
@@ -135,7 +131,7 @@ h3 {
   width: 0.6em;
   height: 0.6em;
   border-radius: 50%;
-  background: var(--color-accent);
+  background: var(--color-text);
   flex-shrink: 0;
 }
 
@@ -199,8 +195,8 @@ h3 {
   left: 0.5rem;
   transform: translateY(-100%);
   z-index: 100;
-  background: var(--color-accent);
-  color: var(--color-on-accent);
+  background: var(--color-text);
+  color: var(--color-bg);
   padding: 0.6rem 1rem;
   border-radius: var(--radius);
   text-decoration: none;
@@ -382,9 +378,9 @@ header h1 {
 #creative-link:hover,
 #question-log-link:hover,
 #changelog-link:hover {
-  border-color: var(--color-accent);
-  color: var(--color-accent-on-tint);
-  background: var(--color-accent-tint);
+  border-color: var(--color-text);
+  background: var(--color-text);
+  color: var(--color-bg);
 }
 
 @media (max-width: 480px) {
@@ -418,7 +414,7 @@ header h1 {
 }
 
 .auth-widget-button--active {
-  color: var(--color-accent);
+  color: var(--color-text);
 }
 
 /* Rechtsbündig statt zentriert - das Auth-Icon ist inzwischen immer das
@@ -500,7 +496,7 @@ header h1 {
 }
 
 .auth-flow-panel-close:hover {
-  color: var(--color-accent);
+  color: var(--color-text);
 }
 
 @media (min-width: 481px) {
@@ -562,13 +558,13 @@ header h1 {
 }
 
 .lang-button.active {
-  color: var(--color-accent);
+  color: var(--color-text);
   text-decoration: underline;
   text-underline-offset: 2px;
 }
 
 .lang-button:hover {
-  color: var(--color-accent);
+  color: var(--color-text);
 }
 
 label {
@@ -589,7 +585,7 @@ input, textarea {
   font-size: 1rem;
   color: var(--color-text);
   background: var(--color-bg);
-  border: 1px solid var(--color-border);
+  border: 2px solid var(--color-text);
   border-radius: var(--radius);
   padding: 0.65rem 0.8rem;
   box-sizing: border-box;
@@ -623,15 +619,10 @@ select {
   font-size: 1rem;
   color: var(--color-text);
   background: var(--color-bg);
-  border: 1px solid var(--color-border);
+  border: 2px solid var(--color-text);
   border-radius: var(--radius);
   padding: 0.65rem 0.8rem;
   box-sizing: border-box;
-}
-
-select:focus {
-  border-color: var(--color-accent);
-  box-shadow: 0 0 0 3px var(--color-accent-tint);
 }
 
 /* Sprachzeile: beide Felder gleich breit (Titelzeile gibt dem Titel 2/3). */
@@ -657,8 +648,9 @@ select:focus {
 }
 
 .magic-button:hover {
-  color: var(--color-accent);
-  border-color: var(--color-accent);
+  border-color: var(--color-text);
+  background: var(--color-text);
+  color: var(--color-bg);
 }
 
 .magic-button:disabled {
@@ -693,11 +685,6 @@ select:focus {
   background: var(--color-surface);
 }
 
-input:focus, textarea:focus {
-  border-color: var(--color-accent);
-  box-shadow: 0 0 0 3px var(--color-accent-tint);
-}
-
 textarea {
   resize: vertical;
 }
@@ -715,7 +702,7 @@ textarea {
   margin-top: 0;
   padding: 0;
   border: none;
-  accent-color: var(--color-accent);
+  accent-color: var(--color-text);
 }
 
 .audio-preview-player {
@@ -749,8 +736,9 @@ textarea {
 }
 
 .markup-button:hover {
-  border-color: var(--color-accent);
-  color: var(--color-accent);
+  border-color: var(--color-text);
+  background: var(--color-text);
+  color: var(--color-bg);
 }
 
 .markup-button.markup-bold {
@@ -1035,8 +1023,8 @@ body:not(.chat-started) #question-form {
 }
 
 .chat-message--user .chat-bubble {
-  background: var(--color-accent);
-  color: var(--color-on-accent);
+  background: var(--color-text);
+  color: var(--color-bg);
   border-bottom-right-radius: var(--radius);
 }
 
@@ -1254,8 +1242,9 @@ button.send-button {
 }
 
 .mic-button:hover {
-  border-color: var(--color-accent);
-  color: var(--color-accent);
+  border-color: var(--color-text);
+  background: var(--color-text);
+  color: var(--color-bg);
 }
 
 /* Nutzerwunsch (2026-08-30/31): "Vollständig öffnen"-Icon UND Sprach-
@@ -1350,11 +1339,11 @@ button.send-button {
 }
 
 .speak-answer-btn:hover {
-  color: var(--color-accent);
+  color: var(--color-text);
 }
 
 .speak-answer-btn.speaking {
-  color: var(--color-accent);
+  color: var(--color-text);
 }
 
 /* Vorlesegeschwindigkeit: schaltet per Klick durch SPEECH_RATES (speech.js)
@@ -1376,7 +1365,7 @@ button.send-button {
 }
 
 .speed-answer-btn:hover {
-  color: var(--color-accent);
+  color: var(--color-text);
 }
 
 /* Nutzerwunsch (2026-09-01): Daumen-hoch/-runter je Antwort, auf Höhe der
@@ -1408,7 +1397,7 @@ button.send-button {
 }
 
 .copy-answer-btn:hover {
-  color: var(--color-accent);
+  color: var(--color-text);
 }
 
 .copy-answer-btn.copied {
@@ -1436,7 +1425,7 @@ button.send-button {
 }
 
 .feedback-btn:hover:not(:disabled) {
-  color: var(--color-accent);
+  color: var(--color-text);
 }
 
 /* Nutzerwunsch (2026-09-01, Nachtrag): nach erfolgreichem Absenden bleiben
@@ -1895,7 +1884,7 @@ button.send-button {
 .citation-card {
   position: relative;
   background: var(--color-bg);
-  border: 1px solid var(--color-accent);
+  border: 1px solid var(--color-text);
   border-radius: var(--radius);
   padding: 0.9rem 2.5rem 0.9rem 1rem;
   margin: 0.6rem 0 1rem;
@@ -1954,7 +1943,7 @@ button.send-button {
 }
 
 .citation-highlight {
-  background: var(--color-accent-tint);
+  background: var(--color-surface);
   color: var(--color-text);
   font-weight: 600;
   border-radius: var(--radius);
@@ -1989,7 +1978,7 @@ button.send-button {
 
 @keyframes source-highlight-flash {
   0%, 15% {
-    box-shadow: inset 0 0 0 2px var(--color-accent);
+    box-shadow: inset 0 0 0 2px var(--color-text);
   }
   100% {
     box-shadow: inset 0 0 0 2px transparent;
@@ -2049,7 +2038,7 @@ button.send-button {
 
 .source-summary-icon {
   display: inline-flex;
-  color: var(--color-accent);
+  color: var(--color-text);
   vertical-align: middle;
 }
 
@@ -2231,7 +2220,7 @@ button.send-button {
 }
 
 .jobs-bar-close:hover {
-  color: var(--color-accent);
+  color: var(--color-text);
 }
 
 #jobs-bar-list {
@@ -2286,14 +2275,15 @@ button.send-button {
 }
 
 .sort-button:hover {
-  border-color: var(--color-accent);
-  color: var(--color-accent);
+  border-color: var(--color-text);
+  background: var(--color-text);
+  color: var(--color-bg);
 }
 
 .sort-button.active {
-  border-color: var(--color-accent);
-  color: var(--color-accent-on-tint);
-  background: var(--color-accent-tint);
+  border-color: var(--color-text);
+  color: var(--color-text);
+  background: var(--color-surface);
 }
 
 /* Backlog #65: Alphabet-Sprungleiste - nur in der Autor:innen-Sortierung
@@ -2314,7 +2304,7 @@ button.send-button {
   padding: 0.15rem 0.2rem;
   border: none;
   background: none;
-  color: var(--color-accent);
+  color: var(--color-text);
   font-size: 0.8rem;
   font-weight: 600;
   cursor: pointer;
@@ -2322,8 +2312,8 @@ button.send-button {
 }
 
 .alphabet-jump-btn:hover {
-  color: var(--color-accent-hover);
-  background: var(--color-accent-tint);
+  color: var(--color-text);
+  background: var(--color-surface);
 }
 
 .alphabet-jump-btn:disabled {
@@ -2382,7 +2372,7 @@ button.send-button {
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: var(--color-accent);
+  background: var(--color-text);
   z-index: 1;
 }
 
@@ -2459,7 +2449,7 @@ button.send-button {
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: var(--color-accent);
+  background: var(--color-text);
   z-index: 1;
 }
 
@@ -2478,7 +2468,7 @@ button.send-button {
 
 .changelog-entry-icon--created { color: var(--color-success); }
 .changelog-entry-icon--updated { color: var(--color-text-muted); }
-.changelog-entry-icon--deleted { color: var(--color-accent); }
+.changelog-entry-icon--deleted { color: var(--color-danger); }
 .changelog-entry-icon--reverted { color: var(--color-warning); }
 
 .changelog-entity-icon {
@@ -2490,7 +2480,7 @@ button.send-button {
 .changelog-ai-badge {
   display: inline-flex;
   flex-shrink: 0;
-  color: var(--color-accent);
+  color: var(--color-text);
 }
 
 .changelog-actor {
@@ -2708,7 +2698,7 @@ button.send-button {
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: var(--color-accent);
+  background: var(--color-text);
   z-index: 1;
 }
 
@@ -2863,9 +2853,9 @@ button.send-button {
 }
 
 .question-log-filter-btn.active {
-  background: var(--color-accent);
-  border-color: var(--color-accent);
-  color: var(--color-on-accent);
+  background: var(--color-surface);
+  border-color: var(--color-text);
+  color: var(--color-text);
 }
 
 /* Fragen-Log mobil (Idee e1cd2bc6): 2-Spalten-Zeitstrahl (Linie | Inhalt),
@@ -2958,7 +2948,7 @@ button.send-button {
 }
 
 .icon-button:hover {
-  color: var(--color-accent);
+  color: var(--color-text);
 }
 
 .icon-button:disabled {
@@ -3079,8 +3069,9 @@ button.send-button {
 }
 
 .verify-link-button:hover:not(:disabled) {
-  color: var(--color-accent);
-  border-color: var(--color-accent);
+  border-color: var(--color-text);
+  background: var(--color-text);
+  color: var(--color-bg);
 }
 
 .verify-link-button:disabled {
@@ -3122,8 +3113,8 @@ button.send-button {
   height: 1.1rem;
   padding: 0 0.2rem;
   border-radius: 999px;
-  background: var(--color-accent);
-  color: var(--color-on-accent);
+  background: var(--color-text);
+  color: var(--color-bg);
   font-size: 0.65rem;
   font-weight: 700;
   line-height: 1.1rem;
@@ -3638,7 +3629,7 @@ button.send-button {
 
 .relevance-slider-value {
   font-weight: 700;
-  color: var(--color-accent);
+  color: var(--color-text);
 }
 
 .relevance-slider {
@@ -3667,7 +3658,7 @@ button.send-button {
   width: 16px;
   height: 16px;
   border-radius: 50%;
-  background: var(--color-accent);
+  background: var(--color-text);
   margin-top: -6px;
   border: none;
 }
@@ -3676,7 +3667,7 @@ button.send-button {
   width: 16px;
   height: 16px;
   border-radius: 50%;
-  background: var(--color-accent);
+  background: var(--color-text);
   border: none;
 }
 
@@ -3752,9 +3743,9 @@ button.send-button {
      dünner Akzent-Rahmen statt neutralem Rahmen + 3px links (bekanntes
      KI-generiert-Klischee) - die Tönung trägt die Abgrenzung mit, der
      Rahmen muss sie nicht mehr allein einseitig betonen. */
-  border: 1px solid var(--color-accent);
+  border: 1px solid var(--color-text);
   border-radius: var(--radius);
-  background: var(--color-accent-tint);
+  background: var(--color-surface);
 }
 
 .new-author-profile-body {
@@ -4120,9 +4111,9 @@ details a {
 }
 
 .circle-button:hover {
-  border-color: var(--color-accent);
-  color: var(--color-accent-on-tint);
-  background: var(--color-accent-tint);
+  border-color: var(--color-text);
+  background: var(--color-text);
+  color: var(--color-bg);
 }
 
 .circle-button--sm {
@@ -4366,7 +4357,7 @@ details a {
 }
 
 .footer-feedback-trigger:hover {
-  color: var(--color-accent);
+  color: var(--color-text);
 }
 
 /* Fix: statt eines Popovers (position:absolute) klappt der Feedback-
@@ -4416,7 +4407,7 @@ details a {
 }
 
 .footer-feedback-panel-close:hover {
-  color: var(--color-accent);
+  color: var(--color-text);
 }
 
 /* Nur wenn das Panel tatsächlich sichtbar ist, übernimmt SEIN margin-top
@@ -4611,7 +4602,7 @@ details a {
    angeklickt wurde (statt nur die anderen zu dimmen) - Ring in der
    Akzentfarbe, dickerer Rand als der normale stroke. */
 .explore-node--selected .explore-node-circle {
-  stroke: var(--color-accent);
+  stroke: var(--color-text);
   stroke-width: 3px;
 }
 
@@ -4633,14 +4624,14 @@ details a {
 
 .explore-node-open-icon path {
   fill: none;
-  stroke: var(--color-accent);
+  stroke: var(--color-text);
   stroke-width: 1.3px;
   stroke-linecap: round;
   stroke-linejoin: round;
 }
 
 .explore-node-open-icon:hover path {
-  stroke: var(--color-accent-hover);
+  stroke: var(--color-text);
 }
 
 /* Nutzerwunsch (2026-08-26): Kreativ-Modus - eigene, klar abgetrennte Seite
@@ -4681,8 +4672,8 @@ details a {
 .legal-summary {
   margin: 0 0 1.5rem;
   padding: 0.9rem 1.1rem;
-  border: 1px solid var(--color-accent);
-  background: var(--color-accent-tint);
+  border: 1px solid var(--color-text);
+  background: var(--color-surface);
   border-radius: var(--radius);
   font-size: 0.92rem;
   line-height: 1.55;
@@ -4823,8 +4814,9 @@ details a {
 }
 
 .creative-toolbar button:hover:not(:disabled) {
-  color: var(--color-accent);
-  border-color: var(--color-accent);
+  border-color: var(--color-text);
+  background: var(--color-text);
+  color: var(--color-bg);
 }
 
 .creative-toolbar button:disabled {
@@ -4869,7 +4861,7 @@ details a {
 
 #creative-error {
   margin-top: 0.5rem;
-  color: var(--color-accent);
+  color: var(--color-danger);
 }
 
 /* Nutzerwunsch (2026-08-30): abschnittsweises Überarbeiten auf
@@ -4915,8 +4907,9 @@ details a {
 }
 
 .creative-section-revise-btn:hover {
-  border-color: var(--color-accent);
-  color: var(--color-accent);
+  border-color: var(--color-text);
+  background: var(--color-text);
+  color: var(--color-bg);
 }
 
 .creative-section-revise-panel {
@@ -4924,7 +4917,7 @@ details a {
   padding: 0.75rem;
   border: 1px solid var(--color-border);
   border-radius: var(--radius);
-  background: var(--color-accent-tint);
+  background: var(--color-surface);
 }
 
 .creative-section-revise-heading {
@@ -5027,17 +5020,17 @@ details a {
 
 @keyframes creative-attention-flash {
   35% {
-    color: var(--color-accent-on-tint);
-    border-color: var(--color-accent);
-    background: var(--color-accent-tint);
-    box-shadow: 0 0 0 4px color-mix(in srgb, var(--color-accent) 35%, transparent);
+    color: var(--color-text);
+    border-color: var(--color-text);
+    background: var(--color-surface);
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--color-text) 35%, transparent);
   }
 }
 
 /* Zweistufige Bestätigung des Neu-anfangen-Buttons (creative.js). Grundstil
    kommt von .feedback-btn. */
 #creative-new-btn.confirming {
-  color: var(--color-accent);
+  color: var(--color-text);
 }
 
 .creative-new-confirm {
@@ -5168,7 +5161,7 @@ details a {
 .term-overview-bar-fill {
   display: block;
   height: 100%;
-  background: var(--color-accent);
+  background: var(--color-text);
 }
 
 .term-overview-count {
@@ -5306,7 +5299,7 @@ details a {
    (button[type="submit"]) - dieselbe Zeile trägt schon "Widerrufen". */
 .mcp-limits-form button[type="submit"] {
   background: none;
-  color: var(--color-accent);
+  color: var(--color-text);
   padding: 0;
   font-size: inherit;
   font-weight: 600;
@@ -5509,7 +5502,7 @@ details a {
 
 .creative-cooldown-info:hover,
 .creative-cooldown-info:focus-visible {
-  color: var(--color-accent);
+  color: var(--color-text);
 }
 
 /* Nutzerverwaltung als eigene Seite (static/users.html, 2026-09-26). */
@@ -5632,7 +5625,7 @@ details a {
 
 .users-row-status {
   margin: 0.25rem 0 0;
-  color: var(--color-accent);
+  color: var(--color-text);
   font-size: 0.85rem;
 }
 
@@ -5770,7 +5763,7 @@ details a {
 
 .costs-hit:hover,
 .costs-hit:focus-visible {
-  fill: var(--color-accent-tint);
+  fill: var(--color-surface);
 }
 
 .costs-tooltip {
