@@ -551,3 +551,15 @@ def test_start_band_fills_desktop_height_like_google():
     # Band reicht bis an den Footer - dessen Haarlinie entfällt dort.
     f = re.search(r"@media \(min-width: 900px\) \{[^@]*?body:not\(\.chat-started\) \.site-footer \{([^}]*)\}", css)
     assert f and re.search(r"border-top:\s*0", f.group(1))
+
+
+def test_citation_highlight_is_darker_mint_marker():
+    # Nutzerentscheid (v0.93.1): die passende Stelle in der Mint-Zitat-Box ist ein
+    # Textmarker im selben Farbton (Mint, 10 % Tinte beigemischt), keine Stein-Flicken.
+    body = next(b for s, b in _rules() if s == ".citation-highlight")
+    assert re.search(r"background:\s*color-mix\(in srgb, var\(--color-text\) 10%, var\(--color-cover-mint\)\)", body)
+    assert "box-decoration-break: clone" in body
+    for t in (_light(), _dark()):
+        mint, text = _rgb(t["--color-cover-mint"]), _rgb(t["--color-text"])
+        mark = tuple(0.1 * a + 0.9 * b for a, b in zip(text, mint))
+        assert contrast(t["--color-text"], mark) >= 4.5
