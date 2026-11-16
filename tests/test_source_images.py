@@ -143,3 +143,33 @@ def test_store_images_skips_images_above_pixel_limit(tmp_path):
     Image.new("1", (6000, 6000)).save(buf, format="PNG")
 
     assert source_images.store_images(tmp_path, "s", [_item(buf.getvalue())]) == []
+
+
+# Fix v0.94.1: Wix lieferte für das Inline-Bild eine weichgezeichnete
+# 300-px-Vorschau (/v1/fill/w_300,…,blur_2…). Wix-Adressen werden auf eine
+# 1200-px-Fassung ohne Weichzeichner umgeschrieben.
+_WIX_NAME = "827034_1ad8aedc53a54a32b65a1d7a992018e0~mv2.jpg"
+_WIX_BIG = f"https://static.wixstatic.com/media/{_WIX_NAME}/v1/fit/w_1200,h_1200,q_85/{_WIX_NAME}"
+
+
+def test_upgrade_image_url_replaces_wix_thumbnail_with_large_version():
+    thumb = (
+        f"https://static.wixstatic.com/media/{_WIX_NAME}/v1/fill/w_300,h_204,al_c,q_80,"
+        f"usm_0.66_1.00_0.01,blur_2,enc_avif,quality_auto/{_WIX_NAME}"
+    )
+    assert source_images.upgrade_image_url(thumb) == _WIX_BIG
+
+
+def test_upgrade_image_url_limits_wix_original_to_large_version():
+    assert source_images.upgrade_image_url(f"https://static.wixstatic.com/media/{_WIX_NAME}") == _WIX_BIG
+
+
+def test_upgrade_image_url_leaves_other_hosts_untouched():
+    for url in ("https://img.example.org/a.jpg", "https://evil.example/static.wixstatic.com/media/x.jpg/v1/fill/w_3/x.jpg"):
+        assert source_images.upgrade_image_url(url) == url
+
+
+def test_sanitize_web_images_upgrades_wix_thumbnails():
+    thumb = f"https://static.wixstatic.com/media/{_WIX_NAME}/v1/fill/w_266,h_185,blur_2/{_WIX_NAME}"
+    out = source_images.sanitize_web_images([{"kind": "url", "url": thumb, "alt": "", "anchor": ""}])
+    assert out[0]["url"] == _WIX_BIG

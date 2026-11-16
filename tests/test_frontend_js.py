@@ -5821,3 +5821,71 @@ placeInlineImage(b, {json.dumps([_img_source(1)])});
 console.log(JSON.stringify(all(b, (n) => n.tag === 'figure').length));
 """)
     assert result == 0
+
+
+# Fix v0.94.1: Ein Inline-Bild unter der Mindestbreite (z. B. 300-px-
+# Vorschau) wirkt unscharf. Es verlässt den Text und erscheint in der Leiste.
+def _two_image_source():
+    return _source(1, [{"src": _src(1), "alt": "", "page": None}, {"src": _src(2), "alt": "", "page": None}])
+
+
+def _inline_after_load(width):
+    return _run_inline(f"""
+const sources = {json.dumps([_two_image_source()])};
+const b = bubbleOf(para('A [1].'), para('[bild:1.1]'));
+placeInlineImage(b, sources);
+makeCitationsClickable(b, sources);
+refreshImageStrip(b, extractCitedSources(b, sources), sources);
+const img = all(b, (n) => n.tag === 'img' && n.parentNode && all(b, (x) => x.className && x.className.includes('inline-source-image'))[0]
+  && all(all(b, (x) => x.className && x.className.includes('inline-source-image'))[0], (y) => y === n).length)[0];
+img.naturalWidth = {width};
+img.listeners.load();
+const strip = all(b, (n) => n.className === 'source-image-strip')[0];
+console.log(JSON.stringify({{
+  inline: all(b, (n) => n.className && n.className.includes('inline-source-image')).length,
+  strip: strip ? all(strip, (n) => n.tag === 'img').map((i) => i.src) : [],
+}}));
+""")
+
+
+def test_inline_image_below_min_width_moves_to_strip():
+    assert _inline_after_load(300) == {"inline": 0, "strip": [_src(1), _src(2)]}
+
+
+def test_inline_image_wide_enough_stays_inline():
+    assert _inline_after_load(1200) == {"inline": 1, "strip": [_src(2)]}
+
+
+# Fix v0.94.1: Die Leiste zeigt nach den zitierten Quellen auch Bilder der
+# übrigen gefundenen Quellen (das Inline-Bild darf ja auch von dort kommen).
+def test_strip_shows_cited_sources_first_then_other_found_sources():
+    sources = [
+        _source(1, [{"src": _src(1), "alt": "", "page": None}]),
+        _source(2, [{"src": _src(2), "alt": "", "page": None}]),
+        _source(3, [{"src": _src(3), "alt": "", "page": None}]),
+    ]
+    result = _run_inline(f"""
+const sources = {json.dumps(sources)};
+const b = bubbleOf(para('A [3].'));
+makeCitationsClickable(b, sources);
+refreshImageStrip(b, extractCitedSources(b, sources), sources);
+const strip = all(b, (n) => n.className === 'source-image-strip')[0];
+console.log(JSON.stringify(all(strip, (n) => n.tag === 'img').map((i) => i.src)));
+""")
+    assert result == [_src(3), _src(1), _src(2)]
+
+
+def test_strip_leaves_out_uncited_sources_hidden_for_ui_language():
+    sources = [
+        {**_HIDDEN, "images": [{"src": _src(1), "alt": "", "page": None}]},
+        {**_VISIBLE, "images": [{"src": _src(2), "alt": "", "page": None}]},
+    ]
+    result = _run_inline(f"""
+const sources = {json.dumps(sources)};
+const b = bubbleOf(para('A [2].'));
+makeCitationsClickable(b, sources);
+refreshImageStrip(b, extractCitedSources(b, sources), sources);
+const strip = all(b, (n) => n.className === 'source-image-strip')[0];
+console.log(JSON.stringify(all(strip, (n) => n.tag === 'img').map((i) => i.src)));
+""", lang="en")
+    assert result == [_src(2)]
