@@ -41,7 +41,7 @@ let photoTimers = [];
 let photoDebounce = null;
 let photoNextAt = 0;
 let searchZoomTimer = null;
-let lastWrapSize = '';
+let lastWrapWidth = 0;
 
 function stopPhotoLoading() {
   svg.interrupt();
@@ -377,7 +377,7 @@ function renderGraph(data) {
   const { nodes, edges } = data;
   const width = wrapEl.clientWidth;
   const height = wrapEl.clientHeight;
-  lastWrapSize = `${width}x${height}`;
+  lastWrapWidth = width;
 
   currentSimulation?.stop();
   stopPhotoLoading();
@@ -845,13 +845,14 @@ async function loadGraph() {
 }
 
 // Idee d24b4276: Drehen/Größenänderung (Handy, Fenster) - das Netz kennt
-// width/height nur vom Aufbau; bei echter Änderung (debounced) neu bauen.
+// width/height nur vom Aufbau; bei Breitenänderung (debounced) neu bauen.
+// Höhe zählt nicht: die mobile Adressleiste ändert sie beim Scrollen.
 let resizeTimer = null;
 function onWrapResize() {
   clearTimeout(resizeTimer);
   resizeTimer = setTimeout(() => {
     if (!fullGraphData || wrapEl.classList.contains('hidden')) return;
-    if (`${wrapEl.clientWidth}x${wrapEl.clientHeight}` === lastWrapSize) return;
+    if (wrapEl.clientWidth === lastWrapWidth) return;
     applyFiltersAndRender();
   }, 200);
 }
