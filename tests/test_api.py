@@ -132,20 +132,6 @@ class _FakeCreativeStream:
         return iter(self._chunks)
 
 
-@pytest.fixture(scope="session", autouse=True)
-def _shared_vectorstore_client(tmp_path_factory):
-    """Fix (2026-08-25, siehe ausführlicher Kommentar in app/vectorstore.py:
-    _get_client()): DB_PATH einmal für die gesamte Session auf ein festes
-    Verzeichnis setzen, damit vectorstore._client (ein nativer
-    chromadb.PersistentClient) über alle Tests hinweg EIN EINZIGES Mal
-    erzeugt und wiederverwendet wird, statt pro Test neu (das kostete
-    zuletzt tausende nie freigegebene Betriebssystem-Threads). Isolation
-    zwischen Tests kommt seitdem nicht mehr über einen eigenen DB_PATH pro
-    Test, sondern über einen eigenen Collection-Namen (siehe client-Fixture
-    unten)."""
-    vectorstore.DB_PATH = tmp_path_factory.mktemp("shared_chroma")
-
-
 @pytest.fixture
 def client(tmp_path, monkeypatch):
     # Fix (2026-08-25, Suite brauchte zuletzt ~20min statt ~1min): jede
@@ -178,7 +164,7 @@ def client(tmp_path, monkeypatch):
 
     # Fix (2026-08-25): Isolation zwischen Tests jetzt über einen pro Test
     # eindeutigen Collection-Namen statt über einen eigenen DB_PATH/Client
-    # (siehe _shared_vectorstore_client oben + app/vectorstore.py:
+    # (siehe _shared_vectorstore_client in conftest.py + app/vectorstore.py:
     # _get_client()) - vectorstore._client bleibt für die gesamte Session
     # bestehen, nur _collection/_web_collection werden zurückgesetzt, damit
     # get_or_create_collection() für DIESEN Test eine frische, leere

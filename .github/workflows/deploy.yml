@@ -1,9 +1,21 @@
 name: Test & Deploy
 
+# Idee 2aff0aa3: main-Pushes füllen nur die Caches (GitHub-Caches gelten pro
+# Ref, ein Tag sieht nur den Cache von main). Deployt wird ausschließlich bei
+# Tags. Nach Änderung an requirements.txt oder dieser Datei: Tag erst nach
+# grünem main-Lauf pushen.
 on:
+  # Täglich: hält die Caches warm (GitHub löscht Caches nach 7 Tagen ohne Zugriff).
+  schedule:
+    - cron: "17 3 * * *"
   push:
+    branches:
+      - main
     tags:
       - "v*"
+
+permissions:
+  contents: read
 
 jobs:
   test:
@@ -12,6 +24,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-python@v5
+        id: py
         with:
           python-version: "3.14"
 
@@ -19,14 +32,38 @@ jobs:
         with:
           node-version: "22"
 
+      # Nur exakter Schlüssel (kein restore-keys). Gespeichert wird nur auf main.
+      - name: Runner-Image ermitteln
+        id: img
+        run: echo "os=$ImageOS" >> "$GITHUB_OUTPUT"
+
+      - name: venv-Cache laden
+        id: venv
+        uses: actions/cache/restore@v4
+        with:
+          path: .venv
+          key: venv-${{ runner.os }}-${{ steps.img.outputs.os }}-py${{ steps.py.outputs.python-version }}-${{ hashFiles('requirements.txt', '.github/workflows/deploy.yml') }}
+
+      - name: HuggingFace-Cache laden
+        id: hf
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.cache/huggingface
+          key: hf-intfloat-multilingual-e5-base
+
       - name: Install dependencies (CPU-only torch, wie auf dem Produktivserver)
+        if: steps.venv.outputs.cache-hit != 'true'
         run: |
-          python -m pip install --upgrade pip
-          pip install torch --index-url https://download.pytorch.org/whl/cpu
-          pip install -r requirements.txt
+          python -m venv .venv
+          .venv/bin/python -m pip install --upgrade pip
+          .venv/bin/pip install torch --index-url https://download.pytorch.org/whl/cpu
+          .venv/bin/pip install -r requirements.txt
+
+      - name: venv in den PATH
+        run: echo "$GITHUB_WORKSPACE/.venv/bin" >> "$GITHUB_PATH"
 
       - name: pytest
-        run: pytest -q
+        run: pytest -q -n auto --durations=10
 
       - name: node --check (static/*.js)
         run: |
@@ -37,8 +74,23 @@ jobs:
       - name: node --test (tests/*.mjs)
         run: node --test --test-force-exit tests/*.mjs
 
+      - name: venv-Cache speichern (nur main)
+        if: github.ref == 'refs/heads/main' && steps.venv.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: .venv
+          key: ${{ steps.venv.outputs.cache-primary-key }}
+
+      - name: HuggingFace-Cache speichern (nur main)
+        if: github.ref == 'refs/heads/main' && steps.hf.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.cache/huggingface
+          key: ${{ steps.hf.outputs.cache-primary-key }}
+
   deploy:
     needs: test
+    if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     steps:
       - name: Blue-Green-Deploy auslösen

@@ -575,12 +575,23 @@ fehl.
   Symlink auf ein gemeinsames `shared/`-Verzeichnis; nur der Code
   unterscheidet sich zwischen den beiden Slots. Deployment läuft
   vollautomatisch per GitHub Actions (`.github/workflows/deploy.yml`),
-  ausgelöst durch einen Tag-Push: `pytest -q` + `node --check`, bei Erfolg
+  ausgelöst durch einen Tag-Push: `pytest -q -n auto` (pytest-xdist, parallel) + `node --check`, bei Erfolg
   SSH zum Server (Forced Command `companion-deploy`, siehe „Härtung und
   Deploy-Schlüssel“), `deploy.sh <tag>` deployt auf die gerade inaktive
   Farbe, wartet auf einen Health-Check (`/api/version`), ruft danach
   `companion-farbe` auf (schaltet Caddy um) und stoppt die alte Farbe – Zero-Downtime, mit automatischem
   Rollback (alte Farbe bleibt live), falls die neue Version nicht startet.
+  Der Workflow läuft auch bei Pushes auf `main`, dort nur der Test-Job
+  (der Deploy-Job hat `if: startsWith(github.ref, 'refs/tags/v')`): Er füllt
+  die Caches für die venv (`.venv`) und das Embedding-Modell
+  (`~/.cache/huggingface`), weil GitHub-Caches pro Ref gelten und ein Tag nur
+  den Cache von `main` sieht. Tags lesen die Caches nur (`cache/restore`),
+  geschrieben wird ausschließlich auf `main`. Schlüssel der venv: OS-Image,
+  genaue Python-Version und Hash von `requirements.txt` + `deploy.yml`.
+  **Regel:** Nach Änderung an `requirements.txt` oder `deploy.yml` den Tag
+  erst nach grünem `main`-Lauf pushen. Lokal läuft `pytest` weiter seriell,
+  parallel mit `pytest -n auto`. Ein täglicher Zeitplan-Lauf (03:17 UTC, nur
+  Test-Job) hält die Caches warm, weil GitHub sie nach 7 Tagen ohne Zugriff löscht.
   Unterschiede zu Dev: `ENVIRONMENT` bleibt hier ungesetzt (nicht
   `"development"`), dadurch sind Cookies `Secure` und der
   `X-Robots-Tag` (verhindert sonst die Suchmaschinen-Indexierung)
@@ -668,6 +679,7 @@ Commit-/Tag-Nachrichten in Git.
 
 | Version | Wesentliche Änderungen |
 |---|---|
+| v0.95.5 | **Schnelleres Deployment** (Fix, Idee 2aff0aa3): Die Pipeline vom Tag bis live soll höchstens 2 Minuten dauern statt etwa 3 bis 7. Die installierten Pakete und das Embedding-Modell kommen aus einem Zwischenspeicher, den main-Pushes und ein täglicher Lauf füllen. pytest läuft parallel auf allen Kernen (`-n auto`), mit allen 2106 Tests. Ein neuer Test sichert, dass nur Tags deployen und nie ohne grüne Tests. |
 | v0.95.4 | **Startseite und Kreativmodus am Handy** (Fix): Das Mint-Band der Startseite reicht auch mobil bis zum Footer. Im Dark Mode ist das Mint gedämpft statt kaltgrün. Die drei Schritte im Kreativmodus stehen am Handy kompakt (Ziffer neben dem Text), der Erklärbereich ist etwa halb so hoch. |
 | v0.95.3 | **Bilder schnell nachholen** (Fix zu Idee fe44f080): Der Admin-Reindex kann mit `?images_only=true` nur die fehlenden Bilder nachholen, ohne alle Quellen neu einzubetten – Minuten statt über einer Stunde. Der volle Lauf wurde am 16.11.2026 zweimal von Deploys abgebrochen. |
 | v0.95.2 | **Mehr Quellen auch bei stark vertretenen Themen** (Idee 78404054): Füllen wenige Quellen die Kandidatenliste fast ganz, sucht der Chat ein zweites Mal ohne diese Quellen. So kommen andere Quellen überhaupt in die Auswahl. Live fehlte Peter Pröll bei „Was ist die Zellstruktur?“ trotz 25 %; mit dem Fix ist er dabei. |
