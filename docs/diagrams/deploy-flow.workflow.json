@@ -65,7 +65,7 @@
       "lane": "dev",
       "col": 0,
       "type": "external",
-      "label": "git tag Push",
+      "label": "Tag-Push",
       "sublabel": "vX.Y.Z",
       "width": 132
     },
@@ -75,7 +75,7 @@
       "col": 0,
       "type": "backend",
       "label": "Testsuite",
-      "sublabel": "pytest + Node-Tests",
+      "sublabel": "pytest -n auto, Cache, Node",
       "width": 132
     },
     {
@@ -84,7 +84,7 @@
       "col": 1,
       "type": "security",
       "label": "Tests OK?",
-      "sublabel": "Deploy-Gate",
+      "sublabel": "nur Tag, main = Cache",
       "width": 132
     },
     {

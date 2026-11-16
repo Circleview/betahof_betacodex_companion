@@ -575,12 +575,22 @@ fehl.
   Symlink auf ein gemeinsames `shared/`-Verzeichnis; nur der Code
   unterscheidet sich zwischen den beiden Slots. Deployment läuft
   vollautomatisch per GitHub Actions (`.github/workflows/deploy.yml`),
-  ausgelöst durch einen Tag-Push: `pytest -q` + `node --check`, bei Erfolg
+  ausgelöst durch einen Tag-Push: `pytest -q -n auto` (pytest-xdist, parallel) + `node --check`, bei Erfolg
   SSH zum Server (Forced Command `companion-deploy`, siehe „Härtung und
   Deploy-Schlüssel“), `deploy.sh <tag>` deployt auf die gerade inaktive
   Farbe, wartet auf einen Health-Check (`/api/version`), ruft danach
   `companion-farbe` auf (schaltet Caddy um) und stoppt die alte Farbe – Zero-Downtime, mit automatischem
   Rollback (alte Farbe bleibt live), falls die neue Version nicht startet.
+  Der Workflow läuft auch bei Pushes auf `main`, dort nur der Test-Job
+  (der Deploy-Job hat `if: startsWith(github.ref, 'refs/tags/v')`): Er füllt
+  die Caches für die venv (`.venv`) und das Embedding-Modell
+  (`~/.cache/huggingface`), weil GitHub-Caches pro Ref gelten und ein Tag nur
+  den Cache von `main` sieht. Tags lesen die Caches nur (`cache/restore`),
+  geschrieben wird ausschließlich auf `main`. Schlüssel der venv: OS-Image,
+  genaue Python-Version und Hash von `requirements.txt` + `deploy.yml`.
+  **Regel:** Nach Änderung an `requirements.txt` oder `deploy.yml` den Tag
+  erst nach grünem `main`-Lauf pushen. Lokal läuft `pytest` weiter seriell,
+  parallel mit `pytest -n auto`.
   Unterschiede zu Dev: `ENVIRONMENT` bleibt hier ungesetzt (nicht
   `"development"`), dadurch sind Cookies `Secure` und der
   `X-Robots-Tag` (verhindert sonst die Suchmaschinen-Indexierung)
