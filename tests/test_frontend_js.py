@@ -2571,14 +2571,316 @@ def test_photo_images_do_not_set_href_synchronously_at_creation():
     )
 
 
-def test_photo_images_set_href_in_delayed_batches():
+def test_photos_load_in_delayed_batches_only_for_visible_nodes():
     js_source = (STATIC_DIR / "explore.js").read_text()
-    match = re.search(r"photoImages\.each\(function \(d, i\) \{.*?\n  \}\);", js_source, re.S)
-    assert match, "Das gestaffelte Setzen von href wurde in explore.js nicht gefunden."
+    match = re.search(r"function loadVisiblePhotos\(\) \{.*?\n  \}\n", js_source, re.S)
+    assert match, "loadVisiblePhotos wurde in explore.js nicht gefunden."
     batch_source = match.group(0)
     assert "setTimeout" in batch_source
     assert "PHOTO_LOAD_BATCH_SIZE" in batch_source
+    assert "nodesInViewport" in batch_source
+    assert "_photoQueued" in batch_source
     assert "setAttribute('href', d.photo_url)" in batch_source
+
+
+def test_photo_timers_are_cleared_on_rerender():
+    js_source = (STATIC_DIR / "explore.js").read_text()
+    match = re.search(r"function renderGraph\(data\) \{.*?svg\.selectAll\('\*'\)\.remove\(\);", js_source, re.S)
+    assert match, "renderGraph-Anfang wurde nicht gefunden."
+    assert "stopPhotoLoading()" in match.group(0)
+    stop = re.search(r"function stopPhotoLoading\(\) \{.*?\n\}", js_source, re.S)
+    assert stop and "photoTimers.forEach(clearTimeout)" in stop.group(0)
+
+
+def _explore_tier_fn(name: str, call_expr: str):
+    return _run_explore_js_function(rf"function {name}\(.*?\n\}}", call_expr)
+
+
+@pytest.mark.parametrize(
+    "k,expected",
+    [(0.2, "far"), (0.59, "far"), (0.6, "mid"), (0.99, "mid"), (1.0, "near"), (1.79, "near"), (1.8, "close"), (4, "close")],
+)
+def test_zoom_level_for_thresholds(k, expected):
+    assert _explore_tier_fn("zoomLevelFor", f"zoomLevelFor({k})") == expected
+
+
+_EDGE_SAMPLE = """[
+  { source: 'a', target: 'b', weight: 5 },
+  { source: 'a', target: 'c', weight: 5 },
+  { source: 'b', target: 'c', weight: 1 },
+  { source: 'c', target: 'd', weight: 3 },
+  { source: 'd', target: 'e', weight: 2 },
+  { source: 'e', target: 'a', weight: 1 }
+]"""
+
+
+def test_edge_tiers_empty():
+    assert _explore_tier_fn("edgeTiers", "edgeTiers([], 800)") == []
+
+
+def test_edge_tiers_every_node_has_a_tier_1_edge_and_ties_pick_first():
+    result = _explore_tier_fn("edgeTiers", f"edgeTiers({_EDGE_SAMPLE}, 0)")
+    # a: stärkste Kante 0 (Gleichstand mit 1, erste gewinnt); b: Kante 0; c: Kante 1 (5);
+    # d: Kante 3 (3); e: Kante 4 (2).
+    assert result == [1, 1, 3, 1, 1, 3]
+
+
+def test_edge_tiers_tier_1_is_at_most_node_count():
+    result = _explore_tier_fn("edgeTiers", f"edgeTiers({_EDGE_SAMPLE}, 0)")
+    assert result.count(1) <= 5
+
+
+def test_edge_tiers_fills_tier_2_up_to_limit():
+    result = _explore_tier_fn("edgeTiers", f"edgeTiers({_EDGE_SAMPLE}, 5)")
+    assert result.count(1) + result.count(2) == 5
+    # Verbleibende Kante mit dem niedrigsten Gewicht (Index 2 oder 5): erste in Reihenfolge fällt in Stufe 2.
+    assert result == [1, 1, 2, 1, 1, 3]
+
+
+def test_edge_tiers_limit_larger_than_edge_count_leaves_no_tier_3():
+    result = _explore_tier_fn("edgeTiers", f"edgeTiers({_EDGE_SAMPLE}, 800)")
+    assert 3 not in result
+
+
+def test_edge_tiers_does_not_mutate_input():
+    result = _run_explore_js_function(
+        r"function edgeTiers\(.*?\n\}",
+        f"(() => {{ const e = {_EDGE_SAMPLE}; const before = JSON.stringify(e); edgeTiers(e, 5); return JSON.stringify(e) === before; }})()",
+    )
+    assert result is True
+
+
+def test_rank_tiers_empty():
+    assert _explore_tier_fn("rankTiers", "rankTiers([], [60])") == []
+
+
+def test_rank_tiers_fewer_values_than_limit_all_tier_1():
+    assert _explore_tier_fn("rankTiers", "rankTiers([1, 5, 3], [60])") == [1, 1, 1]
+
+
+def test_rank_tiers_exactly_limit_in_tier_1_and_stable_ties():
+    weights = [3, 3, 3, 1, 9]
+    result = _explore_tier_fn("rankTiers", f"rankTiers({weights}, [2])")
+    # Rang: 9 (Index 4), dann 3er in Reihenfolge (Index 0, 1, 2), dann 1 (Index 3).
+    assert result == [1, 2, 2, 2, 1]
+    assert result.count(1) == 2
+
+
+def test_rank_tiers_does_not_mutate_input():
+    result = _run_explore_js_function(
+        r"function rankTiers\(.*?\n\}",
+        "(() => { const w = [3, 1, 2]; rankTiers(w, [1]); return JSON.stringify(w); })()",
+    )
+    assert result == "[3,1,2]"
+
+
+def _prominent(nodes_expr: str, per_type: int):
+    return sorted(_explore_tier_fn("prominentNodeIds", f"Array.from(prominentNodeIds({nodes_expr}, {per_type}))"))
+
+
+def test_prominent_node_ids_per_type_limit():
+    nodes = (
+        "[...Array.from({length: 12}, (_, i) => ({ id: 'a' + i, type: 'author', weight: i })),"
+        " ...Array.from({length: 12}, (_, i) => ({ id: 't' + i, type: 'term', weight: i + 100 }))]"
+    )
+    result = _prominent(nodes, 3)
+    assert result == sorted(["a11", "a10", "a9", "t11", "t10", "t9"])
+
+
+def test_prominent_node_ids_fewer_nodes_than_limit_returns_all():
+    nodes = "[{ id: 'a', type: 'author', weight: 1 }, { id: 't', type: 'term', weight: 1 }]"
+    assert _prominent(nodes, 8) == ["a", "t"]
+
+
+def test_prominent_node_ids_only_authors():
+    nodes = "[{ id: 'a1', type: 'author', weight: 1 }, { id: 'a2', type: 'author', weight: 2 }, { id: 'a3', type: 'author', weight: 3 }]"
+    assert _prominent(nodes, 2) == ["a2", "a3"]
+
+
+def test_prominent_node_ids_ties_are_stable():
+    nodes = "[{ id: 'x', type: 'term', weight: 2 }, { id: 'y', type: 'term', weight: 2 }, { id: 'z', type: 'term', weight: 2 }]"
+    assert _prominent(nodes, 2) == ["x", "y"]
+
+
+def test_prominent_node_ids_empty_and_no_mutation():
+    assert _prominent("[]", 8) == []
+    result = _run_explore_js_function(
+        r"function prominentNodeIds\(.*?\n\}",
+        "(() => { const n = [{ id: 'a', type: 'term', weight: 1 }, { id: 'b', type: 'term', weight: 5 }]; prominentNodeIds(n, 1); return n.map((x) => x.id).join(); })()",
+    )
+    assert result == "a,b"
+
+
+def _in_viewport(nodes_expr: str, t_expr: str, margin: int = 100):
+    return _explore_tier_fn("nodesInViewport", f"nodesInViewport({nodes_expr}, {t_expr}, 1000, 600, {margin}).map((d) => d.id)")
+
+
+def test_nodes_in_viewport_center_inside():
+    assert _in_viewport("[{ id: 'c', x: 500, y: 300 }]", "{ x: 0, y: 0, k: 1 }") == ["c"]
+
+
+def test_nodes_in_viewport_margin_and_far_away():
+    nodes = "[{ id: 'edge', x: -50, y: 300 }, { id: 'far', x: -500, y: 300 }, { id: 'below', x: 500, y: 650 }]"
+    assert _in_viewport(nodes, "{ x: 0, y: 0, k: 1 }") == ["edge", "below"]
+
+
+def test_nodes_in_viewport_scaled_and_translated():
+    # k=2, Verschiebung -800: Knoten x=450 -> 100 (drin), x=100 -> -600 (draußen), x=900 -> 1000 (drin).
+    nodes = "[{ id: 'in', x: 450, y: 150 }, { id: 'out', x: 100, y: 150 }, { id: 'in2', x: 900, y: 150 }]"
+    assert _in_viewport(nodes, "{ x: -800, y: 0, k: 2 }") == ["in", "in2"]
+
+
+def test_nodes_in_viewport_undefined_position_is_excluded():
+    assert _in_viewport("[{ id: 'u' }, { id: 'v', x: 10 }]", "{ x: 0, y: 0, k: 1 }") == []
+
+
+@pytest.mark.parametrize(
+    "level,focus,dimmed,prominent,expected",
+    [
+        ("far", False, False, True, True),
+        ("far", False, False, False, False),
+        ("far", True, False, False, True),
+        ("far", True, True, False, False),
+        ("far", True, True, True, True),
+        ("mid", True, False, True, False),
+        ("near", True, False, False, False),
+    ],
+)
+def test_far_label_is_scaled_for_prominent_and_focused_nodes(level, focus, dimmed, prominent, expected):
+    call = f"isFarScaledLabel('{level}', {str(focus).lower()}, {str(dimmed).lower()}, {str(prominent).lower()})"
+    assert _explore_tier_fn("isFarScaledLabel", call) is expected
+
+
+def test_open_icon_transform_follows_label_scale():
+    # Anforderung: Bei k = 0.5 ist die Schrift doppelt so groß (11.2/k), das Icon sitzt
+    # (halbe Breite + 6)/k rechts vom Mittelpunkt und wird mit 1/k skaliert.
+    result = _explore_tier_fn("openIconTransform", "openIconTransform(10, 20, 0.5)")
+    nums = [float(n) for n in re.findall(r"-?\d+(?:\.\d+)?", result)]
+    assert nums == pytest.approx([52, 10 + (12 - 11.2 * 0.35 - 4.5) / 0.5, 2])
+    normal = [float(n) for n in re.findall(r"-?\d+(?:\.\d+)?", _explore_tier_fn("openIconTransform", "openIconTransform(10, 20, 1)"))]
+    assert normal == pytest.approx([26, 10 + 12 - 11.2 * 0.35 - 4.5, 1])
+
+
+@pytest.mark.parametrize(
+    "r,level,k,expected",
+    [
+        (6, "far", 0.2, 100),  # 20 px am Bildschirm = 20/k Graph-Einheiten
+        (6, "far", 0.5, 40),
+        (45, "far", 0.5, 53),  # r + 8 größer als 20/k
+        (6, "mid", 0.8, 14),
+        (6, "near", 1.3, 14),
+        (6, "close", 3, 14),
+    ],
+)
+def test_hit_radius_gives_20px_tap_target_at_far(r, level, k, expected):
+    assert _explore_tier_fn("hitRadiusFor", f"hitRadiusFor({r}, '{level}', {k})") == pytest.approx(expected)
+
+
+def _explore_source() -> str:
+    return (STATIC_DIR / "explore.js").read_text()
+
+
+def test_stop_photo_loading_interrupts_transitions_and_clears_all_timers():
+    js = _explore_source()
+    stop = re.search(r"function stopPhotoLoading\(\) \{.*?\n\}", js, re.S).group(0)
+    assert stop.index("svg.interrupt()") < stop.index("photoTimers.forEach(clearTimeout)")
+    assert "clearTimeout(photoDebounce)" in stop
+    assert "clearTimeout(searchZoomTimer)" in stop
+    assert re.search(r"^let searchZoomTimer", js, re.M), "searchZoomTimer muss Modul-Variable sein."
+
+
+def test_explore_rerenders_on_real_size_change_only_debounced():
+    """Nur Breitenwechsel baut neu: am Handy ändert die Adressleiste beim
+    Scrollen nur die Höhe - ein Neuaufbau würde Zoom und Auswahl verwerfen."""
+    js = _explore_source()
+    assert "addEventListener('resize'" in js
+    assert "orientationchange" in js
+    handler = re.search(r"function onWrapResize\(\) \{.*?\n\}", js, re.S)
+    assert handler, "onWrapResize fehlt."
+    body = handler.group(0)
+    assert "clientWidth" in body
+    assert "clientHeight" not in body, "Höhenänderung (mobile Adressleiste) darf nicht neu bauen."
+    assert "200" in js[js.index("function onWrapResize") - 400 : js.index("function onWrapResize") + len(body)]
+
+
+def test_within_far_only_scaling_is_updated_not_reset_and_filtered():
+    js = _explore_source()
+    apply_level = re.search(r"function applyLevel\(level\) \{.*?\n  \}\n", js, re.S).group(0)
+    assert "setNodeScale(scaledNodes" in apply_level
+    assert "rescaleLabels()" not in apply_level
+
+
+def test_counter_scaled_labels_get_scaled_halo():
+    js = _explore_source()
+    scale = re.search(r"function setNodeScale\(sel, k\) \{.*?\n  \}\n", js, re.S).group(0)
+    assert "stroke-width" in scale and "3 / k" in scale and "null" in scale
+
+
+def test_explore_source_guards():
+    js = _explore_source()
+    # stopPhotoLoading im Leer-Zweig
+    empty = js[js.index("if (!filtered.nodes.length)") :]
+    assert "stopPhotoLoading()" in empty[: empty.index("return;")]
+    # _photoQueued-Reset vor dem Aufbau der Linien/Knoten
+    assert js.index("d._photoQueued = false") < js.index(".selectAll('line')")
+    # clearSelection() am Anfang des Such-Handlers
+    handler = js[js.index("currentSearchHandler = () =>") :]
+    assert handler.index("clearSelection()") < handler.index("normalizeSearch(d.label)")
+    # Fokus-Regeln nach den Stufen-Regeln
+    css = (STATIC_DIR / "style.css").read_text()
+    assert css.index(".explore-graph--focus .explore-node:not") > css.index(".explore-graph--mid .explore-node image")
+    assert css.index(".explore-graph--focus .explore-edge:not") > css.index(".explore-graph--near .explore-edge--tier-3")
+
+
+def test_focus_dimmed_nodes_ignore_clicks_and_focused_nodes_are_raised():
+    # Im Browser bestätigt (k=0.3, echte Daten): ohne das lagen 79 von 99 Open-Icons unter fremden Trefferkreisen.
+    css = (STATIC_DIR / "style.css").read_text()
+    assert re.search(r"\.explore-graph--focus \.explore-node--dimmed \{\s*pointer-events: none;", css)
+    assert ".raise()" in _explore_source()
+
+
+def _cull(boxes_expr: str):
+    return sorted(_explore_tier_fn("cullOverlappingLabels", f"Array.from(cullOverlappingLabels({boxes_expr}))"))
+
+
+def test_cull_overlapping_labels_empty_and_disjoint():
+    assert _cull("[]") == []
+    boxes = "[{id:'a',x:0,y:0,w:50,h:14},{id:'b',x:100,y:0,w:50,h:14},{id:'c',x:0,y:40,w:50,h:14}]"
+    assert _cull(boxes) == ["a", "b", "c"]
+
+
+def test_cull_overlapping_labels_first_box_wins():
+    boxes = "[{id:'a',x:0,y:0,w:50,h:14},{id:'b',x:30,y:5,w:50,h:14},{id:'c',x:60,y:5,w:50,h:14}]"
+    # b schneidet a (fällt weg); c schneidet nur b, das nicht behalten wurde -> bleibt.
+    assert _cull(boxes) == ["a", "c"]
+
+
+def test_cull_overlapping_labels_keeps_a_gap_of_2px():
+    # b beginnt 1 px nach dem Ende von a: weniger als 2 px Abstand -> weg; c mit 3 px Abstand bleibt.
+    assert _cull("[{id:'a',x:0,y:0,w:50,h:14},{id:'b',x:51,y:0,w:50,h:14}]") == ["a"]
+    assert _cull("[{id:'a',x:0,y:0,w:50,h:14},{id:'c',x:53,y:0,w:50,h:14}]") == ["a", "c"]
+
+
+def test_cull_overlapping_labels_does_not_mutate_input():
+    result = _run_explore_js_function(
+        r"function cullOverlappingLabels\(.*?\n\}",
+        "(() => { const b = [{id:'a',x:0,y:0,w:50,h:14},{id:'b',x:10,y:0,w:50,h:14}]; const before = JSON.stringify(b); cullOverlappingLabels(b); return JSON.stringify(b) === before; })()",
+    )
+    assert result is True
+
+
+def test_culled_label_rule_hides_label_and_icon_after_focus_rules():
+    css = (STATIC_DIR / "style.css").read_text()
+    rule = re.search(r"#explore-graph \.explore-node--label-culled \.explore-node-label,\s*#explore-graph \.explore-node--label-culled \.explore-node-open-icon \{\s*display: none;", css)
+    assert rule, "Regel für ausgeblendete Namen fehlt."
+    assert rule.start() > css.index(".explore-graph--focus .explore-edge:not")
+
+
+def test_explore_legend_zoom_hint_is_translated_and_appended():
+    js_source = (STATIC_DIR / "explore.js").read_text()
+    assert "explore.legendZoomHint" in js_source
+    for lang in ("de", "en"):
+        assert json.loads((STATIC_DIR / "i18n" / f"{lang}.json").read_text())["explore.legendZoomHint"]
 
 
 # Nutzerwunsch (2026-08-26): Autor:innen/Schlagworte im Explore-Netzwerk

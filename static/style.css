@@ -4783,6 +4783,57 @@ details a {
   stroke: var(--color-text);
 }
 
+/* Idee d24b4276: Detailgrad nach Zoomstufe (explore.js: zoomLevelFor setzt
+   .explore-graph--far|mid|near|close am svg). Versteckte Elemente bekommen
+   display:none, damit der Browser sie weder layoutet noch zeichnet.
+   Nutzervorgabe: markante Knoten (.explore-node--prominent) behalten auf
+   jeder Stufe ihren Namen. :where() hält die Verbergen-Regeln niedrig
+   spezifisch, damit die Fokus-Regeln darunter sie sicher überstimmen. */
+.explore-node-hit {
+  fill: transparent;
+  pointer-events: all;
+}
+
+.explore-graph--far .explore-edge--tier-2,
+.explore-graph--far .explore-edge--tier-3,
+.explore-graph--mid .explore-edge--tier-3,
+.explore-graph--near .explore-edge--tier-3 {
+  display: none;
+}
+
+.explore-graph--far .explore-node:where(:not(.explore-node--prominent)) .explore-node-label,
+.explore-graph--mid .explore-node:where(:not(.explore-node--prominent):not(.explore-node--label-tier-1)) .explore-node-label {
+  display: none;
+}
+
+.explore-graph--far .explore-node image,
+.explore-graph--mid .explore-node image {
+  display: none;
+}
+
+/* Fokus (Auswahl/Suche ab 3 Zeichen): nicht gedimmte Knoten zeigen ihren
+   Namen, nicht gedimmte Linien bleiben sichtbar - auf jeder Stufe. */
+.explore-graph--focus .explore-node:not(.explore-node--dimmed) .explore-node-label {
+  display: inline;
+}
+
+.explore-graph--focus .explore-edge:not(.explore-edge--dimmed) {
+  display: inline;
+}
+
+/* Bei far ausgedünnte (sich überlappende) Namen samt Open-Icon - nach den
+   Fokus-Regeln; #explore-graph hebt die Spezifität über sie. */
+#explore-graph .explore-node--label-culled .explore-node-label,
+#explore-graph .explore-node--label-culled .explore-node-open-icon {
+  display: none;
+}
+
+/* Im Fokus fangen gedimmte Knoten keine Klicks ab (bei far überdecken ihre
+   großen Trefferkreise sonst die Open-Icons der Nachbarn). */
+.explore-graph--focus .explore-node--dimmed {
+  pointer-events: none;
+}
+
 /* Nutzerwunsch (2026-08-26): Kreativ-Modus - eigene, klar abgetrennte Seite
    (siehe creative.html/creative.js). Warnfarbe statt der neutralen Akzent-
    farbe für den Hinweisbanner, da bewusst ein anderer Vertrauensmodus als
