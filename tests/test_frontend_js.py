@@ -6191,3 +6191,32 @@ const strip = all(b, (n) => n.className === 'source-image-strip')[0];
 console.log(JSON.stringify(all(strip, (n) => n.tag === 'img').map((i) => i.src)));
 """, lang="en")
     assert result == [_src(2)]
+
+
+# --- KI-Hinweis nach Art. 50 KI-Verordnung (Idee 36bb9a6e) ---
+
+
+@pytest.mark.parametrize(
+    "filename,form_pattern,textarea_id,notice_id,key",
+    [
+        ("index.html", r'<form id="question-form".*?</form>', "question", "ai-notice", "index.aiNotice"),
+        ("embed.html", r'<form id="question-form".*?</form>', "question", "ai-notice", "index.aiNotice"),
+        ("creative.html", r'<div class="creative-submit-row">.*?</div>', "creative-instruction", "creative-ai-notice", "creative.aiNotice"),
+    ],
+)
+def test_ai_notice_below_input_and_linked_for_screen_readers(filename, form_pattern, textarea_id, notice_id, key):
+    html = (STATIC_DIR / filename).read_text()
+    notice = re.search(rf'<p id="{notice_id}" class="ai-notice" data-i18n="{re.escape(key)}"></p>', html)
+    assert notice, f"KI-Hinweis fehlt in {filename}."
+    container = re.search(form_pattern, html, re.S)
+    assert container and notice.start() > container.end(), f"KI-Hinweis muss in {filename} nach dem Eingabebereich stehen, nicht darin."
+    textarea = re.search(rf'<textarea\s+id="{textarea_id}"[^>]*>', html, re.S)
+    assert textarea and f'aria-describedby="{notice_id}"' in textarea.group(0)
+    for lang in ("de", "en"):
+        messages = json.loads((STATIC_DIR / "i18n" / f"{lang}.json").read_text())
+        assert messages.get(key, "").strip(), f"{key} fehlt in {lang}.json"
+
+
+@pytest.mark.parametrize("filename", ["datenschutz.html", "privacy.html"])
+def test_privacy_policy_names_ai_act(filename):
+    assert "2024/1689" in (STATIC_DIR / filename).read_text()

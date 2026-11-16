@@ -243,6 +243,11 @@ oder Claude nutzen – für einen kleinen, eingeladenen Kreis mit der Rolle
   Deutsch oder Englisch und mit abschaltbarer Websuche (Standard: an).
   Ergebnis ist Markdown mit Quellenliste – dieselbe Logik wie in der
   Oberfläche.
+- Jedes Ergebnis endet mit der Zeile „KI-generiert (BetaCodex Chat)“
+  bzw. „AI-generated (BetaCodex Chat)“ (Hinweis nach Art. 50
+  KI-Verordnung). `revise_text` entfernt diese Zeile aus dem eingehenden
+  Text, damit sie nicht doppelt erscheint. Im Web steht ein KI-Hinweis unter
+  den Eingabefeldern von Chat, Embed und Kreativ-Modus.
 - Persönliche Schlüssel auf der Seite „MCP-Zugänge“ (Link im
   Login-Menü): beliebig viele je Konto (z. B. „Laptop“, „Claude Code“),
   einzeln widerrufbar, nur einmal im Klartext sichtbar und nur als Hash
@@ -679,6 +684,7 @@ Commit-/Tag-Nachrichten in Git.
 
 | Version | Wesentliche Änderungen |
 |---|---|
+| v0.96.0 | **KI-Hinweis nach EU AI Act** (Idee 36bb9a6e): Unter dem Fragefeld (Chat und Embed) steht „KI-erzeugte Antworten können Fehler enthalten.“, im Kreativ-Modus unter der Absende-Zeile „Texte erzeugt eine KI. Prüfe sie vor der Veröffentlichung.“ (DE/EN, per `aria-describedby` auch für Screenreader). Alle MCP-Ergebnisse enden mit „KI-generiert (BetaCodex Chat)“ bzw. „AI-generated (BetaCodex Chat)“; `revise_text` entfernt eine mitgeschickte Schlusszeile, damit sie nicht doppelt erscheint. Datenschutzerklärung DE/EN nennt Art. 50 KI-Verordnung (EU) 2024/1689, Stand November 2026. **Warum:** Art. 50 KI-VO verlangt seit 2. August 2026, dass Nutzer:innen erkennen, dass sie mit einer KI interagieren. |
 | v0.95.5 | **Schnelleres Deployment** (Fix, Idee 2aff0aa3): Die Pipeline vom Tag bis live soll höchstens 2 Minuten dauern statt etwa 3 bis 7. Die installierten Pakete und das Embedding-Modell kommen aus einem Zwischenspeicher, den main-Pushes und ein täglicher Lauf füllen. pytest läuft parallel auf allen Kernen (`-n auto`), mit allen 2106 Tests. Ein neuer Test sichert, dass nur Tags deployen und nie ohne grüne Tests. |
 | v0.95.4 | **Startseite und Kreativmodus am Handy** (Fix): Das Mint-Band der Startseite reicht auch mobil bis zum Footer. Im Dark Mode ist das Mint gedämpft statt kaltgrün. Die drei Schritte im Kreativmodus stehen am Handy kompakt (Ziffer neben dem Text), der Erklärbereich ist etwa halb so hoch. |
 | v0.95.3 | **Bilder schnell nachholen** (Fix zu Idee fe44f080): Der Admin-Reindex kann mit `?images_only=true` nur die fehlenden Bilder nachholen, ohne alle Quellen neu einzubetten – Minuten statt über einer Stunde. Der volle Lauf wurde am 16.11.2026 zweimal von Deploys abgebrochen. |
