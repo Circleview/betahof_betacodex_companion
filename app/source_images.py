@@ -78,6 +78,20 @@ def is_safe_https(url) -> bool:
     return parts.scheme == "https" and bool(parts.hostname) and not parts.username and not parts.password
 
 
+# Fix v0.94.1: Wix liefert auf Seiten nur kleine, weichgezeichnete Vorschauen
+# (/v1/fill/w_300,…,blur_2…). Die Bilder-Adresse wird auf eine 1200-px-Fassung
+# ohne Weichzeichner umgeschrieben (Wix rechnet sie selbst, kein Abruf von uns).
+_WIX_RE = re.compile(r"^https://static\.wixstatic\.com/media/([^/?#]+)(?:/v1/[^?#]*)?$")
+
+
+def upgrade_image_url(url: str) -> str:
+    match = _WIX_RE.match(url)
+    if not match:
+        return url
+    name = match.group(1)
+    return f"https://static.wixstatic.com/media/{name}/v1/fit/w_1200,h_1200,q_85/{name}"
+
+
 def sanitize_web_images(items) -> list[dict]:
     """Erneuter Server-Filter für Web-Bilder: nur https-`url`-Einträge."""
     out = []
@@ -86,7 +100,7 @@ def sanitize_web_images(items) -> list[dict]:
             out.append(
                 {
                     "kind": "url",
-                    "url": item["url"],
+                    "url": upgrade_image_url(item["url"]),
                     "alt": str(item.get("alt") or "")[:ALT_MAX],
                     "anchor": str(item.get("anchor") or ""),
                 }

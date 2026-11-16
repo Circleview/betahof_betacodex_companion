@@ -4675,7 +4675,7 @@ def _question_js_consts(*names: str) -> str:
 
 
 def _run_question_js(body: str, *funcs: str):
-    consts = _question_js_consts("INLINE_MARKER_RE") if "placeInlineImage" in funcs else ""
+    consts = _question_js_consts("INLINE_MARKER_RE", "MIN_INLINE_IMAGE_PX") if "placeInlineImage" in funcs else ""
     script = f"{_FAKE_DOM_JS}\n{_source_lang_js()}\n{consts}\n{_question_js_funcs(*funcs)}\n{body}"
     return _run_node(script)
 

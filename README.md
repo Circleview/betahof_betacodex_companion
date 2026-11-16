@@ -70,8 +70,11 @@ Assistent das offen, statt zu spekulieren.
   nur bei klarem Bezug; ohne Reindex, restricted-Grenze gilt weiter).
   Das Bild darf aus jedem gefundenen Ausschnitt kommen, auch wenn die Antwort
   dessen Quelle nicht zitiert; die Bildunterschrift nennt die Quelle.
-- Bildleiste: Zitiert eine Antwort Quellen mit Bildern, zeigt der Chat bis zu
-  6 davon (Bildunterschrift = Quelle, bei PDFs mit Seite, Klick öffnet die
+  Ist das geladene Bild schmaler als 480 px, wandert es aus dem Text in die
+  Bildleiste (zu unscharf). Wix-Vorschauen (300 px, weichgezeichnet) werden
+  beim Import und bei jeder Abfrage durch eine 1200-px-Fassung ersetzt.
+- Bildleiste: Zeigt bis zu 6 Bilder – zuerst aus den zitierten Quellen, dann
+  aus den übrigen gefundenen (Bildunterschrift = Quelle, bei PDFs mit Seite, Klick öffnet die
   Quelle). Web-Bilder bleiben Links auf den Server der Quelle, PDF-Grafiken
   liegen verkleinert (WebP, ohne Metadaten) auf dem eigenen Server; bei
   eingeschränkten Quellen höchstens 1 Bild je Antwort. Ältere Quellen holt der
@@ -650,6 +653,7 @@ Commit-/Tag-Nachrichten in Git.
 
 | Version | Wesentliche Änderungen |
 |---|---|
+| v0.94.2 | **Scharfe Bilder, volle Bildleiste** (Fix zu Idee fe44f080): Wix-Seiten lieferten als Bild nur eine weichgezeichnete 300-px-Vorschau; Bild-Adressen von Wix zeigen jetzt auf eine 1200-px-Fassung, auch für schon importierte Quellen. Ein Inline-Bild unter 480 px Breite wandert in die Bildleiste statt unscharf im Text zu stehen. Die Bildleiste zeigt nach den zitierten auch die übrigen gefundenen Quellen. Der Admin-Reindex prüft Quellen erneut, deren Bildsuche vor dem 16.11.2026 nichts fand. |
 | v0.94.1 | **Kein Web-Crawl auf Dev-Servern**: Der wöchentliche Allowlist-Crawl startete bei jedem lokalen Serverstart sofort und lief als eigener Unterprozess nach dem Beenden des Servers weiter; verwaiste Crawls blockierten das Beenden von Claude-Sitzungen. Lokale Server mit `ENVIRONMENT=development` crawlen jetzt nicht, die Produktion unverändert wöchentlich. |
 | v0.94.0 | **Bild direkt in der Antwort** (Idee fe44f080, Vorbild ChatGPT): Passt ein Bild aus den gefundenen Quellen klar zur Antwort, steht höchstens eines direkt unter dem passenden Absatz, mit Quelle als Bildunterschrift; in der Bildleiste erscheint es nicht noch einmal. Während die Antwort entsteht, hält eine schimmernde Platzhalter-Fläche den Platz (ohne Schimmer bei „Bewegung reduzieren“). Das Modell sieht je Bild einen Marker mit gekürzter, bereinigter Beschreibung, nie die Adresse; der Server lässt nur einen gültigen Marker stehen und entfernt ihn aus Kopieren, Vorlesen, MCP, Fragen-Log, Feedback und Verlauf. Bilder, die beim Indexieren keinem Ausschnitt zugeordnet wurden (22 % lokal), bietet der Server über die Quelle an – ohne Reindex. Das Bild darf aus jedem gefundenen Ausschnitt kommen; ein kurzer Bild-Hinweis an das Modell sorgt dafür, dass Haiku passende Bilder auch setzt. |
 | v0.93.1 | **Feinschliff Designsystem + Audit** (Idee 51159895): Zitat-Stelle als Textmarker in dunklerem Mint, Sticky-Header vollbreit weiß ohne Haarlinie auf Seiten mit Farbband, keine Footer-Linie unter dem Startband. Aus dem impeccable-Audit: Fragefeld höchstens 40 % der Fensterhöhe (Senden bleibt sichtbar), Kreativ-Hinweislink im Dunkelmodus ≥ 4,5, Trefferflächen ≥ 24 px für Sprachumschalter, Buchstabenleiste und Neu-Knopf, Markenname bei 200 % Zoom vollständig, Landmarken main/nav und Labels für Screenreader. Fix: der eingebettete Chat meldet seine Höhe wieder an die Gastseite (das Inline-Skript war durch die CSP blockiert, jetzt `embed-resize.js`). |

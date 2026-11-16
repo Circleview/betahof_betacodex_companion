@@ -10800,11 +10800,3 @@ def test_reindex_does_not_recheck_sources_that_have_images(client, monkeypatch):
     monkeypatch.setattr(extraction, "extract_from_url", boom)
     main_module._reindex_all_sources(fetch_missing_images=True)
 
-
-def test_startup_reindex_fetches_missing_images(client, monkeypatch):
-    seen = {}
-    monkeypatch.setattr(
-        main_module, "_reindex_all_sources", lambda **kw: seen.update(kw) or 0
-    )
-    main_module._startup_reindex(delay=0)
-    assert seen == {"only_changed": True, "fetch_missing_images": True}

@@ -1048,7 +1048,7 @@ function safeImageSrc(value) {
 // Eine Bildfigur (Bildleiste und Inline-Bild): Bild + Unterschrift mit Quellentitel,
 // verlinkt auf die Quelle (PDF mit #page). Nur DOM-API, nie innerHTML (Alt/Titel
 // sind fremder Inhalt). inline: eigenes Skeleton bis das Bild geladen ist.
-function buildImageFigure({ src, alt, page }, source, { inline = false, onError } = {}) {
+function buildImageFigure({ src, alt, page }, source, { inline = false, onError, onLoad } = {}) {
   const figure = document.createElement('figure');
   figure.className = inline ? 'inline-source-image is-loading' : 'source-image';
   if (inline) figure.dataset.src = src;
@@ -1061,7 +1061,12 @@ function buildImageFigure({ src, alt, page }, source, { inline = false, onError 
     figure.remove();
     if (onError) onError();
   });
-  if (inline) img.addEventListener('load', () => figure.classList.remove('is-loading'));
+  if (inline) {
+    img.addEventListener('load', () => {
+      figure.classList.remove('is-loading');
+      if (onLoad) onLoad(img);
+    });
+  }
   const caption = document.createElement('figcaption');
   caption.textContent =
     page === null ? displayTitle(source) : `${displayTitle(source)} · ${t('index.sourceImagePage', { n: page })}`;
@@ -1156,6 +1161,8 @@ function buildImagePlaceholder() {
 // Setzt Figur (sources) bzw. Platzhalter (sources === null) hinter den Absatz
 // mit dem ersten Marker; alle Marker verschwinden. Unbekannte Marker, unsichere
 // src oder ausgeblendete Quelle: kein Bild.
+const MIN_INLINE_IMAGE_PX = 480;
+
 function placeInlineImage(bubble, sources) {
   const nodes = inlineMarkerNodes(bubble);
   if (!nodes.length) return;
@@ -1174,7 +1181,16 @@ function placeInlineImage(bubble, sources) {
       element = buildImageFigure(
         { src, alt: image.alt || '', page: Number.isInteger(image.page) ? image.page : null },
         source,
-        { inline: true }
+        {
+          inline: true,
+          // Fix v0.94.1: zu kleine Bilder (z. B. 300-px-Vorschauen) wirken im
+          // Text unscharf - sie wandern in die Bildleiste.
+          onLoad: (img) => {
+            if (img.naturalWidth >= MIN_INLINE_IMAGE_PX) return;
+            element.remove();
+            refreshImageStrip(bubble, extractCitedSources(bubble, sources), sources);
+          },
+        }
       );
     }
   }
@@ -1628,14 +1644,17 @@ function attachAnswerSources(bubble, sources) {
   cited.forEach((s) => {
     conversationCitedSources.set(s.source_id, s);
   });
-  refreshImageStrip(bubble, cited);
+  refreshImageStrip(bubble, cited, sources);
 }
 
 // Ersetzt die Bildleiste der Bubble (nie zwei Leisten; ohne Bilder keine).
-function refreshImageStrip(bubble, cited) {
+// Fix v0.94.1: nach den zitierten Quellen auch die übrigen gefundenen
+// (das Inline-Bild darf ebenfalls von dort kommen); ausgeblendete nie.
+function refreshImageStrip(bubble, cited, found = []) {
   bubble.querySelectorAll('.source-image-strip').forEach((el) => el.remove());
   const inline = bubble.querySelectorAll('.inline-source-image')[0];
-  const strip = buildImageStrip(cited, inline && inline.dataset.src);
+  const others = found.filter((s) => !cited.includes(s) && !isHiddenForLang(s));
+  const strip = buildImageStrip([...cited, ...others], inline && inline.dataset.src);
   if (strip) bubble.appendChild(strip);
 }
 
@@ -1646,7 +1665,7 @@ function applyDoneImages(bubble, earlySources, doneSources) {
   doneSources.forEach((s, i) => {
     if (earlySources[i]) earlySources[i].images = s.images;
   });
-  refreshImageStrip(bubble, extractCitedSources(bubble, earlySources));
+  refreshImageStrip(bubble, extractCitedSources(bubble, earlySources), earlySources);
 }
 
 // Gemeinsame Rendering-Logik für eine Antwort-Bubble beim Wiederherstellen
