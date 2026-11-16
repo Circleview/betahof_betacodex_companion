@@ -145,6 +145,16 @@ Assistent das offen, statt zu spekulieren.
   bekommt keinen eigenen Knoten – die Verbindung geht direkt zum
   bestehenden Autor:innen-Knoten. Ein Klick darauf zeigt sowohl eigene
   Texte als auch Texte, die die Person nur erwähnen (als solche markiert).
+- Detailgrad nach Zoomstufe (weit, mittel, nah, ganz nah): weit
+  herausgezoomt zeigt das Netzwerk nur die stärkste Linie je Knoten, keine
+  Fotos und nur die Namen der je 8 markantesten Autor:innen und
+  Schlagworte (auf Bildschirmgröße gegenskaliert, ca. 11 px); je weiter
+  hineingezoomt, desto mehr Linien, Namen und Fotos (Standardansicht
+  unter 800 Linien). Fotos laden erst ab "nah", nur im sichtbaren
+  Ausschnitt, in 4er-Gruppen. Ausgewählte Knoten und Suchtreffer (ab drei
+  Zeichen) zeigen Namen und Linien auf jeder Stufe. Ein unsichtbarer,
+  größerer Trefferkreis erleichtert das Antippen auf dem Handy; die
+  Legende nennt den Zoom-Hinweis.
 - Beim Laden zeigt sich zuerst kurz das komplette, bereits eingeschwungene
   Netzwerk, dann zoomt die Ansicht sanft auf die Standardstufe – kein
   sichtbares "Zittern" der Simulation mehr.
