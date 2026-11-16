@@ -2829,6 +2829,13 @@ def test_explore_source_guards():
     assert css.index(".explore-graph--focus .explore-edge:not") > css.index(".explore-graph--near .explore-edge--tier-3")
 
 
+def test_focus_dimmed_nodes_ignore_clicks_and_focused_nodes_are_raised():
+    # Im Browser bestätigt (k=0.3, echte Daten): ohne das lagen 79 von 99 Open-Icons unter fremden Trefferkreisen.
+    css = (STATIC_DIR / "style.css").read_text()
+    assert re.search(r"\.explore-graph--focus \.explore-node--dimmed \{\s*pointer-events: none;", css)
+    assert ".raise()" in _explore_source()
+
+
 def test_explore_legend_zoom_hint_is_translated_and_appended():
     js_source = (STATIC_DIR / "explore.js").read_text()
     assert "explore.legendZoomHint" in js_source

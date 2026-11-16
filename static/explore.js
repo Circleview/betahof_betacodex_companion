@@ -40,11 +40,15 @@ let currentSearchHandler = null;
 let photoTimers = [];
 let photoDebounce = null;
 let photoNextAt = 0;
+let searchZoomTimer = null;
+let lastWrapSize = '';
 
 function stopPhotoLoading() {
+  svg.interrupt();
   photoTimers.forEach(clearTimeout);
   photoTimers = [];
   clearTimeout(photoDebounce);
+  clearTimeout(searchZoomTimer);
   photoNextAt = 0;
   svg.attr('class', null);
 }
@@ -307,6 +311,12 @@ function isFarScaledLabel(level, focusOn, dimmed, prominent) {
   return level === 'far' && (prominent || (focusOn && !dimmed));
 }
 
+// Trefferkreis-Radius in Graph-Einheiten: bei far mindestens 20 px am
+// Bildschirm (20 / k), sonst Radius + 8.
+function hitRadiusFor(radius, level, k) {
+  return level === 'far' ? Math.max(radius + 8, 20 / k) : radius + 8;
+}
+
 // Lage des Open-Icons rechts neben dem Namen; k > 1 nur bei gegenskaliertem
 // Namen (k = Zoomfaktor): Abstand und Größe wachsen mit 1/k mit.
 function openIconTransform(radius, halfWidth, k) {
@@ -367,6 +377,7 @@ function renderGraph(data) {
   const { nodes, edges } = data;
   const width = wrapEl.clientWidth;
   const height = wrapEl.clientHeight;
+  lastWrapSize = `${width}x${height}`;
 
   currentSimulation?.stop();
   stopPhotoLoading();
@@ -535,10 +546,10 @@ function renderGraph(data) {
 
   // Unsichtbarer, größerer Trefferkreis: bei weit herausgezoomter Ansicht
   // (Handy) ist der sichtbare Punkt zu klein zum sicheren Antippen.
-  node
+  const hitCircles = node
     .append('circle')
     .attr('class', 'explore-node-hit')
-    .attr('r', (d) => radiusFor(d) + 8);
+    .attr('r', (d) => hitRadiusFor(radiusFor(d), null, 1));
 
   node.append('circle').attr('class', 'explore-node-circle').attr('r', radiusFor);
 
@@ -662,9 +673,22 @@ function renderGraph(data) {
     rescaleLabels();
   }
 
+  // Trefferkreise: bei far >= 20 px am Bildschirm; im Fokus bleiben sie klein,
+  // sonst überdecken sie die Open-Icons der Nachbarn.
+  function updateHitCircles() {
+    const level = focusOn ? null : currentLevel;
+    const k = d3.zoomTransform(svg.node()).k;
+    hitCircles.attr('r', (d) => hitRadiusFor(radiusFor(d), level, k));
+  }
+
   function setFocus(on) {
     focusOn = on;
+    if (currentLevel === 'far') updateHitCircles();
     svg.classed('explore-graph--focus', on);
+    // Open-Icons nicht gedimmter Knoten dürfen nicht unter (großen, bei far)
+    // Trefferkreisen anderer Knoten liegen: nach oben holen (gedimmte sind
+    // per CSS pointer-events:none).
+    if (on) node.filter(function () { return !this.classList.contains('explore-node--dimmed'); }).raise();
     refreshActiveLinks();
   }
 
@@ -691,12 +715,17 @@ function renderGraph(data) {
   // Stolperstein: erst NACH label.each(getBBox) (siehe oben) aufrufen -
   // bei display:none liefert getBBox Breite 0 und das Open-Icon säße falsch.
   function applyLevel(level) {
+    const k = d3.zoomTransform(svg.node()).k;
     if (level !== currentLevel) {
+      const wasFar = currentLevel === 'far';
       currentLevel = level;
       ['far', 'mid', 'near', 'close'].forEach((l) => svg.classed(`explore-graph--${l}`, l === level));
       refreshActiveLinks();
+      if (level === 'far' || wasFar) updateHitCircles();
     } else if (level === 'far') {
-      rescaleLabels();
+      // Innerhalb far ändert sich nur k: nur neu skalieren, nicht neu filtern.
+      setNodeScale(scaledNodes, k);
+      updateHitCircles();
     }
   }
 
@@ -764,7 +793,6 @@ function renderGraph(data) {
   // (wirkt weiterhin schon ab dem ersten Zeichen), nur der Kameraschwenk
   // wartet auf mindestens drei Zeichen.
   const MIN_SEARCH_ZOOM_LENGTH = 3;
-  let searchZoomTimer = null;
 
   function zoomTo(transform) {
     svg.transition().duration(600).ease(d3.easeCubicOut).call(zoomBehavior.transform, transform);
@@ -815,6 +843,20 @@ async function loadGraph() {
     statusEl.classList.remove('hidden');
   }
 }
+
+// Idee d24b4276: Drehen/Größenänderung (Handy, Fenster) - das Netz kennt
+// width/height nur vom Aufbau; bei echter Änderung (debounced) neu bauen.
+let resizeTimer = null;
+function onWrapResize() {
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(() => {
+    if (!fullGraphData || wrapEl.classList.contains('hidden')) return;
+    if (`${wrapEl.clientWidth}x${wrapEl.clientHeight}` === lastWrapSize) return;
+    applyFiltersAndRender();
+  }, 200);
+}
+window.addEventListener('resize', onWrapResize);
+window.addEventListener('orientationchange', onWrapResize);
 
 loadGraph();
 

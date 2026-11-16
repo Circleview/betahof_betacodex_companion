@@ -4821,6 +4821,12 @@ details a {
   display: inline;
 }
 
+/* Im Fokus fangen gedimmte Knoten keine Klicks ab (bei far überdecken ihre
+   großen Trefferkreise sonst die Open-Icons der Nachbarn). */
+.explore-graph--focus .explore-node--dimmed {
+  pointer-events: none;
+}
+
 /* Nutzerwunsch (2026-08-26): Kreativ-Modus - eigene, klar abgetrennte Seite
    (siehe creative.html/creative.js). Warnfarbe statt der neutralen Akzent-
    farbe für den Hinweisbanner, da bewusst ein anderer Vertrauensmodus als
