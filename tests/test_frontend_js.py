@@ -2571,14 +2571,172 @@ def test_photo_images_do_not_set_href_synchronously_at_creation():
     )
 
 
-def test_photo_images_set_href_in_delayed_batches():
+def test_photos_load_in_delayed_batches_only_for_visible_nodes():
     js_source = (STATIC_DIR / "explore.js").read_text()
-    match = re.search(r"photoImages\.each\(function \(d, i\) \{.*?\n  \}\);", js_source, re.S)
-    assert match, "Das gestaffelte Setzen von href wurde in explore.js nicht gefunden."
+    match = re.search(r"function loadVisiblePhotos\(\) \{.*?\n  \}\n", js_source, re.S)
+    assert match, "loadVisiblePhotos wurde in explore.js nicht gefunden."
     batch_source = match.group(0)
     assert "setTimeout" in batch_source
     assert "PHOTO_LOAD_BATCH_SIZE" in batch_source
+    assert "nodesInViewport" in batch_source
+    assert "_photoQueued" in batch_source
     assert "setAttribute('href', d.photo_url)" in batch_source
+
+
+def test_photo_timers_are_cleared_on_rerender():
+    js_source = (STATIC_DIR / "explore.js").read_text()
+    match = re.search(r"function renderGraph\(data\) \{.*?svg\.selectAll\('\*'\)\.remove\(\);", js_source, re.S)
+    assert match, "renderGraph-Anfang wurde nicht gefunden."
+    assert "clearTimeout" in match.group(0)
+
+
+def _explore_tier_fn(name: str, call_expr: str):
+    return _run_explore_js_function(rf"function {name}\(.*?\n\}}", call_expr)
+
+
+@pytest.mark.parametrize(
+    "k,expected",
+    [(0.2, "far"), (0.59, "far"), (0.6, "mid"), (0.99, "mid"), (1.0, "near"), (1.79, "near"), (1.8, "close"), (4, "close")],
+)
+def test_zoom_level_for_thresholds(k, expected):
+    assert _explore_tier_fn("zoomLevelFor", f"zoomLevelFor({k})") == expected
+
+
+_EDGE_SAMPLE = """[
+  { source: 'a', target: 'b', weight: 5 },
+  { source: 'a', target: 'c', weight: 5 },
+  { source: 'b', target: 'c', weight: 1 },
+  { source: 'c', target: 'd', weight: 3 },
+  { source: 'd', target: 'e', weight: 2 },
+  { source: 'e', target: 'a', weight: 1 }
+]"""
+
+
+def test_edge_tiers_empty():
+    assert _explore_tier_fn("edgeTiers", "edgeTiers([], 800)") == []
+
+
+def test_edge_tiers_every_node_has_a_tier_1_edge_and_ties_pick_first():
+    result = _explore_tier_fn("edgeTiers", f"edgeTiers({_EDGE_SAMPLE}, 0)")
+    # a: stärkste Kante 0 (Gleichstand mit 1, erste gewinnt); b: Kante 0; c: Kante 1 (5);
+    # d: Kante 3 (3); e: Kante 4 (2).
+    assert result == [1, 1, 3, 1, 1, 3]
+
+
+def test_edge_tiers_tier_1_is_at_most_node_count():
+    result = _explore_tier_fn("edgeTiers", f"edgeTiers({_EDGE_SAMPLE}, 0)")
+    assert result.count(1) <= 5
+
+
+def test_edge_tiers_fills_tier_2_up_to_limit():
+    result = _explore_tier_fn("edgeTiers", f"edgeTiers({_EDGE_SAMPLE}, 5)")
+    assert result.count(1) + result.count(2) == 5
+    # Verbleibende Kante mit dem niedrigsten Gewicht (Index 2 oder 5): erste in Reihenfolge fällt in Stufe 2.
+    assert result == [1, 1, 2, 1, 1, 3]
+
+
+def test_edge_tiers_limit_larger_than_edge_count_leaves_no_tier_3():
+    result = _explore_tier_fn("edgeTiers", f"edgeTiers({_EDGE_SAMPLE}, 800)")
+    assert 3 not in result
+
+
+def test_edge_tiers_does_not_mutate_input():
+    result = _run_explore_js_function(
+        r"function edgeTiers\(.*?\n\}",
+        f"(() => {{ const e = {_EDGE_SAMPLE}; const before = JSON.stringify(e); edgeTiers(e, 5); return JSON.stringify(e) === before; }})()",
+    )
+    assert result is True
+
+
+def test_rank_tiers_empty():
+    assert _explore_tier_fn("rankTiers", "rankTiers([], [60])") == []
+
+
+def test_rank_tiers_fewer_values_than_limit_all_tier_1():
+    assert _explore_tier_fn("rankTiers", "rankTiers([1, 5, 3], [60])") == [1, 1, 1]
+
+
+def test_rank_tiers_exactly_limit_in_tier_1_and_stable_ties():
+    weights = [3, 3, 3, 1, 9]
+    result = _explore_tier_fn("rankTiers", f"rankTiers({weights}, [2])")
+    # Rang: 9 (Index 4), dann 3er in Reihenfolge (Index 0, 1, 2), dann 1 (Index 3).
+    assert result == [1, 2, 2, 2, 1]
+    assert result.count(1) == 2
+
+
+def test_rank_tiers_does_not_mutate_input():
+    result = _run_explore_js_function(
+        r"function rankTiers\(.*?\n\}",
+        "(() => { const w = [3, 1, 2]; rankTiers(w, [1]); return JSON.stringify(w); })()",
+    )
+    assert result == "[3,1,2]"
+
+
+def _prominent(nodes_expr: str, per_type: int):
+    return sorted(_explore_tier_fn("prominentNodeIds", f"Array.from(prominentNodeIds({nodes_expr}, {per_type}))"))
+
+
+def test_prominent_node_ids_per_type_limit():
+    nodes = (
+        "[...Array.from({length: 12}, (_, i) => ({ id: 'a' + i, type: 'author', weight: i })),"
+        " ...Array.from({length: 12}, (_, i) => ({ id: 't' + i, type: 'term', weight: i + 100 }))]"
+    )
+    result = _prominent(nodes, 3)
+    assert result == sorted(["a11", "a10", "a9", "t11", "t10", "t9"])
+
+
+def test_prominent_node_ids_fewer_nodes_than_limit_returns_all():
+    nodes = "[{ id: 'a', type: 'author', weight: 1 }, { id: 't', type: 'term', weight: 1 }]"
+    assert _prominent(nodes, 8) == ["a", "t"]
+
+
+def test_prominent_node_ids_only_authors():
+    nodes = "[{ id: 'a1', type: 'author', weight: 1 }, { id: 'a2', type: 'author', weight: 2 }, { id: 'a3', type: 'author', weight: 3 }]"
+    assert _prominent(nodes, 2) == ["a2", "a3"]
+
+
+def test_prominent_node_ids_ties_are_stable():
+    nodes = "[{ id: 'x', type: 'term', weight: 2 }, { id: 'y', type: 'term', weight: 2 }, { id: 'z', type: 'term', weight: 2 }]"
+    assert _prominent(nodes, 2) == ["x", "y"]
+
+
+def test_prominent_node_ids_empty_and_no_mutation():
+    assert _prominent("[]", 8) == []
+    result = _run_explore_js_function(
+        r"function prominentNodeIds\(.*?\n\}",
+        "(() => { const n = [{ id: 'a', type: 'term', weight: 1 }, { id: 'b', type: 'term', weight: 5 }]; prominentNodeIds(n, 1); return n.map((x) => x.id).join(); })()",
+    )
+    assert result == "a,b"
+
+
+def _in_viewport(nodes_expr: str, t_expr: str, margin: int = 100):
+    return _explore_tier_fn("nodesInViewport", f"nodesInViewport({nodes_expr}, {t_expr}, 1000, 600, {margin}).map((d) => d.id)")
+
+
+def test_nodes_in_viewport_center_inside():
+    assert _in_viewport("[{ id: 'c', x: 500, y: 300 }]", "{ x: 0, y: 0, k: 1 }") == ["c"]
+
+
+def test_nodes_in_viewport_margin_and_far_away():
+    nodes = "[{ id: 'edge', x: -50, y: 300 }, { id: 'far', x: -500, y: 300 }, { id: 'below', x: 500, y: 650 }]"
+    assert _in_viewport(nodes, "{ x: 0, y: 0, k: 1 }") == ["edge", "below"]
+
+
+def test_nodes_in_viewport_scaled_and_translated():
+    # k=2, Verschiebung -800: Knoten x=450 -> 100 (drin), x=100 -> -600 (draußen), x=900 -> 1000 (drin).
+    nodes = "[{ id: 'in', x: 450, y: 150 }, { id: 'out', x: 100, y: 150 }, { id: 'in2', x: 900, y: 150 }]"
+    assert _in_viewport(nodes, "{ x: -800, y: 0, k: 2 }") == ["in", "in2"]
+
+
+def test_nodes_in_viewport_undefined_position_is_excluded():
+    assert _in_viewport("[{ id: 'u' }, { id: 'v', x: 10 }]", "{ x: 0, y: 0, k: 1 }") == []
+
+
+def test_explore_legend_zoom_hint_is_translated_and_appended():
+    js_source = (STATIC_DIR / "explore.js").read_text()
+    assert "explore.legendZoomHint" in js_source
+    for lang in ("de", "en"):
+        assert json.loads((STATIC_DIR / "i18n" / f"{lang}.json").read_text())["explore.legendZoomHint"]
 
 
 # Nutzerwunsch (2026-08-26): Autor:innen/Schlagworte im Explore-Netzwerk
