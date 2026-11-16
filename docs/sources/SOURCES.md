@@ -6,7 +6,7 @@ All curated sources, sorted by the (first) author's last name. Full texts are de
 
 License: [CC BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/), attribution “BetaCodex Chat (https://companion.betahof.com)” – see [LICENSE.md](LICENSE.md). Machine-readable: [sources.json](sources.json).
 
-Number of sources: 374
+Number of sources: 421
 
 ### Ackoff, Russell – Systems explained
 
@@ -80,6 +80,14 @@ Date: 2026-07-25 · Link: <https://betacodex.org/learning-beta>
 
 > The BetaCodex Network adopts a critical stance toward traditional learning. It rejects conventional training formats as ineffective and proposes diverse alternatives instead. For personal learning, it recommends online resources, books, community platforms, and network projects. For teams and organizations, the network offers specialized formats: thought clinics in collaborative format without lectures, courses and masterclasses from partners, impulse sessions and interactive workshops. Additionally, social technologies such as OpenSpace Beta, Cell Structure Design, and Relative Targets are provided to implement Beta principles practically. Knowledge conferences and consulting services complete the offering.
 
+### betacodex.org – OpenSpace DEV
+
+Date: 2026-11-16 · Link: <https://betacodex.org/betacodex/openspace-dev>
+
+**Summary (AI-generated):**
+
+> OpenSpace DEV is a specialized adaptation of OpenSpace Technology designed for organizational development and transformation. Developed by Silke Hermann and Niels Pflaeging (Red42) from 2011 onwards and published in 2025 under CC BY-SA 4.0 license, OpenSpace DEV enables large groups of 50 to tens of thousands to work together on change initiatives. The method differs from classical OpenSpace through 14 distinctive characteristics, including a central Sponsor role, pre-meeting online session generation, structured documentation, and a follow-up Prep Day. OpenSpace DEV enables organizations to conduct development work quickly, collaboratively, and with explicit agreements and structured work streams. Unity emerges from joint action rather than advance planning.
+
 ### betacodex.org – Relative Targets - How to bring about a BetaCodex performance system?
 
 Date: 2021-01-01 · Link: <https://betacodex.org/relative-targets>
@@ -103,6 +111,14 @@ Date: – · Link: <https://betacodex.org/origins-of-the-network>
 **Summary (AI-generated):**
 
 > In 1998, Englishmen Robin Fraser, Jeremy Hope, and Peter Bunce founded the Beyond Budgeting Round Table (BBRT) to research alternatives to traditional budget-driven management. Through seven years of case studies at companies like Handelsbanken, AES, and Borealis, a new management model was developed. However, Fraser later recognized that the theoretical solution proved insufficient: organizations admired the concept but failed to implement it practically. This led to identifying a second challenge—how to actually execute transformation. Since 2004, the BetaCodex Network, the BBRT's successor, develops practical tools and methods for implementation. The BetaCodex is open, collaborative, and non-commercial, using "open-source" principles and global collaboration to support organizations in achieving genuine transformation.
+
+### betacodex.org – Time-Oriented Software Development
+
+Date: 2026-11-16 · Link: <https://betacodex.org/betacodex/tosd>
+
+**Summary (AI-generated):**
+
+> Time-Oriented Software Development (TOSD) is a new social technology of the BetaCodex for agile software development, published in 2025 by Niels Pflaegling and Sebastian Kubsch as open-source. TOSD revolutionizes software development through a fundamental paradigm shift: delivery time is fixed, capacity swings – not vice versa. Instead of estimating tasks, they are adapted to fit the timeframe. The system is based on the 12 principles of the BetaCodex and 7 TOSD principles, including time-orientation, flow with OK Point, and transparency. TOSD requires no complex roles, certifications, or scaling frameworks typical of traditional agile approaches. Implementation takes only weeks and requires only consensus-building and simple process understanding.
 
 ### betacodex.org – Welcome to the BetaWorld, where freedom at work is.
 
@@ -576,6 +592,14 @@ Date: 2022-06-26 · Link: <https://www.if-gm.de/photos/forschungsprojekte/projek
 
 > The text addresses challenges in the German healthcare system due to demographic change and labor shortages. By 2030, approximately 404,000 full-time positions in nursing care will be vacant. High early retirement rates and low employee engagement reflect problems with traditional management approaches. The article examines new organizational forms such as "Reinventing Organizations" and the Dutch Buurtzorg model as potential solutions. These hierarchy-free organizations enable better work-life balance and increased employee satisfaction. The aim is to assess the transferability of these innovative concepts to the German healthcare system, considering value shifts in society and identifying structural factors that facilitate or hinder implementation.
 
+### Hermann, Silke; Niels Pflaeging – BetaCodex Konzeptübersichten
+
+Date: 2024-10-01 · Link: <https://betacodex.org/fileadmin/user_upload/Downloads/BetaCodex_Concept_overviews_DE.pdf>
+
+**Summary (AI-generated):**
+
+> The BetaCodex is an open-source socio-technology framework containing twelve principles for organizational transformation. The core concept contrasts beta organizations (self-organization, transparency, autonomy) with alpha organizations (command-and-control). Cell Structure Design divides organizations into periphery and center cells: periphery cells maintain market contact and autonomy, while center cells provide support. Relative Targets are key, replacing fixed targets through transparency and value creation accounting. OpenSpace Beta is a 90-day transformation process with two OpenSpace meetings that engages employees, practices beta patterns, and accelerates learning. The methodology combines proven principles (decentralization, participation, self-responsibility) with practical implementation tools.
+
 ### Hermann, Silke; Niels Pflaeging – Die Zukunft des Organisationslernens ist diskursiv & selbstorganisiert
 
 Date: 2021-12-04 · Link: <https://www.qomenius.com/de/post/bestimmt-informationstechnologie-unser-gesamtes-leben-ein-kritischer-blick-auf-den-alltag-im-21-ja>
@@ -591,14 +615,6 @@ Date: 2025-05-01 · Link: <https://vimeo.com/1090003146>
 **Summary (AI-generated):**
 
 > Silke Hermann presents her perspective on power in organizations at the in_between Conference 2025. Drawing on Mary Parker-Follett, a pioneer in organizational development, Hermann distinguishes between "power over" (steering power) and "power with" (shaping power). She analyzes three organizational structures: formal hierarchy with positional power, informal structures with networkers, and the often invisible value creation structure with skilled individuals. Hermann argues that civil societies and enterprises should function as spaces for debate. She emphasizes that shared power is more effective than hierarchical control and that people operate simultaneously on multiple organizational levels. This opens new perspectives on powerlessness and actual possibilities for influence.
-
-### Hermann, Silke; Niels Pflaeging – Konsequente Dezentralisierung ist der einzige Weg
-
-Date: 2018-04-13 · Link: <https://newmanagement.haufe.de/strategie/warum-strategisch-die-peripherie-das-sagen-haben-sollte>
-
-**Summary (AI-generated):**
-
-> The text analyzes the historical development of marketing and its structural crisis. Marketing emerged in the Industrial Age as a separate function, parallel to Taylorist efficiency orientation. This created a paradoxical situation: while marketing demands market orientation, its own centralized control and functional silos prevent it. With the transition from Industrial to Knowledge Age (1970s), market complexity increased dramatically. Traditional marketing methods fail in this complex environment. The text argues that true market orientation is only achievable through structural decentralization, distributed leadership, and reintegration of marketing into operational value creation. Classical hierarchical marketing departments become obsolete.
 
 ### Hermann, Silke; Niels Pflaeging – OpenSpace DEV: OpenSpace in change and transformation
 
@@ -960,6 +976,264 @@ Date: 2016-10-11 · Link: <https://agile-unternehmen.de/niels-pflaeging-organisa
 
 > The text discusses organizational consultant Niels Pflaeging's central theses on digital transformation and agility in companies. Pflaeging argues that traditional hierarchical management structures fail in complex markets and that decentralized, network-based organizational forms are necessary. He criticizes the widespread practice of companies and startups unconsciously building hierarchies and bureaucracy, despite this destroying agility. Pflaeging warns against achieving organizational transformation through isolated labs or pilot projects ("islands of happiness"). Instead, he calls for systemic change in mindsets and leadership models. True transformation requires conscious decentralization and the recognition that successful organizations already function in network-like structures.
 
+### Link, Stefan – Beta — ganz einfach
+
+Date: 2026-11-01 · Link: <https://betaos.org/de/library/beta-plainly-explained>
+
+**Summary (AI-generated):**
+
+> The text contrasts two management models: traditional "machine metaphor" with hierarchical layers, rules, and centralized planning versus modern "living system model" featuring autonomous teams, low bureaucracy, and experimentation. The latter better suits today's fast-changing world. "BetaOS" integrates best practices from multiple approaches—not just BetaCodex alone. A seven-layer framework addresses organizational health, team structures, workflow, decision-making, employee motivation, strategic leverage points, and change implementation. Each layer answers key questions about organizational effectiveness. Transformation typically happens incrementally rather than revolutionarily.
+
+### Link, Stefan – Beta — plainly explained
+
+Date: 2026-11-01 · Link: <https://betaos.org/library/beta-plainly-explained>
+
+**Summary (AI-generated):**
+
+> The text contrasts two business models: running a company "like a machine" with hierarchy and control versus "like something alive" with self-managed teams and agility. It introduces BetaOS as an integrated operating system combining the best ideas from various approaches, rather than following a single rulebook. The seven building blocks – Health, Structure, Flow, Rules & Conflict, People, Seeing the Whole, and The Way There – systematically address core organizational questions. The model emphasizes small autonomous teams, clear interfaces, smooth workflows, and fair decision-making rules without hierarchy. People are central: freedom, growth, and belonging foster natural performance better than financial incentives. The text advocates incremental change as the practical path for organizational transformation in today's fast-changing world.
+
+### Link, Stefan – Beta verstehen
+
+Date: 2026-11-01 · Link: <https://betaos.org/de/library/understanding-beta>
+
+**Summary (AI-generated):**
+
+> Beta is a conceptual model for organizational structure oriented toward networking, decentralization, and adaptation to complexity—in contrast to the Taylorist Alpha model (hierarchy, control, planning). The BetaCodex synthesizes diverse traditions from Mary Parker Follett to Ernst Weichselbaum into a coherent operating system comprising four building blocks: three structures (formal, informal, value creation), the peach model (periphery/center, cells, interface agreements), Value Creation Accounting (relative targets, no budgeting), and twelve laws. However, Pflaeling's claim to universal applicability ("no à la carte") is challenged by serious counter-theses—Sociocracy 3.0, Cynefin, Laloux, Weichselbaum, and empirical evidence show that context-dependent solutions exist, not one universal recipe. Practice (Buurtzorg, Haier, psychological safety) confirms Beta principles but points toward diagnostic approaches rather than fixed target states.
+
+### Link, Stefan – Cells instead of departments
+
+Date: 2026-11-01 · Link: <https://betaos.org/library/cells>
+
+**Summary (AI-generated):**
+
+> Cell Structure Design inverts the classical pyramid organization: a "peach" metaphor with a thin periphery as the market-facing decision center and a minimal core for internal services. Cells are small, autonomous teams with their own profit-and-loss (5–7 people optimal) that divide rather than build hierarchies when growing. Minimum tenure: 18 months for stability-based collaboration. The central innovation: internal services become real market offerings without budget allocations—they must be sold at cost. This creates immediate feedback and forces central functions toward customer orientation. BetaCodex implements cells as the core entity with automatic checks against standard sizes—as discussion basis, not evaluation.
+
+### Link, Stefan – Conflict without a boss
+
+Date: 2026-11-01 · Link: <https://betaos.org/library/conflict-without-a-boss>
+
+**Summary (AI-generated):**
+
+> This text addresses the critical yet often overlooked challenge of conflict resolution in self-organizing organizations. While hierarchies rely on escalation, self-organization requires explicit processes. Morning Star, a tomato processing company, demonstrates a proven four-stage model: direct conversation between parties, mediation by jointly chosen colleagues, recommendations from a peer panel, and as a last resort, owner decision. This graduated approach works because it preserves agency, starts mild, and honestly names final accountability. The text also discusses dismissals, where formal structures remain legally necessary, and explores strains like insufficient psychological safety and hidden power imbalances that can undermine any process. Agreements and commitment clarity are foundational to the system's effectiveness.
+
+### Link, Stefan – Deciding without a boss
+
+Date: 2026-11-01 · Link: <https://betaos.org/library/deciding-without-a-boss>
+
+**Summary (AI-generated):**
+
+> The text clarifies the misconception that decentralized decision-making equals consensus. Instead, four distinct decision methods are presented, applied according to scope and impact: role decisions (individual, without consultation), the advice process (one decider after seeking counsel), consultative individual decisions, and consent (for rules binding everyone). Consent means a decision is adopted when nobody raises a reasoned objection—not that everyone agrees. The text addresses practical challenges such as habitual escalation patterns, avoiding hidden vetoes, and preventing over-regulation. Finally, it explains how BetaOS supports these principles through documented roles and governance views that make decision-making patterns visible without imposing scores.
+
+### Link, Stefan – Die drei Strukturen
+
+Date: 2026-11-01 · Link: <https://betaos.org/de/library/three-structures>
+
+**Summary (AI-generated):**
+
+> The text criticizes how org charts fail to represent how organizations actually work. Based on Niels Pflaeging's Organizational Physics, three simultaneously existing structures are distinguished: formal structure (hierarchy, positions), informal structure (relationships, trust), and value creation structure (actual work processes). In traditional command-and-control organizations, the formal structure consumes roughly 50% of energy while only 20% flows through the value creation structure. Decentralization means not eliminating hierarchies, but shifting energy to where value actually occurs. Typical reorganizations fail because they merely rearrange boxes without changing the value creation structure itself.
+
+### Link, Stefan – Die Schulen im Vergleich
+
+Date: 2026-11-01 · Link: <https://betaos.org/de/library/schools-compared>
+
+**Summary (AI-generated):**
+
+> The article surveys six major schools of modern organizational development: Beyond Budgeting (relative governance), Sociocracy 3.0 (flexible pattern catalog), Holacracy (constitution-based roles), Teal/Reinventing Organizations (consciousness-oriented), RenDanHeYi (micro-enterprises), and BetaCodex (structural synthesis). They fundamentally diverge on the central question: what to change first? While Beyond Budgeting proceeds incrementally and Laloux prioritizes consciousness over structure, BetaCodex insists on indivisible system transformation. The article includes a matrix of genuine contradictions and practical guidance tied to specific organizational problems. BetaOS draws on BetaCodex concepts while maintaining flexibility through elements from Sociocracy 3.0.
+
+### Link, Stefan – How a transition actually works
+
+Date: 2026-11-01 · Link: <https://betaos.org/library/how-a-transition-works>
+
+**Summary (AI-generated):**
+
+> The text critiques conventional change management approaches that often fail because they pilot in single departments, maintain open timelines, and seek consensus beforehand. Instead, five inverting principles are proposed: principle-based rather than toolkit, timeboxed (90–180 days), radically inviting with voluntary participation, whole-system without pilot departments, and all-at-once for the entire organization. A single sponsor with genuine authority is essential. OpenSpace Beta operationalizes this: invitation, build-up, two self-organized OpenSpace meetings, 90 days of practice, and a quiet period. The text discusses contested positions—whether change is a flip or journey—and presents Beyond Budgeting and Dave Snowden's experimental approaches as alternatives. BetaOS as a software tool can map structure but cannot direct the social transformation process itself.
+
+### Link, Stefan – Konflikt ohne Vorgesetzten
+
+Date: 2026-11-01 · Link: <https://betaos.org/de/library/conflict-without-a-boss>
+
+**Summary (AI-generated):**
+
+> This text addresses the necessity of conflict resolution procedures in self-organized organizations. Without explicit escalation mechanisms, informal hierarchies emerge or conflicts are suppressed. Morning Star, a tomato processing company without managers, employs a four-stage process: direct conversation, mutually chosen mediator, colleague panel, and final decision by the owner. This approach only works with psychological safety and requires concrete, documented agreements. The text also addresses terminations, which legally require a legal entity rather than team decisions. BetaOS addresses these governance questions by making agreements transparent rather than providing software solutions for interpersonal conflicts, while acknowledging legitimate formal structures' necessary roles.
+
+### Link, Stefan – Nahtstellen
+
+Date: 2026-11-01 · Link: <https://betaos.org/de/library/seams>
+
+**Summary (AI-generated):**
+
+> The text discusses the central concept of the interface agreement (Nahtstelle) in the Beta organization. Unlike interfaces that separate and require external control, interface agreements connect teams through direct agreements and enable self-management. The concept originates from Erich Weichselbaum and was integrated into BetaCodex's cell structure design. The internal market between cells operates without budgets, based on performance pricing and handshake quality. Interface agreements are written contracts between teams with fields for performance, form, quantity, location, and time. Conflicts are resolved without managers. In software development, Team APIs embody this principle. The cybernetic foundation lies in Stafford Beer's Viable System Model. BetaOS already depicts the internal market; however, the explicit interface agreement entity is still missing.
+
+### Link, Stefan – Psychological safety
+
+Date: 2026-11-01 · Link: <https://betaos.org/library/psychological-safety>
+
+**Summary (AI-generated):**
+
+> Psychological safety, a concept by Harvard professor Amy Edmondson, describes a team's shared belief that it is safe to take interpersonal risks—asking questions, offering ideas, admitting mistakes, or disagreeing with seniors. It is not comfort or low standards, but candor under pressure: high standards combined with high safety. Empirical studies—from Edmondson's hospital teams to Google's Project Aristotle to Deming's "Drive out Fear" principle—demonstrate that psychological safety is key to learning and performance. For Beta organizations it is indispensable: without it, decentralized decision-making and self-organization cannot function. Recognizable in daily practice through how people handle mistakes, whether they can disagree openly, and admit not knowing. Leaders create it through modeling vulnerability, curiosity over judgment, and system-focused rather than blame-focused error analysis. High standards and safety belong together.
+
+### Link, Stefan – Psychologische Sicherheit
+
+Date: 2026-11-01 · Link: <https://betaos.org/de/library/psychological-safety>
+
+**Summary (AI-generated):**
+
+> Psychological safety is a team's shared belief that it is safe to take interpersonal risks—asking questions, voicing ideas, admitting mistakes, or openly disagreeing with authority. It is not comfort or low standards, but rather the combination of high expectations and high safety that enables learning and performance. Edmondson's field studies and Google's Project Aristotle empirically demonstrate that psychological safety is the most critical factor for high-performing teams. In the BetaCodex context, it is essential: decentralization requires people to "speak up," tolerate disagreement, and use mistakes for collective learning. It is recognizable in how organizations handle contradiction, errors, and admitting ignorance. Leaders create it through vulnerability and going first, not through directives.
+
+### Link, Stefan – Relative Targets
+
+Date: 2026-11-01 · Link: <https://betaos.org/library/relative-targets>
+
+**Summary (AI-generated):**
+
+> Relative Targets is a performance system based on McGregor's Theory Y that replaces plans with external comparisons: against the past, other teams, the market, or optima. It works with actual-to-actual comparisons rather than plan-versus-actual variances. The ten principles replace budgeting, fixed targets, and individual performance goals with continuous preparation, competitive collaboration, transparency, and market mechanisms. Seven core tools—daily revenue ticker, trend reporting, fast close, value creation accounting per cell, internal price lists, performance league tables, and profit sharing—are introduced in three phases over 15–20 weeks. The system builds on Beyond Budgeting and has been open-source social technology since 2021. Practical examples include Svenska Handelsbanken, Buurtzorg, and Morning Star.
+
+### Link, Stefan – Relative Ziele
+
+Date: 2026-11-01 · Link: <https://betaos.org/de/library/relative-targets>
+
+**Summary (AI-generated):**
+
+> Relative Targets is a comprehensive performance system based on McGregor's Theory Y that completely replaces traditional budgeting. Instead of fixed targets, four external reference points are used: trends and prior periods, internal league tables, benchmarking, and statistical process control. Ten core principles replace plan-versus-actual comparisons with actual-to-actual comparisons, promote playful competition rather than rivalry, and emphasize radical financial transparency. Seven tools—Daily Ticker, Trend Reporting, Fast Close, Value Creation Accounting, internal price catalogs, league tables, and profit sharing—are introduced in a defined 15–20-week transformation sequence. The approach, open-source social technology since 2021, draws from a century of organizational research and has proven effective in organizations such as Svenska Handelsbanken, Buurtzorg, and Morning Star.
+
+### Link, Stefan – Roles instead of positions
+
+Date: 2026-11-01 · Link: <https://betaos.org/library/roles-not-positions>
+
+**Summary (AI-generated):**
+
+> The text distinguishes between positions and roles as organizational concepts: positions are boxes on a chart that bundle tasks, authority, salary, and status; roles are responsibilities a person assumes and can hold multiple simultaneously. This distinction enables organizational change without restructuring—roles shift between people through conversation rather than project work. Named roles make responsibility visible and reflect how knowledge work actually operates, where capability resides with people. The text candidly acknowledges open questions: how do careers, pay, and status function without positions? Morning Star, Sociocracy 3.0, and Buurtzorg demonstrate practical approaches. BetaOS models roles and links them to people with start and end dates, deliberately not prescribing career or compensation solutions.
+
+### Link, Stefan – Rollen statt Stellen
+
+Date: 2026-11-01 · Link: <https://betaos.org/de/library/roles-not-positions>
+
+**Summary (AI-generated):**
+
+> The text distinguishes between positions and roles as organizational concepts. A position is a fixed box in an org chart bundling tasks, authority, salary, and status; a role is a bundle of responsibility that a person can assume—exchangeable without reorganization. Roles enable flexible adaptation to changing work, improve visibility of responsibility, fit knowledge work, and support AI integration. However, the model creates new challenges: advancement becomes less visible, salary determination becomes complex, and external status requirements remain. The text documents practical solutions from Morning Star, Sociocracy 3.0, and Buurtzorg as well as BetaOS implementation.
+
+### Link, Stefan – Seams
+
+Date: 2026-11-01 · Link: <https://betaos.org/library/seams>
+
+**Summary (AI-generated):**
+
+> The article explains the BetaCodex concept of the "seam agreement" as the opposite of the classic interface. Rather than hierarchy and control by management, seams enable direct coordination between teams and foster self-steering. The concept is grounded in systems theory and uses an internal market model: the periphery has market contact and resource control, while the centre operates as a cost-neutral service provider. Seam agreements are binding, unilateral contracts between teams specifying "what / how / quantity / where / when / quality". Contrary to classic cost accounting, the system is based on "handshake quality" and fairness between cells. The article draws parallels to team API logic in modern software architecture and cybernetics after Stafford Beer, explaining why seams enable decentralized autonomy without destructive oscillation.
+
+### Link, Stefan – The case against self-organization
+
+Date: 2026-11-01 · Link: <https://betaos.org/library/the-case-against>
+
+**Summary (AI-generated):**
+
+> The article critically discusses the limitations and challenges of self-organization in organizations. While famous success stories like Buurtzorg and Morning Star exist, the actual success rate remains unclear—failed reorganizations are rarely documented. The text addresses five core objections: self-organization creates informal rather than formal structures; peer pressure can be harsher than hierarchy; careers and status don't automatically disappear; even model companies face crises; theoretical frameworks like Laloux's color model lack strong empirical support. Further criticism from proponents emphasizes that structural blueprints are not universally transferable and no ideal target state exists. The text advocates for transparency, written agreements, and critical reflection rather than dogmatic application.
+
+### Link, Stefan – The schools compared
+
+Date: 2026-11-01 · Link: <https://betaos.org/library/schools-compared>
+
+**Summary (AI-generated):**
+
+> The article analyzes six leading schools of organizational transformation, responding to the observation that markets move faster than hierarchical command chains. Beyond Budgeting starts with control systems, Sociocracy 3.0 offers flexible patterns, Holacracy employs constitutional rules, Teal bases change on consciousness development, RenDanHeYi demonstrates large-scale implementation through micro-enterprises, and BetaCodex pursues a holistic structural approach. The schools fundamentally differ on modularity versus indivisibility, structure-first versus consciousness-first change, cultural designability, written rules, transformation speed, and the legitimacy of traditional models. The text helps select the appropriate school based on specific problems and explains BetaOS as a synthesis using BetaCodex concepts without ideological dogmatism.
+
+### Link, Stefan – The Three Structures
+
+Date: 2026-11-01 · Link: <https://betaos.org/library/three-structures>
+
+**Summary (AI-generated):**
+
+> Organizational charts mislead about how organizations actually function. Niels Pflaeging's Org Physics (2011) reveals that every organization simultaneously comprises three structures with different power sources. The formal structure (hierarchy, titles, reporting lines) creates compliance but not value. The informal structure (relationships, trust, influence) forms the social fabric and carries organizational culture. The value creation structure is the network through which work actually flows—and the only one that generates value. In traditional organizations, roughly 50% of energy goes into the formal structure, 30% into the informal, and only 20% into value creation. Decentralization means redirecting energy to the value-creating structure, not eliminating hierarchies. Reorganizations that merely redraw org charts fail because they leave the actual work structure untouched. BetaOS applies this model by making the value creation structure the primary view.
+
+### Link, Stefan – Understanding Beta
+
+Date: 2026-11-01 · Link: <https://betaos.org/library/understanding-beta>
+
+**Summary (AI-generated):**
+
+> BetaCodex is an organizational model opposing the Taylorist Alpha paradigm. While Alpha relies on hierarchy, control, and standardized processes suited to sluggish mass markets, Beta claims functional superiority under complexity through decentralized, networked structures. The BetaCodex draws on a broad tradition from Mary Parker Follett through Deming to Weichselbaum, condensing it into four building blocks: three structure types (formal, informal, and value creation), the peach model instead of pyramid, relative instead of fixed targets, and rapid transformation instead of long-term change. The twelve BetaCodex laws form an indivisible whole. However, Pflaeging's codex faces serious challenges from alternatives like Sociocracy 3.0, Cynefin, Teal, and Haier RenDanHeYi—particularly whether a universal model can apply across all contexts.
+
+### Link, Stefan – Value Creation Accounting
+
+Date: 2026-11-01 · Link: <https://betaos.org/library/value-creation-accounting>
+
+**Summary (AI-generated):**
+
+> Traditional cost accounting divides organizations into cost centers and profit centers, thereby centralizing decision-making power: budget authority leads to central control. Value Creation Accounting replaces cost statements with value creation statements that make actual contributions visible. The model rests on four lines (total output, third-party contributions, contributions from other cells, own contribution) and deliberately avoids the word "cost." Central elements are internal prices instead of budgets, transparency through open books, and fast closing cycles. Within the BetaCodex, implementation follows a nine-step sequence: first remove budgets, then create transparency, then cell statements, then internal price lists, finally profit sharing. Critical success factors are data quality, genuine choice, and avoiding ranking reflexes.
+
+### Link, Stefan – Warum Beta?
+
+Date: 2026-11-01 · Link: <https://betaos.org/de/library>
+
+**Summary (AI-generated):**
+
+> This text introduces the Beta model of organizational action — not as a finished method but as a broad field of different, sometimes competing schools of thought. The central argument is structural, not ideological: command and control were substantively correct for their time; that time is past.
+>
+> Beta organizations operate with three simultaneous structures; what matters is the value creation structure, not the org chart. They divide organizations by who touches the market — not by function. Control works without budgets and cost accounting, instead using transparency and relative targets. The hardest part is the inside: mistakes and disagreement must be safe, and conflicts need real solutions, not escape routes upward. The text warns against the promise of simple recipes and names the most common pitfalls.
+
+### Link, Stefan – Warum Steuerung nicht mehr funktioniert
+
+Date: 2026-11-01 · Link: <https://betaos.org/de/library/why-control-fails>
+
+**Summary (AI-generated):**
+
+> The text analyzes why traditional hierarchical management persists despite recognized shortcomings. Management with centralized planning and control was developed around 1900 for stable mass markets and worked excellently there. Today, markets are again dynamic and unpredictable, like in premodern times. The article distinguishes between "complicated" (predictable, automatable through processes) and "complex" (surprising, requiring judgment). Traditional hierarchies fail concretely because information sits at the periphery, goals become gamed, and system problems dominate. Despite this, the model endures because it functions adequately, is legally accepted, and alternatives are harder to implement. BetaCodex follows the insight: in unpredictable markets, decisions belong where information is, not at hierarchical levels.
+
+### Link, Stefan – Was gegen Selbstorganisation spricht
+
+Date: 2026-11-01 · Link: <https://betaos.org/de/library/the-case-against>
+
+**Summary (AI-generated):**
+
+> The article critically examines the self-organization movement, identifying five substantive objections: structureless organizations generate informal power networks (Freeman); peer pressure can intensify control (Barker); career and compensation questions remain unresolved; established examples like Buurtzorg achieve success conditionally; theoretical concepts like Laloux's Teal organizations lack empirical grounding. Additionally, progressives critique recipe thinking and assumptions of a universal end state. BetaCodex responds partially through structural design but remains open on core questions. The article demands realistic foresight: explicit agreements, attention to overload, clear career pathways, and skepticism toward case studies. BetaOS reflects these insights through avoiding maturity metrics and making informal power visible across cells.
+
+### Link, Stefan – Wertschöpfungsrechnung
+
+Date: 2026-11-01 · Link: <https://betaos.org/de/library/value-creation-accounting>
+
+**Summary (AI-generated):**
+
+> Classical cost accounting centralizes decision-making by defining units based on consumption, and whoever controls the budget controls the organization. Allocation keys for central services lead to negotiation rather than focus on actual work. The value creation accounting model replaces this with four lines: total output minus contributions from external suppliers and other cells equals the value created by each cell. Instead of fixed budgets, it uses internal pricing for services between cells. Critical elements are open books, fast closings, and the ability to reject central services. Implementation follows a sequence: first change budgets and targets, create fast transparent numbers, then establish cell accounting and internal price lists. BetaOS implements this model with transaction-based calculation and daily signals, but deliberately avoids budgets and allocation keys.
+
+### Link, Stefan – Why Beta?
+
+Date: 2026-11-01 · Link: <https://betaos.org/library>
+
+**Summary (AI-generated):**
+
+> This text introduces the BetaCodex way of thinking about organizations — an approach moving beyond hierarchical control. The core insight: decentralization is not primarily a values question but a structural necessity. The old command-and-control model fitted a different era and no longer works today. The handbook covers three dimensions: structure (how to divide organizations into self-directed units that touch the market directly), steering (how decentralization actually functions through radical transparency and relative targets, not budgets), and people (psychological safety and conflict resolution as the foundation of genuine self-organization). The text emphasizes honesty: Beta is not a single method but a diverse field of schools agreeing that top-down control is finished while disagreeing about almost everything else. Weaknesses and objections are also discussed openly.
+
+### Link, Stefan – Why control stopped working
+
+Date: 2026-11-01 · Link: <https://betaos.org/library/why-control-fails>
+
+**Summary (AI-generated):**
+
+> Classical management with separated planning and hierarchical decision-making was invented around 1900 and worked extraordinarily well in the stable, low-dynamics industrial era. Today, we find ourselves back in high market dynamics, similar to pre-industrial times – the old machinery no longer fits. The text distinguishes between "complicated" (predictable, rule-based, automatable) and "complex" (surprising, judgment-dependent). Organizations contain both aspects, yet hierarchies apply processes everywhere, causing pathologies in complex situations. Control fails because information sits at the edge, targets get gamed rather than met, and systems dominate people. Hierarchies persist for pragmatic reasons: adequate functionality, legal legitimacy, and established solutions. The core insight: structure must fit market dynamics – decisions belong where the information is.
+
+### Link, Stefan – Wie eine Umstellung abläuft
+
+Date: 2026-11-01 · Link: <https://betaos.org/de/library/how-a-transition-works>
+
+**Summary (AI-generated):**
+
+> Standard change projects fail regularly due to three characteristic habits: sequential implementation in phases, open-ended timelines without concrete boundaries, and waiting for prior acceptance. An alternative effective approach follows five principles: principle-based instead of tool-driven work, time-bounded instead of scope-bounded implementation (approximately 90 days core work), radical invitation without coercion, whole-system participation, and simultaneous switching across all parts. A sponsor with genuine formal authority is essential. OpenSpace Beta operationalizes this approach through self-organized full assemblies, intense action phases, and conscious rest periods. Critical alternatives like Beyond Budgeting or Snowden's complexity-based approaches offer different paths. BetaOS supports value creation structure visualization as a tool while deliberately avoiding transformation modules.
+
+### Link, Stefan – Wie ohne Chef entschieden wird
+
+Date: 2026-11-01 · Link: <https://betaos.org/de/library/deciding-without-a-boss>
+
+**Summary (AI-generated):**
+
+> The text clarifies central misconceptions about decentralized decision-making. Decentralization does not mean consensus, but rather a distinction: routine decisions are made by the role holder alone; consequential decisions are made by a single decision-maker after consultation (Advice Process or Consultative Decision-Making); binding rules are decided by the group using consent. Consent only blocks when there are substantive objections (avoidable harm), not for reservations. Elected roles are time-limited. The most critical element is naming the "tension" before a proposal—this shifts discussions from preferences to problems. Common implementation failures include: habits of hierarchical requests persist, consultation becomes hidden veto, procedures create overhead, and power remains subtly operative. BetaOS documents roles and agreements; a central decision log is deliberately deferred.
+
+### Link, Stefan – Zellen statt Abteilungen
+
+Date: 2026-11-01 · Link: <https://betaos.org/de/library/cells>
+
+**Summary (AI-generated):**
+
+> The peach model inverts the hierarchical pyramid: a thin, dynamic periphery with direct market contact makes decisions and generates revenue, while a serving core without command authority supports it. A cell is a small, functionally integrated team (5–7 people) with its own profit and loss statement that delivers complete work. It divides when it reaches nine to ten people rather than growing hierarchically, stands for at least 18 months, and sees its own figures. Center cells are service providers without budgets who sell services to the periphery—at cost, without profit, and without mandatory purchase requirements from above. This hard feedback makes the internal market real. The honest objection: without career ladders and genuine choice, shifting the model remains difficult. BetaOS uses cells as a central entity and checks their size as a conversation starter, not as an evaluation.
+
 ### Martin, Tory; Chris Kellner – Organizational Learning: Meet the "Mother of Management"
 
 Date: 2019-08-27 · Link: <https://johnsoncenter.org/blog/meet-the-woman-whose-creative-experience-provided-the-germ-for-organizational-learning/>
@@ -991,14 +1265,6 @@ Date: 2014-01-20 · Link: <https://mintzberg.org/sites/default/files/article/dow
 **Summary (AI-generated):**
 
 > Henry Mintzberg discusses how theories are developed in this essay. He argues that all theories are fundamentally false since they simplify reality rather than represent it directly. Therefore, theories should be evaluated by their usefulness, not their truth. Mintzberg criticizes the excessive emphasis on deductive, theory-testing research in the social sciences. Instead, he advocates for inductive theory building—the creative invention of explanations. This is hindered by overly strict methodological requirements that eliminate the human dimension of imagination and insight. The author emphasizes that great theories are idiosyncratic creations, and that science should promote alternative theories to stimulate critical thinking rather than promote single theories as truth.
-
-### Mintzberg, Henry – Developing theory about the development of theory
-
-Date: 2014-01-20 · Link: <http://www.mintzberg.org/sites/default/files/article/download/developing_theory_about_the_development_of_theory_jan_2014.pdf>
-
-**Summary (AI-generated):**
-
-> Henry Mintzberg explores his approach to theory development, arguing that all theories are fundamentally false because they simplify reality. Consequently, theories should be evaluated by their usefulness rather than their truth. Mintzberg criticizes the overemphasis on objectivity and deductive methods in scientific research, advocating instead for inductive processes that enable creative theory building. He opposes "bureaucratic research" that prioritizes methodological rigor over insight, thereby hindering innovative theory development. The author emphasizes that theory creation is a creative, idiosyncratic process that cannot be fully objectified. He calls for balance between theory building and theory testing, arguing that interesting theory emerges from imagination and discovery rather than mechanical adherence to narrow scientific standards.
 
 ### Oestereich, Bernd – Der Einsatz von KI-Agentensystemen bei Team-Entscheidungen
 
@@ -1120,6 +1386,14 @@ Date: 2013-10-11 · Link: <https://www.youtube.com/watch?v=41_P8KJl72E>
 
 > The speaker addresses the fundamental challenges facing the Agile movement and organizational transformation. He argues that the primary obstacle is not finding the right techniques or tools, but rather dismantling outdated management structures. The presenter criticizes modern management as "quackery"—comparable to medieval bloodletting—and traces its historical development from Frederick Taylor's separation of "thinkers" and "doers" around 1910 to today's hierarchical organizational charts. While Taylor revolutionized industrial production, his model is unsuitable for modern complex knowledge work. The speaker emphasizes that only products can be directly influenced, while quality, trust, and compliance are emergent phenomena of complex organizational systems. His central thesis: management must be radically reconceived to fully implement agile principles and enable genuine organizational transformation.
 
+### Pflaeging, Niels; Silke Hermann – Bye-bye Marketingabteilung!
+
+Date: 2018-01-01 · Link: <https://www.researchgate.net/publication/323019564_Bye-bye_Marketingabteilung>
+
+**Summary (AI-generated):**
+
+> Marketing emerged paradoxically as a separate function precisely when Frederick W. Taylor's management model replaced market orientation with internal control. During the Industrial Age, this Taylorist functional division was effective for stable mass markets. However, with the transition to the Knowledge Age from the 1970s onward, markets became increasingly dynamic and complex. Genuine market orientation has since failed in centrally controlled structures. The text argues for structural reintegration of marketing through decentralized leadership and radical decentralization of decision-making. Exemplary companies like Toyota demonstrate successful team-based alternatives. Organizations possess three structures—formal, informal, and functional—which explains why org charts are inadequate. Only through systems thinking and peripheralization can the marketing dilemma be resolved.
+
 ### Pflaeging, Niels – Bye-Bye MbO! From fixed to relative performance
 
 Date: 2014-12-02 · Link: <https://www.linkedin.com/pulse/20141202203731-181606-bye-bye-mbo-from-fixed-to-relative-performance-contracts/>
@@ -1240,6 +1514,14 @@ Date: 2021-05-13 · Link: <https://www.redforty2.com/product-page/die-12-gesetze
 
 > The Beta Code is a consistent system of corporate governance consisting of 12 principles. This brochure introduces the laws of the Beta Code and demonstrates their practical application in organizations. The Beta Code is based on an evolutionary worldview in which the world is complex and constantly in flux. It emphasizes team autonomy, decentralized network structures, and self-organization instead of hierarchical control. The human image follows Theory Y: people are intrinsically motivated and full of potential. The Beta Code is contrasted with the Alpha Code, which is based on Taylorist thinking, hierarchy, and external control. The authors Niels Pflaeging and Silke Hermann recommend making a consistent choice for Beta as a future-proof system in the age of complexity.
 
+### Pflaeging, Niels; Silke Hermann – Die Erfindung zweier Managements
+
+Date: 2021-04-01 · Link: <https://betacodex.org/fileadmin/research/BetaCodex-17-Die-Erfindung-zweier-Managements.pdf>
+
+**Summary (AI-generated):**
+
+> This BetaCodex Network white paper documents the origins of two opposing management schools that emerged in parallel at the beginning of the 20th century: Mary Parker Follett's decentralized-democratic approach (Beta) and Frederick Winslow Taylor's command-and-control model (Alpha). While Taylor focused on Scientific Management in factory production, Follett developed a humanistic, social science-based approach grounded in integration, cooperation, and democratic principles. The text analyzes their different backgrounds—Taylor's engineering education versus Follett's social sciences—and explains why Taylor's ideas took hold faster in industry, while Follett's intellectually deeper and more timeless approaches were long overlooked. The paper demonstrates that every organization consciously or unconsciously chooses one of these two schools.
+
 ### Pflaeging, Niels – Differences that make a difference
 
 Date: 2020-06-25 · Link: <https://www.linkedin.com/pulse/differences-make-difference-niels-pflaeging/>
@@ -1247,6 +1529,22 @@ Date: 2020-06-25 · Link: <https://www.linkedin.com/pulse/differences-make-diffe
 **Summary (AI-generated):**
 
 > Niels Pflaeging's text demonstrates how word meanings shape our perception. Through precise linguistic distinctions, we can understand the world more clearly. The author presents over 40 pairs of concepts frequently confused in organizations—from "learning" versus "teaching" to "strategy" versus "delivery." Each confusion leads to distorted perception and suboptimal decisions. Pflaeging argues that genuine understanding of seemingly complex phenomena depends on fine distinctions. His analysis covers areas such as leadership, organizational development, and personnel development. The text is a plea for precise thinking as a prerequisite for effective organizations and better decision-making. Language, he contends, either blinds or illuminates our organizational reality.
+
+### Pflaeging, Niels; Sebastian Kubsch – Einführung in die zeitorientierte Softwareentwicklung
+
+Date: 2025-10-01 · Link: <https://betacodex.org/fileadmin/research/DE-BetaCodex26-TOSD.pdf>
+
+**Summary (AI-generated):**
+
+> This research paper introduces Time-Oriented Software Development (TOSD), arguing that consistent time-orientation is the most effective way to overcome waterfall, pseudo-agile, and laissez-faire approaches. Unlike traditional Agile, TOSD breaks with conventional development team patterns and sprints. The paper establishes seven core principles: time-orientation as a connecting bridge, flow with OK-Point, transparency, consistent self-organization, fixed delivery time with flexible capacity, MER (Talking With Each Other), and coherent management action. TOSD aims to restore knowledge workers' sense of self-efficacy and daily fulfillment—central to human wellbeing at work. It replaces capacity-oriented thinking with time-oriented thinking, emphasizing rhythm, punctuality, and flow as the foundation for sustainable software development.
+
+### Pflaeging, Niels – Fads & failure: What went wrong with TQM, Lean and Agile?
+
+Date: 2025-11-17 · Link: <https://substack.com/home/post/p-163456971>
+
+**Summary (AI-generated):**
+
+> Niels Pflaeging's article analyzes the common weakness of major management movements like TQM, Lean, and Agile: they failed to enable genuine organizational transformation. Although promising, these approaches became "business models" based on certifications, training, and tools—rather than working on system change. The author demonstrates historical parallels: Lean was displaced by Six Sigma; both became certification industries without real business transformation. Agile repeats this pattern. True transformation requires decentralized structures, functional integration, and self-organizing teams—as BetaCodex has advocated since 2008. Pflaeging recounts his experience with Beyond Budgeting: while the movement prospered economically, actual transformation cases were missing. Today's Agile Industrial Complex similarly produces no substantial organizational change, despite good intentions.
 
 ### Pflaeging, Niels – Flat hierarchies: Just another step in the wrong direction
 
@@ -1287,6 +1585,14 @@ Date: 2026-01-12 · Link: <https://nielspflaeging.substack.com/p/from-toyota-to-
 **Summary (AI-generated):**
 
 > The text argues that modern businesses remain trapped in outdated, capacity-oriented thinking stemming from the industrial age. The author advocates for a renaissance of time-orientation as a management approach based on natural rhythms and daily work completion, similar to farming practices. Time-orientation—historically rooted in Toyota's Production System of the 1940s—treats time as variable and capacity as fixed, opposing capacity-orientation. The author criticizes that even Lean and Agile typically remain capacity-oriented. He presents time-oriented approaches like the Weichselbaum System, Quick Response Manufacturing, and Lean RFS as practical alternatives to command-and-control structures for navigating complex markets and fulfilling human needs for rhythm and accomplishment.
+
+### Pflaeging, Niels – Having managers is neither problem nor solution
+
+Date: 2026-11-13 · Link: <https://substack.com/home/post/p-215370354>
+
+**Summary (AI-generated):**
+
+> The article critiques Gary Hamel's influential 2011 HBR article arguing "First let's fire all the managers," which the author sees as oversimplified. Using the Org Physics framework, he explains that every organization requires three independent structures: the Value Creation Structure (serving customers), Informal Structure (social connections), and Formal Structure (compliance). Formal Structure necessarily requires hierarchical positions and managers. The author emphasizes that transformations toward Beta organizations should not start by eliminating managers, but rather through decentralization—a consequence, not a precondition. Successful examples like Toyota, Handelsbanken, and Buurtzorg show that top managers must enable such transformations. Grassroots movements cannot succeed because formal power is prerequisite for structural change. The article advocates for constructive collaboration among all organizational members to overcome command-and-control systems.
 
 ### Pflaeging, Niels – Heroes of Leadership
 
@@ -1480,6 +1786,22 @@ Date: 2018-02-28 · Link: <https://newmanagement.haufe.de/organisation/organisat
 
 > The text criticizes the trend toward flat hierarchies as an insufficient solution. Flat structures perpetuate the old top-down management tradition, while decentralized organizations are necessary. In the knowledge age with increased market dynamics and complexity, hierarchical steering from above fails and leads to control collapse. Self-organization must flow from outside (market) to inside, not vice versa. In decentralized organizations, the periphery earns at the market, learns quickly, and adapts—the center loses its competence advantage. The periphery must steer the center according to market conditions and possess resource sovereignty. Decentralization follows different laws than hierarchy and never stops.
 
+### Pflaeging, Niels; Silke Hermann – Organisationsphysik in Folletts Worten
+
+Date: 2021-06-01 · Link: <https://betacodex.org/fileadmin/research/BetaCodex-18-Organisationsphysik-in-Folletts-Worten.pdf>
+
+**Summary (AI-generated):**
+
+> This BetaCodex white paper examines Mary Parker Follett's organizational theory through the lens of Organizational Physics. Follett (1868–1933) identified three fundamental organizational structures: formal structure based on leadership of position (hierarchical authority), informal structure based on leadership of personality (social relationships), and value creation structure based on leadership of function (expertise). In modern, progressively managed organizations, functional leadership should predominate over positional leadership. Follett's concept of pluralistic, decentralized authority reveals that power and leadership are distributed throughout organizations. The paper advocates for cumulative rather than ultimate control and for decentralized decision-making, where problems are solved at their point of origin rather than escalated hierarchically.
+
+### Pflaeging, Niels; Silke Hermann – Organisationsphysik: Strukturen, Macht & Leadership
+
+Date: 2011-01-01 · Link: <https://betacodex.org/fileadmin/research/BetaCodex-11-OrgPhysics-DE.pdf>
+
+**Summary (AI-generated):**
+
+> This whitepaper discusses the three structures in organizations and their impact on performance. The formal structure (org chart) is an illusion that hinders value creation. Organizations actually function through three real structures: informal structure (creates influence through social relationships), value creation structure (creates reputation through market performance from center to periphery), and formal structure (creates hierarchical position power). Most organizations invest only about 20 percent of their energy in external value creation, while top-performing organizations achieve up to 70 percent. This is because they consciously utilize these three structures. Hierarchical pyramid structures obstruct market forces and lead to bureaucracy instead of competitive success.
+
 ### Pflaeging, Niels – Organizational change: It does not have to be hard anymore
 
 Date: 2022-04-02 · Link: <https://www.linkedin.com/pulse/organizational-change-does-have-hard-anymore-niels-pflaeging/>
@@ -1496,6 +1818,14 @@ Date: 2016-09-13 · Link: <https://www.youtube.com/watch?v=NLqyJJ1haxo>
 
 > The presentation discusses the evolution of management from the Industrial Age to modern complex society. The speaker argues that Frederick Taylor's 1911 management model – separating thinkers from doers – formed the foundation of modern organizations but is now obsolete. The real problem lies not in people but in outdated organizational structures. The talk distinguishes between "complicated" (predictable, automatable) and "complex" (surprising, emergent) systems. While industrial society managed complicated systems effectively, the modern world with its complex systems requires a new organizational approach. Agile methods are presented as an answer to this increased complexity.
 
+### Pflaeging, Niels; Silke Hermann; Lars Vollmer; Valérya Carvelho – Organize for Complexity, part I
+
+Date: 2012-06-01 · Link: <https://betacodex.org/fileadmin/research/BetaCodex-12-OrganizeForComplexity1.pdf>
+
+**Summary (AI-generated):**
+
+> This BetaCodex white paper addresses the challenge of making organizations fit for increasing complexity. It argues that the Tayloristic management model, which separates "thinkers" (managers) from "doers" (workers), no longer functions in dynamic markets. The Alpha model systematically creates three gaps: social, functional, and temporal. By contrast, complex problem-solving does not rely on standardization and control but on human mastery and communication. The Beta model is based on McGregor's Theory Y – trust in human self-motivation and responsibility. The key lies not in better control of individual parts, but in improving their interactions. The paper demonstrates how diverse motivations and personal preferences in complex systems can be leveraged as resources.
+
 ### Pflaeging, Niels; Silke Hermann – Organize for Complexity, part I+II (Special Edition)
 
 Date: 2014-12-29 · Link: <https://betacodex.org/white-papers/paper/organize-for-complexity-part-i-ii-specialedition>
@@ -1503,6 +1833,14 @@ Date: 2014-12-29 · Link: <https://betacodex.org/white-papers/paper/organize-for
 **Summary (AI-generated):**
 
 > The BetaCodex White Paper examines how organizations can successfully manage increasing complexity. It critiques Taylor-based management's division of managers and workers, which creates three systemic gaps: social, functional, and temporal. Command-and-control systems prove counterproductive in complex environments. The key lies in human expertise and mastery rather than standardized processes. The paper adopts McGregor's Theory Y, asserting that people are intrinsically motivated and willing to accept responsibility. Successful organizations must focus on interactions between system elements, not individual components. Motivated employees result from connectedness—the voluntary link between individual and organization—not external motivational efforts by leaders. Complex systems require human communication and adaptive problem-solving capabilities.
+
+### Pflaeging, Niels; Silke Hermann; Lars Vollmer – Organize for Complexity, part II
+
+Date: 2012-06-01 · Link: <https://betacodex.org/fileadmin/research/BetaCodex-13-OrganizeForComplexity2.pdf>
+
+**Summary (AI-generated):**
+
+> BetaCodex Network White Paper No. 13 addresses fundamental questions about designing future-ready organizations. Its core thesis: companies should be structured not as hierarchical pyramids (Alpha model), but as decentralized networks (BetaCodex). In complex, dynamic markets, centralized control fails; instead, decision-making must shift to the periphery where market interaction occurs. The paper defines organizations as two network levels: informal structures (human relationships) and value creation structures (team-based processes). Decentralized cell structures with autonomous peripheral cells and service-oriented central cells enable agility. Additionally recommended: results-based culture instead of behavioral control, promoting self-development and individual mastery as the viable problem-solving mechanism in complexity.
 
 ### Pflaeging, Niels; Silke Hermann – OrgPhysics in Folletts words
 
@@ -1519,6 +1857,14 @@ Date: 2026-04-27 · Link: <https://betacodex.org/white-papers/paper/patterns-of-
 **Summary (AI-generated):**
 
 > This BetaCodex research paper presents 18 patterns of Time-Oriented Software Development (TOSD), a minimalistic approach validated in practice. TOSD is built on non-negotiable elements including the OK Point, the TTEO principle, and list curation. The approach establishes steady, reliable workflow through daily rhythms and work portions. Central features include the roles of Conceptualizers and Realizers, daily handshakes at the OK Point, and capacity limitations through the "List Drying Rack." The paper emphasizes that time-orientation does not mean "work faster" but creates sustainable productivity. AI-aided development requires not just technical competence (Blue) but domain expertise (Red). Strategy is directly integrated into TOSD lists rather than developed in isolation, with decisions emerging through proper dialogue among team members.
+
+### Pflaeging, Niels; Gebhard Borck; Andreas Zeuch – Performancesysteme und relative Ziele
+
+Date: 2009-01-01 · Link: <https://betacodex.org/fileadmin/research/BetaCodex-10-PerformanceManagementDE.pdf>
+
+**Summary (AI-generated):**
+
+> The paper critiques traditional performance systems as fundamentally flawed. They rely on fixed performance contracts, centralized control, and a pessimistic view of human nature (Theory X) that portrays people as unmotivated and incapable of self-organization. The text shows that plan-based management fails under complex conditions: plans quickly become obsolete, processes are time-consuming, and they encourage counterproductive behavior. Instead, the BetaCodex model proposes relative, continuous performance contracts based on Theory Y assumptions about humans as motivated, creative, and self-directed beings. The focus shifts to preparation instead of planning, trust instead of control, and dynamic coordination between teams—similar to high-performing organizations like Formula 1 racing teams.
 
 ### Pflaeging, Niels – Ready to finally Work the System? with Niels Pflaeging
 
@@ -1570,14 +1916,6 @@ Date: 2025-07-07 · Link: <https://betacodexnetwork.substack.com/p/renegades-a-h
 
 ### Pflaeging, Niels; Silke Hermann – Secrets of Very Fast Organizational Transformation
 
-Date: 2019-01-24 · Link: <https://betacodex.org/white-papers/paper/secrets-of-very-fast-organizational-transformation-15>
-
-**Summary (AI-generated):**
-
-> The BetaCodex Network White Paper presents the foundational principles for Very Fast Organizational Transformation (VFOT). The authors challenge the widespread belief that transformation requires years, demonstrating that fundamental organizational change is possible within months. OpenSpace Beta and OpenSpace Agility methods draw on over 20 years of BetaCodex Network research, combined with insights from Lean, Agile, systems theory, and cybernetics. The paper outlines five core principles for successful transformation: First, approaches must be principle-based, not ambiguous or mechanistic. Second, transformation work must be timeboxed to create focus and safety. These principles enable genuine organizational system work and ritualized, iterative change processes with clear beginnings and endings, treating transformation as a shared rite of passage.
-
-### Pflaeging, Niels; Silke Hermann – Secrets of Very Fast Organizational Transformation
-
 Date: 2019-01-24 · Link: <https://betacodex.org/fileadmin/user_upload/White-Papers/BetaCodex-15-SecretsOfVFOT.pdf>
 
 **Summary (AI-generated):**
@@ -1608,6 +1946,14 @@ Date: 2017-12-15 · Link: <https://www.linkedin.com/pulse/musings-social-density
 
 > The text contrasts two organizational models: traditional "command-and-control" operates top-down and centrally, while "self-organization" relies on social density and collective cohesion. Self-organization responds to external market dynamics and creates value internally through teams. Control emerges through two mechanisms: transparency and peer pressure. Key prerequisites include team-based performance measurement rather than individual targets, shared principles instead of rules, and leadership through expertise rather than position. Decentralization and self-organization are two sides of the same coin. Examples of successful self-organized companies like Handelsbanken, Toyota, and Southwest Airlines demonstrate this model works in practice, yet remains underdeveloped and unevenly distributed across organizations.
 
+### Pflaeging, Niels – Speed is the wrong altar to worship at
+
+Date: 2026-10-29 · Link: <https://substack.com/home/post/p-219754271>
+
+**Summary (AI-generated):**
+
+> This text challenges the widespread acceleration thesis championed by thinkers like Hartmut Rosa, arguing it lacks scientific foundation. While some technological areas accelerate, others have decelerated or stagnated. Speed itself is not the real issue; rather, we need better understanding of time and rhythmicity. Human thinking does not accelerate proportionally to information flows. Organizational suffering stems not from insufficient speed but from capacity orientation, batch processing, centralization, and command-and-control steering—even in knowledge work. Solutions lie in time-oriented organizing, decentralization, and understanding synchronization and entrainment as foundations for effective collaboration, proper rhythm, and flow. Effective communities and organizations require getting into sync jointly, not pursuing speed.
+
 ### Pflaeging, Niels – Start making sense: The heart of the BetaCodex movement
 
 Date: 2025-05-20 · Link: <https://betacodexnetwork.substack.com/p/start-making-sense-the-heart-of-the>
@@ -1631,6 +1977,14 @@ Date: 2025-10-23 · Link: <https://betacodexnetwork.substack.com/p/the-beta-univ
 **Summary (AI-generated):**
 
 > The Beta Universe, a network of concepts and methods for decentralized organizations, is experiencing rapid expansion. After 18 years, the approach is becoming increasingly business-savvy and practically implementable. New "Work the System" methodologies such as OpenSpace Beta, Cell Structure Design, and Time-Oriented Software Development (TOSD) enable rapid transformations. Complementary tools like the personality assessment "Myself at Work" and the qomenius learning platform support Beta transformations in organizations of all sizes. A breakthrough is the integration of time-orientation into Lean and Agile practices, inspired by Ernst Weichselbaum's work on flow and rhythmic production. The Beta Universe now offers a rich arsenal of practical concepts and technologies for genuine organizational change from command-and-control (Alpha) to decentralized structures (Beta).
+
+### Pflaeging, Niels – The greatest text W. Edwards Deming ever published
+
+Date: 2026-10-10 · Link: <https://substack.com/home/post/p-219550288>
+
+**Summary (AI-generated):**
+
+> W. Edwards Deming (1900-1993), beyond his work as a statistician and management consultant, was also a dedicated university teacher. The text celebrates his "Memorandum on Teaching" (1972) as his finest work, discussing Deming's central thesis: higher education teachers must conduct research themselves to convey genuine knowledge (theory). Deming argues that students are not qualified to evaluate teachers, and only peers are competent judges—measured by publication-worthy research, not paper quantity. These insights shaped the BetaCodex Network's 2022 reorientation toward research-driven knowledge creation to credibly teach contemporary organizational development.
 
 ### Pflaeging, Niels; Silke Hermann – The invention of managements
 
@@ -1712,6 +2066,38 @@ Date: 2021-06-27 · Link: <https://www.linkedin.com/pulse/transformation-secrets
 
 > This article presents a modern theory of organizational change based on five key concepts. Rather than traditional change management with plans and coercion, "Change-as-Flipping" is proposed—an approach treating organizations like biological systems that respond immediately to interventions. The focus shifts from changing behavior to changing systems. Interventions should be thoughtfully designed and based on shared principles. High "social density" through broad participation of all organizational members is achieved via models like OpenSpace. Finally, consistency is essential: alleged resistance to change often stems from incomplete transformation processes and inconsistent systems. This framework enables rapid, profound organizational transformation without traditional top-down coercion.
 
+### Pflaeging, Niels; Valérya Carvelho; Gebhard Borck; Andreas Zeuch – Turn Your Company Outside-In!, part I
+
+Date: 2008-10-01 · Link: <https://betacodex.org/fileadmin/research/BetaCodex-08-CellStructureDesign1.pdf>
+
+**Summary (AI-generated):**
+
+> The BetaCodex text critiques traditional Tayloristic organizational structures emphasizing hierarchy, functional division, and centralized control. These structures impede workflow, restrict initiative, and contradict Douglas McGregor's 1960 vision of organizations as linked groups rather than hierarchies. The text argues that modern organizations are not suited to human capabilities; rather, people are underutilized. As an alternative, BetaCodex presents a decentralized network organization model based on cell structures instead of functional departments. These cells enable situational interaction, are governed by market mechanisms rather than commands, and employ self-control, peer pressure, and transparent culture. The model combines theoretical foundations with practical solutions for dynamic markets and competitive advantage.
+
+### Pflaeging, Niels; Valérya Carvelho; Gebhard Borck; Andreas Zeuch – Turn Your Company Outside-In!, part I+II (Special Edition)
+
+Date: 2008-12-01 · Link: <https://betacodex.org/fileadmin/research/BetaCodex-CellStructureDesign2021B.pdf>
+
+**Summary (AI-generated):**
+
+> This BetaCodex Network white paper addresses organizational design as a critical challenge for modern enterprises. It critiques Tayloristic hierarchical structures with centralized command and control as unsuitable for dynamic markets and human potential realization. The authors present an alternative: decentralized network organizations using cell structure design. This approach enables personal responsibility, situational interaction, and market pull instead of command and control. The model integrates insights from multiple disciplines—organizational theory, behavioral sciences, systems theory—and provides concrete design principles. Through practical case studies, the paper demonstrates how Tayloristic organizations can successfully transform into decentralized networks to enhance competitiveness and employee motivation, ultimately creating organizations that fit human capabilities.
+
+### Pflaeging, Niels; Valérya Carvelho; Gebhard Borck; Andreas Zeuch – Turn Your Company Outside-In!, part II
+
+Date: 2008-12-01 · Link: <https://betacodex.org/fileadmin/research/BetaCodex-09-CellStructureDesign2.pdf>
+
+**Summary (AI-generated):**
+
+> The BetaCodex Network White Paper describes the practical implementation of a decentralized network organization following BetaCodex principles. Using a German technology company (approx. 350 employees) as an example, it documents the transformation process from traditional tayloristic hierarchy to a cell structure organization. Key elements of the redesign are the formation of R-cells (regional business teams with full customer responsibility) and P-cells (product-integrated teams). The redesign workshops establish a market-oriented organizational design where the market is the central control mechanism and internal pricing functions without profit margins. This structure enables decentralized decision-making and entrepreneurial thinking at all levels throughout the organization.
+
+### Pflaeging, Niels; Silke Hermann – Von hier nach Neu im Jetzt: Change als Flippen
+
+Date: 2019-03-01 · Link: <https://betacodex.org/fileadmin/research/BetaCodex-16-ChangealsFlippen.pdf>
+
+**Summary (AI-generated):**
+
+> The BetaCodex white paper "From Here to New in Now: Change-as-Flipping" presents an alternative to traditional change management. It introduces five key concepts: (1) Change is not a long process like a journey, but a "flip" from current to desired state—like adding milk to coffee, which happens immediately and permanently. (2) Resistance to change is a myth; people react intelligently to poor methods, not to change itself. (3) The problem lies in the system, not people—an insight from W. Edwards Deming. (4) Organizational change requires social density rather than complex methodology. (5) There is no big change, yet everything is intervention. This approach offers a constructive, complexity-robust alternative to conventional change management.
+
 ### Pflaeging, Niels – What if we hadn’t really tried agile yet?
 
 Date: 2025-12-15 · Link: <https://www.youtube.com/watch?v=L0k4xCbDExI>
@@ -1743,6 +2129,14 @@ Date: 2015-09-14 · Link: <https://www.linkedin.com/pulse/why-we-cannot-learn-da
 **Summary (AI-generated):**
 
 > The text examines why pioneering companies like Toyota, Gore, and Semco have failed to propagate their innovative organizational models despite decades of success. Author Niels Pflaeging identifies the root cause not in the companies themselves, but in our beliefs about human nature. Based on Douglas McGregor's "Theory X," he argues that leaders unconsciously assume people require control. This flawed mindset creates the "individual-smarts-collective-stupidity trap": everyone believes they understand, but doubts their colleagues. Transformation occurs only when we shift our perspective from control to trusting self-organization and intrinsic motivation. Rather than more examples, organizations need a corrected understanding of human nature to unlock genuine change.
+
+### Pflaeging, Niels – Wisdom from Taiichi Ohno (1912-1990) about how to make great use of AI
+
+Date: 2026-11-07 · Link: <https://substack.com/home/post/p-223879146>
+
+**Summary (AI-generated):**
+
+> Niels Pflaeging argues that artificial intelligence is less revolutionary than commonly assumed. He views AI as another form of automation and critically examines historical automation waves. Central to his argument is "Jidoka" (autonomation) by Sakichi Toyoda: automation should support humans, not replace them. Toyoda's automatic looms stopped when errors occurred—one person could oversee many machines. Taiichi Ohno later integrated this principle into Toyota production. Pflaeging warns against the illusion that AI will eliminate entire professions. Rather, it extends human capabilities, as earlier technologies did (e.g., COBOL for software developers). The real innovation lies in using AI to enhance efficiency and work quality—not to reduce personnel.
 
 ### Pflaeging, Niels – Work the System: Transformation, delivered
 
@@ -2376,14 +2770,6 @@ Date: 2024-03-01 · Link: <https://www.sichtart.at/Verantwortung-als-Ausgangspun
 
 > The Balancer magazine from BALANCE Leben ohne Barrieren presents an interview with Elisabeth Sechser, organizational consultant and coach. The focus is on the meaning of responsibility and how it can be practiced in organizations. Sechser emphasizes that responsibility is a foundation for genuine collaboration and must not be weakened by hierarchical mechanisms. She argues that organizations must create structures enabling employees to act responsibly. Responsibility is learned through taking decisions and shaping things together. For BALANCE, the participatory approach is central: service users should be supported as self-responsible citizens. Sechser recommends anchoring participation as a fundamental principle rather than as time-limited projects. She stresses that collective efforts boost motivation and that organizational behavior reflects structures more than individual characteristics.
 
-### Sechser, Elisabeth – Verantwortung ist ein Ausgangspunkt für echte, starke Zusammenarbeit.
-
-Date: 2025-03-08 · Link: <https://www.sichtart.at/verantwortung-und-starke-zusammenarbeit/>
-
-**Summary (AI-generated):**
-
-> In this interview, Elisabeth Sechser discusses responsibility as a foundation for successful collaboration and coexistence. She emphasizes that responsibility extends beyond individual tasks to considering the whole. Sechser argues that organizations must not weaken responsibility through excessive control, outsourced decision-making, or escalating conflicts. Instead, decision-making power should be distributed broadly. She notes that organizations get the employees they deserve and that people outside companies readily assume responsibility. True team development emerges from shared, responsible work, not separate empowerment programs. Responsibility requires both commitment and decision-making authority embedded in organizational structures.
-
 ### Sechser, Elisabeth – “Wenn du Innovation verhindern willst, belohne sie!” Alfie Kohn
 
 Date: 2021-07-09 · Link: <https://audio.podigee-cdn.net/479061-m-411db052b478d3facbd74c77dc6f37f0.mp3>
@@ -2447,14 +2833,6 @@ Date: 2014-12-15 · Link: <https://www.youtube.com/watch?v=0QtQqZ6Q5-o&>
 **Summary (AI-generated):**
 
 > Peter Senge, a renowned systems thinker and MIT lecturer, reflects on his personal development and understanding of systems theory. He describes his childhood in Los Angeles, witnessing the rapid replacement of orange and lemon groves with shopping centers and housing developments, accompanied by increasing air pollution. This experience led to his central insight: the world is characterized by interdependence – an understanding that pre-industrial cultures always possessed. Senge illustrates this with the example of electricity generation: simple daily actions like charging devices are connected to complex global systems, particularly fossil fuels. He emphasizes that no one consciously wants environmental damage, yet systems produce unintended consequences – this is the core problem of systems ignorance.
-
-### Spender, J.-C. – Modern Management: Origins and Development
-
-Date: 2015-04-22 · Link: <https://www.researchgate.net/publication/275333080_Modern_Management_Origins_and_Development>
-
-**Summary (AI-generated):**
-
-> The text addresses the origins and development of modern management. Spender criticizes previous accounts for two deficiencies: they fail to distinguish business management from other types of managing, and often describe the history of management theory rather than practice. Traditional explanatory approaches such as organizational scale, technology, or globalization are insufficient. The author argues that modern management is characterized by professionalized judgment, not quantification or bureaucracy. He criticizes management's lack of genuine professionalization and emphasizes that effective management requires the manager's personal judgment in specific situational contexts, accounting for Knightian uncertainty. Weber and Knight are key theoretical references.
 
 ### Spender, John-Christopher – Modern Management: Origins and Development
 
