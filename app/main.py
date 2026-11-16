@@ -4548,10 +4548,11 @@ def _question_terms(text: str) -> list[str]:
 # je Quelle nur einen Eintrag; füllt eine Quelle viele der top_k Plätze,
 # bleiben wenige eigenständige Quellen. Regel in _rerank_by_relevance: je
 # Quelle höchstens N Plätze, der Überschuss weicht Chunks NEUER Quellen, die
-# höchstens 15 % schlechter (Score = quadrierte L2-Distanz) liegen.
+# höchstens 25 % (Env SOURCE_DIVERSITY_MAX_DISTANCE_INCREASE) schlechter liegen
+# (Score = quadrierte L2-Distanz). 15 % war zu eng (Idee 78404054).
 SOURCE_DIVERSITY_DEFAULT_MAX_PER_SOURCE = 2
 SOURCE_DIVERSITY_POOL_MULTIPLIER = 8
-SOURCE_DIVERSITY_MAX_DISTANCE_INCREASE = 0.15
+SOURCE_DIVERSITY_DEFAULT_DISTANCE_INCREASE = 0.25
 
 
 def _parse_max_per_source(raw: str | None) -> int:
@@ -4571,6 +4572,25 @@ def _parse_max_per_source(raw: str | None) -> int:
 
 
 SOURCE_DIVERSITY_MAX_PER_SOURCE = _parse_max_per_source(os.environ.get("SOURCE_DIVERSITY_MAX_PER_SOURCE"))
+
+
+def _parse_distance_increase(raw: str | None) -> float:
+    """None -> Standard; Zahl >= 0 übernehmen (0 = keine Tausche); sonst Warnung + Standard."""
+    if raw is None:
+        return SOURCE_DIVERSITY_DEFAULT_DISTANCE_INCREASE
+    try:
+        value = float(raw)
+        if value >= 0:  # NaN fällt durch
+            return value
+    except ValueError:
+        pass
+    logging.getLogger(__name__).warning(
+        "SOURCE_DIVERSITY_MAX_DISTANCE_INCREASE=%r ungültig - Standard %s", raw, SOURCE_DIVERSITY_DEFAULT_DISTANCE_INCREASE
+    )
+    return SOURCE_DIVERSITY_DEFAULT_DISTANCE_INCREASE
+
+
+SOURCE_DIVERSITY_MAX_DISTANCE_INCREASE = _parse_distance_increase(os.environ.get("SOURCE_DIVERSITY_MAX_DISTANCE_INCREASE"))
 
 
 def _diversity_key(meta: dict) -> str:

@@ -60,7 +60,7 @@ def test_replacement_20_percent_worse_swaps_by_default_but_not_with_old_15_perce
 def test_cell_structure_case_new_author_reserve_15_4_percent_worse(monkeypatch):
     spec = [("f1", "F", 0.10, "Pflaeging", "Titel F"), ("f2", "F", 0.1001, "Pflaeging", "Titel F"),
             ("f3", "F", 0.1002, "Pflaeging", "Titel F"), ("f4", "F", 0.2, "Pflaeging", "Titel F"),
-            ("g1", "G", 0.21, "Pflaeging", "Titel G"), ("p1", "P", 0.2308, "Proell", "Titel P")]
+            ("g1", "G", 0.2, "Pflaeging", "Titel G"), ("p1", "P", 0.2308, "Proell", "Titel P")]
     assert "p1" in _rerank_authored(spec)
     monkeypatch.setattr(main_module, "SOURCE_DIVERSITY_MAX_DISTANCE_INCREASE", 0.15)
     assert "p1" not in _rerank_authored(spec)
