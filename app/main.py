@@ -1857,9 +1857,13 @@ def _start_background_workers() -> None:
         target=_run_periodic, args=(_cache_missing_author_photos_once, AUTHOR_PHOTO_CACHE_INTERVAL_SECONDS), daemon=True
     ).start()
     _recover_interrupted_web_allowlist_indexing()
-    threading.Thread(
-        target=_run_periodic, args=(_run_web_allowlist_crawl_once, WEB_ALLOWLIST_CRAWL_INTERVAL_SECONDS), daemon=True
-    ).start()
+    # Kein Web-Crawl auf Dev (2026-11-16): er startete bei jedem lokalen
+    # Serverstart sofort und überlebte als Unterprozess das Beenden des
+    # Servers - verwaiste Crawls blockierten /exit. Produktion unverändert.
+    if not IS_DEV_ENVIRONMENT:
+        threading.Thread(
+            target=_run_periodic, args=(_run_web_allowlist_crawl_once, WEB_ALLOWLIST_CRAWL_INTERVAL_SECONDS), daemon=True
+        ).start()
     threading.Thread(
         target=_run_periodic,
         args=(_purge_expired_question_log_entries_once, QUESTION_LOG_PURGE_INTERVAL_SECONDS),
