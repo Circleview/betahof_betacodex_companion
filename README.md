@@ -243,6 +243,11 @@ oder Claude nutzen – für einen kleinen, eingeladenen Kreis mit der Rolle
   Deutsch oder Englisch und mit abschaltbarer Websuche (Standard: an).
   Ergebnis ist Markdown mit Quellenliste – dieselbe Logik wie in der
   Oberfläche.
+- Jedes Ergebnis endet mit der Zeile „KI-generiert (BetaCodex Chat)“
+  bzw. „AI-generated (BetaCodex Chat)“ (Hinweis nach Art. 50
+  KI-Verordnung). `revise_text` entfernt diese Zeile aus dem eingehenden
+  Text, damit sie nicht doppelt erscheint. Im Web steht ein KI-Hinweis unter
+  den Eingabefeldern von Chat, Embed und Kreativ-Modus.
 - Persönliche Schlüssel auf der Seite „MCP-Zugänge“ (Link im
   Login-Menü): beliebig viele je Konto (z. B. „Laptop“, „Claude Code“),
   einzeln widerrufbar, nur einmal im Klartext sichtbar und nur als Hash
