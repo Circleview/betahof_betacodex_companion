@@ -2839,6 +2839,43 @@ def test_focus_dimmed_nodes_ignore_clicks_and_focused_nodes_are_raised():
     assert ".raise()" in _explore_source()
 
 
+def _cull(boxes_expr: str):
+    return sorted(_explore_tier_fn("cullOverlappingLabels", f"Array.from(cullOverlappingLabels({boxes_expr}))"))
+
+
+def test_cull_overlapping_labels_empty_and_disjoint():
+    assert _cull("[]") == []
+    boxes = "[{id:'a',x:0,y:0,w:50,h:14},{id:'b',x:100,y:0,w:50,h:14},{id:'c',x:0,y:40,w:50,h:14}]"
+    assert _cull(boxes) == ["a", "b", "c"]
+
+
+def test_cull_overlapping_labels_first_box_wins():
+    boxes = "[{id:'a',x:0,y:0,w:50,h:14},{id:'b',x:30,y:5,w:50,h:14},{id:'c',x:60,y:5,w:50,h:14}]"
+    # b schneidet a (fällt weg); c schneidet nur b, das nicht behalten wurde -> bleibt.
+    assert _cull(boxes) == ["a", "c"]
+
+
+def test_cull_overlapping_labels_keeps_a_gap_of_2px():
+    # b beginnt 1 px nach dem Ende von a: weniger als 2 px Abstand -> weg; c mit 3 px Abstand bleibt.
+    assert _cull("[{id:'a',x:0,y:0,w:50,h:14},{id:'b',x:51,y:0,w:50,h:14}]") == ["a"]
+    assert _cull("[{id:'a',x:0,y:0,w:50,h:14},{id:'c',x:53,y:0,w:50,h:14}]") == ["a", "c"]
+
+
+def test_cull_overlapping_labels_does_not_mutate_input():
+    result = _run_explore_js_function(
+        r"function cullOverlappingLabels\(.*?\n\}",
+        "(() => { const b = [{id:'a',x:0,y:0,w:50,h:14},{id:'b',x:10,y:0,w:50,h:14}]; const before = JSON.stringify(b); cullOverlappingLabels(b); return JSON.stringify(b) === before; })()",
+    )
+    assert result is True
+
+
+def test_culled_label_rule_hides_label_and_icon_after_focus_rules():
+    css = (STATIC_DIR / "style.css").read_text()
+    rule = re.search(r"#explore-graph \.explore-node--label-culled \.explore-node-label,\s*#explore-graph \.explore-node--label-culled \.explore-node-open-icon \{\s*display: none;", css)
+    assert rule, "Regel für ausgeblendete Namen fehlt."
+    assert rule.start() > css.index(".explore-graph--focus .explore-edge:not")
+
+
 def test_explore_legend_zoom_hint_is_translated_and_appended():
     js_source = (STATIC_DIR / "explore.js").read_text()
     assert "explore.legendZoomHint" in js_source
