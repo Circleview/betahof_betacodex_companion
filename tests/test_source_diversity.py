@@ -500,3 +500,73 @@ def test_ask_context_widens_the_pool_only_when_diversity_is_on(monkeypatch, limi
     with pytest.raises(HTTPException):
         main_module._ask_context("Frage", [], "de", 5, None, max_per_source=limit)
     assert seen == [expected, expected]
+
+
+# ---- Idee 78404054: dominante Quellen füllen den kuratierten Pool ----
+
+def _pool_fixture(monkeypatch, pool, rest):
+    """Erste Abfrage (ohne where) liefert pool, die mit where $nin liefert rest
+    ohne die ausgeschlossenen Quellen. Gibt die Liste der where-Abfragen zurück."""
+    def hits(spec):
+        return {
+            "ids": [[c[0] for c in spec]],
+            "documents": [[f"Text {c[0]}" for c in spec]],
+            "distances": [[c[2] for c in spec]],
+            "metadatas": [[{"source_id": c[1], "title": c[1], "authors": [], "date": "", "url": "", "position": 0}
+                           for c in spec]],
+        }
+
+    wheres = []
+
+    def query(embedding, top_k=5, where=None, where_document=None):
+        if where is None:
+            return hits(pool)
+        wheres.append(where)
+        excluded = where["source_id"]["$nin"]
+        return hits([c for c in rest if c[1] not in excluded])
+
+    empty = hits([])
+    monkeypatch.setattr(main_module, "_load_sources", lambda: {s: {"title": s, "key_terms_de": []} for s in "ABCD"})
+    monkeypatch.setattr(main_module, "SOURCE_DIVERSITY_MAX_PER_SOURCE", 2)
+    monkeypatch.setattr(embeddings, "embed_query", lambda q: [0.1])
+    monkeypatch.setattr(vectorstore, "query", query)
+    monkeypatch.setattr(vectorstore, "query_web", lambda *a, **k: empty)
+    monkeypatch.setattr(web_index, "excluded_page_ids", lambda: set())
+    monkeypatch.setattr(terms, "list_terms", lambda: [])
+    monkeypatch.setattr(authors, "find_mentioned", lambda text: [])
+    monkeypatch.setattr(authors, "list_authors", lambda: [])
+    return wheres
+
+
+DOMINANT = [("a1", "A", 0.100), ("a2", "A", 0.101), ("a3", "A", 0.102), ("a4", "A", 0.103),
+            ("b1", "B", 0.104), ("b2", "B", 0.105)]
+
+
+def test_ask_context_second_query_brings_new_source_when_pool_is_dominated(monkeypatch):
+    wheres = _pool_fixture(monkeypatch, DOMINANT, [("c1", "C", 0.125), ("a9", "A", 0.2)])
+    _, refs, _, _ = main_module._ask_context("Frage", [], "de")
+    assert wheres == [{"source_id": {"$nin": ["A"]}}]  # nur A hat mehr als 2 Chunks
+    assert "c1" in [r.chunk_id for r in refs]
+
+
+def test_ask_context_no_second_query_without_dominant_source(monkeypatch):
+    pool = [("a1", "A", 0.100), ("a2", "A", 0.101), ("b1", "B", 0.102), ("b2", "B", 0.103), ("c1", "C", 0.104)]
+    wheres = _pool_fixture(monkeypatch, pool, [("d1", "D", 0.11)])
+    main_module._ask_context("Frage", [], "de")
+    assert wheres == []
+
+
+def test_ask_context_no_second_query_when_diversity_is_off(monkeypatch):
+    wheres = _pool_fixture(monkeypatch, DOMINANT, [("c1", "C", 0.125)])
+    main_module._ask_context("Frage", [], "de", 5, None, max_per_source=0)
+    assert wheres == []
+
+
+def test_ask_context_chunk_in_both_queries_appears_once(monkeypatch):
+    pool = [("a1", "A", 0.100), ("a2", "A", 0.101), ("a3", "A", 0.102), ("b1", "B", 0.104), ("b2", "B", 0.105)]
+    wheres = _pool_fixture(monkeypatch, pool, [("b1", "B", 0.104), ("d1", "D", 0.11)])
+    _, refs, _, _ = main_module._ask_context("Frage", [], "de")
+    assert wheres == [{"source_id": {"$nin": ["A"]}}]
+    ids = [r.chunk_id for r in refs]
+    assert ids.count("b1") == 1
+    assert "d1" in ids
