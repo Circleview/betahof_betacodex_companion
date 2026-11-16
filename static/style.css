@@ -4992,6 +4992,13 @@ details a {
   margin-top: 0.75rem;
 }
 
+/* Idee 36bb9a6e: KI-Hinweis bündig unter der rechtsbündigen Absende-Zeile
+   statt zentriert unter dem linksbündigen Formular. */
+#creative-ai-notice {
+  margin: 0.5rem 0 0;
+  text-align: right;
+}
+
 /* Gleiches Muster wie #question-form textarea.dictating (Konversations-
    modus) - während der Aufnahme read-only, dezent abgedunkelt. */
 #creative-instruction.dictating {
