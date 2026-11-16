@@ -34,3 +34,23 @@ def test_ab_eval_keeps_finished_questions_when_a_later_one_fails(tmp_path, monke
     assert "Erste Frage?" in text and "Antwort [1]." in text
     assert "Zweite Frage?" in text and "API weg" in text
     assert "Überschuss-Kandidaten ohne Nachrücker" in capsys.readouterr().out
+
+
+def test_quellen_eval_lists_distinct_sources_and_authors_per_question(tmp_path, monkeypatch, capsys):
+    """Idee 78404054: Quellen je Frage ohne Modellaufruf, z. B. mit einer Kopie der Produktionsdaten."""
+    from types import SimpleNamespace as R
+    qfile = tmp_path / "q.txt"
+    qfile.write_text("# Kommentar\nWas ist die Zellstruktur?\n", encoding="utf-8")
+    refs = [R(source_id="f848aaaa", authors=["Niels Pflaeging"]), R(source_id="f848aaaa", authors=["Niels Pflaeging"]),
+            R(source_id="7d19bbbb", authors=["Peter Pröll"])]
+    calls = []
+
+    def fake_context(question, history, lang, top_k, *args, **kwargs):
+        calls.append((question, history, top_k))
+        return [], refs, [], None
+
+    monkeypatch.setattr(ev.main, "_ask_context", fake_context)
+    ev.quellen_eval(str(qfile))
+    out = capsys.readouterr().out
+    assert calls == [("Was ist die Zellstruktur?", [], ev.TOP_K)]
+    assert "Was ist die Zellstruktur? | Quellen 2 | Niels Pflaeging, Peter Pröll | f848 f848 7d19" in out
