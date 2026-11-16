@@ -10746,3 +10746,57 @@ def test_handoff_returns_same_fallback_images_as_ask(client, monkeypatch):
     sources = client.get(f"/api/conversation-handoff/{token}").json()["history"][0]["sources"]
 
     assert len(ask_images) == 2 and sources[0]["images"] == ask_images
+
+
+# Fix v0.94.1: Bestandsdaten heilen ohne Reindex - die Abfrage liefert für
+# Wix-Vorschauen die große Fassung (Bildleiste und Inline-Bild).
+def test_chunk_images_upgrade_wix_thumbnails_at_query_time():
+    name = "827034_abc~mv2.jpg"
+    thumb = f"https://static.wixstatic.com/media/{name}/v1/fill/w_300,h_204,blur_2/{name}"
+    meta = {"source_id": "s1", "images_json": json.dumps([{"kind": "url", "url": thumb, "alt": "x", "page": None}])}
+    refs = main_module._chunk_images(meta)
+    assert refs[0].src == f"https://static.wixstatic.com/media/{name}/v1/fit/w_1200,h_1200,q_85/{name}"
+
+
+# Fix v0.94.1: Quellen, deren Bildsuche vor dem Stichtag 0 Bilder ergab
+# (Seiten haben inzwischen Bilder/Alt-Texte bekommen), werden einmal neu
+# geprüft; danach nie wieder (idempotent über images_checked_at).
+def test_reindex_rechecks_empty_image_results_from_before_cutoff_once(client, monkeypatch):
+    source_id = client.post("/api/sources", json={"title": "Alt", "text": _IMG_TEXT}).json()["id"]
+    _hand_curated(source_id)
+    with main_module._sources_write_lock:
+        sources = main_module._load_sources()
+        sources[source_id]["images"] = []
+        sources[source_id]["images_checked_at"] = "2026-10-25T18:56:32+00:00"
+        main_module._save_sources(sources)
+    calls = []
+
+    def fake(u):
+        calls.append(u)
+        return {"title": "x", "authors": [], "date": "", "text": _IMG_TEXT, "extracted": True, "images": [_IMG_WEB]}
+
+    monkeypatch.setattr(extraction, "extract_from_url", fake)
+    _forbid_ai(monkeypatch)
+
+    main_module._reindex_all_sources(fetch_missing_images=True)
+    main_module._reindex_all_sources(fetch_missing_images=True)
+
+    assert len(calls) == 1
+    assert [i["url"] for i in main_module._load_sources()[source_id]["images"]] == ["https://img.example.org/a.jpg"]
+
+
+def test_reindex_does_not_recheck_sources_that_have_images(client, monkeypatch):
+    source_id = client.post("/api/sources", json={"title": "Alt", "text": _IMG_TEXT}).json()["id"]
+    _hand_curated(source_id)
+    with main_module._sources_write_lock:
+        sources = main_module._load_sources()
+        sources[source_id]["images"] = [_IMG_WEB]
+        sources[source_id]["images_checked_at"] = "2026-10-25T18:56:32+00:00"
+        main_module._save_sources(sources)
+
+    def boom(u):
+        raise AssertionError("Quelle mit Bildern darf nicht neu abgerufen werden")
+
+    monkeypatch.setattr(extraction, "extract_from_url", boom)
+    main_module._reindex_all_sources(fetch_missing_images=True)
+

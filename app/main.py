@@ -1919,6 +1919,20 @@ def _is_audio_or_video_source(source_id: str, url: str) -> bool:
     )
 
 
+# Fix v0.94.1: Bildsuchen vor diesem Stichtag, die 0 Bilder ergaben, werden
+# einmal wiederholt (Seiten bekamen seitdem Bilder/Alt-Texte, z. B.
+# betacodex.org/welcome-to-the-betaworld). Danach liegt images_checked_at
+# nach dem Stichtag - idempotent, kein Dauer-Abruf.
+IMAGES_RECHECK_BEFORE = "2026-11-16T12:00:00+00:00"
+
+
+def _needs_image_check(entry: dict) -> bool:
+    checked = entry.get("images_checked_at")
+    if not checked:
+        return True
+    return not entry.get("images") and datetime.fromisoformat(checked) < datetime.fromisoformat(IMAGES_RECHECK_BEFORE)
+
+
 def _backfill_images(source_id: str) -> bool:
     """Holt Bilder für eine ältere Quelle nach (Idee ff895248, nur über den
     Admin-Reindex). Schreibt unter Sperre NUR `images`/`images_checked_at` und
@@ -1927,7 +1941,7 @@ def _backfill_images(source_id: str) -> bool:
     Ein Fehlschlag setzt nichts (nächster Lauf versucht es erneut).
     Gibt True zurück, wenn die Quelle nun als geprüft gilt."""
     entry = _load_sources().get(source_id)
-    if not entry or entry.get("deleted_at") or entry.get("images_checked_at"):
+    if not entry or entry.get("deleted_at") or not _needs_image_check(entry):
         return False
     url = entry.get("url") or ""
     pdf_file = _existing_pdf_file(source_id)
@@ -1974,7 +1988,7 @@ def _reindex_all_sources(only_changed: bool = False, fetch_missing_images: bool 
             count += _reindex_one_source(source_id, data, only_changed)
         except Exception:
             log.exception("Reindex von Quelle %s fehlgeschlagen", source_id)
-        if fetch_missing_images and not data.get("images_checked_at"):
+        if fetch_missing_images and _needs_image_check(data):
             fetches += 1
             try:
                 if not _backfill_images(source_id):
@@ -4859,7 +4873,7 @@ def _chunk_images(meta: dict, is_web_fallback: bool = False) -> list[ImageRef]:
         if not isinstance(item, dict):
             continue
         if item.get("kind") == "url" and source_images.is_safe_https(item.get("url")):
-            src = item["url"]
+            src = source_images.upgrade_image_url(item["url"])
         elif (
             item.get("kind") == "file"
             and isinstance(item.get("file"), str)
