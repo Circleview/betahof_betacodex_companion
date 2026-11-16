@@ -10800,3 +10800,37 @@ def test_reindex_does_not_recheck_sources_that_have_images(client, monkeypatch):
     monkeypatch.setattr(extraction, "extract_from_url", boom)
     main_module._reindex_all_sources(fetch_missing_images=True)
 
+
+
+# Fix v0.95.3: Der volle Reindex bettet alle Quellen neu ein (> 1 h) und wurde
+# 2026-11-16 zweimal von Deploys abgebrochen. images_only holt nur Bilder nach,
+# ohne Neu-Einbetten.
+def test_admin_reindex_images_only_backfills_without_reembedding(client, embed_calls, monkeypatch):
+    source_id = client.post("/api/sources", json={"title": "Alt", "text": _IMG_TEXT}).json()["id"]
+    _hand_curated(source_id)
+    embed_calls.clear()
+    monkeypatch.setattr(
+        main_module, "_reindex_all_sources", lambda **kw: (_ for _ in ()).throw(AssertionError("kein voller Reindex"))
+    )
+    monkeypatch.setattr(
+        extraction,
+        "extract_from_url",
+        lambda u: {"title": "x", "authors": [], "date": "", "text": _IMG_TEXT, "extracted": True, "images": [_IMG_WEB]},
+    )
+    _forbid_ai(monkeypatch)
+
+    assert client.post("/api/admin/reindex-sources?images_only=true").status_code == 200
+
+    assert embed_calls == []
+    assert [i["url"] for i in main_module._load_sources()[source_id]["images"]] == ["https://img.example.org/a.jpg"]
+
+
+def test_admin_reindex_images_only_respects_lock(client, tmp_path):
+    import fcntl
+
+    held = open(main_module.DATA_DIR / "reindex.lock", "w")
+    fcntl.flock(held, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    try:
+        assert client.post("/api/admin/reindex-sources?images_only=true").status_code == 409
+    finally:
+        held.close()
