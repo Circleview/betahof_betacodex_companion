@@ -914,11 +914,29 @@ def test_filter_keeps_valid_marker_after_cited_source():
     assert llm.filter_image_markers(text, [0, 1]) == text
 
 
+# Nutzerentscheidung 2026-11-16: Das Bild darf aus jedem gefundenen Ausschnitt
+# kommen, auch wenn dessen Quelle nicht (oder erst später) zitiert wird - die
+# Bildunterschrift nennt die Quelle.
 @pytest.mark.parametrize(
     "text",
     [
+        "Aussage [1].\n\n[bild:2.1]\n\nWeiter.",  # Quelle 2 nicht zitiert
         "[bild:2.1]\n\nAussage [2].",  # vor dem Zitat seiner Quelle
-        "Aussage [1].\n\n[bild:2.1]",  # Quelle 2 nicht zitiert
+    ],
+)
+def test_filter_keeps_valid_marker_of_uncited_excerpt(text):
+    assert llm.filter_image_markers(text, [0, 1]) == text
+
+
+@pytest.mark.parametrize("lang", ["de", "en"])
+def test_prompt_allows_image_from_any_excerpt(lang):
+    prompt = llm.SYSTEM_PROMPTS[lang]
+    assert ("aus jedem Textausschnitt" if lang == "de" else "from any excerpt") in prompt
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
         "Aussage [2].\n\n[bild:3.1]",  # n zu groß
         "Aussage [2].\n\n[bild:2.2]",  # m zu groß
         "Aussage [2].\n\n[bild:2.0]",  # m zu klein
