@@ -68,6 +68,8 @@ Assistent das offen, statt zu spekulieren.
   Hat ein Ausschnitt kein eigenes Bild (z. B. weil der Bild-Anker im Text
   fehlt), bietet der Server bis zu 2 Bilder derselben Quelle an (gekennzeichnet,
   nur bei klarem Bezug; ohne Reindex, restricted-Grenze gilt weiter).
+  Das Bild darf aus jedem gefundenen Ausschnitt kommen, auch wenn die Antwort
+  dessen Quelle nicht zitiert; die Bildunterschrift nennt die Quelle.
 - Bildleiste: Zitiert eine Antwort Quellen mit Bildern, zeigt der Chat bis zu
   6 davon (Bildunterschrift = Quelle, bei PDFs mit Seite, Klick öffnet die
   Quelle). Web-Bilder bleiben Links auf den Server der Quelle, PDF-Grafiken

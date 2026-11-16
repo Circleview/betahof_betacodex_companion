@@ -113,9 +113,10 @@ Die wichtigsten Regeln:
 - Nach der Antwort folgt ein Block mit dem **wörtlichen Zitat** je Verweis. Der Code
   sucht dieses Zitat im Originaltext und hebt es in der Quellenansicht hervor. So
   können Leser:innen jede Aussage in Sekunden prüfen.
-- Hat ein zitierter Ausschnitt Bilder, sieht das Modell je Bild einen Marker
+- Hat ein gefundener Ausschnitt Bilder, sieht das Modell je Bild einen Marker
   `[bild:n.m]` mit gekürzter, bereinigter Bildbeschreibung (nie die Adresse). Passt ein
-  Bild klar, setzt es höchstens einen Marker unter den Absatz. Der Server lässt nur den
+  Bild klar, setzt es höchstens einen Marker unter den Absatz, auch aus einem Ausschnitt,
+  den die Antwort nicht zitiert (die Bildunterschrift nennt die Quelle). Der Server lässt nur den
   ersten gültigen Marker stehen, die Seite zeigt dort das Bild aus der Quellenliste.
   Hängt an einem Ausschnitt kein eigenes Bild, bekommt er höchstens zwei Bilder aus derselben
   Quelle (zuerst solche, die an keinem Ausschnitt hängen); sie sind für das Modell gekennzeichnet
@@ -278,7 +279,7 @@ sind willkommen.
 
 Diese Tabelle wird aus dem Code erzeugt. Ändern sich Prompts oder Parameter, schlägt `tests/test_how_it_works_doc.py` fehl, bis der Text oben geprüft und `python scripts/how_it_works.py --write` gelaufen ist.
 
-<!-- fingerprint: 3f06b77a70ab -->
+<!-- fingerprint: 2051a1f7c20e -->
 <!-- END generiert -->
 
 ## Wie dieses Dokument aktuell bleibt
