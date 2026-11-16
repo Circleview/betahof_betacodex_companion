@@ -611,3 +611,12 @@ def test_header_nav_landmark_and_labels_bilingual():
     for page in ("index", "embed"):
         assert 'data-i18n-aria-label="index.questionAriaLabel"' in (STATIC / f"{page}.html").read_text(encoding="utf-8")
     assert "footer.embedSnippetLabel" in FOOTER_JS
+
+
+def test_sticky_header_is_full_width_white_and_hairline_only_without_band():
+    after = _field_rule("#site-header::after")
+    assert "width: 100vw" in after and "background: var(--color-bg)" in after and "z-index: -1" in after
+    # kein clip-path am Header: er wuerde Popover unter dem Header abschneiden
+    assert "clip-path" not in _field_rule("#site-header")
+    sel = "body:has(.page-band) #site-header, body:not(.chat-started):has(#frage-bereich) #site-header"
+    assert re.search(r"border-bottom:\s*0\b", _field_rule(sel))
