@@ -304,6 +304,7 @@ _EARLY_ACCESS_EXEMPT_PATHS = {
     "/icons/favicon.png",
     "/icons/favicon.svg",
     "/question.js",
+    "/embed-resize.js",
     "/markdown.js",
     "/auth.js",
     "/turnstile.js",

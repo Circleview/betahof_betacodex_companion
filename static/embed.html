@@ -86,13 +86,6 @@
      redundante Doppelmeldung. Mobil-Erkennung im Embed selbst (siehe
      question.js: matchMedia) bleibt davon unberührt - sie wertet ohnehin die
      tatsächliche Breite dieses iframes aus. -->
-<script>
-  function reportHeightToParent() {
-    if (window.parent === window) return;
-    const height = document.documentElement.scrollHeight;
-    window.parent.postMessage({ type: 'betacodex-chat-embed-resize', height }, '*');
-  }
-  new ResizeObserver(reportHeightToParent).observe(document.documentElement);
-</script>
+<script src="/embed-resize.js"></script>
 </body>
 </html>
