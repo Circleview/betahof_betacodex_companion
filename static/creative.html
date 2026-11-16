@@ -89,7 +89,7 @@
       <div id="creative-feedback" class="creative-feedback hidden"></div>
 
       <label for="creative-instruction" class="creative-field-label creative-eyebrow" data-i18n="creative.instructionLabel"></label>
-      <textarea id="creative-instruction" rows="2" data-i18n-placeholder="creative.instructionPlaceholder" required></textarea>
+      <textarea id="creative-instruction" aria-describedby="creative-ai-notice" rows="2" data-i18n-placeholder="creative.instructionPlaceholder" required></textarea>
 
       <!-- Nutzerwunsch (2026-08-30): Mikrofon-Button steht links neben dem
            Absenden-Button, nicht mehr neben der Textarea (siehe
@@ -112,6 +112,7 @@
              gleiches Muster wie beim previewToggleBtn). -->
         <button type="submit" id="creative-submit"></button>
       </div>
+      <p id="creative-ai-notice" class="ai-notice" data-i18n="creative.aiNotice"></p>
       <div id="turnstile-container" class="turnstile-container"></div>
       <p id="creative-error" class="hidden"></p>
       <p id="creative-disclaimer-mobile" class="creative-disclaimer creative-disclaimer--mobile"></p>

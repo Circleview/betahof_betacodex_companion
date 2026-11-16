@@ -1166,6 +1166,17 @@ body:not(.chat-started) #question-form {
   }
 }
 
+/* Idee 36bb9a6e: KI-Hinweis nach Art. 50 KI-Verordnung unter den Eingabefeldern
+   (Chat, Embed, Kreativ). Bewusst außerhalb von #question-form: dessen
+   flex-wrap würde die Eingabezeile sonst umbrechen. */
+.ai-notice {
+  margin: 0 1.25rem 0.75rem;
+  font-size: 0.75rem;
+  line-height: 1.4;
+  color: var(--color-text-muted);
+  text-align: center;
+}
+
 #question-form {
   display: flex;
   align-items: center;

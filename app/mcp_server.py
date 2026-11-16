@@ -49,6 +49,24 @@ server = MCPServer(
 PUBLIC_BASE_URL = "https://companion.betahof.com"
 MAX_QUESTION_CHARS = 2000
 
+# Idee 36bb9a6e: sichtbarer KI-Hinweis (Art. 50 KI-Verordnung) am Ende jedes
+# MCP-Ergebnisses. Offenlegung für Leser:innen, keine maschinenlesbare Markierung.
+AI_MARKERS = {"de": "KI-generiert (BetaCodex Chat)", "en": "AI-generated (BetaCodex Chat)"}
+
+
+def _with_ai_marker(text: str, lang: str) -> str:
+    return f"{text}\n\n{AI_MARKERS.get(lang, AI_MARKERS['de'])}"
+
+
+def _strip_ai_marker(document: str) -> str:
+    """revise_text bekommt oft die Ausgabe von create_text zurück - die
+    KI-Zeile darf das Modell nicht als Dokumenttext sehen."""
+    stripped = document.rstrip()
+    for marker in AI_MARKERS.values():
+        if stripped.endswith(marker):
+            return stripped.removesuffix(marker).rstrip()
+    return document
+
 
 def _format_result(document: str, sources: dict, lang: str) -> str:
     lines = [document.strip()]
@@ -63,7 +81,7 @@ def _format_result(document: str, sources: dict, lang: str) -> str:
             lines.append(f"- BetaCodex: {s['title']}" + (f" ({meta})" if meta else "") + (f" {s['url']}" if s.get("url") else ""))
         for s in web:
             lines.append(f"- Web: {s.get('title') or s['url']} {s['url']}")
-    return "\n".join(lines)
+    return _with_ai_marker("\n".join(lines), lang)
 
 
 def _run_creative(key: dict, instruction: str, document: str, lang: str, web_search: bool) -> str:
@@ -71,6 +89,7 @@ def _run_creative(key: dict, instruction: str, document: str, lang: str, web_sea
 
     lang = lang if lang in ("de", "en") else i18n.DEFAULT_LANG
     instruction = instruction.strip()
+    document = _strip_ai_marker(document)
     if not instruction:
         raise ToolError(i18n.get_message("creative_instruction_empty", lang))
     if len(instruction) > main.CREATIVE_MAX_INSTRUCTION_CHARS:
@@ -127,7 +146,7 @@ def _format_answer(answer: str, chunk_refs: list[dict], lang: str) -> str:
             url = None if ref.get("url_reachable") is False else ref.get("listen_url") or ref.get("url")
             kind = "Web" if ref.get("is_web_fallback") else "BetaCodex"
             lines.append(f"[{n}] {kind}: {ref['title']}" + (f" ({meta})" if meta else "") + (f" {url}" if url else ""))
-    return "\n".join(lines)
+    return _with_ai_marker("\n".join(lines), lang)
 
 
 def _run_ask(key: dict, question: str, lang: str) -> str:
