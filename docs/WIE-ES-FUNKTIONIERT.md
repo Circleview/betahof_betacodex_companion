@@ -279,7 +279,7 @@ sind willkommen.
 
 Diese Tabelle wird aus dem Code erzeugt. Ändern sich Prompts oder Parameter, schlägt `tests/test_how_it_works_doc.py` fehl, bis der Text oben geprüft und `python scripts/how_it_works.py --write` gelaufen ist.
 
-<!-- fingerprint: 2051a1f7c20e -->
+<!-- fingerprint: 9387cd33b3ce -->
 <!-- END generiert -->
 
 ## Wie dieses Dokument aktuell bleibt
