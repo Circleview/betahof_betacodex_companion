@@ -392,3 +392,43 @@ def test_ask_question_output_and_log_have_no_image_marker(mcp_client, monkeypatc
     assert "[bild:" not in result["content"][0]["text"]
     assert "Teams entscheiden selbst [1].\n\nEnde." in result["content"][0]["text"]
     assert [e["answer"] for e in question_log.list_entries()] == ["Teams entscheiden selbst [1].\n\nEnde."]
+
+
+# --- KI-Kennzeichnung nach Art. 50 KI-Verordnung (Idee 36bb9a6e) ---
+
+
+def test_create_text_ends_with_ai_marker_after_source_list(mcp_client):
+    _, secret = mcp_keys.create_key(OWNER, "Laptop")
+    text = _call(mcp_client, secret, "create_text", {"instruction": "Schreib über Beta."}).json()["result"]["content"][0]["text"]
+    assert text.endswith("\n\nKI-generiert (BetaCodex Chat)")
+    assert text.index("- Web: Web A") < text.index("KI-generiert")
+
+
+def test_ai_marker_is_separated_by_blank_line_without_sources():
+    text = mcp_server._format_result("Nur Text.", {}, "de")
+    assert text == "Nur Text.\n\nKI-generiert (BetaCodex Chat)"
+
+
+def test_revise_text_in_english_ends_with_english_ai_marker(mcp_client):
+    _, secret = mcp_keys.create_key(OWNER, "Laptop")
+    text = _call(
+        mcp_client, secret, "revise_text", {"document": "Old text.", "instruction": "Shorter.", "language": "en"}
+    ).json()["result"]["content"][0]["text"]
+    assert text.endswith("\n\nAI-generated (BetaCodex Chat)")
+
+
+@pytest.mark.parametrize("marker", ["KI-generiert (BetaCodex Chat)", "AI-generated (BetaCodex Chat)"])
+def test_revise_text_strips_incoming_ai_marker_so_it_appears_once(mcp_client, _isolate, marker):
+    _, secret = mcp_keys.create_key(OWNER, "Laptop")
+    text = _call(
+        mcp_client, secret, "revise_text", {"document": f"Alter Text.\n\n{marker}\n", "instruction": "Kürzer."}
+    ).json()["result"]["content"][0]["text"]
+    assert _isolate[0]["document"] == "Alter Text."
+    assert text.count("KI-generiert (BetaCodex Chat)") == 1
+    assert "AI-generated" not in text
+
+
+def test_ask_question_ends_with_ai_marker(mcp_client, fake_ask):
+    _, secret = mcp_keys.create_key(OWNER, "Laptop")
+    text = _call(mcp_client, secret, "ask_question", {"question": "Wer entscheidet?", "language": "en"}).json()["result"]["content"][0]["text"]
+    assert text.endswith("\n\nAI-generated (BetaCodex Chat)")
