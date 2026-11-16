@@ -16,6 +16,16 @@ und die Treffer auf Frage-Begriffe. Die Antworten beider Läufe stehen zum
 Handurteil in data/ab_ergebnis.md:
 
     PYTHONPATH=. python tools/retrieval_eval.py --ab data/ab_fragen.txt
+
+Quellen je Frage ohne Modellaufruf (Idee 78404054): Anzahl Quellen,
+Autor:innen und Chunk-Quellen der 5 Ausschnitte. Vor einem Tag mit
+Änderung an der Suche mit einer Kopie der Produktionsdaten laufen lassen
+(lokale Daten verhielten sich bei v0.95.1 anders): Code-Stand per
+`git archive` in einen Ordner, dort `data` als Symlink auf eine per rsync
+geholte Kopie von shared/data (chroma, sources.json, authors.json,
+author_profiles.json, terms.json, web_*.json), .env dazu kopieren:
+
+    PYTHONPATH=. python tools/retrieval_eval.py --quellen fragen.txt
 """
 import logging
 import random
@@ -189,8 +199,19 @@ def ab_eval(path: str, out_path: str = "data/ab_ergebnis.md") -> None:
           f"Handurteil und Web-Anteil siehe oben/{out_path}")
 
 
+def quellen_eval(path: str) -> None:
+    questions = [q.strip() for q in open(path, encoding="utf-8") if q.strip() and not q.startswith("#")]
+    for q in questions:
+        _, refs, _, _ = main._ask_context(q, [], "de", TOP_K)
+        authors = sorted({a for r in refs for a in r.authors})
+        print(f"{q} | Quellen {len({r.source_id for r in refs})} | {', '.join(authors)} | "
+              f"{' '.join(r.source_id[:4] for r in refs)}")
+
+
 if __name__ == "__main__":
     if sys.argv[1:2] == ["--ab"]:
         ab_eval(sys.argv[2])
+    elif sys.argv[1:2] == ["--quellen"]:
+        quellen_eval(sys.argv[2])
     else:
         main_eval(int(sys.argv[1]) if len(sys.argv) > 1 else 80)
