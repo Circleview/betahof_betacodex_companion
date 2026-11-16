@@ -1012,3 +1012,21 @@ def test_context_marks_images_from_same_source_separately():
 @pytest.mark.parametrize("lang, phrase", [("de", "aus derselben Quelle"), ("en", "from the same source")])
 def test_prompt_has_same_source_image_rule(lang, phrase):
     assert phrase in llm.SYSTEM_PROMPTS[lang]
+
+
+# Idee fe44f080 (2026-11-16): Haiku setzte trotz passender Bild-Zeile keinen
+# Marker; ein kurzer Bild-Hinweis am Ende der Nutzernachricht behebt das
+# (lokal 0/3 -> 3/3). Er steht nur da, wenn Bilder angeboten werden.
+def _last_user_message(client):
+    return client.messages.stream.call_args.kwargs["messages"][-1]["content"]
+
+
+@pytest.mark.parametrize("lang", ["de", "en"])
+def test_image_reminder_only_when_images_offered(lang):
+    with_image = [{"title": "T", "author": "A", "date": "D", "text": "Text", "images": [{"src": "https://x.org/a.png", "alt": "Zellen"}]}]
+    without = [{"title": "T", "author": "A", "date": "D", "text": "Text"}]
+    for chunks, expected in ((with_image, True), (without, False)):
+        client = _fake_client("Antwort")
+        with patch.object(llm, "_get_client", return_value=client):
+            "".join(llm.stream_answer_question("Frage?", chunks, lang=lang))
+        assert (llm._IMAGE_REMINDERS[lang] in _last_user_message(client)) is expected

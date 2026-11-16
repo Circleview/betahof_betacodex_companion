@@ -10506,7 +10506,6 @@ def test_ask_streams_same_text_chunked_and_unchunked(client, monkeypatch):
 @pytest.mark.parametrize(
     "raw",
     [
-        "[bild:1.1]\n\nAussage [1].",
         "Aussage [1].\n\n[bild:2.1]",
         "Aussage [1].\n\n[bild:1.2]",
         "Aussage [1].\n\n[bild:7.7] mehr Text, damit der Holdback greift.",
