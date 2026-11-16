@@ -6096,3 +6096,93 @@ details a {
 .source-image a:hover figcaption {
   color: var(--color-text);
 }
+
+/* Idee fe44f080: ein Inline-Bild im Antworttext (Marker [bild:n.m]); bis es
+   geladen ist (oder als Live-Platzhalter) eine schimmernde Skeleton-Fläche
+   mit festem Seitenverhältnis - kein Layout-Sprung. Mobil volle Bubble-Breite. */
+.inline-source-image {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 32rem;
+  margin: 0.9rem 0;
+}
+
+.inline-source-image a {
+  display: block;
+  color: inherit;
+  text-decoration: none;
+}
+
+.inline-source-image img {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: 24rem;
+  object-fit: contain;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  transition: border-color 0.15s ease;
+}
+
+.inline-source-image a:hover img {
+  border-color: var(--color-accent);
+}
+
+.inline-source-image a:focus-visible {
+  outline: 3px solid var(--color-focus);
+  outline-offset: 2px;
+  border-radius: var(--radius);
+}
+
+.inline-source-image figcaption {
+  margin-top: 0.3rem;
+  font-size: 0.78rem;
+  line-height: 1.3;
+  color: var(--color-text-muted);
+  overflow-wrap: anywhere;
+}
+
+.inline-source-image a:hover figcaption {
+  color: var(--color-text);
+}
+
+.inline-source-image.is-loading {
+  position: relative;
+  aspect-ratio: 16 / 9;
+  border-radius: var(--radius);
+  background: linear-gradient(100deg, var(--color-surface) 30%, var(--color-border) 50%, var(--color-surface) 70%);
+  background-size: 200% 100%;
+  animation: inline-image-shimmer 1.5s linear infinite;
+}
+
+.inline-source-image.is-loading img {
+  position: absolute;
+  inset: 0;
+  height: 100%;
+  opacity: 0;
+}
+
+.inline-source-image.is-loading figcaption {
+  display: none;
+}
+
+@keyframes inline-image-shimmer {
+  from {
+    background-position: 100% 0;
+  }
+  to {
+    background-position: -100% 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .inline-source-image img {
+    transition: none;
+  }
+
+  .inline-source-image.is-loading {
+    animation: none;
+  }
+}

@@ -107,6 +107,14 @@ key rules:
 - After the answer comes a block with the **verbatim quote** for each reference. The
   code finds that quote in the original text and highlights it in the source view,
   so readers can check any statement in seconds.
+- If a retrieved excerpt has images, the model sees one marker `[bild:n.m]` per image with
+  a shortened, sanitized description (never the address). If an image clearly fits, it
+  places at most one marker below the paragraph, even from an excerpt the answer does
+  not cite (the caption names the source). The server keeps only the first valid
+  marker; the page shows the image from the source list there. If an excerpt has no image
+  of its own, it gets at most two images from the same source (first those attached to no
+  excerpt); they are labelled for the model and used only if their description or file
+  name clearly matches the statement.
 - If the excerpts cover only part of the question, the model answers with that part
   and names the gap at the end. Only if nothing fits does it use a fixed refusal
   sentence.
@@ -260,7 +268,7 @@ welcome.
 
 This table is generated from the code. If prompts or settings change, `tests/test_how_it_works_doc.py` fails until the text above has been reviewed and `python scripts/how_it_works.py --write` has been run.
 
-<!-- fingerprint: a773846738db -->
+<!-- fingerprint: 9387cd33b3ce -->
 <!-- END generiert -->
 
 ## How this document stays current

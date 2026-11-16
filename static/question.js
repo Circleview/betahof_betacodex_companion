@@ -1045,10 +1045,50 @@ function safeImageSrc(value) {
   }
 }
 
+// Eine Bildfigur (Bildleiste und Inline-Bild): Bild + Unterschrift mit Quellentitel,
+// verlinkt auf die Quelle (PDF mit #page). Nur DOM-API, nie innerHTML (Alt/Titel
+// sind fremder Inhalt). inline: eigenes Skeleton bis das Bild geladen ist.
+function buildImageFigure({ src, alt, page }, source, { inline = false, onError } = {}) {
+  const figure = document.createElement('figure');
+  figure.className = inline ? 'inline-source-image is-loading' : 'source-image';
+  if (inline) figure.dataset.src = src;
+  const img = document.createElement('img');
+  img.src = src;
+  img.alt = alt;
+  img.loading = inline ? 'eager' : 'lazy';
+  img.referrerPolicy = 'no-referrer';
+  img.addEventListener('error', () => {
+    figure.remove();
+    if (onError) onError();
+  });
+  if (inline) img.addEventListener('load', () => figure.classList.remove('is-loading'));
+  const caption = document.createElement('figcaption');
+  caption.textContent =
+    page === null ? displayTitle(source) : `${displayTitle(source)} · ${t('index.sourceImagePage', { n: page })}`;
+
+  let href = citationHref(source);
+  if (href && page !== null && /\.pdf$/i.test(new URL(href).pathname) && !new URL(href).hash) {
+    href += `#page=${page}`;
+  }
+  let host = figure;
+  if (href) {
+    host = document.createElement('a');
+    host.href = href;
+    host.target = '_blank';
+    host.rel = 'noopener noreferrer';
+    host.title = t('index.sourceImageTooltip');
+    figure.appendChild(host);
+  }
+  host.appendChild(img);
+  host.appendChild(caption);
+  return figure;
+}
+
 // Bildleiste unter der Antwort: Bilder der zitierten Quellen, entdoppelt,
-// höchstens 6. Ohne darstellbare Bilder: null (kein Element).
-function buildImageStrip(sources) {
-  const seen = new Set();
+// höchstens 6, ohne das Inline-Bild (excludeSrc). Ohne darstellbare Bilder:
+// null (kein Element).
+function buildImageStrip(sources, excludeSrc) {
+  const seen = new Set([excludeSrc]);
   const items = [];
   sources.forEach((s) => {
     (Array.isArray(s.images) ? s.images : []).forEach((img) => {
@@ -1062,40 +1102,84 @@ function buildImageStrip(sources) {
 
   const strip = document.createElement('div');
   strip.className = 'source-image-strip';
-  items.forEach(({ src, alt, page, source }) => {
-    const figure = document.createElement('figure');
-    figure.className = 'source-image';
-    const img = document.createElement('img');
-    img.src = src;
-    img.alt = alt;
-    img.loading = 'lazy';
-    img.referrerPolicy = 'no-referrer';
-    img.addEventListener('error', () => {
-      figure.remove();
-      if (!strip.querySelectorAll('.source-image').length) strip.remove();
+  items.forEach((item) => {
+    const figure = buildImageFigure(item, item.source, {
+      onError: () => {
+        if (!strip.querySelectorAll('.source-image').length) strip.remove();
+      },
     });
-    const caption = document.createElement('figcaption');
-    caption.textContent =
-      page === null ? displayTitle(source) : `${displayTitle(source)} · ${t('index.sourceImagePage', { n: page })}`;
-
-    let href = citationHref(source);
-    if (href && page !== null && /\.pdf$/i.test(new URL(href).pathname) && !new URL(href).hash) {
-      href += `#page=${page}`;
-    }
-    let host = figure;
-    if (href) {
-      host = document.createElement('a');
-      host.href = href;
-      host.target = '_blank';
-      host.rel = 'noopener noreferrer';
-      host.title = t('index.sourceImageTooltip');
-      figure.appendChild(host);
-    }
-    host.appendChild(img);
-    host.appendChild(caption);
     strip.appendChild(figure);
   });
   return strip;
+}
+
+// Inline-Bild (Idee fe44f080): das Modell setzt höchstens einen Marker
+// [bild:n.m] (n = Ausschnitt wie [n], m = 1-basiertes Bild der Quelle n).
+const INLINE_MARKER_RE = /\[bild:(\d{1,2})\.(\d{1,2})\]/;
+
+function inlineMarkerNodes(bubble) {
+  const nodes = [];
+  const walker = document.createTreeWalker(bubble, NodeFilter.SHOW_TEXT);
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    if (INLINE_MARKER_RE.test(node.textContent)) nodes.push(node);
+  }
+  return nodes;
+}
+
+// Marker samt einem angrenzenden <br> entfernen; ein dadurch leerer Absatz fällt weg.
+function removeInlineMarkers(bubble, nodes) {
+  nodes.forEach((node) => {
+    let block = node;
+    while (block.parentNode !== bubble) block = block.parentNode;
+    node.textContent = node.textContent.replace(/\[bild:\d{1,2}\.\d{1,2}\]/g, '');
+    if (node.textContent.trim() === '') {
+      const next = node.nextSibling;
+      const prev = node.previousSibling;
+      if (next && next.localName === 'br') next.remove();
+      else if (prev && prev.localName === 'br') prev.remove();
+      node.remove();
+    }
+    if (block.textContent.trim() === '' && !block.querySelectorAll('.inline-source-image').length) block.remove();
+  });
+}
+
+// Skeleton-Fläche für ein angekündigtes, noch nicht ladbares Bild (Live-Stream).
+function buildImagePlaceholder() {
+  const placeholder = document.createElement('div');
+  placeholder.className = 'inline-source-image is-loading';
+  placeholder.setAttribute('aria-hidden', 'true');
+  // Shimmer läuft über Neu-Rendern hinweg im Takt weiter (CSSOM, CSP-konform).
+  placeholder.style.animationDelay = `-${Date.now() % 1500}ms`;
+  return placeholder;
+}
+
+// Setzt Figur (sources) bzw. Platzhalter (sources === null) hinter den Absatz
+// mit dem ersten Marker; alle Marker verschwinden. Unbekannte Marker, unsichere
+// src oder ausgeblendete Quelle: kein Bild.
+function placeInlineImage(bubble, sources) {
+  const nodes = inlineMarkerNodes(bubble);
+  if (!nodes.length) return;
+  bubble.querySelectorAll('.inline-source-image').forEach((el) => el.remove());
+  const [, n, m] = nodes[0].textContent.match(INLINE_MARKER_RE);
+  let block = nodes[0];
+  while (block.parentNode !== bubble) block = block.parentNode;
+  let element = null;
+  if (!sources) {
+    element = buildImagePlaceholder();
+  } else {
+    const source = sources[parseInt(n, 10) - 1];
+    const image = source && Array.isArray(source.images) ? source.images[parseInt(m, 10) - 1] : null;
+    const src = image && safeImageSrc(image.src);
+    if (src && !isHiddenForLang(source)) {
+      element = buildImageFigure(
+        { src, alt: image.alt || '', page: Number.isInteger(image.page) ? image.page : null },
+        source,
+        { inline: true }
+      );
+    }
+  }
+  if (element) block.insertAdjacentElement('afterend', element);
+  removeInlineMarkers(bubble, nodes);
 }
 
 await initI18n();
@@ -1315,7 +1399,7 @@ function buildCopyAnswerButton(answer) {
   btn.setAttribute('aria-label', t('index.copyAnswerTitle'));
   let copiedTimer = null;
   btn.addEventListener('click', async () => {
-    const text = answer.replace(/\s*\[\d+\]/g, '');
+    const text = answer.replace(/\s*\[\d+\]/g, '').replace(/\s*\[bild:\d{1,2}\.\d{1,2}\]/g, '');
     try {
       await navigator.clipboard.write([
         new ClipboardItem({
@@ -1527,6 +1611,7 @@ function renderAnswerText(bubble, question, answer) {
 }
 
 function attachAnswerSources(bubble, sources) {
+  placeInlineImage(bubble, sources);
   makeCitationsClickable(bubble, sources);
   // Nutzerfeedback (2026-09-01): die Sidebar (buildSourcesList) zeigt
   // Quellen-Ebene an (Titel/KI-Zusammenfassung/Link), nicht den einzelnen
@@ -1549,7 +1634,8 @@ function attachAnswerSources(bubble, sources) {
 // Ersetzt die Bildleiste der Bubble (nie zwei Leisten; ohne Bilder keine).
 function refreshImageStrip(bubble, cited) {
   bubble.querySelectorAll('.source-image-strip').forEach((el) => el.remove());
-  const strip = buildImageStrip(cited);
+  const inline = bubble.querySelectorAll('.inline-source-image')[0];
+  const strip = buildImageStrip(cited, inline && inline.dataset.src);
   if (strip) bubble.appendChild(strip);
 }
 
@@ -1865,6 +1951,8 @@ questionForm.addEventListener('submit', async (e) => {
         // angezeigt (\s* frisst ein eventuelles Leerzeichen davor mit, damit
         // keine Lücke vor dem folgenden Satzzeichen entsteht).
         assistantBubble.innerHTML = renderMarkdown(liveText.replace(/\s*\[\d+\]/g, ''));
+        // Bildmarker: Skeleton-Platzhalter statt Markertext (Idee fe44f080).
+        placeInlineImage(assistantBubble, null);
       },
       async (answer) => {
         // Backlog (2026-07-31, ergänzt 2026-08-03): Vorlesen-Button UND

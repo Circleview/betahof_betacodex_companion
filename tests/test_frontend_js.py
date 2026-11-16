@@ -4563,6 +4563,7 @@ class FakeNode {
     this._text = '';
     this.listeners = {};
     this.dataset = {};
+    this.style = {};
     this.attrs = {};
   }
   get textContent() {
@@ -4593,6 +4594,24 @@ class FakeNode {
     const replacement = newNode.nodeType === 'fragment' ? newNode.children : [newNode];
     replacement.forEach((c) => { c.parentNode = this; });
     this.children.splice(i, 1, ...replacement);
+  }
+  get localName() { return this.tag; }
+  get nextSibling() {
+    const sib = this.parentNode ? this.parentNode.children : [];
+    return sib[sib.indexOf(this) + 1] || null;
+  }
+  get previousSibling() {
+    const sib = this.parentNode ? this.parentNode.children : [];
+    return sib[sib.indexOf(this) - 1] || null;
+  }
+  get classList() {
+    const node = this;
+    const names = () => node.className.split(' ').filter(Boolean);
+    return {
+      add: (n) => { if (!names().includes(n)) node.className = [...names(), n].join(' '); },
+      remove: (n) => { node.className = names().filter((x) => x !== n).join(' '); },
+      contains: (n) => names().includes(n),
+    };
   }
   addEventListener(evt, fn) { this.listeners[evt] = fn; }
   setAttribute(k, v) { this.attrs[k] = String(v); this[k] = String(v); }
@@ -4645,8 +4664,19 @@ def _question_js_funcs(*names: str) -> str:
     return "\n\n".join(parts)
 
 
+def _question_js_consts(*names: str) -> str:
+    js_source = (STATIC_DIR / "question.js").read_text()
+    out = []
+    for name in names:
+        match = re.search(rf"^const {name} = .*;$", js_source, re.M)
+        assert match, f"{name} wurde in question.js nicht gefunden."
+        out.append(match.group(0))
+    return "\n".join(out)
+
+
 def _run_question_js(body: str, *funcs: str):
-    script = f"{_FAKE_DOM_JS}\n{_source_lang_js()}\n{_question_js_funcs(*funcs)}\n{body}"
+    consts = _question_js_consts("INLINE_MARKER_RE") if "placeInlineImage" in funcs else ""
+    script = f"{_FAKE_DOM_JS}\n{_source_lang_js()}\n{consts}\n{_question_js_funcs(*funcs)}\n{body}"
     return _run_node(script)
 
 
@@ -4672,7 +4702,7 @@ function summarize(strip) {
 }
 """
 
-_STRIP_FUNCS = ("safeImageSrc", "buildImageStrip")
+_STRIP_FUNCS = ("safeImageSrc", "buildImageFigure", "buildImageStrip")
 
 
 def _src(i):
@@ -5537,3 +5567,257 @@ def test_render_markdown_never_bolds_beta_kodex(name):
 def test_render_markdown_keeps_bold_compound_with_beta_kodex():
     html = _run_render_markdown("**Beta-Kodex-Gesetze** gelten.")
     assert html == "<p><strong>Beta-Kodex-Gesetze</strong> gelten.</p>"
+
+
+
+# ---------------------------------------------------------------------------
+# Idee fe44f080: Inline-Bild per Marker [bild:n.m] (static/question.js)
+# ---------------------------------------------------------------------------
+
+_INLINE_FUNCS = (
+    "safeImageSrc", "buildImageFigure", "buildImageStrip", "buildImagePlaceholder", "inlineMarkerNodes",
+    "removeInlineMarkers", "placeInlineImage", "makeCitationsClickable", "extractCitedSources", "refreshImageStrip",
+)
+
+_INLINE_HELPERS_JS = """
+function para(...parts) {
+  const p = document.createElement('p');
+  parts.forEach((part) => p.appendChild(part === 'BR' ? document.createElement('br') : document.createTextNode(part)));
+  return p;
+}
+function bubbleOf(...paras) {
+  const b = document.createElement('div');
+  paras.forEach((p) => b.appendChild(p));
+  return b;
+}
+function describe(node) {
+  return node.children.map((c) => c.nodeType === 'text' ? 'T:' + c.textContent
+    : c.tag === 'br' ? 'BR'
+    : c.tag === 'p' ? 'P:' + c.children.map((x) => x.nodeType === 'text' ? x.textContent : x.tag).join('|')
+    : c.tag + '.' + c.className);
+}
+function all(node, pred, acc = []) {
+  node.children.forEach((c) => { if (pred(c)) acc.push(c); all(c, pred, acc); });
+  return acc;
+}
+"""
+
+
+def _run_inline(body: str, lang="de"):
+    return _run_question_js(
+        f"globalThis.__UI_LANG = {json.dumps(lang)};\n{_INLINE_HELPERS_JS}\n{body}", *_INLINE_FUNCS
+    )
+
+
+def _img_source(i=1, n_images=1, **extra):
+    return _source(i, [{"src": _src(k), "alt": f"Alt {k}", "page": None} for k in range(1, n_images + 1)], **extra)
+
+
+def test_inline_valid_marker_places_one_figure_after_its_paragraph():
+    result = _run_inline(f"""
+const sources = {json.dumps([_img_source(1), _img_source(2, 2)])};
+const b = bubbleOf(para('Erster Absatz [2].'), para('[bild:2.2]'), para('Dritter.'));
+placeInlineImage(b, sources);
+const fig = all(b, (n) => n.tag === 'figure')[0];
+console.log(JSON.stringify({{
+  order: describe(b),
+  src: all(fig, (n) => n.tag === 'img')[0].src,
+  alt: all(fig, (n) => n.tag === 'img')[0].alt,
+  caption: all(fig, (n) => n.tag === 'figcaption')[0].textContent,
+  href: all(fig, (n) => n.tag === 'a')[0].href,
+  dataSrc: fig.dataset.src,
+  text: b.textContent,
+}}));
+""")
+    assert result["order"] == ["P:Erster Absatz [2].", "figure.inline-source-image is-loading", "P:Dritter."]
+    assert result["src"] == _src(2) and result["alt"] == "Alt 2" and result["dataSrc"] == _src(2)
+    assert result["caption"] == "Titel 2" and result["href"] == "https://example.org/2"
+    assert "[bild:" not in result["text"]
+
+
+def test_inline_figure_links_pdf_page():
+    src = _source(1, [{"src": _src(1), "alt": "", "page": 4}], url="https://example.org/buch.pdf")
+    result = _run_inline(f"""
+const b = bubbleOf(para('A [1].'), para('[bild:1.1]'));
+placeInlineImage(b, {json.dumps([src])});
+const fig = all(b, (n) => n.tag === 'figure')[0];
+console.log(JSON.stringify({{href: all(fig, (n) => n.tag === 'a')[0].href, caption: all(fig, (n) => n.tag === 'figcaption')[0].textContent}}));
+""")
+    assert result == {"href": "https://example.org/buch.pdf#page=4", "caption": "Titel 1 · S. 4"}
+
+
+def test_inline_marker_in_bullet_list_paragraph_puts_figure_behind_paragraph_without_stray_br():
+    result = _run_inline(f"""
+const b = bubbleOf(para('\\u2022 Eins [1]', 'BR', '[bild:1.1]', 'BR', '\\u2022 Zwei'));
+placeInlineImage(b, {json.dumps([_img_source(1)])});
+console.log(JSON.stringify(describe(b)));
+""")
+    assert result == ["P:• Eins [1]|br|• Zwei", "figure.inline-source-image is-loading"]
+
+
+def test_inline_marker_as_last_line_removes_preceding_br():
+    result = _run_inline(f"""
+const b = bubbleOf(para('Text [1].', 'BR', '[bild:1.1]'));
+placeInlineImage(b, {json.dumps([_img_source(1)])});
+console.log(JSON.stringify(describe(b)));
+""")
+    assert result == ["P:Text [1].", "figure.inline-source-image is-loading"]
+
+
+@pytest.mark.parametrize(
+    "marker, source",
+    [
+        ("[bild:9.1]", _img_source(1)),  # unbekannte Quelle
+        ("[bild:1.5]", _img_source(1)),  # unbekanntes Bild
+        ("[bild:1.1]", _source(1, [{"src": "javascript:alert(1)", "alt": "", "page": None}])),  # unsichere src
+        ("[bild:1.1]", _source(1, [])),  # Quelle ohne Bilder
+    ],
+)
+def test_inline_unknown_marker_or_unsafe_src_gives_no_figure_and_no_visible_marker(marker, source):
+    result = _run_inline(f"""
+const b = bubbleOf(para('A [1].'), para({json.dumps(marker)}), para('B.'));
+placeInlineImage(b, {json.dumps([source])});
+console.log(JSON.stringify({{order: describe(b), figures: all(b, (n) => n.tag === 'figure').length}}));
+""")
+    assert result == {"order": ["P:A [1].", "P:B."], "figures": 0}
+
+
+def test_inline_hidden_source_gives_no_figure():
+    source = _img_source(1, text_lang="de")  # EN-UI, fremdsprachig, ohne Übersetzungslink
+    source["url"] = None
+    result = _run_inline(
+        f"""
+const b = bubbleOf(para('A [1].'), para('[bild:1.1]'));
+placeInlineImage(b, {json.dumps([source])});
+console.log(JSON.stringify({{order: describe(b), figures: all(b, (n) => n.tag === 'figure').length}}));
+""",
+        lang="en",
+    )
+    assert result == {"order": ["P:A [1]."], "figures": 0}
+
+
+def test_inline_only_first_marker_is_placed_all_others_removed():
+    result = _run_inline(f"""
+const b = bubbleOf(para('A [1].'), para('[bild:1.2]'), para('B [1] [bild:1.1] weiter.'));
+placeInlineImage(b, {json.dumps([_img_source(1, 2)])});
+const imgs = all(b, (n) => n.tag === 'img').map((i) => i.src);
+console.log(JSON.stringify({{imgs, text: b.textContent}}));
+""")
+    assert result["imgs"] == [_src(2)]
+    assert "[bild:" not in result["text"] and "B [1]  weiter." in result["text"]
+
+
+def test_inline_alt_and_title_with_markup_stay_plain_text():
+    alt = '"><img src=x onerror=alert(1)>'
+    source = _source(1, [{"src": _src(1), "alt": alt, "page": None}], title="<b>T</b>")
+    result = _run_inline(f"""
+const b = bubbleOf(para('A [1].'), para('[bild:1.1]'));
+placeInlineImage(b, {json.dumps([source])});
+const fig = all(b, (n) => n.tag === 'figure')[0];
+const img = all(fig, (n) => n.tag === 'img')[0];
+console.log(JSON.stringify({{alt: img.alt, rp: img.referrerPolicy, caption: all(fig, (n) => n.tag === 'figcaption')[0].textContent,
+  imgs: all(b, (n) => n.tag === 'img').length}}));
+""")
+    assert result == {"alt": alt, "rp": "no-referrer", "caption": "<b>T</b>", "imgs": 1}
+
+
+def test_inline_placeholder_replaces_marker_then_figure_replaces_placeholder_at_same_place():
+    result = _run_inline(f"""
+const sources = {json.dumps([_img_source(1)])};
+const live = bubbleOf(para('A [1].'), para('[bild:1.1]'), para('B.'));
+placeInlineImage(live, null);
+const ph = all(live, (n) => n.className.includes('inline-source-image'))[0];
+const placeholder = {{order: describe(live), aria: ph.attrs['aria-hidden'], tag: ph.tag, text: live.textContent}};
+const done = bubbleOf(para('A [1].'), para('[bild:1.1]'), para('B.'));
+done.appendChild(ph);  // Platzhalter vom Live-Stand noch im DOM
+placeInlineImage(done, sources);
+console.log(JSON.stringify({{placeholder, done: describe(done), inline: all(done, (n) => n.className.includes('inline-source-image')).length}}));
+""")
+    assert result["placeholder"] == {
+        "order": ["P:A [1].", "div.inline-source-image is-loading", "P:B."], "aria": "true", "tag": "div", "text": "A [1].B.",
+    }
+    assert result["done"] == ["P:A [1].", "figure.inline-source-image is-loading", "P:B."]
+    assert result["inline"] == 1
+
+
+def test_inline_figure_loses_loading_state_on_load_and_is_removed_on_error():
+    result = _run_inline(f"""
+const sources = {json.dumps([_img_source(1)])};
+const mk = () => {{ const b = bubbleOf(para('A [1].'), para('[bild:1.1]')); placeInlineImage(b, sources); return b; }};
+const ok = mk();
+const okFig = all(ok, (n) => n.tag === 'figure')[0];
+const before = okFig.className;
+all(okFig, (n) => n.tag === 'img')[0].listeners.load();
+const bad = mk();
+all(bad, (n) => n.tag === 'img')[0].listeners.error();
+console.log(JSON.stringify({{before, after: okFig.className, badLeft: all(bad, (n) => n.className.includes('inline-source-image')).length}}));
+""")
+    assert result == {"before": "inline-source-image is-loading", "after": "inline-source-image", "badLeft": 0}
+
+
+def test_inline_without_marker_leaves_bubble_untouched():
+    result = _run_inline(f"""
+const b = bubbleOf(para('A [1].'));
+placeInlineImage(b, {json.dumps([_img_source(1)])});
+console.log(JSON.stringify(describe(b)));
+""")
+    assert result == ["P:A [1]."]
+
+
+def test_strip_leaves_out_inline_image_and_refresh_reads_it_from_the_bubble():
+    sources = [_img_source(1, 3)]
+    result = _run_inline(f"""
+const sources = {json.dumps(sources)};
+const b = bubbleOf(para('A [1].'), para('[bild:1.2]'));
+placeInlineImage(b, sources);
+makeCitationsClickable(b, sources);
+refreshImageStrip(b, extractCitedSources(b, sources));
+refreshImageStrip(b, extractCitedSources(b, sources));
+const strips = b.querySelectorAll('.source-image-strip');
+console.log(JSON.stringify({{strips: strips.length, imgs: all(strips[0], (n) => n.tag === 'img').map((i) => i.src)}}));
+""")
+    assert result == {"strips": 1, "imgs": [_src(1), _src(3)]}
+
+
+def test_inline_figure_survives_citation_rendering_and_strip_refresh():
+    sources = [_img_source(1)]
+    result = _run_inline(f"""
+const sources = {json.dumps(sources)};
+const b = bubbleOf(para('A [1].'), para('[bild:1.1]'));
+placeInlineImage(b, sources);
+makeCitationsClickable(b, sources);
+refreshImageStrip(b, extractCitedSources(b, sources));
+console.log(JSON.stringify({{figs: all(b, (n) => n.tag === 'figure').length, strips: b.querySelectorAll('.source-image-strip').length}}));
+""")
+    assert result == {"figs": 1, "strips": 0}  # einziges Bild steht inline, die Leiste entfällt
+
+
+@pytest.mark.parametrize("text", ["A [1].\n\n[bild:1.1]\n\nB.", "A [bild:12.3] B"])
+def test_speech_strips_image_marker(text):
+    assert "bild" not in _run_strip_markdown_for_speech(text)
+
+
+def test_question_js_wires_inline_image_into_live_view_copy_and_done():
+    js = (STATIC_DIR / "question.js").read_text()
+    assert "placeInlineImage(assistantBubble, null)" in js  # Skeleton im Live-Stream
+    assert re.search(r"placeInlineImage\(bubble, sources\);\s*makeCitationsClickable\(bubble, sources\)", js)
+    assert "\\[bild:\\d{1,2}\\.\\d{1,2}\\]" in js.split("function buildCopyAnswerButton")[1].split("startSpeaking")[0]
+    done = js.split("function applyDoneImages")[1].split("\n}\n")[0]
+    assert "placeInlineImage" not in done
+
+
+def test_inline_image_css_has_skeleton_shimmer_reduced_motion_and_mobile_rules():
+    css = (STATIC_DIR / "style.css").read_text()
+    assert ".inline-source-image.is-loading" in css and "aspect-ratio: 16 / 9" in css
+    assert "@keyframes inline-image-shimmer" in css
+    reduced = css.split("@media (prefers-reduced-motion: reduce)")
+    assert any(".inline-source-image" in part.split("}\n}")[0] and "animation: none" in part.split("}\n}")[0] for part in reduced[1:])
+
+
+def test_inline_marker_with_three_digits_is_not_a_marker():
+    result = _run_inline(f"""
+const b = bubbleOf(para('A [1].'), para('[bild:123.1]'));
+placeInlineImage(b, {json.dumps([_img_source(1)])});
+console.log(JSON.stringify(all(b, (n) => n.tag === 'figure').length));
+""")
+    assert result == 0

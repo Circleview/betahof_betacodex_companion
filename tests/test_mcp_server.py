@@ -373,3 +373,22 @@ def test_mcp_ask_never_passes_diversity_override_even_with_dev_referer(mcp_clien
     mcp_client.post(mcp_server.MCP_PATH, headers=headers, json=body)
 
     assert "max_per_source" not in seen["kwargs"]
+
+
+def test_ask_question_output_and_log_have_no_image_marker(mcp_client, monkeypatch):
+    from app.models import ChunkRef, ImageRef
+
+    ref = ChunkRef(chunk_id="c1", source_id="s1", title="Die 12 Gesetze", authors=[], date=None, url=None, position=0, text="Text.")
+    ref.images = [ImageRef(src="https://img.example.org/a.jpg", alt="Bild")]
+    monkeypatch.setattr(main_module, "_ask_context", lambda *a, **k: ([{"title": "T", "author": "", "date": "", "text": "x"}], [ref], [], [0.1]))
+    monkeypatch.setattr(main_module, "_load_sources", lambda: {"s1": {}})
+    monkeypatch.setattr(main_module, "_compute_occurrence_highlights", lambda answer, docs, quotes: [[]])
+    monkeypatch.setattr(main_module, "_best_local_sentence", lambda doc, emb: None)
+    monkeypatch.setattr(llm, "stream_answer_question", lambda *a, **k: iter(["Teams entscheiden selbst [1].\n\n[bild:1.1]\n\nEnde."]))
+    _, secret = mcp_keys.create_key(OWNER, "Laptop")
+
+    result = _call(mcp_client, secret, "ask_question", {"question": "Wer entscheidet?"}).json()["result"]
+
+    assert "[bild:" not in result["content"][0]["text"]
+    assert "Teams entscheiden selbst [1].\n\nEnde." in result["content"][0]["text"]
+    assert [e["answer"] for e in question_log.list_entries()] == ["Teams entscheiden selbst [1].\n\nEnde."]

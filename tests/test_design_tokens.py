@@ -247,7 +247,7 @@ ACCENT_ALLOWED = {
     ".author-link", ".author-link:hover", "details a", ".creative-disclaimer a", "#creative-sources a",
     "#chat-messages .citation-card .citation-title-link:hover, #chat-messages .citation-card .citation-author-link:hover, #chat-messages .citation-card .external-link:hover", ".citation-author-link:hover", ".citation-title-link:hover", ".question-log-question-link:hover",
     ".question-log-answer-details summary:hover", ".site-footer a:hover",
-    ".source-image a:hover img",
+    ".source-image a:hover img", ".inline-source-image a:hover img",
 }
 
 

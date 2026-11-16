@@ -9627,17 +9627,19 @@ def test_ask_web_fallback_refs_have_no_images():
 
 
 def test_ask_prompt_contains_no_image_url(client, monkeypatch):
+    # Idee fe44f080: Alt-Text und Dateiname dürfen in den Prompt, die URL nie.
     _seed_image_chunks(client, [[{"kind": "url", "url": "https://img.example.org/geheim-bild.jpg", "alt": "Bildtext", "page": None}]])
     captured = []
 
-    def fake_stream(*args, **kwargs):
-        captured.append(repr((args, kwargs)))
+    def fake_stream(question, chunks, **kwargs):
+        captured.append(llm._build_context(chunks, "de", None))
         return iter(["Antwort [1]."])
 
     monkeypatch.setattr(llm, "stream_answer_question", fake_stream)
     client.post("/api/ask", json={"question": "Frage?"})
 
-    assert captured and "geheim-bild" not in captured[0] and "Bildtext" not in captured[0]
+    assert "[bild:1.1] „Bildtext“ (Datei: geheim-bild.jpg)" in captured[0]
+    assert "https://" not in captured[0].split("Bilder:")[1]
 
 
 # --- Handoff ---
@@ -10429,3 +10431,318 @@ def test_find_quote_span_plain_text_and_no_false_hit():
     assert main_module._find_quote_span(doc, "Teams entscheiden selbst.") == "Teams entscheiden selbst."
     assert main_module._find_quote_span(doc, "- **Budgets sind nützlich**") is None
     assert main_module._find_quote_span(doc, "- ** **") is None
+
+
+# --- Inline-Bild (Idee fe44f080): Modell-Angebot, Marker-Stream, Verlauf, Feedback ---
+
+
+def _img(n):
+    return {"kind": "url", "url": f"https://img.example.org/{n}.jpg", "alt": f"Bild {n}", "page": None}
+
+
+def _stream_events(client, monkeypatch, raw, size=None, top_k=5, **kw):
+    pieces = [raw] if size is None else [raw[i : i + size] for i in range(0, len(raw), size)]
+    monkeypatch.setattr(llm, "stream_answer_question", lambda *a, **k: iter(pieces))
+    response = client.post("/api/ask", json={"question": "Frage?", "top_k": top_k, **kw})
+    return ask_result(response)
+
+
+def _deltas(result):
+    return [e["text"] for e in result["events"] if e["type"] == "delta"]
+
+
+def test_ask_offers_images_to_model_in_chunks(client, monkeypatch):
+    _seed_image_chunks(client, [[_img(0), _img(1)], None])
+    captured = []
+
+    def fake_stream(question, chunks, **kwargs):
+        captured.append(chunks)
+        return iter(["Antwort [1]."])
+
+    monkeypatch.setattr(llm, "stream_answer_question", fake_stream)
+    client.post("/api/ask", json={"question": "Frage?", "top_k": 5})
+
+    images = [c.get("images") or [] for c in captured[0]]
+    assert [[i["src"] for i in imgs] for imgs in images] == [["https://img.example.org/0.jpg", "https://img.example.org/1.jpg"], []]
+    assert images[0][0]["alt"] == "Bild 0"
+
+
+def test_ask_offers_restricted_source_at_most_one_image_to_model(client, monkeypatch):
+    _seed_image_chunks(client, [[_img(0), _img(1)], [_img(2)], [_img(3)]], restricted=True)
+    captured = []
+    monkeypatch.setattr(llm, "stream_answer_question", lambda q, chunks, **k: captured.append(chunks) or iter(["A [1]."]))
+
+    client.post("/api/ask", json={"question": "Frage?", "top_k": 5})
+
+    assert sum(len(c.get("images") or []) for c in captured[0]) == 1
+
+
+@pytest.mark.parametrize("size", [None, 1, 2, 3, 7])
+def test_ask_keeps_valid_inline_marker_and_never_streams_half_marker(client, monkeypatch, size):
+    _seed_image_chunks(client, [[_img(0)]])
+    raw = "Erster Absatz [1].\n\n[bild:1.1]\n\nZweiter Absatz ohne Beleg, aber lang genug für den Holdback."
+
+    result = _stream_events(client, monkeypatch, raw, size)
+
+    assert result["answer"] == raw
+    assert result["streamed_text"] == raw
+    start = raw.index("[bild:")
+    shown = ""
+    for piece in _deltas(result):
+        shown += piece
+        assert not (start < len(shown) < start + len("[bild:1.1]")), shown
+
+
+def test_ask_streams_same_text_chunked_and_unchunked(client, monkeypatch):
+    _seed_image_chunks(client, [[_img(0)]])
+    raw = "A [1].\n\n[bild:1.1]\n\nB [1].\n\n[bild:1.1]\n\nC.\n\n---QUOTES---\n[1]: \"A\"\n"
+    whole = _stream_events(client, monkeypatch, raw)
+    chunked = _stream_events(client, monkeypatch, raw, 1)
+
+    assert chunked["answer"] == whole["answer"] and chunked["streamed_text"] == whole["streamed_text"]
+    assert whole["answer"].count("[bild:") == 1
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        "Aussage [1].\n\n[bild:2.1]",
+        "Aussage [1].\n\n[bild:1.2]",
+        "Aussage [1].\n\n[bild:7.7] mehr Text, damit der Holdback greift.",
+    ],
+)
+def test_ask_removes_invalid_markers_everywhere(client, monkeypatch, raw):
+    _seed_image_chunks(client, [[_img(0)]])
+    result = _stream_events(client, monkeypatch, raw, 1)
+
+    assert "[bild:" not in result["answer"]
+    assert "[bild" not in result["streamed_text"]
+    shown = ""
+    for piece in _deltas(result):
+        shown += piece
+        assert "[bild" not in shown
+
+
+def test_ask_removed_marker_keeps_already_streamed_prefix_stable(client, monkeypatch):
+    _seed_image_chunks(client, [[_img(0)]])
+    raw = "Absatz [1].   \n\n\n[bild:9.9]  \n\nNächster Absatz, lang genug für den Holdback."
+
+    result = _stream_events(client, monkeypatch, raw, 1)
+
+    assert result["streamed_text"] == result["answer"] == "Absatz [1].   \n\n\nNächster Absatz, lang genug für den Holdback."
+
+
+def test_done_keeps_restricted_image_at_chunk_with_marker(client, monkeypatch):
+    _seed_image_chunks(client, [[_img(0)], [_img(1)], [_img(2)]], restricted=True)
+    raw = "Zweite Aussage [2]. Erste Aussage [1].\n\n[bild:1.1]"
+
+    result = _stream_events(client, monkeypatch, raw)
+
+    assert [len(r["images"]) for r in result["sources"]] == [1, 0, 0]
+    assert result["sources"][0]["images"][0]["src"] == "https://img.example.org/0.jpg"
+    assert "[bild:1.1]" in result["answer"]
+
+
+def test_ask_log_answer_has_no_marker(client, monkeypatch):
+    monkeypatch.setattr(main_module, "IS_DEV_ENVIRONMENT", False)
+    _seed_image_chunks(client, [[_img(0)]])
+
+    _stream_events(client, monkeypatch, "A [1].\n\n[bild:1.1]\n\nB.", is_first_message=True)
+
+    assert [e["answer"] for e in question_log.list_entries()] == ["A [1].\n\nB."]
+
+
+def test_ask_strips_image_markers_from_history_for_model_and_rewrite(client, monkeypatch):
+    history = [{"question": "F?", "answer": "A [1].\n\n[bild:1.1]\n\nB."}]
+
+    _, captured = _ask_with_history(client, monkeypatch, history)
+
+    assert captured["answer"] == [{"question": "F?", "answer": "A [1].\n\nB."}]
+    assert captured["rewrite"] == [{"question": "F?", "answer": "A [1].\n\nB."}]
+
+
+def test_answer_feedback_with_marker_hits_existing_log_entry_without_duplicate(client, monkeypatch):
+    monkeypatch.setattr(main_module, "IS_DEV_ENVIRONMENT", False)
+    _seed_image_chunks(client, [[_img(0)]])
+    _stream_events(client, monkeypatch, "A [1].\n\n[bild:1.1]\n\nB.", is_first_message=True, conversation_id=CID)
+
+    client.post(
+        "/api/answer-feedback",
+        json={"question": "Frage?", "answer": "A [1].\n\n[bild:1.1]\n\nB.", "feedback": "good", "conversation_id": CID},
+    )
+
+    entries = question_log.list_entries()
+    assert len(entries) == 1 and entries[0]["feedback"] == "good"
+
+
+@pytest.mark.parametrize("size", [None, 1, 3, 7])
+def test_ask_marker_after_citation_behind_period_stays_intact(client, monkeypatch, size):
+    _seed_image_chunks(client, [[_img(0)]])
+    raw = "Aussage A ist so. [1]\n\n[bild:1.1]\n\nNächster Absatz ist lang genug für den Holdback."
+
+    result = _stream_events(client, monkeypatch, raw, size)
+
+    assert "[bild:1.1]" in result["answer"] and "[bild:1 [" not in result["answer"]
+    assert "[bild:1.1]" in result["streamed_text"]
+
+
+@pytest.mark.parametrize("size", [None, 1, 5])
+def test_ask_long_digit_marker_is_removed_and_never_half_visible(client, monkeypatch, size):
+    _seed_image_chunks(client, [[_img(0)]])
+    raw = "Aussage [1].\n\n[bild:123.456789]\n\nNächster Absatz ist lang genug für den Holdback."
+
+    result = _stream_events(client, monkeypatch, raw, size)
+
+    assert "[bild" not in result["answer"] and "[bild" not in result["streamed_text"]
+    shown = ""
+    for piece in _deltas(result):
+        shown += piece
+        assert "[bild" not in shown and not shown.endswith("[")
+
+
+def test_ask_stream_ending_inside_marker_drops_the_fragment(client, monkeypatch):
+    monkeypatch.setattr(main_module, "IS_DEV_ENVIRONMENT", False)
+    _seed_image_chunks(client, [[_img(0)]])
+
+    result = _stream_events(client, monkeypatch, "Aussage [1].\n\n[bild:1.", 1, is_first_message=True)
+
+    assert result["answer"].strip() == "Aussage [1]." and "[bild" not in result["streamed_text"]
+    assert [e["answer"] for e in question_log.list_entries()] == ["Aussage [1]."]
+
+
+@pytest.mark.parametrize("junk", ["[Bild:1.1]", "[bild:1]", "[bild: 1.1]", "[bild:x]"])
+def test_ask_removes_bild_like_leftovers_from_answer(client, monkeypatch, junk):
+    _seed_image_chunks(client, [[_img(0)]])
+
+    result = _stream_events(client, monkeypatch, f"Aussage [1].\n\n{junk}\n\nNächster Absatz ist lang genug.", 1)
+
+    assert result["answer"] == result["streamed_text"] == "Aussage [1].\n\nNächster Absatz ist lang genug."
+
+
+# --- Inline-Bild: Quellen-Fallback für Refs ohne eigenes Chunk-Bild (Nachtrag Nutzer 2) ---
+
+
+def _url_item(n, alt=""):
+    return {"kind": "url", "url": f"https://img.example.org/{n}.jpg", "alt": alt, "page": None}
+
+
+def _fb_ref(source_id, i=0, web=False):
+    from app.models import ChunkRef
+
+    return ChunkRef(chunk_id=f"{source_id}::{i}", source_id=source_id, title=source_id, position=i, text="t", is_web_fallback=web)
+
+
+def _fb_apply(monkeypatch, refs, metas, sources, stored_metas=None):
+    monkeypatch.setattr(
+        vectorstore, "get_source_chunks", lambda sid: ([], [], (stored_metas or {}).get(sid, []))
+    )
+    main_module._apply_chunk_images(refs, metas, sources)
+    return [[(i.src.rsplit("/", 1)[-1], i.from_source) for i in r.images] for r in refs]
+
+
+def test_fallback_gives_ref_without_images_two_source_images_unassigned_first(monkeypatch):
+    sources = {"S": {"images": [_url_item(1), _url_item(2), _url_item(3)]}}
+    stored = {"S": [{"images_json": json.dumps([_url_item(1)])}]}  # Bild 1 hängt schon an einem Chunk
+
+    result = _fb_apply(monkeypatch, [_fb_ref("S")], [{"source_id": "S"}], sources, stored)
+
+    assert result == [[("2.jpg", True), ("3.jpg", True)]]
+
+
+def test_fallback_tops_up_with_assigned_images_in_source_order(monkeypatch):
+    sources = {"S": {"images": [_url_item(1), _url_item(2)]}}
+    stored = {"S": [{"images_json": json.dumps([_url_item(1), _url_item(2)])}]}
+
+    assert _fb_apply(monkeypatch, [_fb_ref("S")], [{"source_id": "S"}], sources, stored) == [[("1.jpg", True), ("2.jpg", True)]]
+
+
+def test_fallback_not_for_ref_with_own_image_or_second_ref_of_same_source(monkeypatch):
+    sources = {"S": {"images": [_url_item(1), _url_item(2)]}, "T": {"images": [_url_item(5)]}}
+    own = {"source_id": "S", "images_json": json.dumps([_url_item(9)])}
+    refs = [_fb_ref("S", 0), _fb_ref("S", 1), _fb_ref("T", 0), _fb_ref("T", 1)]
+
+    result = _fb_apply(monkeypatch, refs, [own, {"source_id": "S"}, {"source_id": "T"}, {"source_id": "T"}], sources)
+
+    assert result == [[("9.jpg", False)], [], [("5.jpg", True)], []]
+
+
+def test_fallback_never_repeats_a_src_across_refs(monkeypatch):
+    sources = {"A": {"images": [_url_item(1), _url_item(2)]}, "B": {"images": [_url_item(1), _url_item(3)]}}
+
+    result = _fb_apply(monkeypatch, [_fb_ref("A"), _fb_ref("B")], [{"source_id": "A"}, {"source_id": "B"}], sources)
+
+    assert result == [[("1.jpg", True), ("2.jpg", True)], [("3.jpg", True)]]
+
+
+def test_fallback_skips_web_fallback_refs_and_sources_without_images(monkeypatch):
+    sources = {"W": {"images": [_url_item(1)]}}
+
+    assert _fb_apply(monkeypatch, [_fb_ref("W", web=True), _fb_ref("X")], [{}, {"source_id": "X"}], sources) == [[], []]
+
+
+def test_fallback_drops_broken_or_unsafe_source_entries(monkeypatch):
+    bad = [5, "x", {"kind": "url", "url": "javascript:alert(1)"}, {"kind": "url", "url": "http://insecure.example/a.jpg"},
+           {"kind": "file", "file": "../x"}, {"kind": "x"}]
+    sources = {"S": {"images": bad + [_url_item(7)]}, "K": {"images": "kaputt"}}
+
+    result = _fb_apply(monkeypatch, [_fb_ref("S"), _fb_ref("K")], [{"source_id": "S"}, {"source_id": "K"}], sources)
+
+    assert result == [[("7.jpg", True)], []]
+
+
+def test_fallback_file_image_gets_local_endpoint_src(monkeypatch):
+    name = "b" * 32 + ".webp"
+    sources = {"S": {"images": [{"kind": "file", "file": name, "alt": "", "page": 3}]}}
+
+    monkeypatch.setattr(vectorstore, "get_source_chunks", lambda sid: ([], [], []))
+    refs = [_fb_ref("S")]
+    main_module._apply_chunk_images(refs, [{"source_id": "S"}], sources)
+
+    assert [(i.src, i.page) for i in refs[0].images] == [(f"/api/sources/S/images/{name}", 3)]
+
+
+def _give_source_images(source_id, items):
+    sources = main_module._load_sources()
+    sources[source_id]["images"] = items
+    main_module._save_sources(sources)
+
+
+def test_ask_offers_fallback_images_to_model_marked_as_same_source(client, monkeypatch):
+    source_id = _seed_image_chunks(client, [None])
+    _give_source_images(source_id, [_url_item(1, "Zellstruktur")])
+    captured = []
+
+    def fake_stream(question, chunks, **kwargs):
+        captured.append(llm._build_context(chunks, "de", None))
+        return iter(["Antwort [1]."])
+
+    monkeypatch.setattr(llm, "stream_answer_question", fake_stream)
+    response = client.post("/api/ask", json={"question": "Frage?"})
+
+    assert "Bilder (aus derselben Quelle, nicht aus diesem Ausschnitt): [bild:1.1] „Zellstruktur“" in captured[0]
+    done = ask_result(response)["sources"][0]
+    assert done["images"] == [{"src": "https://img.example.org/1.jpg", "alt": "Zellstruktur", "page": None}]
+
+
+def test_ask_fallback_respects_restricted_limit(client, monkeypatch):
+    source_id = _seed_image_chunks(client, [None, None], restricted=True)
+    _give_source_images(source_id, [_url_item(1), _url_item(2)])
+
+    events = _ask_events(client, monkeypatch, top_k=5)
+
+    for kind in ("sources", "done"):
+        refs = next(e for e in events if e["type"] == kind)["sources"]
+        assert sum(len(r["images"]) for r in refs) == 1
+
+
+def test_handoff_returns_same_fallback_images_as_ask(client, monkeypatch):
+    source_id = _seed_image_chunks(client, [None])
+    _give_source_images(source_id, [_url_item(1), _url_item(2)])
+    ask_images = next(e for e in _ask_events(client, monkeypatch) if e["type"] == "done")["sources"][0]["images"]
+    turn = {"question": "F?", "answer": "A.", "sources": [
+        {"chunk_id": f"{source_id}::0", "source_id": source_id, "title": "Q", "position": 0, "text": "t", "images": []}]}
+    token = client.post("/api/conversation-handoff", json={"history": [turn]}).json()["token"]
+
+    sources = client.get(f"/api/conversation-handoff/{token}").json()["history"][0]["sources"]
+
+    assert len(ask_images) == 2 and sources[0]["images"] == ask_images

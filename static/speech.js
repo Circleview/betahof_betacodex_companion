@@ -72,6 +72,7 @@ function pickBestVoice(voices, lang) {
 export function stripMarkdownForSpeech(text) {
   return text
     .replace(/\[(\d+)\]/g, '')
+    .replace(/\[bild:\d{1,2}\.\d{1,2}\]/g, '')
     .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
     .replace(/^#{1,6}\s+/gm, '')
     .replace(/^\s*[-*+]\s+/gm, '')

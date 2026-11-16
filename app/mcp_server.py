@@ -169,7 +169,7 @@ def _run_ask(key: dict, question: str, lang: str) -> str:
     ):
         event = json.loads(line)
         if event["type"] == "answer":
-            answer = event["answer"]
+            answer = llm.strip_image_markers(event["answer"])
         elif event["type"] == "done":
             sources = event["sources"]
         elif event["type"] == "error":

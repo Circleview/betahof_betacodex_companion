@@ -58,6 +58,18 @@ Assistent das offen, statt zu spekulieren.
   tatsächlich verwendete Textstelle – ein Klick springt zur passierten
   Original-Quelle und hebt die exakte Textpassage hervor, bei
   Video/Audio-Quellen inklusive Zeitstempel.
+- Inline-Bild: Das Modell kennt die gezeigten Quellen-Bilder (Alt-Text,
+  Dateiname, Seite) und setzt höchstens EINEN Marker `[bild:n.m]` (Ausschnitt
+  n, Bild m) hinter den Absatz, den das Bild klar veranschaulicht – kein Bild
+  wird erzwungen. Der Server filtert ungültige/weitere Marker; der Chat zeigt
+  das Bild unter dem Absatz (während des Streams eine schimmernde
+  Platzhalter-Fläche) und lässt es in der Bildleiste weg. Marker fehlen in
+  Kopieren, Vorlesen, MCP, Fragen-Log, Feedback und Verlauf.
+  Hat ein Ausschnitt kein eigenes Bild (z. B. weil der Bild-Anker im Text
+  fehlt), bietet der Server bis zu 2 Bilder derselben Quelle an (gekennzeichnet,
+  nur bei klarem Bezug; ohne Reindex, restricted-Grenze gilt weiter).
+  Das Bild darf aus jedem gefundenen Ausschnitt kommen, auch wenn die Antwort
+  dessen Quelle nicht zitiert; die Bildunterschrift nennt die Quelle.
 - Bildleiste: Zitiert eine Antwort Quellen mit Bildern, zeigt der Chat bis zu
   6 davon (Bildunterschrift = Quelle, bei PDFs mit Seite, Klick öffnet die
   Quelle). Web-Bilder bleiben Links auf den Server der Quelle, PDF-Grafiken
@@ -637,6 +649,7 @@ Commit-/Tag-Nachrichten in Git.
 
 | Version | Wesentliche Änderungen |
 |---|---|
+| v0.94.0 | **Bild direkt in der Antwort** (Idee fe44f080, Vorbild ChatGPT): Passt ein Bild aus den gefundenen Quellen klar zur Antwort, steht höchstens eines direkt unter dem passenden Absatz, mit Quelle als Bildunterschrift; in der Bildleiste erscheint es nicht noch einmal. Während die Antwort entsteht, hält eine schimmernde Platzhalter-Fläche den Platz (ohne Schimmer bei „Bewegung reduzieren“). Das Modell sieht je Bild einen Marker mit gekürzter, bereinigter Beschreibung, nie die Adresse; der Server lässt nur einen gültigen Marker stehen und entfernt ihn aus Kopieren, Vorlesen, MCP, Fragen-Log, Feedback und Verlauf. Bilder, die beim Indexieren keinem Ausschnitt zugeordnet wurden (22 % lokal), bietet der Server über die Quelle an – ohne Reindex. Das Bild darf aus jedem gefundenen Ausschnitt kommen; ein kurzer Bild-Hinweis an das Modell sorgt dafür, dass Haiku passende Bilder auch setzt. |
 | v0.93.1 | **Feinschliff Designsystem + Audit** (Idee 51159895): Zitat-Stelle als Textmarker in dunklerem Mint, Sticky-Header vollbreit weiß ohne Haarlinie auf Seiten mit Farbband, keine Footer-Linie unter dem Startband. Aus dem impeccable-Audit: Fragefeld höchstens 40 % der Fensterhöhe (Senden bleibt sichtbar), Kreativ-Hinweislink im Dunkelmodus ≥ 4,5, Trefferflächen ≥ 24 px für Sprachumschalter, Buchstabenleiste und Neu-Knopf, Markenname bei 200 % Zoom vollständig, Landmarken main/nav und Labels für Screenreader. Fix: der eingebettete Chat meldet seine Höhe wieder an die Gastseite (das Inline-Skript war durch die CSP blockiert, jetzt `embed-resize.js`). |
 | v0.93.0 | **Designsystem von betacodex.org** (Idee 51159895): Beta-Rot, Tinte und warme Steingrautöne aus den Tokens von betacodex.org, eckige Kanten, Oswald für Markenname und Seitentitel, Inter für Text – beide Schriften selbst gehostet (keine Anfrage an Dritte). Rot nur noch für Primärknöpfe, Links und Titel-Hover, auf Farbflächen dunkelrot. Farbbänder je Bereich (Chat Mint, Kreativ Sand, Netz Aqua, Quellen Rosé), Startseite am Desktop mit hohem Band wie google.com. Eigener Dunkelmodus aus Ink-Tönen, alle Kontraste ≥ 4,5 per Test. Ein sichtbarer Fokusrahmen, Eingabeleiste mit Text über den Knöpfen, Kreativ-Modus mit Schritten und Abschnittsmarken, Zitat-Box als Mint-Fläche, Feedback und Einbetten fahren im Footer nach oben aus, neues Favicon. |
 | v0.92.0 | **Beraterstimme im Chat** (Ideen af02ecb1, a6d28556): Antworten beginnen mit einer belegten These, begründen statt aufzulisten, nennen Widersprüche zwischen Quellen gleich im ersten Satz und tragen an jedem Sachsatz einen Beleg. Treffer von Web-Seiten heißen im Text „eine Web-Seite“. Die Stimme sagt „Zutrauen“ statt „Vertrauen“ (Englisch: „believing in people's capabilities“ statt „trust“) und setzt ein bis drei Fachbegriffe als anklickbare Folgefragen fett; „Beta-Kodex“/„BetaCodex“ ist nie fett. Die Regeln liegen in `app/prompts/beraterstimme.md`; die Dev-Seite `/dev/vergleich` stellt Antworten ohne Stimme, mit Stimme und mit Sonnet nebeneinander. |
