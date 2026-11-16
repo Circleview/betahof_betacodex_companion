@@ -716,9 +716,9 @@ function renderGraph(data) {
   // Zoom von der Gesamtübersicht (computeFitTransform) auf die
   // Standard-Zoomstufe, statt physikalischem Zittern.
   simulation.stop();
-  // Idee d24b4276: 150 statt 250 Ticks - bei alphaDecay 0.05 liegt alpha nach
-  // ~135 Ticks unter alphaMin, weitere Ticks verschieben kaum noch etwas.
-  for (let i = 0; i < 150; i += 1) simulation.tick();
+  // Idee d24b4276: 150 statt 250 Ticks verschob die Knoten im Mittel um 41 px
+  // (gemessen) - Layout bleibt daher bei 250.
+  for (let i = 0; i < 250; i += 1) simulation.tick();
   ticked();
 
   const defaultTransform = d3.zoomIdentity
