@@ -344,6 +344,28 @@ header {
   background: var(--color-bg);
 }
 
+/* Der Header ist auf voller Fensterbreite deckend (sonst scheint beim Scrollen
+   das vollbreite Farbband links und rechts durch). Pseudo-Element statt
+   clip-path/box-shadow, damit Popover unter dem Header nicht abgeschnitten
+   werden; z-index -1 liegt hinter dem Header-Inhalt. */
+#site-header::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 100vw;
+  margin-left: -50vw;
+  background: var(--color-bg);
+  z-index: -1;
+}
+
+/* Das Farbband trennt schon - keine Haarlinie auf Band-Seiten. */
+body:has(.page-band) #site-header,
+body:not(.chat-started):has(#frage-bereich) #site-header {
+  border-bottom: 0;
+}
+
 
 #site-header::before {
   content: '';
