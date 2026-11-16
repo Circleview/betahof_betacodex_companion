@@ -78,7 +78,7 @@ Assistent das offen, statt zu spekulieren.
   Quelle). Web-Bilder bleiben Links auf den Server der Quelle, PDF-Grafiken
   liegen verkleinert (WebP, ohne Metadaten) auf dem eigenen Server; bei
   eingeschränkten Quellen höchstens 1 Bild je Antwort. Ältere Quellen holt der
-  Admin-Reindex (`/api/admin/reindex-sources`) nach, ohne Text, Zusammenfassung
+  Admin-Reindex (`/api/admin/reindex-sources`, mit `?images_only=true` nur die Bilder ohne Neu-Einbetten) nach, ohne Text, Zusammenfassung
   oder Schlagworte zu ändern.
 - Mehr verschiedene Quellen und Autor:innen je Antwort: Eine Quelle (eine Website
   zählt als eine) und eine Autor:in belegen je höchstens 2 der 5 Textausschnitte,
@@ -666,6 +666,7 @@ Commit-/Tag-Nachrichten in Git.
 
 | Version | Wesentliche Änderungen |
 |---|---|
+| v0.95.3 | **Bilder schnell nachholen** (Fix zu Idee fe44f080): Der Admin-Reindex kann mit `?images_only=true` nur die fehlenden Bilder nachholen, ohne alle Quellen neu einzubetten – Minuten statt über einer Stunde. Der volle Lauf wurde am 16.11.2026 zweimal von Deploys abgebrochen. |
 | v0.95.2 | **Mehr Quellen auch bei stark vertretenen Themen** (Idee 78404054): Füllen wenige Quellen die Kandidatenliste fast ganz, sucht der Chat ein zweites Mal ohne diese Quellen. So kommen andere Quellen überhaupt in die Auswahl. Live fehlte Peter Pröll bei „Was ist die Zellstruktur?“ trotz 25 %; mit dem Fix ist er dabei. |
 | v0.95.1 | **Mehr Quellen bei zentralen Themen** (Idee 78404054): Ein Textausschnitt einer neuen Quelle oder Autor:in rückt jetzt nach, wenn er höchstens 25 % statt 15 % schlechter passt. Bei „Was ist die Zellstruktur?“ kommt so Peter Pröll zu den zwei Pflaeging-/Hermann-Texten dazu. Weiter 5 Textausschnitte je Antwort, keine Mehrkosten. Einstellbar per `SOURCE_DIVERSITY_MAX_DISTANCE_INCREASE` (Standard 0.25). |
 | v0.95.0 | **Schnellerer Quellen-Explorer am Desktop und am Handy** (Idee d24b4276): Das Netzwerk zeigt je Zoomstufe nur so viel, wie lesbar ist. Weit herausgezoomt stehen farbige Punkte mit der stärksten Verbindung je Punkt; die markantesten Autor:innen und Schlagworte tragen ihren Namen in lesbarer Größe, ohne Überlappung. Beim Hineinzoomen erscheinen mehr Namen und Verbindungen, erst ganz nah alle. Fotos laden nur noch für Personen im sichtbaren Ausschnitt. Bei der Standardansicht zeichnet der Browser 800 statt rund 2800 Linien, der Aufbau ist schneller (150 statt 250 Simulationsschritte). Kleine Punkte haben eine größere Tippfläche, eine Auswahl zeigt die Namen der Nachbarn auch weit herausgezoomt. Die Legende erklärt: „Hineinzoomen zeigt Namen und Fotos.“ |

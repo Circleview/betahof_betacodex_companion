@@ -2044,15 +2044,35 @@ def _reindex_holding_lock(lock_file, only_changed: bool = False, fetch_missing_i
         _reindex_all_sources(only_changed=only_changed, fetch_missing_images=fetch_missing_images)
 
 
+def _backfill_images_holding_lock(lock_file) -> None:
+    """Fix v0.95.3: nur Bilder nachholen, ohne Neu-Einbetten (Minuten statt
+    über eine Stunde; der volle Lauf wurde von Deploys abgebrochen)."""
+    log = logging.getLogger(__name__)
+    with lock_file:
+        done = 0
+        for source_id, data in _load_sources().items():
+            if data.get("deleted_at") or not _needs_image_check(data):
+                continue
+            try:
+                done += bool(_backfill_images(source_id))
+            except Exception:
+                log.exception("Bild-Nachladen von Quelle %s fehlgeschlagen", source_id)
+        log.info("Bild-Nachladen (nur Bilder): %d Quellen geprüft", done)
+
+
 @app.post("/api/admin/reindex-sources", response_model=MessageOut)
 def reindex_sources(
     background_tasks: BackgroundTasks,
+    images_only: bool = False,
     _user: str = Depends(require_role(users.QUELLEN_PFLEGER)),
     x_lang: str = Header(default=i18n.DEFAULT_LANG),
 ):
     lock_file = _acquire_reindex_lock()
     if lock_file is None:
         raise HTTPException(409, i18n.get_message("reindex_running", x_lang))
+    if images_only:
+        background_tasks.add_task(_backfill_images_holding_lock, lock_file)
+        return MessageOut(detail=i18n.get_message("reindex_started", x_lang))
     background_tasks.add_task(_reindex_holding_lock, lock_file, fetch_missing_images=True)
     return MessageOut(detail=i18n.get_message("reindex_started", x_lang))
 
