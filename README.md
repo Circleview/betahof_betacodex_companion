@@ -453,6 +453,8 @@ Fragen stellen (den Chat nutzen).
    garantiert einen Platz – die reine Vektorsuche übersah solche Begriffe
    in rund der Hälfte der Fälle. Messbar mit
    `PYTHONPATH=. python tools/retrieval_eval.py`.
+   Quellen und Autor:innen je Frage (ohne Modellaufruf, vor einem Tag
+   mit einer Kopie der Produktionsdaten): `--quellen fragen.txt`.
 4. Die relevantesten Chunks (roher Text, keine Zusammenfassung) werden
    zusammen mit der Frage an das Sprachmodell geschickt, mit der
    Anweisung: Nur auf Basis dieser Textstellen antworten und sie zitieren.
