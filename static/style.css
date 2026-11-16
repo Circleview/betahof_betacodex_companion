@@ -59,7 +59,8 @@
     --color-success: #6cc070;
     --color-cover-sand: #302b25;
     --color-cover-rose: #3a2b28;
-    --color-cover-mint: #26342f;
+    /* Gedämpft statt sattes Grün: passt zur warmen Dunkel-Palette. */
+    --color-cover-mint: #232826;
     --color-cover-aqua: #263339;
     --color-danger: #f07a6e;
     --color-warning: #e0a530;
@@ -970,9 +971,9 @@ body:has(#frage-bereich) {
    (Sidebar, Nachrichtenverlauf, die Chat-Box mit Rahmen). Gilt unverändert
    für Desktop und Mobile. */
 body:not(.chat-started) #frage-bereich {
-  /* Farbband Mint (siehe .page-band): vollbreit unter dem Header, Fragefeld
-     darin; im Konversationsmodus entfällt es. */
-  flex: 0 0 auto;
+  /* Farbband Mint (siehe .page-band): vollbreit unter dem Header bis zum
+     Footer (auch mobil), Fragefeld darin; im Konversationsmodus entfällt es. */
+  flex: 1 0 auto;
   margin-inline: calc(50% - 50vw);
   padding: 56px calc(50vw - 50%);
   background: var(--color-cover-mint);
@@ -994,11 +995,9 @@ body:not(.chat-started) #chat-messages {
 }
 
 body:not(.chat-started) .site-footer {
-  /* Gleicher Abstand wie header -> #frage-bereich (1.5rem), damit die Box
-     oben UND unten denselben Puffer zur jeweiligen Trennlinie hat - nur so
-     zentriert justify-content:center wirklich zwischen den beiden Linien
-     statt spürbar zu weit oben. */
-  margin-top: auto;
+  /* Band reicht bis an den Footer; die Trennlinie entfällt dort. */
+  margin-top: 0;
+  border-top: 0;
 }
 
 body:not(.chat-started) #chat-column {
@@ -1025,13 +1024,7 @@ body:not(.chat-started) #question-form {
    Fragefeld sitzt etwas über der Mitte (größeres Polster unten). */
 @media (min-width: 900px) {
   body:not(.chat-started) #frage-bereich {
-    flex: 1 0 auto;
     padding-bottom: calc(56px + 14vh);
-  }
-
-  body:not(.chat-started) .site-footer {
-    margin-top: 0;
-    border-top: 0;
   }
 }
 
@@ -5230,7 +5223,35 @@ details a {
 @media (max-width: 640px) {
   .creative-steps {
     grid-template-columns: 1fr;
-    gap: 1.25rem;
+    gap: 0.75rem;
+    margin-bottom: 0;
+  }
+
+  #creative-bereich > .page-band {
+    padding-block: 1.75rem;
+  }
+
+  /* Mobil kompakt: Ziffer links neben Titel + Text statt darüber. */
+  .creative-step {
+    display: grid;
+    grid-template-columns: 2rem 1fr;
+    column-gap: 0.75rem;
+    row-gap: 2px;
+    border-top-width: 2px;
+    padding-top: 0.75rem;
+  }
+
+  .creative-step__no {
+    grid-row: span 2;
+    font-size: 32px;
+  }
+
+  .creative-step__title {
+    font-size: 1.05rem;
+  }
+
+  .creative-step__text {
+    font-size: 0.95rem;
   }
 }
 

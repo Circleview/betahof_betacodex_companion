@@ -78,7 +78,7 @@ DARK_EXPECTED = {
     "--color-accent-hover": "#f4806f",
     "--color-on-accent": "#1c1c1c", "--color-focus": "#e8e4de", "--color-success": "#6cc070",
     "--color-danger": "#f07a6e", "--color-warning": "#e0a530", "--graph-cluster-0": "#f0604f", "--color-cover-sand": "#302b25",
-    "--color-cover-rose": "#3a2b28", "--color-cover-mint": "#26342f", "--color-cover-aqua": "#263339",
+    "--color-cover-rose": "#3a2b28", "--color-cover-mint": "#232826", "--color-cover-aqua": "#263339",
 }
 
 
@@ -500,10 +500,6 @@ def test_field_focus_outline_overlaps_border_single_line():
     assert found
 
 
-def test_home_start_state_footer_sits_at_bottom():
-    assert "margin-top: auto" in _field_rule("body:not(.chat-started) .site-footer")
-
-
 @pytest.mark.parametrize("sel", [".footer-panel", ".new-author-profile", ".legal-summary"])
 def test_boxes_are_sand_surfaces_without_frame(sel):
     body = _field_rule(sel)
@@ -538,19 +534,17 @@ def test_question_bar_focus_is_single_ring_on_the_bar_frame():
             assert sel == "#question-form textarea:focus-visible", sel
 
 
-def test_start_band_fills_desktop_height_like_google():
-    # Nutzerwunsch: Startseite am Desktop wie google.com aufteilen - das Mint-Band
-    # füllt den Platz zwischen Header und Footer, das Fragefeld sitzt etwas über
-    # der Mitte statt in einem schmalen Streifen mit viel Weiß darunter.
+def test_start_band_fills_height_like_google():
+    # Nutzerwunsch: das Mint-Band füllt den Platz zwischen Header und Footer -
+    # auch mobil (v0.95.4: vorher nur ab 900px, mobil blieb Weiß darunter).
     css = re.sub(r"/\*.*?\*/", "", CSS, flags=re.S)
+    base = re.search(r"\nbody:not\(\.chat-started\) #frage-bereich \{([^}]*)\}", css)
+    assert base and re.search(r"flex:\s*1 0 auto", base.group(1))
+    footer = re.search(r"\nbody:not\(\.chat-started\) \.site-footer \{([^}]*)\}", css)
+    assert footer and re.search(r"border-top:\s*0", footer.group(1))
+    # Desktop: Fragefeld etwas über der Mitte.
     m = re.search(r"@media \(min-width: 900px\) \{\s*body:not\(\.chat-started\) #frage-bereich \{([^}]*)\}", css)
-    assert m, "Desktop-Regel für das Startband fehlt"
-    body = m.group(1)
-    assert re.search(r"flex:\s*1 0 auto", body)
-    assert re.search(r"padding-bottom:\s*calc\(", body)
-    # Band reicht bis an den Footer - dessen Haarlinie entfällt dort.
-    f = re.search(r"@media \(min-width: 900px\) \{[^@]*?body:not\(\.chat-started\) \.site-footer \{([^}]*)\}", css)
-    assert f and re.search(r"border-top:\s*0", f.group(1))
+    assert m and re.search(r"padding-bottom:\s*calc\(", m.group(1))
 
 
 def test_citation_highlight_is_darker_mint_marker():

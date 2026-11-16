@@ -668,6 +668,7 @@ Commit-/Tag-Nachrichten in Git.
 
 | Version | Wesentliche Änderungen |
 |---|---|
+| v0.95.4 | **Startseite und Kreativmodus am Handy** (Fix): Das Mint-Band der Startseite reicht auch mobil bis zum Footer. Im Dark Mode ist das Mint gedämpft statt kaltgrün. Die drei Schritte im Kreativmodus stehen am Handy kompakt (Ziffer neben dem Text), der Erklärbereich ist etwa halb so hoch. |
 | v0.95.3 | **Bilder schnell nachholen** (Fix zu Idee fe44f080): Der Admin-Reindex kann mit `?images_only=true` nur die fehlenden Bilder nachholen, ohne alle Quellen neu einzubetten – Minuten statt über einer Stunde. Der volle Lauf wurde am 16.11.2026 zweimal von Deploys abgebrochen. |
 | v0.95.2 | **Mehr Quellen auch bei stark vertretenen Themen** (Idee 78404054): Füllen wenige Quellen die Kandidatenliste fast ganz, sucht der Chat ein zweites Mal ohne diese Quellen. So kommen andere Quellen überhaupt in die Auswahl. Live fehlte Peter Pröll bei „Was ist die Zellstruktur?“ trotz 25 %; mit dem Fix ist er dabei. |
 | v0.95.1 | **Mehr Quellen bei zentralen Themen** (Idee 78404054): Ein Textausschnitt einer neuen Quelle oder Autor:in rückt jetzt nach, wenn er höchstens 25 % statt 15 % schlechter passt. Bei „Was ist die Zellstruktur?“ kommt so Peter Pröll zu den zwei Pflaeging-/Hermann-Texten dazu. Weiter 5 Textausschnitte je Antwort, keine Mehrkosten. Einstellbar per `SOURCE_DIVERSITY_MAX_DISTANCE_INCREASE` (Standard 0.25). |
