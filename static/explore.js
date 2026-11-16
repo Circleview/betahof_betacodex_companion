@@ -301,6 +301,19 @@ function prominentNodeIds(nodes, perType) {
   return ids;
 }
 
+// Bei far wird der Name gegenskaliert (ca. 11 px am Bildschirm): für die
+// markanten Knoten und - im Fokus - für alle nicht gedimmten Knoten.
+function isFarScaledLabel(level, focusOn, dimmed, prominent) {
+  return level === 'far' && (prominent || (focusOn && !dimmed));
+}
+
+// Lage des Open-Icons rechts neben dem Namen; k > 1 nur bei gegenskaliertem
+// Namen (k = Zoomfaktor): Abstand und Größe wachsen mit 1/k mit.
+function openIconTransform(radius, halfWidth, k) {
+  const y = radius + (12 - 11.2 * 0.35 - 9 / 2) / k;
+  return `translate(${(halfWidth + 6) / k}, ${y}) scale(${1 / k})`;
+}
+
 // Knoten, deren Bildschirmposition (transform t = {x, y, k}) im Fenster
 // plus margin liegt - fehlende x/y (noch nicht positioniert) zählen nicht.
 function nodesInViewport(nodes, t, width, height, margin) {
@@ -376,7 +389,7 @@ function renderGraph(data) {
     .scaleExtent([0.2, 4])
     .on('zoom', (event) => {
       container.attr('transform', event.transform);
-      applyLevel(zoomLevelFor(event.transform.k), event.transform.k);
+      applyLevel(zoomLevelFor(event.transform.k));
     })
     .on('end', () => {
       clearTimeout(photoDebounce);
@@ -624,11 +637,7 @@ function renderGraph(data) {
   label.each(function (d) {
     d._labelHalfWidth = this.getBBox().width / 2;
   });
-  openIcon.attr('transform', (d) => {
-    const baselineY = radiusFor(d) + 12;
-    const y = baselineY - LABEL_FONT_SIZE_PX * 0.35 - OPEN_ICON_SIZE / 2;
-    return `translate(${(d._labelHalfWidth || 0) + 6}, ${y})`;
-  });
+  openIcon.attr('transform', (d) => openIconTransform(radiusFor(d), d._labelHalfWidth || 0, 1));
 
   // Nur Linien, die gerade sichtbar sind (Stufe des Zoomlevels, bei Fokus
   // zusätzlich die nicht gedimmten) werden bewegt - versteckte Linien
@@ -650,6 +659,7 @@ function renderGraph(data) {
       return tiers.includes(d._tier) || (focusOn && !this.classList.contains('explore-edge--dimmed'));
     });
     updateLinks();
+    rescaleLabels();
   }
 
   function setFocus(on) {
@@ -658,31 +668,36 @@ function renderGraph(data) {
     refreshActiveLinks();
   }
 
-  // Bei far bleibt der Name der markanten Knoten etwa 11 px groß (Gegen-
-  // skalierung nur dieser <= 16 Texte), sonst wäre er bei k = 0.2 winzig.
-  const prominentLabels = label.filter((d) => prominentIds.has(d.id));
-  function scaleProminentLabels(level, k) {
-    if (level === 'far') {
-      prominentLabels
-        .style('font-size', `${LABEL_FONT_SIZE_PX / k}px`)
-        .style('stroke-width', `${3 / k}px`)
-        .attr('dy', (d) => radiusFor(d) + 12 / k);
-    } else if (currentLevel === 'far') {
-      prominentLabels
-        .style('font-size', null)
-        .style('stroke-width', null)
-        .attr('dy', (d) => radiusFor(d) + 12);
-    }
+  // Bei far bleibt der Name der markanten Knoten (und im Fokus der nicht
+  // gedimmten) etwa 11 px groß (Gegenskalierung nur dieser Texte); das Open-
+  // Icon wandert mit. Beim Verlassen von far/Fokus wird zurückgesetzt.
+  let scaledNodes = node.filter(() => false);
+  function setNodeScale(sel, k) {
+    sel.select('.explore-node-label')
+      .style('font-size', k === 1 ? null : `${LABEL_FONT_SIZE_PX / k}px`)
+      .style('stroke-width', k === 1 ? null : `${3 / k}px`)
+      .attr('dy', (d) => radiusFor(d) + 12 / k);
+    sel.select('.explore-node-open-icon').attr('transform', (d) => openIconTransform(radiusFor(d), d._labelHalfWidth || 0, k));
+  }
+  function rescaleLabels() {
+    setNodeScale(scaledNodes, 1);
+    const k = d3.zoomTransform(svg.node()).k;
+    scaledNodes = node.filter(function (d) {
+      return isFarScaledLabel(currentLevel, focusOn, this.classList.contains('explore-node--dimmed'), prominentIds.has(d.id));
+    });
+    setNodeScale(scaledNodes, k);
   }
 
   // Stolperstein: erst NACH label.each(getBBox) (siehe oben) aufrufen -
   // bei display:none liefert getBBox Breite 0 und das Open-Icon säße falsch.
-  function applyLevel(level, k) {
-    scaleProminentLabels(level, k);
-    if (level === currentLevel) return;
-    currentLevel = level;
-    ['far', 'mid', 'near', 'close'].forEach((l) => svg.classed(`explore-graph--${l}`, l === level));
-    refreshActiveLinks();
+  function applyLevel(level) {
+    if (level !== currentLevel) {
+      currentLevel = level;
+      ['far', 'mid', 'near', 'close'].forEach((l) => svg.classed(`explore-graph--${l}`, l === level));
+      refreshActiveLinks();
+    } else if (level === 'far') {
+      rescaleLabels();
+    }
   }
 
   function ticked() {
