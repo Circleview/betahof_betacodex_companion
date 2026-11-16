@@ -84,7 +84,7 @@
       "col": 1,
       "type": "security",
       "label": "Tests OK?",
-      "sublabel": "nur Tag; main+täglich = Cache",
+      "sublabel": "nur Tag; Cache: main+täglich",
       "width": 132
     },
     {
