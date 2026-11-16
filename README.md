@@ -320,7 +320,8 @@ Andere MCP-Clients brauchen die Adresse `https://companion.betahof.com/mcp`
   aus sichtbar), ein Filter-Button in der Quellenübersicht zeigt gezielt
   die betroffenen Quellen.
 - Website-Wissensquellen: freigegebene externe Websites (z. B. Blogs von
-  Expert:innen) werden wöchentlich im Hintergrund gecrawlt und fließen als
+  Expert:innen) werden wöchentlich im Hintergrund gecrawlt (nur Produktion;
+  lokale Dev-Server mit `ENVIRONMENT=development` crawlen nicht) und fließen als
   automatischer Fallback in Antworten ein, wenn die kuratierten Quellen zum
   Thema nichts hergeben – dezent im Chat gekennzeichnet, mit
   Schnell-Ausschließen-Button für einzelne, erkennbar unpassende Seiten
@@ -649,6 +650,7 @@ Commit-/Tag-Nachrichten in Git.
 
 | Version | Wesentliche Änderungen |
 |---|---|
+| v0.94.1 | **Kein Web-Crawl auf Dev-Servern**: Der wöchentliche Allowlist-Crawl startete bei jedem lokalen Serverstart sofort und lief als eigener Unterprozess nach dem Beenden des Servers weiter; verwaiste Crawls blockierten das Beenden von Claude-Sitzungen. Lokale Server mit `ENVIRONMENT=development` crawlen jetzt nicht, die Produktion unverändert wöchentlich. |
 | v0.94.0 | **Bild direkt in der Antwort** (Idee fe44f080, Vorbild ChatGPT): Passt ein Bild aus den gefundenen Quellen klar zur Antwort, steht höchstens eines direkt unter dem passenden Absatz, mit Quelle als Bildunterschrift; in der Bildleiste erscheint es nicht noch einmal. Während die Antwort entsteht, hält eine schimmernde Platzhalter-Fläche den Platz (ohne Schimmer bei „Bewegung reduzieren“). Das Modell sieht je Bild einen Marker mit gekürzter, bereinigter Beschreibung, nie die Adresse; der Server lässt nur einen gültigen Marker stehen und entfernt ihn aus Kopieren, Vorlesen, MCP, Fragen-Log, Feedback und Verlauf. Bilder, die beim Indexieren keinem Ausschnitt zugeordnet wurden (22 % lokal), bietet der Server über die Quelle an – ohne Reindex. Das Bild darf aus jedem gefundenen Ausschnitt kommen; ein kurzer Bild-Hinweis an das Modell sorgt dafür, dass Haiku passende Bilder auch setzt. |
 | v0.93.1 | **Feinschliff Designsystem + Audit** (Idee 51159895): Zitat-Stelle als Textmarker in dunklerem Mint, Sticky-Header vollbreit weiß ohne Haarlinie auf Seiten mit Farbband, keine Footer-Linie unter dem Startband. Aus dem impeccable-Audit: Fragefeld höchstens 40 % der Fensterhöhe (Senden bleibt sichtbar), Kreativ-Hinweislink im Dunkelmodus ≥ 4,5, Trefferflächen ≥ 24 px für Sprachumschalter, Buchstabenleiste und Neu-Knopf, Markenname bei 200 % Zoom vollständig, Landmarken main/nav und Labels für Screenreader. Fix: der eingebettete Chat meldet seine Höhe wieder an die Gastseite (das Inline-Skript war durch die CSP blockiert, jetzt `embed-resize.js`). |
 | v0.93.0 | **Designsystem von betacodex.org** (Idee 51159895): Beta-Rot, Tinte und warme Steingrautöne aus den Tokens von betacodex.org, eckige Kanten, Oswald für Markenname und Seitentitel, Inter für Text – beide Schriften selbst gehostet (keine Anfrage an Dritte). Rot nur noch für Primärknöpfe, Links und Titel-Hover, auf Farbflächen dunkelrot. Farbbänder je Bereich (Chat Mint, Kreativ Sand, Netz Aqua, Quellen Rosé), Startseite am Desktop mit hohem Band wie google.com. Eigener Dunkelmodus aus Ink-Tönen, alle Kontraste ≥ 4,5 per Test. Ein sichtbarer Fokusrahmen, Eingabeleiste mit Text über den Knöpfen, Kreativ-Modus mit Schritten und Abschnittsmarken, Zitat-Box als Mint-Fläche, Feedback und Einbetten fahren im Footer nach oben aus, neues Favicon. |
