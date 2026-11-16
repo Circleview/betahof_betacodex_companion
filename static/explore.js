@@ -34,6 +34,20 @@ const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)
 // zweites, unabhängig weiterlaufendes Netzwerk übereinanderlegen.
 let currentSimulation = null;
 let currentSearchHandler = null;
+// Foto-Timer (Staffelung + Debounce nach dem Zoomen) - müssen beim Neu-
+// Rendern/Ausblenden gelöscht werden, sonst setzen sie href auf Elemente
+// eines schon entfernten Netzwerks.
+let photoTimers = [];
+let photoDebounce = null;
+let photoNextAt = 0;
+
+function stopPhotoLoading() {
+  photoTimers.forEach(clearTimeout);
+  photoTimers = [];
+  clearTimeout(photoDebounce);
+  photoNextAt = 0;
+  svg.attr('class', null);
+}
 
 // Nutzerwunsch (2026-08-26): Autor:innen/Schlagworte im Netzwerk unabhängig
 // voneinander ein-/ausblendbar machen (siehe toggleAuthorsBtn/toggleTermsBtn
@@ -134,7 +148,9 @@ function updateLegend() {
   // GraphNode.cluster in app/main.py: nx.community.louvain_communities) -
   // gilt in allen drei Modi gleich, deshalb einheitlich angehängt statt
   // dreifach dupliziert.
-  if (text) legendEl.textContent = `${text} ${t('explore.legendColorHint')}`;
+  // Idee d24b4276: bei weit herausgezoomter Ansicht fehlen Namen/Fotos
+  // absichtlich - der Hinweis erklärt, wie man sie sieht.
+  if (text) legendEl.textContent = `${text} ${t('explore.legendColorHint')} ${t('explore.legendZoomHint')}`;
 }
 
 function applyFiltersAndRender() {
@@ -142,6 +158,7 @@ function applyFiltersAndRender() {
   const filtered = filterGraphForToggles(fullGraphData, showAuthors, showTerms);
   if (!filtered.nodes.length) {
     currentSimulation?.stop();
+    stopPhotoLoading();
     svg.selectAll('*').remove();
     statusEl.textContent = t('explore.emptyFiltered');
     statusEl.classList.remove('hidden');
@@ -215,6 +232,85 @@ function computeFitTransform(nodes, width, height) {
   return d3.zoomIdentity.translate(width / 2, height / 2).scale(scale).translate(-cx, -cy);
 }
 
+// Idee d24b4276 (Quellen-Explorer optimieren): ~1700 Linien, 300 Texte und
+// alle Fotos immer zu zeichnen kostet auf dem Handy wie am Desktop viel -
+// der Detailgrad hängt deshalb vom Zoom ab (CSS-Klassen am svg, siehe
+// .explore-graph--far|mid|near|close in style.css). Die folgenden Funktionen
+// sind rein (kein d3/DOM) und einzeln per Node testbar. Schwellen sind
+// Startwerte (Beschriftung unter 0.6 wäre kleiner als 7 px, ab 1.0 sind
+// Namen lesbar, bis 1.8 bleibt die Standardansicht 1.3 unter 800 Linien).
+function zoomLevelFor(k) {
+  if (k < 0.6) return 'far';
+  if (k < 1.0) return 'mid';
+  if (k < 1.8) return 'near';
+  return 'close';
+}
+
+// Stufe je Kante: 1 = stärkste Kante jedes Knotens (Gleichstand: erste in
+// Eingabereihenfolge), 2 = die nach Gewicht nächsten, bis Stufe 1+2 zusammen
+// limit2 erreichen, 3 = Rest. Eingabe bleibt unverändert.
+function edgeTiers(edges, limit2) {
+  const tiers = edges.map(() => 3);
+  const best = new Map();
+  edges.forEach((e, i) => {
+    [e.source, e.target].forEach((end) => {
+      const id = typeof end === 'object' ? end.id : end;
+      if (!best.has(id) || e.weight > edges[best.get(id)].weight) best.set(id, i);
+    });
+  });
+  best.forEach((i) => {
+    tiers[i] = 1;
+  });
+  let used = tiers.filter((t) => t === 1).length;
+  const rest = edges
+    .map((e, i) => i)
+    .filter((i) => tiers[i] === 3)
+    .sort((a, b) => edges[b].weight - edges[a].weight || a - b);
+  for (const i of rest) {
+    if (used >= limit2) break;
+    tiers[i] = 2;
+    used += 1;
+  }
+  return tiers;
+}
+
+// Stufe je Wert nach Rang (absteigend, Gleichstand stabil): limits=[60] ->
+// die 60 höchsten Werte Stufe 1, der Rest Stufe 2.
+function rankTiers(weights, limits) {
+  const order = weights.map((w, i) => i).sort((a, b) => weights[b] - weights[a] || a - b);
+  const tiers = new Array(weights.length);
+  order.forEach((idx, rank) => {
+    tiers[idx] = 1 + limits.filter((l) => rank >= l).length;
+  });
+  return tiers;
+}
+
+// Nutzervorgabe "markante Knoten": je Typ die perType Knoten mit höchstem
+// weight (getrennt, weil weight bei Autor:innen Quellen und bei Schlagworten
+// Vorkommen zählt). Ihr Name bleibt auf jeder Zoomstufe sichtbar.
+function prominentNodeIds(nodes, perType) {
+  const ids = new Set();
+  ['author', 'term'].forEach((type) => {
+    nodes
+      .map((d, i) => [d, i])
+      .filter(([d]) => d.type === type)
+      .sort((a, b) => b[0].weight - a[0].weight || a[1] - b[1])
+      .slice(0, perType)
+      .forEach(([d]) => ids.add(d.id));
+  });
+  return ids;
+}
+
+// Knoten, deren Bildschirmposition (transform t = {x, y, k}) im Fenster
+// plus margin liegt - fehlende x/y (noch nicht positioniert) zählen nicht.
+function nodesInViewport(nodes, t, width, height, margin) {
+  return nodes.filter((d) => {
+    const x = t.x + d.x * t.k;
+    const y = t.y + d.y * t.k;
+    return x >= -margin && x <= width + margin && y >= -margin && y <= height + margin;
+  });
+}
+
 // Nutzerwunsch (2026-08-23): Klick auf einen Knoten öffnet NICHT mehr
 // direkt die Quellenliste, sondern hebt ihn samt seiner direkt verbundenen
 // Knoten/Kanten hervor (Rest gedimmt) - erneuter Klick auf denselben
@@ -260,6 +356,7 @@ function renderGraph(data) {
   const height = wrapEl.clientHeight;
 
   currentSimulation?.stop();
+  stopPhotoLoading();
   if (currentSearchHandler) {
     searchInput.removeEventListener('input', currentSearchHandler);
     currentSearchHandler = null;
@@ -268,10 +365,23 @@ function renderGraph(data) {
 
   svg.attr('viewBox', [0, 0, width, height]).attr('width', '100%').attr('height', '100%');
   const container = svg.append('g');
+  // Aktuelle Zoomstufe (null bis zum ersten Zoom-Ereignis) und Fokus-Zustand
+  // (Auswahl/Suche: Namen und Linien der nicht gedimmten Knoten bleiben auf
+  // jeder Stufe sichtbar). Die eigentliche Funktionen stehen weiter unten.
+  let currentLevel = null;
+  let focusOn = false;
+  const PROMINENT_PER_TYPE = 8;
   const zoomBehavior = d3
     .zoom()
     .scaleExtent([0.2, 4])
-    .on('zoom', (event) => container.attr('transform', event.transform));
+    .on('zoom', (event) => {
+      container.attr('transform', event.transform);
+      applyLevel(zoomLevelFor(event.transform.k), event.transform.k);
+    })
+    .on('end', () => {
+      clearTimeout(photoDebounce);
+      photoDebounce = setTimeout(loadVisiblePhotos, 150);
+    });
   svg.call(zoomBehavior);
 
   // Nutzerwunsch (2026-08-23): bei voller Ansicht (Skalierung 1) wirkt das
@@ -283,6 +393,9 @@ function renderGraph(data) {
   // -> Standardansicht"-Animation (siehe unten) zu tief hinein - auf 1.3
   // reduziert, bleibt also "weiter oben".
   const INITIAL_ZOOM_SCALE = 1.3;
+  // Startwerte, nach Handy-Test nachstellen (siehe zoomLevelFor).
+  const EDGE_TIER_2_LIMIT = 800;
+  const LABEL_TIER_1_LIMIT = 60;
 
   const simulation = d3
     .forceSimulation(nodes)
@@ -315,12 +428,23 @@ function renderGraph(data) {
     .alphaDecay(0.05);
   currentSimulation = simulation;
 
+  edgeTiers(edges, EDGE_TIER_2_LIMIT).forEach((tier, i) => {
+    edges[i]._tier = tier;
+  });
+  const labelTiers = rankTiers(nodes.map((d) => d.weight), [LABEL_TIER_1_LIMIT]);
+  const prominentIds = prominentNodeIds(nodes, PROMINENT_PER_TYPE);
+  nodes.forEach((d, i) => {
+    d._labelTier = labelTiers[i];
+    d._photoQueued = false;
+    d._photoEl = null;
+  });
+
   const link = container
     .append('g')
     .selectAll('line')
     .data(edges)
     .join('line')
-    .attr('class', 'explore-edge')
+    .attr('class', (d) => `explore-edge explore-edge--tier-${d._tier}`)
     .attr('stroke-width', (d) => Math.min(1 + Math.sqrt(d.weight), 5));
 
   const node = container
@@ -328,7 +452,12 @@ function renderGraph(data) {
     .selectAll('g')
     .data(nodes)
     .join('g')
-    .attr('class', (d) => `explore-node explore-node--${d.type} explore-node--cluster-${d.cluster % CLUSTER_COLOR_COUNT}`)
+    .attr(
+      'class',
+      (d) =>
+        `explore-node explore-node--${d.type} explore-node--cluster-${d.cluster % CLUSTER_COLOR_COUNT} explore-node--label-tier-${d._labelTier}` +
+        (prominentIds.has(d.id) ? ' explore-node--prominent' : ''),
+    )
     .call(drag(simulation));
 
   node.append('title').text((d) => d.label);
@@ -341,6 +470,7 @@ function renderGraph(data) {
     node.classed('explore-node--selected', false);
     node.classed('explore-node--show-open-icon', false);
     link.classed('explore-edge--dimmed', false);
+    setFocus(false);
   }
 
   function selectNode(d) {
@@ -357,6 +487,7 @@ function renderGraph(data) {
       const targetId = typeof e.target === 'object' ? e.target.id : e.target;
       return sourceId !== d.id && targetId !== d.id;
     });
+    setFocus(true);
 
     // Nutzerwunsch (2026-08-23): der angeklickte Knoten wandert sanft in
     // die Bildmitte - gleicher Zoom-Faktor wie aktuell, nur die
@@ -389,6 +520,13 @@ function renderGraph(data) {
     .append('circle')
     .attr('r', radiusFor);
 
+  // Unsichtbarer, größerer Trefferkreis: bei weit herausgezoomter Ansicht
+  // (Handy) ist der sichtbare Punkt zu klein zum sicheren Antippen.
+  node
+    .append('circle')
+    .attr('class', 'explore-node-hit')
+    .attr('r', (d) => radiusFor(d) + 8);
+
   node.append('circle').attr('class', 'explore-node-circle').attr('r', radiusFor);
 
   const photoImages = node
@@ -416,12 +554,30 @@ function renderGraph(data) {
   // gesetzt statt sofort beim Erzeugen des Elements - der Browser dekodiert
   // dadurch nie mehr als eine Handvoll Fotos gleichzeitig, unabhängig davon,
   // ob sein natives Lazy-Loading für SVG greift oder nicht.
+  // Idee d24b4276: geladen werden nur Fotos im sichtbaren Ausschnitt und nur
+  // bei Zoomstufe near/close (siehe zoomLevelFor) - bei far/mid sind Fotos
+  // ohnehin ausgeblendet. Jeder Knoten wird höchstens einmal eingereiht;
+  // photoNextAt hält die 4er-Staffelung auch über mehrere Aufrufe hinweg ein.
+  // ponytail: href bleibt nach dem Laden, href entladen, falls Speicher knapp wird.
   const PHOTO_LOAD_BATCH_SIZE = 4;
   const PHOTO_LOAD_BATCH_DELAY_MS = 120;
-  photoImages.each(function (d, i) {
-    const delay = Math.floor(i / PHOTO_LOAD_BATCH_SIZE) * PHOTO_LOAD_BATCH_DELAY_MS;
-    setTimeout(() => this.setAttribute('href', d.photo_url), delay);
+  photoImages.each(function (d) {
+    d._photoEl = this;
   });
+  function loadVisiblePhotos() {
+    if (currentLevel !== 'near' && currentLevel !== 'close') return;
+    const pending = nodesInViewport(nodes, d3.zoomTransform(svg.node()), width, height, 100).filter(
+      (d) => d._photoEl && !d._photoQueued,
+    );
+    const now = performance.now();
+    const start = Math.max(now, photoNextAt);
+    pending.forEach((d, i) => {
+      d._photoQueued = true;
+      const delay = start - now + Math.floor(i / PHOTO_LOAD_BATCH_SIZE) * PHOTO_LOAD_BATCH_DELAY_MS;
+      photoTimers.push(setTimeout(() => d._photoEl.setAttribute('href', d.photo_url), delay));
+    });
+    photoNextAt = start + Math.ceil(pending.length / PHOTO_LOAD_BATCH_SIZE) * PHOTO_LOAD_BATCH_DELAY_MS;
+  }
 
   const label = node
     .append('text')
@@ -474,12 +630,63 @@ function renderGraph(data) {
     return `translate(${(d._labelHalfWidth || 0) + 6}, ${y})`;
   });
 
-  function ticked() {
-    link
+  // Nur Linien, die gerade sichtbar sind (Stufe des Zoomlevels, bei Fokus
+  // zusätzlich die nicht gedimmten) werden bewegt - versteckte Linien
+  // (display:none) werden beim nächsten Stufenwechsel aktualisiert.
+  let activeLinks = link.filter(() => false);
+  const TIER_VISIBLE = { far: [1], mid: [1, 2], near: [1, 2], close: [1, 2, 3] };
+
+  function updateLinks() {
+    activeLinks
       .attr('x1', (d) => d.source.x)
       .attr('y1', (d) => d.source.y)
       .attr('x2', (d) => d.target.x)
       .attr('y2', (d) => d.target.y);
+  }
+
+  function refreshActiveLinks() {
+    const tiers = TIER_VISIBLE[currentLevel] || [];
+    activeLinks = link.filter(function (d) {
+      return tiers.includes(d._tier) || (focusOn && !this.classList.contains('explore-edge--dimmed'));
+    });
+    updateLinks();
+  }
+
+  function setFocus(on) {
+    focusOn = on;
+    svg.classed('explore-graph--focus', on);
+    refreshActiveLinks();
+  }
+
+  // Bei far bleibt der Name der markanten Knoten etwa 11 px groß (Gegen-
+  // skalierung nur dieser <= 16 Texte), sonst wäre er bei k = 0.2 winzig.
+  const prominentLabels = label.filter((d) => prominentIds.has(d.id));
+  function scaleProminentLabels(level, k) {
+    if (level === 'far') {
+      prominentLabels
+        .style('font-size', `${LABEL_FONT_SIZE_PX / k}px`)
+        .style('stroke-width', `${3 / k}px`)
+        .attr('dy', (d) => radiusFor(d) + 12 / k);
+    } else if (currentLevel === 'far') {
+      prominentLabels
+        .style('font-size', null)
+        .style('stroke-width', null)
+        .attr('dy', (d) => radiusFor(d) + 12);
+    }
+  }
+
+  // Stolperstein: erst NACH label.each(getBBox) (siehe oben) aufrufen -
+  // bei display:none liefert getBBox Breite 0 und das Open-Icon säße falsch.
+  function applyLevel(level, k) {
+    scaleProminentLabels(level, k);
+    if (level === currentLevel) return;
+    currentLevel = level;
+    ['far', 'mid', 'near', 'close'].forEach((l) => svg.classed(`explore-graph--${l}`, l === level));
+    refreshActiveLinks();
+  }
+
+  function ticked() {
+    updateLinks();
     node.attr('transform', (d) => `translate(${d.x},${d.y})`);
   }
 
@@ -549,9 +756,10 @@ function renderGraph(data) {
   currentSearchHandler = () => {
     const query = normalizeSearch(searchInput.value);
     clearTimeout(searchZoomTimer);
+    // Idee d24b4276: eine vorherige Auswahl/Suche (Dimmen, Fokus, Open-Icon)
+    // erst zurücksetzen, sonst blieben Namen/Icons der Auswahl hängen.
+    clearSelection();
     if (!query) {
-      node.classed('explore-node--dimmed', false);
-      link.classed('explore-edge--dimmed', false);
       searchZoomTimer = setTimeout(() => zoomTo(defaultTransform), SEARCH_ZOOM_DEBOUNCE_MS);
       return;
     }
@@ -559,6 +767,10 @@ function renderGraph(data) {
     const matchedIds = new Set(matchedNodes.map((d) => d.id));
     node.classed('explore-node--dimmed', (d) => !matchedIds.has(d.id));
     link.classed('explore-edge--dimmed', (d) => !matchedIds.has(d.source.id) && !matchedIds.has(d.target.id));
+    // Namensflut vermeiden: Fokus (Namen/Linien der Treffer auf jeder Stufe)
+    // erst ab MIN_SEARCH_ZOOM_LENGTH, darunter nur Dimmen wie bisher.
+    if (query.length >= MIN_SEARCH_ZOOM_LENGTH) setFocus(true);
+    else refreshActiveLinks();
     if (matchedNodes.length && query.length >= MIN_SEARCH_ZOOM_LENGTH) {
       searchZoomTimer = setTimeout(() => zoomTo(computeFitTransform(matchedNodes, width, height)), SEARCH_ZOOM_DEBOUNCE_MS);
     }

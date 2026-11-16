@@ -2587,7 +2587,9 @@ def test_photo_timers_are_cleared_on_rerender():
     js_source = (STATIC_DIR / "explore.js").read_text()
     match = re.search(r"function renderGraph\(data\) \{.*?svg\.selectAll\('\*'\)\.remove\(\);", js_source, re.S)
     assert match, "renderGraph-Anfang wurde nicht gefunden."
-    assert "clearTimeout" in match.group(0)
+    assert "stopPhotoLoading()" in match.group(0)
+    stop = re.search(r"function stopPhotoLoading\(\) \{.*?\n\}", js_source, re.S)
+    assert stop and "photoTimers.forEach(clearTimeout)" in stop.group(0)
 
 
 def _explore_tier_fn(name: str, call_expr: str):
