@@ -83,7 +83,8 @@ Assistent das offen, statt zu spekulieren.
 - Mehr verschiedene Quellen und Autor:innen je Antwort: Eine Quelle (eine Website
   zählt als eine) und eine Autor:in belegen je höchstens 2 der 5 Textausschnitte,
   sofern ein Ausschnitt einer
-  neuen Quelle höchstens 15 % schlechter liegt. Ausnahmen: genannte
+  neuen Quelle höchstens 25 % schlechter liegt (einstellbar mit
+  `SOURCE_DIVERSITY_MAX_DISTANCE_INCREASE`, Standard 0.25). Ausnahmen: genannte
   Autor:innen, Titel in der Frage, passende Schlagworte, Fachbegriffe.
   Abschalten mit `SOURCE_DIVERSITY_MAX_PER_SOURCE=0` (Dev-Test: `?vielfalt=aus`).
 - Beraterstimme: Antworten wägen ab und lassen Perspektiven und Gründe
