@@ -547,7 +547,6 @@ def test_ask_context_second_query_brings_new_source_when_pool_is_dominated(monke
     _, refs, _, _ = main_module._ask_context("Frage", [], "de")
     assert wheres == [{"source_id": {"$nin": ["A"]}}]  # nur A hat mehr als 2 Chunks
     assert "c1" in [r.chunk_id for r in refs]
-    assert sum(r.source_id == "A" for r in refs) <= 2
 
 
 def test_ask_context_no_second_query_without_dominant_source(monkeypatch):

@@ -85,7 +85,9 @@ Assistent das offen, statt zu spekulieren.
   sofern ein Ausschnitt einer
   neuen Quelle höchstens 25 % schlechter liegt (einstellbar mit
   `SOURCE_DIVERSITY_MAX_DISTANCE_INCREASE`, Standard 0.25). Ausnahmen: genannte
-  Autor:innen, Titel in der Frage, passende Schlagworte, Fachbegriffe.
+  Autor:innen, Titel in der Frage, passende Schlagworte, Fachbegriffe. Füllen
+  wenige Quellen den Kandidatenpool, sucht eine zweite Abfrage gezielt in den
+  übrigen Quellen nach Nachrückern.
   Abschalten mit `SOURCE_DIVERSITY_MAX_PER_SOURCE=0` (Dev-Test: `?vielfalt=aus`).
 - Beraterstimme: Antworten wägen ab und lassen Perspektiven und Gründe
   erkennen, bleiben aber präzise. Die Stimme steht als Textdatei in

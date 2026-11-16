@@ -5240,6 +5240,23 @@ def _ask_context(
     curated_hits = vectorstore.query(
         query_embedding, top_k=pool_size
     )
+    # Idee 78404054: Füllen wenige Quellen den Pool (mehr als max_per_source
+    # Chunks), kommen Nachrücker anderer Quellen gar nicht erst hinein - die
+    # Toleranz im Rerank hilft dann nicht. Zweite Abfrage ohne diese Quellen.
+    if max_per_source > 0:
+        counts: dict[str, int] = {}
+        for meta in curated_hits["metadatas"][0]:
+            counts[meta["source_id"]] = counts.get(meta["source_id"], 0) + 1
+        dominant = sorted(sid for sid, n in counts.items() if n > max_per_source)
+        if dominant:
+            extra = vectorstore.query(
+                query_embedding, top_k=pool_size, where={"source_id": {"$nin": dominant}}
+            )
+            seen = set(curated_hits["ids"][0])
+            curated_hits = {
+                key: [curated_hits[key][0] + [v for i, v in zip(extra["ids"][0], extra[key][0]) if i not in seen]]
+                for key in ("ids", "documents", "distances", "metadatas")
+            }
     # Immer mitabgefragt, siehe Kommentar oben - rein lokal, keine spürbare
     # Zeitkosten. exclude_page_ids berücksichtigt manuell ausgeschlossene
     # Einzelseiten (siehe app/web_index.py:set_excluded).
