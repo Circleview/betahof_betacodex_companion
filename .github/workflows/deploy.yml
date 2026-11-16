@@ -5,6 +5,9 @@ name: Test & Deploy
 # Tags. Nach Änderung an requirements.txt oder dieser Datei: Tag erst nach
 # grünem main-Lauf pushen.
 on:
+  # Täglich: hält die Caches warm (GitHub löscht Caches nach 7 Tagen ohne Zugriff).
+  schedule:
+    - cron: "17 3 * * *"
   push:
     branches:
       - main
@@ -30,12 +33,16 @@ jobs:
           node-version: "22"
 
       # Nur exakter Schlüssel (kein restore-keys). Gespeichert wird nur auf main.
+      - name: Runner-Image ermitteln
+        id: img
+        run: echo "os=$ImageOS" >> "$GITHUB_OUTPUT"
+
       - name: venv-Cache laden
         id: venv
         uses: actions/cache/restore@v4
         with:
           path: .venv
-          key: venv-${{ runner.os }}-${{ env.ImageOS }}-py${{ steps.py.outputs.python-version }}-${{ hashFiles('requirements.txt', '.github/workflows/deploy.yml') }}
+          key: venv-${{ runner.os }}-${{ steps.img.outputs.os }}-py${{ steps.py.outputs.python-version }}-${{ hashFiles('requirements.txt', '.github/workflows/deploy.yml') }}
 
       - name: HuggingFace-Cache laden
         id: hf

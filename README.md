@@ -590,7 +590,8 @@ fehl.
   genaue Python-Version und Hash von `requirements.txt` + `deploy.yml`.
   **Regel:** Nach Änderung an `requirements.txt` oder `deploy.yml` den Tag
   erst nach grünem `main`-Lauf pushen. Lokal läuft `pytest` weiter seriell,
-  parallel mit `pytest -n auto`.
+  parallel mit `pytest -n auto`. Ein täglicher Zeitplan-Lauf (03:17 UTC, nur
+  Test-Job) hält die Caches warm, weil GitHub sie nach 7 Tagen ohne Zugriff löscht.
   Unterschiede zu Dev: `ENVIRONMENT` bleibt hier ungesetzt (nicht
   `"development"`), dadurch sind Cookies `Secure` und der
   `X-Robots-Tag` (verhindert sonst die Suchmaschinen-Indexierung)
