@@ -2761,6 +2761,74 @@ def test_open_icon_transform_follows_label_scale():
     assert normal == pytest.approx([26, 10 + 12 - 11.2 * 0.35 - 4.5, 1])
 
 
+@pytest.mark.parametrize(
+    "r,level,k,expected",
+    [
+        (6, "far", 0.2, 100),  # 20 px am Bildschirm = 20/k Graph-Einheiten
+        (6, "far", 0.5, 40),
+        (45, "far", 0.5, 53),  # r + 8 größer als 20/k
+        (6, "mid", 0.8, 14),
+        (6, "near", 1.3, 14),
+        (6, "close", 3, 14),
+    ],
+)
+def test_hit_radius_gives_20px_tap_target_at_far(r, level, k, expected):
+    assert _explore_tier_fn("hitRadiusFor", f"hitRadiusFor({r}, '{level}', {k})") == pytest.approx(expected)
+
+
+def _explore_source() -> str:
+    return (STATIC_DIR / "explore.js").read_text()
+
+
+def test_stop_photo_loading_interrupts_transitions_and_clears_all_timers():
+    js = _explore_source()
+    stop = re.search(r"function stopPhotoLoading\(\) \{.*?\n\}", js, re.S).group(0)
+    assert stop.index("svg.interrupt()") < stop.index("photoTimers.forEach(clearTimeout)")
+    assert "clearTimeout(photoDebounce)" in stop
+    assert "clearTimeout(searchZoomTimer)" in stop
+    assert re.search(r"^let searchZoomTimer", js, re.M), "searchZoomTimer muss Modul-Variable sein."
+
+
+def test_explore_rerenders_on_real_size_change_only_debounced():
+    js = _explore_source()
+    assert "addEventListener('resize'" in js
+    assert "orientationchange" in js
+    handler = re.search(r"function onWrapResize\(\) \{.*?\n\}", js, re.S)
+    assert handler, "onWrapResize fehlt."
+    body = handler.group(0)
+    assert "clientWidth" in body and "clientHeight" in body
+    assert "200" in js[js.index("function onWrapResize") - 400 : js.index("function onWrapResize") + len(body)]
+
+
+def test_within_far_only_scaling_is_updated_not_reset_and_filtered():
+    js = _explore_source()
+    apply_level = re.search(r"function applyLevel\(level\) \{.*?\n  \}\n", js, re.S).group(0)
+    assert "setNodeScale(scaledNodes" in apply_level
+    assert "rescaleLabels()" not in apply_level
+
+
+def test_counter_scaled_labels_get_scaled_halo():
+    js = _explore_source()
+    scale = re.search(r"function setNodeScale\(sel, k\) \{.*?\n  \}\n", js, re.S).group(0)
+    assert "stroke-width" in scale and "3 / k" in scale and "null" in scale
+
+
+def test_explore_source_guards():
+    js = _explore_source()
+    # stopPhotoLoading im Leer-Zweig
+    empty = js[js.index("if (!filtered.nodes.length)") :]
+    assert "stopPhotoLoading()" in empty[: empty.index("return;")]
+    # _photoQueued-Reset vor dem Aufbau der Linien/Knoten
+    assert js.index("d._photoQueued = false") < js.index(".selectAll('line')")
+    # clearSelection() am Anfang des Such-Handlers
+    handler = js[js.index("currentSearchHandler = () =>") :]
+    assert handler.index("clearSelection()") < handler.index("normalizeSearch(d.label)")
+    # Fokus-Regeln nach den Stufen-Regeln
+    css = (STATIC_DIR / "style.css").read_text()
+    assert css.index(".explore-graph--focus .explore-node:not") > css.index(".explore-graph--mid .explore-node image")
+    assert css.index(".explore-graph--focus .explore-edge:not") > css.index(".explore-graph--near .explore-edge--tier-3")
+
+
 def test_explore_legend_zoom_hint_is_translated_and_appended():
     js_source = (STATIC_DIR / "explore.js").read_text()
     assert "explore.legendZoomHint" in js_source
