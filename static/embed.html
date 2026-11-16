@@ -31,7 +31,7 @@
     </svg>
   </button>
 </div>
-<section id="frage-bereich" tabindex="-1">
+<main id="frage-bereich" tabindex="-1">
   <aside id="sources-sidebar">
     <h3 data-i18n="index.usedSourcesHeading"></h3>
     <ol id="sidebar-sources-list"></ol>
@@ -39,7 +39,7 @@
   <div id="chat-column">
     <div id="chat-messages" aria-live="polite"></div>
     <form id="question-form">
-      <textarea id="question" rows="1" maxlength="8000" data-i18n-placeholder="index.questionPlaceholder" required></textarea>
+      <textarea id="question" data-i18n-aria-label="index.questionAriaLabel" rows="1" maxlength="8000" data-i18n-placeholder="index.questionPlaceholder" required></textarea>
       <button type="button" id="mic-button" class="mic-button hidden" data-i18n-title="index.micButtonTitle">
         <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path>
@@ -68,7 +68,7 @@
          Kommentar), damit künftige Fixes nicht wieder nur einseitig landen. -->
     <div id="turnstile-container" class="turnstile-container"></div>
   </div>
-</section>
+</main>
 
 <script type="module" src="/question.js"></script>
 <!-- Nutzerwunsch (Livegang-Vorbereitung, 2026-09-10): meldet die tatsächliche
@@ -86,13 +86,6 @@
      redundante Doppelmeldung. Mobil-Erkennung im Embed selbst (siehe
      question.js: matchMedia) bleibt davon unberührt - sie wertet ohnehin die
      tatsächliche Breite dieses iframes aus. -->
-<script>
-  function reportHeightToParent() {
-    if (window.parent === window) return;
-    const height = document.documentElement.scrollHeight;
-    window.parent.postMessage({ type: 'betacodex-chat-embed-resize', height }, '*');
-  }
-  new ResizeObserver(reportHeightToParent).observe(document.documentElement);
-</script>
+<script src="/embed-resize.js"></script>
 </body>
 </html>

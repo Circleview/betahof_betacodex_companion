@@ -113,6 +113,10 @@ html {
   .page-band {
     padding-block: 32px;
   }
+
+  html #question-form textarea {
+    max-height: 40dvh;
+  }
 }
 
 body {
@@ -190,7 +194,7 @@ h3 {
   display: inline-block;
   overflow: hidden;
   white-space: nowrap;
-  max-width: 320px;
+  max-width: 14em;
   opacity: 1;
   transform: translateX(0);
   transition: max-width 0.4s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.25s ease,
@@ -338,6 +342,28 @@ header {
   top: 0.5rem;
   z-index: 20;
   background: var(--color-bg);
+}
+
+/* Der Header ist auf voller Fensterbreite deckend (sonst scheint beim Scrollen
+   das vollbreite Farbband links und rechts durch). Pseudo-Element statt
+   clip-path/box-shadow, damit Popover unter dem Header nicht abgeschnitten
+   werden; z-index -1 liegt hinter dem Header-Inhalt. */
+#site-header::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 100vw;
+  margin-left: -50vw;
+  background: var(--color-bg);
+  z-index: -1;
+}
+
+/* Das Farbband trennt schon - keine Haarlinie auf Band-Seiten. */
+body:has(.page-band) #site-header,
+body:not(.chat-started):has(#frage-bereich) #site-header {
+  border-bottom: 0;
 }
 
 
@@ -597,6 +623,14 @@ header h1 {
   font-weight: 600;
   color: var(--color-text-muted);
   cursor: pointer;
+  position: relative;
+}
+
+/* Trefferfläche >= 24px (WCAG 2.5.8), Optik und Layout unverändert. */
+.lang-button::after {
+  content: '';
+  position: absolute;
+  inset: -6px -4px;
 }
 
 .lang-button.active {
@@ -900,7 +934,8 @@ button[type="submit"]:disabled, .send-button:disabled, #popover-load:disabled, #
   font-size: 0.85rem;
 }
 
-section {
+section,
+main {
   margin-bottom: 3rem;
 }
 
@@ -1185,6 +1220,8 @@ body:not(.chat-started) #question-form {
      Ziehgriff, overflow:hidden das kurze Aufblitzen einer internen
      Scrollleiste während der Höhenänderung. */
   resize: none;
+  /* Obergrenze: Senden bleibt im Viewport; darüber scrollt das Feld (JS setzt overflow-y). */
+  max-height: 40vh;
   overflow: hidden;
   transition: height 0.15s ease;
 }
@@ -2022,7 +2059,10 @@ button.send-button {
 }
 
 .citation-highlight {
-  background: var(--color-surface);
+  /* Textmarker im Ton der Mint-Zitat-Box statt Stein-Flicken (v0.93.1). */
+  background: color-mix(in srgb, var(--color-text) 10%, var(--color-cover-mint));
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
   color: var(--color-text);
   font-weight: 600;
   border-radius: var(--radius);
@@ -2388,6 +2428,13 @@ button.send-button {
   font-weight: 600;
   cursor: pointer;
   border-radius: var(--radius);
+  position: relative;
+}
+
+.alphabet-jump-btn::after {
+  content: '';
+  position: absolute;
+  inset: -3px;
 }
 
 .alphabet-jump-btn:hover {
@@ -4798,6 +4845,11 @@ details a {
   color: var(--color-accent-hover);
 }
 
+/* '#creative-sources a' (ID) würde sonst das Rot auf Sand erzwingen. */
+#creative-sources .creative-disclaimer a {
+  color: var(--color-accent-hover);
+}
+
 .creative-disclaimer--mobile {
   display: none;
 }
@@ -5203,6 +5255,16 @@ details a {
 
 /* Zweistufige Bestätigung des Neu-anfangen-Buttons (creative.js). Grundstil
    kommt von .feedback-btn. */
+#creative-new-btn {
+  position: relative;
+}
+
+#creative-new-btn::after {
+  content: '';
+  position: absolute;
+  inset: -3px;
+}
+
 #creative-new-btn.confirming {
   color: var(--color-text);
 }

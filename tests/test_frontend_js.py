@@ -3789,14 +3789,10 @@ def test_build_embed_snippet_rounds_and_uses_custom_width():
 
 
 def test_embed_html_reports_height_to_parent_on_resize():
-    """Führt das Inline-Skript aus embed.html#reportHeightToParent per Node
-    aus (ponytail-Review, 2026-09-10: inline statt eigener embed-resize.js -
-    hier direkt aus embed.html extrahiert, damit dieser Test nicht separat
-    von der HTML-Datei abdriften kann)."""
-    html = (STATIC_DIR / "embed.html").read_text()
-    match = re.search(r"<script>\s*function reportHeightToParent.*?</script>", html, re.S)
-    assert match, "Das Resize-Inline-Skript wurde in embed.html nicht gefunden."
-    script_body = match.group(0).replace("<script>", "").replace("</script>", "")
+    """Führt static/embed-resize.js per Node aus. Seit v0.93.1 externe Datei:
+    das frühere Inline-Skript (ponytail-Review 2026-09-10) blockierte die CSP
+    (kein 'unsafe-inline'), es lief im Browser nie."""
+    script_body = (STATIC_DIR / "embed-resize.js").read_text()
     script = f"""
 global.document = {{ documentElement: {{ scrollHeight: 321 }} }};
 const posted = [];
@@ -3819,10 +3815,7 @@ console.log(JSON.stringify(posted));
 
 
 def test_embed_html_skips_reporting_when_not_embedded():
-    html = (STATIC_DIR / "embed.html").read_text()
-    match = re.search(r"<script>\s*function reportHeightToParent.*?</script>", html, re.S)
-    assert match, "Das Resize-Inline-Skript wurde in embed.html nicht gefunden."
-    script_body = match.group(0).replace("<script>", "").replace("</script>", "")
+    script_body = (STATIC_DIR / "embed-resize.js").read_text()
     script = f"""
 global.document = {{ documentElement: {{ scrollHeight: 321 }} }};
 const posted = [];
@@ -3843,11 +3836,11 @@ console.log(JSON.stringify(posted));
 
 def test_build_embed_snippet_includes_resize_listener_matching_embed_html():
     snippet = _run_build_embed_snippet(480)
-    embed_html = (STATIC_DIR / "embed.html").read_text()
+    embed_js = (STATIC_DIR / "embed-resize.js").read_text()
     assert "betacodex-chat-embed-resize" in snippet
     # Derselbe Nachrichtentyp muss auf beiden Seiten (Embed + Snippet)
     # übereinstimmen, sonst bleibt die Höhenanpassung wirkungslos.
-    assert "betacodex-chat-embed-resize" in embed_html
+    assert "betacodex-chat-embed-resize" in embed_js
     assert "e.source!==f.contentWindow" in snippet.replace(" ", "")
 
 
