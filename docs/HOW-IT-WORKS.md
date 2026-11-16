@@ -75,7 +75,7 @@ Steps per question (`app/main.py`, function `ask`):
    take only one slot. Then a source (a website counts as one) and an author each take at
    most 2 of the 5 slots.
    For this the pool is 8 times the slot count. The surplus is swapped for an excerpt from a
-   source not yet represented, if it ranks at most 15 % worse; new authors go first. A website never replaces a curated excerpt. Exempt are sources of mentioned
+   source not yet represented, if it ranks at most 25 % worse; new authors go first. A website never replaces a curated excerpt. Exempt are sources of mentioned
    authors, sources whose title is in the question, sources with a matching key term
    (whole word; the key term may appear in at most 3 sources), and the first excerpt per key term of the question. With
    several sources present, a hint asks the model to cite every supporting source.
@@ -257,7 +257,7 @@ welcome.
 | … if a key term of the source also appears in the question | `0.05` | `app/main.py: AUTHOR_MENTION_KEYWORD_MATCH_FACTOR` |
 | Max. excerpts per source and per author among the top-K (0 = off, env variable SOURCE_DIVERSITY_MAX_PER_SOURCE) | `2` | `app/main.py: SOURCE_DIVERSITY_DEFAULT_MAX_PER_SOURCE` |
 | Candidate multiple while diversity is on | `8` | `app/main.py: SOURCE_DIVERSITY_POOL_MULTIPLIER` |
-| How much worse a replacement excerpt may be at most (fraction) | `0.15` | `app/main.py: SOURCE_DIVERSITY_MAX_DISTANCE_INCREASE` |
+| How much worse a replacement excerpt may be at most (fraction) | `0.25` | `app/main.py: SOURCE_DIVERSITY_MAX_DISTANCE_INCREASE` |
 | Terms per question with a guaranteed excerpt (hybrid search) | `3` | `app/main.py: LEXICAL_MAX_TERMS` |
 | Previous conversation turns in the prompt | `50` | `app/main.py: ASK_HISTORY_MAX_TURNS` |
 | Byte budget (UTF-8) for the conversation history in the prompt (trimmed in blocks of 10 so the prompt cache hits) | `200000` | `app/main.py: ASK_HISTORY_MAX_BYTES` |
@@ -268,7 +268,7 @@ welcome.
 
 This table is generated from the code. If prompts or settings change, `tests/test_how_it_works_doc.py` fails until the text above has been reviewed and `python scripts/how_it_works.py --write` has been run.
 
-<!-- fingerprint: 9387cd33b3ce -->
+<!-- fingerprint: d6feb63bd1bf -->
 <!-- END generiert -->
 
 ## How this document stays current
