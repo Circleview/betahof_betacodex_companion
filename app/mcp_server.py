@@ -54,18 +54,21 @@ MAX_QUESTION_CHARS = 2000
 AI_MARKERS = {"de": "KI-generiert (BetaCodex Chat)", "en": "AI-generated (BetaCodex Chat)"}
 
 
+_AI_MARKER_LINE = re.compile(
+    r"(?:\A|\s*\n)[ \t]*[*_]*(?:" + "|".join(re.escape(m) for m in AI_MARKERS.values()) + r")\.?[*_]*\s*\Z"
+)
+
+
 def _with_ai_marker(text: str, lang: str) -> str:
     return f"{text}\n\n{AI_MARKERS.get(lang, AI_MARKERS['de'])}"
 
 
 def _strip_ai_marker(document: str) -> str:
     """revise_text bekommt oft die Ausgabe von create_text zurück - die
-    KI-Zeile darf das Modell nicht als Dokumenttext sehen."""
-    stripped = document.rstrip()
-    for marker in AI_MARKERS.values():
-        if stripped.endswith(marker):
-            return stripped.removesuffix(marker).rstrip()
-    return document
+    KI-Zeile darf das Modell nicht als Dokumenttext sehen. Entfernt nur eine
+    eigene Schlusszeile (auch von Clients kursiv gesetzt oder mit Punkt),
+    nie denselben Wortlaut am Ende eines Satzes."""
+    return _AI_MARKER_LINE.sub("", document)
 
 
 def _format_result(document: str, sources: dict, lang: str) -> str:

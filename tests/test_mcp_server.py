@@ -432,3 +432,19 @@ def test_ask_question_ends_with_ai_marker(mcp_client, fake_ask):
     _, secret = mcp_keys.create_key(OWNER, "Laptop")
     text = _call(mcp_client, secret, "ask_question", {"question": "Wer entscheidet?", "language": "en"}).json()["result"]["content"][0]["text"]
     assert text.endswith("\n\nAI-generated (BetaCodex Chat)")
+
+
+@pytest.mark.parametrize(
+    "document,expected",
+    [
+        ("Text.\n\nKI-generiert (BetaCodex Chat)", "Text."),
+        ("Text.\n\n*AI-generated (BetaCodex Chat)*\n", "Text."),
+        ("Text.\n_KI-generiert (BetaCodex Chat)._", "Text."),
+        ("KI-generiert (BetaCodex Chat)", ""),
+        # Wortlaut am Satzende ist kein Kennzeichen - nichts abschneiden.
+        ("Dieser Text ist KI-generiert (BetaCodex Chat)", "Dieser Text ist KI-generiert (BetaCodex Chat)"),
+        ("KI-generiert (BetaCodex Chat)\n\nweiter im Text.", "KI-generiert (BetaCodex Chat)\n\nweiter im Text."),
+    ],
+)
+def test_strip_ai_marker_removes_only_a_trailing_marker_line(document, expected):
+    assert mcp_server._strip_ai_marker(document) == expected

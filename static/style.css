@@ -1170,7 +1170,7 @@ body:not(.chat-started) #question-form {
    (Chat, Embed, Kreativ). Bewusst außerhalb von #question-form: dessen
    flex-wrap würde die Eingabezeile sonst umbrechen. */
 .ai-notice {
-  margin: 0 1.25rem 0.75rem;
+  margin: 0.5rem 1.25rem 0.75rem;
   font-size: 0.75rem;
   line-height: 1.4;
   color: var(--color-text-muted);
