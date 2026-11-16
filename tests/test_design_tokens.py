@@ -620,3 +620,19 @@ def test_sticky_header_is_full_width_white_and_hairline_only_without_band():
     assert "clip-path" not in _field_rule("#site-header")
     sel = "body:has(.page-band) #site-header, body:not(.chat-started):has(#frage-bereich) #site-header"
     assert re.search(r"border-bottom:\s*0\b", _field_rule(sel))
+
+
+@pytest.mark.parametrize("page", sorted(p.name for p in STATIC.glob("*.html")))
+def test_no_inline_scripts_blocked_by_csp(page):
+    # Die CSP erlaubt kein 'unsafe-inline' für script-src - ein <script> ohne src
+    # läuft im Browser nie (embed.html meldete so jahrelang keine Höhe, v0.93.1).
+    html = (STATIC / page).read_text(encoding="utf-8")
+    html = re.sub(r"<!--.*?-->", "", html, flags=re.S)
+    assert not re.search(r"<script(?![^>]*\bsrc=)[^>]*>", html), page
+
+
+def test_embed_reports_height_via_external_script():
+    html = (STATIC / "embed.html").read_text(encoding="utf-8")
+    assert '<script src="/embed-resize.js"></script>' in html
+    js = (STATIC / "embed-resize.js").read_text(encoding="utf-8")
+    assert "betacodex-chat-embed-resize" in js and "ResizeObserver" in js
