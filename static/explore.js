@@ -311,6 +311,22 @@ function isFarScaledLabel(level, focusOn, dimmed, prominent) {
   return level === 'far' && (prominent || (focusOn && !dimmed));
 }
 
+// Gierige Ausdünnung überlappender Namen: boxes ({id, x, y, w, h}, x/y links
+// oben, Bildschirm-px) in Prioritätsreihenfolge; eine Box bleibt, wenn sie
+// keine schon behaltene Box schneidet (kleiner Abstand: 2 px). Gibt die IDs
+// der behaltenen Boxen zurück, Eingabe bleibt unverändert.
+function cullOverlappingLabels(boxes) {
+  const GAP = 2;
+  const kept = [];
+  boxes.forEach((b) => {
+    const clash = kept.some(
+      (o) => b.x < o.x + o.w + GAP && o.x < b.x + b.w + GAP && b.y < o.y + o.h + GAP && o.y < b.y + b.h + GAP,
+    );
+    if (!clash) kept.push(b);
+  });
+  return new Set(kept.map((b) => b.id));
+}
+
 // Trefferkreis-Radius in Graph-Einheiten: bei far mindestens 20 px am
 // Bildschirm (20 / k), sonst Radius + 8.
 function hitRadiusFor(radius, level, k) {
@@ -697,11 +713,35 @@ function renderGraph(data) {
   // Icon wandert mit. Beim Verlassen von far/Fokus wird zurückgesetzt.
   let scaledNodes = node.filter(() => false);
   function setNodeScale(sel, k) {
+    if (k === 1) sel.classed('explore-node--label-culled', false);
     sel.select('.explore-node-label')
       .style('font-size', k === 1 ? null : `${LABEL_FONT_SIZE_PX / k}px`)
       .style('stroke-width', k === 1 ? null : `${3 / k}px`)
       .attr('dy', (d) => radiusFor(d) + 12 / k);
     sel.select('.explore-node-open-icon').attr('transform', (d) => openIconTransform(radiusFor(d), d._labelHalfWidth || 0, k));
+  }
+  // Gegenskalierte Namen überlappen bei far grob: Priorität = ausgewählter
+  // Knoten, dann weight absteigend (Gleichstand: Reihenfolge der Knoten);
+  // Verdeckte (samt Open-Icon) bekommen .explore-node--label-culled.
+  const LABEL_BOX_HEIGHT_PX = 14;
+  function cullLabels(k) {
+    const t = d3.zoomTransform(svg.node());
+    const boxes = scaledNodes
+      .data()
+      .map((d) => ({ d, i: nodes.indexOf(d) }))
+      .sort((a, b) => (b.d.id === selectedNodeId) - (a.d.id === selectedNodeId) || b.d.weight - a.d.weight || a.i - b.i)
+      .map(({ d }) => {
+        const w = 2 * (d._labelHalfWidth || 0);
+        return {
+          id: d.id,
+          x: t.x + d.x * k - w / 2,
+          y: t.y + d.y * k + radiusFor(d) * k + 12 - 11,
+          w,
+          h: LABEL_BOX_HEIGHT_PX,
+        };
+      });
+    const keep = cullOverlappingLabels(boxes);
+    scaledNodes.classed('explore-node--label-culled', (d) => !keep.has(d.id));
   }
   function rescaleLabels() {
     setNodeScale(scaledNodes, 1);
@@ -710,6 +750,7 @@ function renderGraph(data) {
       return isFarScaledLabel(currentLevel, focusOn, this.classList.contains('explore-node--dimmed'), prominentIds.has(d.id));
     });
     setNodeScale(scaledNodes, k);
+    cullLabels(k);
   }
 
   // Stolperstein: erst NACH label.each(getBBox) (siehe oben) aufrufen -
@@ -725,6 +766,7 @@ function renderGraph(data) {
     } else if (level === 'far') {
       // Innerhalb far ändert sich nur k: nur neu skalieren, nicht neu filtern.
       setNodeScale(scaledNodes, k);
+      cullLabels(k);
       updateHitCircles();
     }
   }

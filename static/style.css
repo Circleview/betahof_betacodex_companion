@@ -4821,6 +4821,13 @@ details a {
   display: inline;
 }
 
+/* Bei far ausgedünnte (sich überlappende) Namen samt Open-Icon - nach den
+   Fokus-Regeln; #explore-graph hebt die Spezifität über sie. */
+#explore-graph .explore-node--label-culled .explore-node-label,
+#explore-graph .explore-node--label-culled .explore-node-open-icon {
+  display: none;
+}
+
 /* Im Fokus fangen gedimmte Knoten keine Klicks ab (bei far überdecken ihre
    großen Trefferkreise sonst die Open-Icons der Nachbarn). */
 .explore-graph--focus .explore-node--dimmed {
