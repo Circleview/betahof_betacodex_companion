@@ -2734,6 +2734,33 @@ def test_nodes_in_viewport_undefined_position_is_excluded():
     assert _in_viewport("[{ id: 'u' }, { id: 'v', x: 10 }]", "{ x: 0, y: 0, k: 1 }") == []
 
 
+@pytest.mark.parametrize(
+    "level,focus,dimmed,prominent,expected",
+    [
+        ("far", False, False, True, True),
+        ("far", False, False, False, False),
+        ("far", True, False, False, True),
+        ("far", True, True, False, False),
+        ("far", True, True, True, True),
+        ("mid", True, False, True, False),
+        ("near", True, False, False, False),
+    ],
+)
+def test_far_label_is_scaled_for_prominent_and_focused_nodes(level, focus, dimmed, prominent, expected):
+    call = f"isFarScaledLabel('{level}', {str(focus).lower()}, {str(dimmed).lower()}, {str(prominent).lower()})"
+    assert _explore_tier_fn("isFarScaledLabel", call) is expected
+
+
+def test_open_icon_transform_follows_label_scale():
+    # Anforderung: Bei k = 0.5 ist die Schrift doppelt so groß (11.2/k), das Icon sitzt
+    # (halbe Breite + 6)/k rechts vom Mittelpunkt und wird mit 1/k skaliert.
+    result = _explore_tier_fn("openIconTransform", "openIconTransform(10, 20, 0.5)")
+    nums = [float(n) for n in re.findall(r"-?\d+(?:\.\d+)?", result)]
+    assert nums == pytest.approx([52, 10 + (12 - 11.2 * 0.35 - 4.5) / 0.5, 2])
+    normal = [float(n) for n in re.findall(r"-?\d+(?:\.\d+)?", _explore_tier_fn("openIconTransform", "openIconTransform(10, 20, 1)"))]
+    assert normal == pytest.approx([26, 10 + 12 - 11.2 * 0.35 - 4.5, 1])
+
+
 def test_explore_legend_zoom_hint_is_translated_and_appended():
     js_source = (STATIC_DIR / "explore.js").read_text()
     assert "explore.legendZoomHint" in js_source
