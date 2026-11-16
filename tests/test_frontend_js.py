@@ -2790,13 +2790,16 @@ def test_stop_photo_loading_interrupts_transitions_and_clears_all_timers():
 
 
 def test_explore_rerenders_on_real_size_change_only_debounced():
+    """Nur Breitenwechsel baut neu: am Handy ändert die Adressleiste beim
+    Scrollen nur die Höhe - ein Neuaufbau würde Zoom und Auswahl verwerfen."""
     js = _explore_source()
     assert "addEventListener('resize'" in js
     assert "orientationchange" in js
     handler = re.search(r"function onWrapResize\(\) \{.*?\n\}", js, re.S)
     assert handler, "onWrapResize fehlt."
     body = handler.group(0)
-    assert "clientWidth" in body and "clientHeight" in body
+    assert "clientWidth" in body
+    assert "clientHeight" not in body, "Höhenänderung (mobile Adressleiste) darf nicht neu bauen."
     assert "200" in js[js.index("function onWrapResize") - 400 : js.index("function onWrapResize") + len(body)]
 
 
