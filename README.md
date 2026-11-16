@@ -320,7 +320,8 @@ Andere MCP-Clients brauchen die Adresse `https://companion.betahof.com/mcp`
   aus sichtbar), ein Filter-Button in der Quellenübersicht zeigt gezielt
   die betroffenen Quellen.
 - Website-Wissensquellen: freigegebene externe Websites (z. B. Blogs von
-  Expert:innen) werden wöchentlich im Hintergrund gecrawlt und fließen als
+  Expert:innen) werden wöchentlich im Hintergrund gecrawlt (nur Produktion;
+  lokale Dev-Server mit `ENVIRONMENT=development` crawlen nicht) und fließen als
   automatischer Fallback in Antworten ein, wenn die kuratierten Quellen zum
   Thema nichts hergeben – dezent im Chat gekennzeichnet, mit
   Schnell-Ausschließen-Button für einzelne, erkennbar unpassende Seiten
