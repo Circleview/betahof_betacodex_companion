@@ -356,7 +356,7 @@ class MessageOut(BaseModel):
 
 
 class SpeechIn(BaseModel):
-    text: str
+    text: str = Field(max_length=1000)
     rate: float = 1.0
 
 

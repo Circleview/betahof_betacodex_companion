@@ -363,6 +363,7 @@ def client(tmp_path, monkeypatch):
     # Schutzverhalten selbst überschreiben diese Mocks gezielt.
     monkeypatch.setattr(captcha, "verify_turnstile_token", lambda token, remote_ip=None: True)
     monkeypatch.setattr(ratelimit, "_request_log", {})
+    monkeypatch.setattr(ratelimit, "_char_log", {})
     monkeypatch.setattr(conversation_handoff, "_store", {})
     monkeypatch.setattr(auth, "_consumed_jti", {})
     # TestClient spricht "http://testserver" - ein "Secure"-Cookie würde vom
