@@ -87,3 +87,8 @@ def test_expired_keys_are_removed_from_memory():
     assert "old" not in ratelimit._request_log
     assert "oldc" not in ratelimit._char_log
     assert "new" in ratelimit._request_log
+
+
+def test_ip_key_unwraps_ipv4_mapped_ipv6():
+    assert ratelimit.ip_key("::ffff:1.2.3.4") == "1.2.3.4"
+    assert ratelimit.ip_key("::ffff:1.2.3.4") != ratelimit.ip_key("::ffff:5.6.7.8")
