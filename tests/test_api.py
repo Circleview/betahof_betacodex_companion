@@ -1426,6 +1426,40 @@ def test_speech_rejects_empty_text(anon_client):
     assert response.status_code == 400
 
 
+def _speech_mock(monkeypatch):
+    calls = []
+
+    def fake(text, lang="de", speaking_rate=1.0):
+        calls.append(text)
+        return b"mp3"
+
+    monkeypatch.setattr(tts, "synthesize_speech", fake)
+    return calls
+
+
+def test_speech_rejects_text_over_1000_chars_without_tts_call(anon_client, monkeypatch):
+    calls = _speech_mock(monkeypatch)
+    assert anon_client.post("/api/speech", json={"text": "a" * 1001}).status_code == 422
+    assert calls == []
+    assert anon_client.post("/api/speech", json={"text": "a" * 1000}).status_code == 200
+
+
+def test_speech_budget_60000_chars_per_ip_and_hour(anon_client, monkeypatch):
+    calls = _speech_mock(monkeypatch)
+    for _ in range(60):
+        assert anon_client.post("/api/speech", json={"text": "a" * 1000}).status_code == 200
+    assert len(calls) == 60
+    response = anon_client.post("/api/speech", json={"text": "b"})
+    assert response.status_code == 429
+    assert len(calls) == 60
+
+
+def test_speech_budget_counts_only_stripped_text_and_keeps_empty_400(anon_client, monkeypatch):
+    calls = _speech_mock(monkeypatch)
+    assert anon_client.post("/api/speech", json={"text": "   "}).status_code == 400
+    assert calls == []
+
+
 def test_speech_returns_502_when_synthesis_fails(anon_client, monkeypatch):
     def raise_error(text, lang="de", speaking_rate=1.0):
         raise tts.SpeechSynthesisError("boom")
