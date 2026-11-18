@@ -24,9 +24,10 @@ def ip_key(ip: str) -> str:
         addr = ipaddress.ip_address(ip)
     except ValueError:
         return ip
-    if addr.version == 6:
-        return str(ipaddress.ip_network(f"{addr}/64", strict=False).network_address) + "/64"
-    return ip
+    addr = getattr(addr, "ipv4_mapped", None) or addr
+    if addr.version == 4:
+        return str(addr)
+    return str(ipaddress.ip_network(f"{addr}/64", strict=False).network_address) + "/64"
 
 
 def _sweep(now: float) -> None:
