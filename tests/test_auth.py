@@ -105,3 +105,29 @@ def test_early_access_token_rejects_session_token_from_different_flow():
     # unterschiedliche Payload-Felder.
     session_token = auth.create_session_token("lena@test.local")
     assert auth.verify_early_access_token(session_token) is False
+
+
+def test_session_verify_rejects_magic_link_token():
+    token = auth.create_magic_link_token("lena@test.local", auth.LOGIN_LINK_MAX_AGE_SECONDS)
+    assert auth.verify_session_token(token) is None
+
+
+def test_session_verify_rejects_invite_token():
+    token = auth.create_magic_link_token("lena@test.local", auth.INVITE_LINK_MAX_AGE_SECONDS)
+    assert auth.verify_session_token(token) is None
+
+
+def test_consumed_jti_survives_restart(monkeypatch, tmp_path):
+    monkeypatch.setattr(auth, "_JTI_FILE", tmp_path / "consumed_jti.json")
+    token = auth.create_magic_link_token("lena@test.local", 60)
+    assert auth.verify_magic_link_token(token) == "lena@test.local"
+    # "Neustart": Modul-Zustand verwerfen und von Platte laden
+    monkeypatch.setattr(auth, "_consumed_jti", auth._load_consumed_jti())
+    assert auth.verify_magic_link_token(token) is None
+
+
+def test_expired_consumed_jti_dropped_on_load(monkeypatch, tmp_path):
+    f = tmp_path / "consumed_jti.json"
+    f.write_text('{"old": 1, "new": 99999999999}')
+    monkeypatch.setattr(auth, "_JTI_FILE", f)
+    assert auth._load_consumed_jti() == {"new": 99999999999}
