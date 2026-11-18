@@ -79,6 +79,7 @@ def _assert_safe_url(url: str) -> None:
             or ip.is_reserved
             or ip.is_multicast
             or ip.is_unspecified
+            or not ip.is_global  # z. B. CGNAT 100.64.0.0/10
         ):
             raise UnsafeUrlError(f"Unsichere URL (private/interne Adresse): {url}")
 

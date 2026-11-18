@@ -271,7 +271,7 @@ def test_check_url_reports_reason_code_for_url_error_after_405_fallback():
 def test_check_url_rejects_internal_targets_without_network(url, monkeypatch):
     monkeypatch.setattr(extraction, "_getaddrinfo", _fake_dns(
         "169.254.169.254" if url.startswith("http") else "93.184.216.34"))
-    with patch("app.monitoring._open") as opened:
+    with patch.object(urllib.request.OpenerDirector, "open") as opened:
         result = check_url(url)
     assert result["reachable"] is False
     assert result["reason_code"] == "unknown_error"
@@ -281,7 +281,7 @@ def test_check_url_rejects_internal_targets_without_network(url, monkeypatch):
 @pytest.mark.parametrize("ip", ["10.0.0.1", "100.64.0.1"])
 def test_check_url_rejects_hostname_resolving_to_internal_ip(ip, monkeypatch):
     monkeypatch.setattr(extraction, "_getaddrinfo", _fake_dns(ip))
-    with patch("app.monitoring._open") as opened:
+    with patch.object(urllib.request.OpenerDirector, "open") as opened:
         result = check_url("https://intern.example/")
     assert result["reachable"] is False
     opened.assert_not_called()
