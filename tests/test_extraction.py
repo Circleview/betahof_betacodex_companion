@@ -1044,6 +1044,7 @@ def test_assert_safe_url_rejects_unresolvable_hostname(monkeypatch):
         "192.168.1.1",  # Privates Netz
         "172.16.0.1",  # Privates Netz
         "0.0.0.0",  # Unspecified
+        "100.64.0.1",  # CGNAT (nicht is_private, aber nicht global)
     ],
 )
 def test_assert_safe_url_rejects_private_and_internal_ips(monkeypatch, ip):
