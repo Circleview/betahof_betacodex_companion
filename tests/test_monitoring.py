@@ -1,9 +1,29 @@
+import io
 import socket
 import ssl
 import urllib.error
+import urllib.request
+import urllib.response
+from http.client import HTTPMessage
 from unittest.mock import MagicMock, patch
 
+import pytest
+
+from app import extraction
 from app.monitoring import check_url
+
+
+# SSRF-Schutz löst Hostnamen per DNS auf: in Tests nie echtes Netz.
+def _fake_dns(ip):
+    def fake(host, *args, **kwargs):
+        return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", (ip, 0))]
+
+    return fake
+
+
+@pytest.fixture(autouse=True)
+def _mock_dns_resolution(monkeypatch):
+    monkeypatch.setattr(extraction, "_getaddrinfo", _fake_dns("93.184.216.34"))
 
 
 def _cm_response(status):
@@ -14,7 +34,7 @@ def _cm_response(status):
 
 
 def test_check_url_reachable():
-    with patch("app.monitoring.urllib.request.urlopen", return_value=_cm_response(200)):
+    with patch("app.monitoring._open", return_value=_cm_response(200)):
         assert check_url("https://example.org") == {
             "reachable": True,
             "status_code": 200,
@@ -23,7 +43,7 @@ def test_check_url_reachable():
 
 
 def test_check_url_unreachable_status():
-    with patch("app.monitoring.urllib.request.urlopen", return_value=_cm_response(500)):
+    with patch("app.monitoring._open", return_value=_cm_response(500)):
         assert check_url("https://example.org") == {
             "reachable": False,
             "status_code": 500,
@@ -36,7 +56,7 @@ def test_check_url_falls_back_to_get_when_head_not_allowed():
         url="https://example.org", code=405, msg="Method Not Allowed", hdrs=None, fp=None
     )
     with patch(
-        "app.monitoring.urllib.request.urlopen", side_effect=[error, _cm_response(200)]
+        "app.monitoring._open", side_effect=[error, _cm_response(200)]
     ):
         assert check_url("https://example.org") == {
             "reachable": True,
@@ -49,7 +69,7 @@ def test_check_url_reports_http_error_status_for_non_405():
     error = urllib.error.HTTPError(
         url="https://example.org", code=404, msg="Not Found", hdrs=None, fp=None
     )
-    with patch("app.monitoring.urllib.request.urlopen", side_effect=error):
+    with patch("app.monitoring._open", side_effect=error):
         assert check_url("https://example.org") == {
             "reachable": False,
             "status_code": 404,
@@ -63,7 +83,7 @@ def test_check_url_treats_403_as_reachable():
     error = urllib.error.HTTPError(
         url="https://example.org", code=403, msg="Forbidden", hdrs=None, fp=None
     )
-    with patch("app.monitoring.urllib.request.urlopen", side_effect=error):
+    with patch("app.monitoring._open", side_effect=error):
         assert check_url("https://example.org") == {
             "reachable": True,
             "status_code": 403,
@@ -79,7 +99,7 @@ def test_check_url_treats_403_as_reachable_after_405_fallback():
         url="https://example.org", code=403, msg="Forbidden", hdrs=None, fp=None
     )
     with patch(
-        "app.monitoring.urllib.request.urlopen", side_effect=[error_405, error_403]
+        "app.monitoring._open", side_effect=[error_405, error_403]
     ):
         assert check_url("https://example.org") == {
             "reachable": True,
@@ -95,7 +115,7 @@ def test_check_url_treats_429_as_reachable():
     error = urllib.error.HTTPError(
         url="https://example.org", code=429, msg="Too Many Requests", hdrs=None, fp=None
     )
-    with patch("app.monitoring.urllib.request.urlopen", side_effect=error):
+    with patch("app.monitoring._open", side_effect=error):
         assert check_url("https://example.org") == {
             "reachable": True,
             "status_code": 429,
@@ -104,7 +124,7 @@ def test_check_url_treats_429_as_reachable():
 
 
 def test_check_url_handles_network_errors():
-    with patch("app.monitoring.urllib.request.urlopen", side_effect=RuntimeError("boom")):
+    with patch("app.monitoring._open", side_effect=RuntimeError("boom")):
         assert check_url("https://example.org") == {
             "reachable": False,
             "status_code": None,
@@ -117,7 +137,7 @@ def test_check_url_handles_network_errors():
 # app/monitoring.py:_classify_url_error.
 def test_check_url_reports_timeout_reason_code():
     with patch(
-        "app.monitoring.urllib.request.urlopen", side_effect=socket.timeout("timed out")
+        "app.monitoring._open", side_effect=socket.timeout("timed out")
     ):
         assert check_url("https://example.org") == {
             "reachable": False,
@@ -128,7 +148,7 @@ def test_check_url_reports_timeout_reason_code():
 
 def test_check_url_reports_timeout_reason_code_when_wrapped_in_url_error():
     error = urllib.error.URLError(socket.timeout("timed out"))
-    with patch("app.monitoring.urllib.request.urlopen", side_effect=error):
+    with patch("app.monitoring._open", side_effect=error):
         assert check_url("https://example.org") == {
             "reachable": False,
             "status_code": None,
@@ -138,7 +158,7 @@ def test_check_url_reports_timeout_reason_code_when_wrapped_in_url_error():
 
 def test_check_url_reports_dns_error_reason_code():
     error = urllib.error.URLError(socket.gaierror("Name or service not known"))
-    with patch("app.monitoring.urllib.request.urlopen", side_effect=error):
+    with patch("app.monitoring._open", side_effect=error):
         assert check_url("https://example.org") == {
             "reachable": False,
             "status_code": None,
@@ -148,7 +168,7 @@ def test_check_url_reports_dns_error_reason_code():
 
 def test_check_url_reports_ssl_error_reason_code():
     error = urllib.error.URLError(ssl.SSLError("certificate verify failed"))
-    with patch("app.monitoring.urllib.request.urlopen", side_effect=error):
+    with patch("app.monitoring._open", side_effect=error):
         assert check_url("https://example.org") == {
             "reachable": False,
             "status_code": None,
@@ -171,7 +191,7 @@ def test_check_url_treats_incomplete_certificate_chain_as_reachable():
     # fehlende Zertifikat automatisch selbst nach und zeigt die Seite ganz
     # normal an. Der zweite Versuch ohne Kettenpruefung soll das nachbilden.
     with patch(
-        "app.monitoring.urllib.request.urlopen",
+        "app.monitoring._open",
         side_effect=[_incomplete_chain_error(), _cm_response(200)],
     ):
         assert check_url("https://example.org") == {
@@ -189,7 +209,7 @@ def test_check_url_still_reports_other_cert_errors_as_broken():
     err = ssl.SSLCertVerificationError("certificate has expired")
     err.verify_code = 10  # X509_V_ERR_CERT_HAS_EXPIRED
     with patch(
-        "app.monitoring.urllib.request.urlopen", side_effect=urllib.error.URLError(err)
+        "app.monitoring._open", side_effect=urllib.error.URLError(err)
     ):
         assert check_url("https://example.org") == {
             "reachable": False,
@@ -200,7 +220,7 @@ def test_check_url_still_reports_other_cert_errors_as_broken():
 
 def test_check_url_falls_back_to_ssl_error_when_relaxed_retry_also_fails():
     with patch(
-        "app.monitoring.urllib.request.urlopen",
+        "app.monitoring._open",
         side_effect=[_incomplete_chain_error(), socket.timeout("timed out")],
     ):
         assert check_url("https://example.org") == {
@@ -212,7 +232,7 @@ def test_check_url_falls_back_to_ssl_error_when_relaxed_retry_also_fails():
 
 def test_check_url_reports_connection_error_reason_code():
     error = urllib.error.URLError(ConnectionRefusedError("Connection refused"))
-    with patch("app.monitoring.urllib.request.urlopen", side_effect=error):
+    with patch("app.monitoring._open", side_effect=error):
         assert check_url("https://example.org") == {
             "reachable": False,
             "status_code": None,
@@ -222,7 +242,7 @@ def test_check_url_reports_connection_error_reason_code():
 
 def test_check_url_reports_unknown_error_reason_code_for_unclassified_url_error():
     error = urllib.error.URLError("something else entirely")
-    with patch("app.monitoring.urllib.request.urlopen", side_effect=error):
+    with patch("app.monitoring._open", side_effect=error):
         assert check_url("https://example.org") == {
             "reachable": False,
             "status_code": None,
@@ -236,10 +256,67 @@ def test_check_url_reports_reason_code_for_url_error_after_405_fallback():
     )
     error_dns = urllib.error.URLError(socket.gaierror("Name or service not known"))
     with patch(
-        "app.monitoring.urllib.request.urlopen", side_effect=[error_405, error_dns]
+        "app.monitoring._open", side_effect=[error_405, error_dns]
     ):
         assert check_url("https://example.org") == {
             "reachable": False,
             "status_code": None,
             "reason_code": "dns_error",
         }
+
+
+@pytest.mark.parametrize(
+    "url", ["http://169.254.169.254/latest/meta-data", "file:///etc/passwd"]
+)
+def test_check_url_rejects_internal_targets_without_network(url, monkeypatch):
+    monkeypatch.setattr(extraction, "_getaddrinfo", _fake_dns(
+        "169.254.169.254" if url.startswith("http") else "93.184.216.34"))
+    with patch.object(urllib.request.OpenerDirector, "open") as opened:
+        result = check_url(url)
+    assert result["reachable"] is False
+    assert result["reason_code"] == "unknown_error"
+    opened.assert_not_called()
+
+
+@pytest.mark.parametrize("ip", ["10.0.0.1", "100.64.0.1"])
+def test_check_url_rejects_hostname_resolving_to_internal_ip(ip, monkeypatch):
+    monkeypatch.setattr(extraction, "_getaddrinfo", _fake_dns(ip))
+    with patch.object(urllib.request.OpenerDirector, "open") as opened:
+        result = check_url("https://intern.example/")
+    assert result["reachable"] is False
+    opened.assert_not_called()
+
+
+def test_check_url_reports_dns_error_for_unresolvable_host(monkeypatch):
+    def boom(host, *args, **kwargs):
+        raise socket.gaierror("nicht auflösbar")
+
+    monkeypatch.setattr(extraction, "_getaddrinfo", boom)
+    assert check_url("https://nirgendwo.invalid/") == {
+        "reachable": False,
+        "status_code": None,
+        "reason_code": "dns_error",
+    }
+
+
+def test_check_url_rejects_redirect_to_loopback(monkeypatch):
+    def fake_dns(host, *args, **kwargs):
+        ip = "127.0.0.1" if host == "127.0.0.1" else "93.184.216.34"
+        return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", (ip, 0))]
+
+    monkeypatch.setattr(extraction, "_getaddrinfo", fake_dns)
+    calls = []
+
+    def fake_https_open(self, req):
+        calls.append(req.full_url)
+        headers = HTTPMessage()
+        headers["Location"] = "http://127.0.0.1/admin"
+        resp = urllib.response.addinfourl(io.BytesIO(), headers, req.full_url, 302)
+        resp.msg = "Found"
+        return resp
+
+    with patch.object(urllib.request.HTTPSHandler, "https_open", fake_https_open):
+        result = check_url("https://oeffentlich.example/")
+    assert result["reachable"] is False
+    assert result["reason_code"] == "unknown_error"
+    assert calls == ["https://oeffentlich.example/"]

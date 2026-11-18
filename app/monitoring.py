@@ -3,6 +3,8 @@ import ssl
 import urllib.error
 import urllib.request
 
+from app import extraction
+
 TIMEOUT_SECONDS = 5
 
 # Manche Server (Bot-/Hotlink-Schutz) lehnen Requests ohne "Accept"-Header
@@ -18,9 +20,26 @@ _REQUEST_HEADERS = {
 }
 
 
+def _open(req: urllib.request.Request, timeout: float, context: ssl.SSLContext | None):
+    # SSRF-Schutz (Idee 34a06f75): Start-URL und jedes Redirect-Ziel laufen
+    # durch extraction._assert_safe_url. Restrisiko DNS-Rebinding: siehe
+    # ponytail-Kommentar an extraction._assert_safe_url.
+    opener = urllib.request.build_opener(
+        extraction._SafeRedirectHandler, urllib.request.HTTPSHandler(context=context)
+    )
+    try:
+        extraction._assert_safe_url(req.full_url)
+        return opener.open(req, timeout=timeout)
+    except extraction.UnsafeUrlError as exc:
+        # Nicht auflösbarer Host bleibt dns_error (siehe _classify_url_error).
+        if isinstance(exc.__cause__, socket.gaierror):
+            raise urllib.error.URLError(exc.__cause__) from exc
+        raise
+
+
 def _request(url: str, method: str, context: ssl.SSLContext | None = None) -> dict:
     req = urllib.request.Request(url, method=method, headers=_REQUEST_HEADERS)
-    with urllib.request.urlopen(req, timeout=TIMEOUT_SECONDS, context=context) as resp:
+    with _open(req, TIMEOUT_SECONDS, context) as resp:
         reachable = resp.status < 400
         return {
             "reachable": reachable,

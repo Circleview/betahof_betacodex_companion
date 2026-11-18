@@ -3,7 +3,9 @@ import hashlib
 import hmac
 import json
 import os
+from pathlib import Path
 import secrets
+import threading
 import time
 import uuid
 
@@ -27,7 +29,36 @@ _FALLBACK_SECRET = secrets.token_hex(32)
 
 # Bereits verbrauchte Magic-Link-jtis (Einweg-Schutz) - klein und
 # selbst-verfallend, kein Session-Speicher, analog zu ratelimit._request_log.
-_consumed_jti: dict[str, float] = {}
+# Dauerhaft in data/ (gitignoriert), damit ein Neustart Links nicht wieder öffnet.
+_JTI_FILE = Path(__file__).resolve().parent.parent / "data" / "consumed_jti.json"
+
+
+def _load_consumed_jti() -> dict[str, float]:
+    try:
+        data = json.loads(_JTI_FILE.read_text())
+    except (OSError, ValueError):
+        return {}
+    if not isinstance(data, dict):
+        return {}
+    now = time.time()
+    return {j: e for j, e in data.items() if isinstance(e, (int, float)) and e >= now}
+
+
+_jti_lock = threading.Lock()
+
+
+def _save_consumed_jti() -> None:
+    # Fremde Einträge (andere Blue/Green-Farbe) vor dem Schreiben mergen.
+    _consumed_jti.update(_load_consumed_jti())
+    try:
+        tmp = _JTI_FILE.with_suffix(".tmp")
+        tmp.write_text(json.dumps(_consumed_jti))
+        tmp.replace(_JTI_FILE)
+    except (OSError, ValueError, RuntimeError):
+        pass  # ponytail: Speicherfehler -> nur RAM-Schutz, wie vorher
+
+
+_consumed_jti: dict[str, float] = _load_consumed_jti()
 
 
 def _get_secret() -> str:
@@ -65,7 +96,8 @@ def create_session_token(email: str) -> str:
 
 def verify_session_token(token: str | None) -> str | None:
     payload = _verify(token)
-    if not payload:
+    # Einmal-Token (Magic-Link/Einladung) tragen jti und sind keine Sitzung.
+    if not payload or "jti" in payload:
         return None
     return payload.get("email")
 
@@ -97,8 +129,11 @@ def verify_magic_link_token(token: str) -> str | None:
     jti = payload.get("jti")
     if not jti:
         return None
-    _prune_consumed_jti()
-    if jti in _consumed_jti:
-        return None
-    _consumed_jti[jti] = payload.get("exp", time.time())
+    with _jti_lock:
+        _consumed_jti.update(_load_consumed_jti())
+        _prune_consumed_jti()
+        if jti in _consumed_jti:
+            return None
+        _consumed_jti[jti] = payload.get("exp", time.time())
+        _save_consumed_jti()
     return payload.get("email")

@@ -363,8 +363,10 @@ def client(tmp_path, monkeypatch):
     # Schutzverhalten selbst überschreiben diese Mocks gezielt.
     monkeypatch.setattr(captcha, "verify_turnstile_token", lambda token, remote_ip=None: True)
     monkeypatch.setattr(ratelimit, "_request_log", {})
+    monkeypatch.setattr(ratelimit, "_char_log", {})
     monkeypatch.setattr(conversation_handoff, "_store", {})
     monkeypatch.setattr(auth, "_consumed_jti", {})
+    monkeypatch.setattr(auth, "_JTI_FILE", tmp_path / "consumed_jti.json")
     # TestClient spricht "http://testserver" - ein "Secure"-Cookie würde vom
     # Cookie-Jar sonst nie zurückgeschickt, der Login-Test-Client bliebe
     # scheinbar ausgeloggt.
@@ -1424,6 +1426,63 @@ def test_speech_passes_requested_rate_to_synthesize(anon_client, monkeypatch):
 def test_speech_rejects_empty_text(anon_client):
     response = anon_client.post("/api/speech", json={"text": "   "})
     assert response.status_code == 400
+
+
+def _speech_mock(monkeypatch):
+    calls = []
+
+    def fake(text, lang="de", speaking_rate=1.0):
+        calls.append(text)
+        return b"mp3"
+
+    monkeypatch.setattr(tts, "synthesize_speech", fake)
+    return calls
+
+
+def test_speech_rejects_text_over_1000_chars_without_tts_call(anon_client, monkeypatch):
+    calls = _speech_mock(monkeypatch)
+    assert anon_client.post("/api/speech", json={"text": "a" * 1001}).status_code == 422
+    assert calls == []
+    assert anon_client.post("/api/speech", json={"text": "a" * 1000}).status_code == 200
+
+
+def test_speech_budget_60000_chars_per_ip_and_hour(anon_client, monkeypatch):
+    calls = _speech_mock(monkeypatch)
+    for _ in range(60):
+        assert anon_client.post("/api/speech", json={"text": "a" * 1000}).status_code == 200
+    assert len(calls) == 60
+    response = anon_client.post("/api/speech", json={"text": "b"})
+    assert response.status_code == 429
+    assert len(calls) == 60
+
+
+def test_speech_budget_counts_only_stripped_text_and_keeps_empty_400(anon_client, monkeypatch):
+    calls = _speech_mock(monkeypatch)
+    assert anon_client.post("/api/speech", json={"text": "   "}).status_code == 400
+    assert calls == []
+
+
+def test_speech_budget_counts_stripped_length(anon_client, monkeypatch):
+    calls = _speech_mock(monkeypatch)
+    for _ in range(59):
+        assert anon_client.post("/api/speech", json={"text": "a" * 1000}).status_code == 200
+    # 10 Leerzeichen + 990 Zeichen: nur 990 zählen -> 59.990 verbraucht.
+    assert anon_client.post("/api/speech", json={"text": " " * 10 + "a" * 990}).status_code == 200
+    assert anon_client.post("/api/speech", json={"text": "b" * 10}).status_code == 200
+    assert anon_client.post("/api/speech", json={"text": "b"}).status_code == 429
+
+
+@pytest.mark.parametrize(
+    "make_token",
+    [
+        lambda: auth.create_magic_link_token("x@example.com", auth.INVITE_LINK_MAX_AGE_SECONDS),
+        lambda: auth.create_magic_link_token("x@example.com", 900),
+    ],
+)
+def test_one_time_link_token_is_not_accepted_as_session_cookie(anon_client, make_token):
+    anon_client.cookies.set(auth.SESSION_COOKIE_NAME, make_token())
+    response = anon_client.post("/api/sources", json={"title": "T", "text": "Text"})
+    assert response.status_code in (401, 403)
 
 
 def test_speech_returns_502_when_synthesis_fails(anon_client, monkeypatch):

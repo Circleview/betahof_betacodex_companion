@@ -5826,12 +5826,18 @@ def get_conversation_handoff(token: str, request: Request, x_lang: str = Header(
 def synthesize_speech(payload: SpeechIn, request: Request, x_lang: str = Header(default=i18n.DEFAULT_LANG)):
     # Bewusst ohne require_role (wie /api/ask öffentlich nutzbar) - das
     # Vorlesen einer ohnehin öffentlich sichtbaren Antwort braucht keine
-    # Anmeldung. Kein Rate-Limiting hier: nur erreichbar über eine bereits
-    # erfolgreich beantwortete /api/ask-Anfrage, die selbst schon
-    # ratenbegrenzt/Captcha-geschützt ist.
+    # Anmeldung. Der Endpunkt ist direkt aufrufbar (nicht an /api/ask
+    # gebunden) und Google TTS rechnet je Zeichen ab: deshalb Zeichenbudget
+    # je IP (IPv6 als /64) und Stunde.
+    # ponytail: Bremse nur pro IP; bei rotierenden IPs signiertes Ask-Token nötig.
     text = payload.text.strip()
     if not text:
         raise HTTPException(400, i18n.get_message("speech_text_required", x_lang))
+    client_ip = request.client.host if request.client else "unknown"
+    if ratelimit.is_char_budget_exceeded(
+        f"speech-ip:{ratelimit.ip_key(client_ip)}", len(text), max_chars=60000, window_seconds=3600
+    ):
+        raise HTTPException(429, i18n.get_message("rate_limited", x_lang))
 
     lang = x_lang if x_lang in ("de", "en") else i18n.DEFAULT_LANG
     try:
