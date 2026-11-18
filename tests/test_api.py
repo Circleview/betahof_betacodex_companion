@@ -10879,3 +10879,36 @@ def test_admin_reindex_images_only_respects_lock(client, tmp_path):
         assert client.post("/api/admin/reindex-sources?images_only=true").status_code == 409
     finally:
         held.close()
+
+
+# Login-/Einladungslinks nie aus fremdem Host-Header bauen (2026-11-18, Nachbefund
+# Audit 8b157c5c): Caddy filtert heute fremde Hosts, der Code soll sich nicht darauf verlassen.
+@pytest.mark.parametrize(
+    "host, expected_prefix",
+    [
+        ("evil.example", "https://companion.betahof.com/api/auth/verify?token="),
+        ("companion.betahof.com.evil.example", "https://companion.betahof.com/api/auth/verify?token="),
+        ("companion.betahof.com", "https://companion.betahof.com/api/auth/verify?token="),
+        ("127.0.0.1:8000", "http://127.0.0.1:8000/api/auth/verify?token="),
+        ("localhost:8000", "http://localhost:8000/api/auth/verify?token="),
+    ],
+)
+def test_login_link_ignores_foreign_host_header(anon_client, monkeypatch, host, expected_prefix):
+    users.invite_user("host@test.local", users.MCP_NUTZER, invited_by="test-bootstrap")
+    links = []
+    monkeypatch.setattr(mail, "send_login_link_email", lambda email, link, lang: links.append(link))
+
+    response = anon_client.post("/api/auth/request-link", json={"email": "host@test.local"}, headers={"Host": host})
+
+    assert response.status_code == 200
+    assert len(links) == 1 and links[0].startswith(expected_prefix), links
+
+
+def test_invite_link_ignores_foreign_host_header(monkeypatch):
+    links = []
+    monkeypatch.setattr(mail, "send_invite_email", lambda email, link, roles, lang: links.append(link))
+    request = type("R", (), {"url": type("U", (), {"hostname": "evil.example"})(), "base_url": "http://evil.example/"})()
+
+    main_module._send_invite(request, "neu@test.local", [users.MCP_NUTZER], "de")
+
+    assert links[0].startswith("https://companion.betahof.com/api/auth/verify?token=")

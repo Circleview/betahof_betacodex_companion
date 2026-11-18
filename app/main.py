@@ -3163,7 +3163,7 @@ def request_login_link(
     # lässt, welche E-Mails eingeladen wurden.
     if users.get_user(email):
         token = auth.create_magic_link_token(email, auth.LOGIN_LINK_MAX_AGE_SECONDS)
-        link_url = str(request.base_url) + f"api/auth/verify?token={token}"
+        link_url = _login_link(request, token)
         mail.send_login_link_email(email, link_url, x_lang)
     return MessageOut(detail=i18n.get_message("magic_link_sent", x_lang))
 
@@ -3229,9 +3229,16 @@ def invite_user(
     return entry
 
 
+def _login_link(request: Request, token: str) -> str:
+    # Nie den Host-Header des Aufrufers in Mail-Links übernehmen (Link-Vergiftung):
+    # nur lokale Dev-Hosts bleiben, sonst immer die öffentliche Adresse (2026-11-18).
+    base = str(request.base_url) if request.url.hostname in ("localhost", "127.0.0.1") else mcp_server.PUBLIC_BASE_URL + "/"
+    return base + f"api/auth/verify?token={token}"
+
+
 def _send_invite(request: Request, email: str, roles: list[str], x_lang: str) -> None:
     token = auth.create_magic_link_token(email, auth.INVITE_LINK_MAX_AGE_SECONDS)
-    link_url = str(request.base_url) + f"api/auth/verify?token={token}"
+    link_url = _login_link(request, token)
     mail.send_invite_email(email, link_url, roles, x_lang)
 
 
