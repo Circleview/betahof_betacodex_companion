@@ -1,4 +1,13 @@
+import json
+
+import pytest
+
 from app import auth
+
+
+@pytest.fixture(autouse=True)
+def _tmp_jti_file(monkeypatch, tmp_path):
+    monkeypatch.setattr(auth, "_JTI_FILE", tmp_path / "consumed_jti.json")
 
 
 def _isolate(monkeypatch):
@@ -131,3 +140,22 @@ def test_expired_consumed_jti_dropped_on_load(monkeypatch, tmp_path):
     f.write_text('{"old": 1, "new": 99999999999}')
     monkeypatch.setattr(auth, "_JTI_FILE", f)
     assert auth._load_consumed_jti() == {"new": 99999999999}
+
+
+def test_jti_consumed_by_other_instance_is_rejected(monkeypatch):
+    token = auth.create_magic_link_token("lena@test.local", 60)
+    payload = auth._verify(token)
+    # andere Farbe verbraucht die jti, Datei wird extern ergänzt
+    auth._JTI_FILE.write_text(json.dumps({payload["jti"]: payload["exp"]}))
+    assert auth.verify_magic_link_token(token) is None
+
+
+def test_save_keeps_entries_of_other_instance():
+    auth._JTI_FILE.write_text(json.dumps({"fremd": 99999999999}))
+    auth.verify_magic_link_token(auth.create_magic_link_token("lena@test.local", 60))
+    assert "fremd" in json.loads(auth._JTI_FILE.read_text())
+
+
+def test_load_ignores_non_object_json():
+    auth._JTI_FILE.write_text("[]")
+    assert auth._load_consumed_jti() == {}
