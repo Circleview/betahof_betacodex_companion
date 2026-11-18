@@ -5,6 +5,7 @@ import json
 import os
 from pathlib import Path
 import secrets
+import threading
 import time
 import uuid
 
@@ -37,16 +38,23 @@ def _load_consumed_jti() -> dict[str, float]:
         data = json.loads(_JTI_FILE.read_text())
     except (OSError, ValueError):
         return {}
+    if not isinstance(data, dict):
+        return {}
     now = time.time()
     return {j: e for j, e in data.items() if isinstance(e, (int, float)) and e >= now}
 
 
+_jti_lock = threading.Lock()
+
+
 def _save_consumed_jti() -> None:
+    # Fremde Einträge (andere Blue/Green-Farbe) vor dem Schreiben mergen.
+    _consumed_jti.update(_load_consumed_jti())
     try:
         tmp = _JTI_FILE.with_suffix(".tmp")
         tmp.write_text(json.dumps(_consumed_jti))
         tmp.replace(_JTI_FILE)
-    except OSError:
+    except (OSError, ValueError, RuntimeError):
         pass  # ponytail: Speicherfehler -> nur RAM-Schutz, wie vorher
 
 
@@ -121,9 +129,11 @@ def verify_magic_link_token(token: str) -> str | None:
     jti = payload.get("jti")
     if not jti:
         return None
-    _prune_consumed_jti()
-    if jti in _consumed_jti:
-        return None
-    _consumed_jti[jti] = payload.get("exp", time.time())
-    _save_consumed_jti()
+    with _jti_lock:
+        _consumed_jti.update(_load_consumed_jti())
+        _prune_consumed_jti()
+        if jti in _consumed_jti:
+            return None
+        _consumed_jti[jti] = payload.get("exp", time.time())
+        _save_consumed_jti()
     return payload.get("email")
