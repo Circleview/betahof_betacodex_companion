@@ -268,3 +268,15 @@ def test_assign_images_discards_image_when_its_first_matching_chunk_is_full():
     result = assign_images(chunks, images)
 
     assert [len(r) for r in result] == [3, 0]
+
+
+def test_assign_images_skips_irrelevant_and_keeps_descriptions():
+    from app.chunking import assign_images
+
+    images = [
+        {"kind": "url", "url": "https://x/deko.jpg", "anchor": "Teams", "relevant": False},
+        {"kind": "url", "url": "https://x/modell.jpg", "anchor": "Teams", "relevant": True, "alt_de": "Modell", "alt_en": "Model"},
+    ]
+    result = assign_images(["Es geht um Teams."], images)
+    assert [i["url"] for i in result[0]] == ["https://x/modell.jpg"]
+    assert result[0][0]["alt_en"] == "Model"

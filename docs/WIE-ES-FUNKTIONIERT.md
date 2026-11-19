@@ -121,6 +121,10 @@ Die wichtigsten Regeln:
   Hängt an einem Ausschnitt kein eigenes Bild, bekommt er höchstens zwei Bilder aus derselben
   Quelle (zuerst solche, die an keinem Ausschnitt hängen); sie sind für das Modell gekennzeichnet
   und kommen nur in den Text, wenn Beschreibung oder Dateiname klar zur Aussage passen.
+- Jedes Quellenbild prüft Haiku einmal (`app/image_review.py`): Gezeigt werden nur Bilder mit
+  Inhalt (Diagramm, Modell, Grafik, Tabelle); Buchcover, Icons, Logos und Stimmungsfotos
+  bleiben verborgen. Haiku schreibt dazu eine kurze Beschreibung (DE/EN), an der das Modell
+  die Passung erkennt.
 - Geben die Ausschnitte nur einen Teil her, antwortet das Modell mit diesem Teil und
   nennt die Lücke am Ende. Nur wenn gar nichts passt, kommt ein fest vorgegebener
   Absage-Satz.
