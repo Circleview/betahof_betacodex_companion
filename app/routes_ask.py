@@ -45,7 +45,6 @@ from app.retrieval import (
     _apply_chunk_images,
     _diversity_key,
     _drop_no_answer_lead,
-    _ensure_term_hits,
     _keyword_exempt_source_ids,
     _limit_restricted_images,
     _question_terms,
@@ -437,7 +436,7 @@ def _ask_context(
         exempt_source_ids=exempt_source_ids,
         question_terms=question_terms,
     )
-    ids, documents, metadatas = _ensure_term_hits(
+    ids, documents, metadatas = main._ensure_term_hits(
         ids, documents, metadatas, query_embedding, query_text, top_k, trim_repeats=diversity_on
     )
 
@@ -686,7 +685,7 @@ def _creative_context(instruction: str, document: str, x_lang: str) -> tuple[lis
         # Backlog (2026-09-25): Hybrid-Suche wie bei /api/ask - Begriffe aus
         # der Anweisung (nicht aus dem ggf. langen Dokument) bekommen einen
         # garantierten Ausschnitt, der sie wörtlich enthält.
-        _, hit_docs, hit_metas = _ensure_term_hits(
+        _, hit_docs, hit_metas = main._ensure_term_hits(
             curated_hits["ids"][0],
             curated_hits["documents"][0],
             curated_hits["metadatas"][0],

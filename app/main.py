@@ -416,6 +416,7 @@ _EARLY_ACCESS_EXEMPT_PATHS = {
     "/source-lang.js",
     "/answer-feedback.js",
     "/question-sources.js",
+    "/source-edit.js",
     "/api/ask",
     "/api/turnstile-config",
     "/api/auth/whoami",
