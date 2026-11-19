@@ -13,8 +13,23 @@ def _import_js_source() -> str:
     # static/source-edit.js (von import.js importiert) - die Regex-basierten
     # Funktions-Extraktionen unten durchsuchen beide Dateien gemeinsam.
     # "export " fällt weg, damit per node -e ausgeführte Ausschnitte laufen.
-    combined = (STATIC_DIR / "import.js").read_text() + "\n" + (STATIC_DIR / "source-edit.js").read_text()
+    # Seit Idee 313ad93d ist import.js in import-*.js aufgeteilt (Zustand, Jobs,
+    # Begriffe, Liste, Web, Autor:innen) - alle Teile gehören zusammen.
+    parts = [STATIC_DIR / "import.js", *sorted(STATIC_DIR.glob("import-*.js")), STATIC_DIR / "source-edit.js"]
+    combined = "\n".join(p.read_text() for p in parts)
     return re.sub(r"^export ", "", combined, flags=re.M)
+
+
+def test_import_modules_only_import_names_that_are_exported():
+    # Idee 313ad93d: import.js ist in import-*.js aufgeteilt - ein vergessenes
+    # `export` wäre erst im Browser ein SyntaxError (Modul lädt nicht).
+    files = {p.name: p.read_text() for p in STATIC_DIR.glob("import*.js")}
+    for name, text in files.items():
+        for names, target in re.findall(r"import\s*\{([^}]*)\}\s*from\s*'/(import-[a-z]+\.js)'", text):
+            for imported in (n.split(" as ")[0].strip() for n in names.split(",") if n.strip()):
+                assert re.search(
+                    rf"^export (?:async )?(?:function|const|let) {re.escape(imported)}\b", files[target], re.M
+                ), f"{name} importiert {imported} aus {target}, dort fehlt der Export"
 
 
 def _run_node(script: str):
@@ -4776,7 +4791,7 @@ def test_split_leading_heading_ignores_hash_without_space_and_level_four():
 
 
 def test_import_js_routes_epub_files_to_epub_endpoint():
-    source = (STATIC_DIR / "import.js").read_text()
+    source = _import_js_source()
     assert "/api/extract-epub-upload" in source
     assert "epub" in (STATIC_DIR / "import.html").read_text().lower()
 
@@ -4834,7 +4849,7 @@ def test_question_js_sends_conversation_id():
 
 
 def test_import_js_stores_handoff_conversation_id():
-    js = (STATIC_DIR / "import.js").read_text()
+    js = _import_js_source()
     assert "CONVERSATION_ID_STORAGE_KEY" in js
     assert "handoff.conversationId" in js
 
@@ -5646,7 +5661,7 @@ def test_question_js_filters_hidden_sources_and_rerenders_on_language_change():
 
 
 def test_import_js_source_list_uses_display_title_and_badge():
-    js = (STATIC_DIR / "import.js").read_text()
+    js = _import_js_source()
     assert "displayTitle" in js and "translatedBadge" in js
 
 

@@ -4,7 +4,7 @@ import re
 from pathlib import Path
 
 STATIC = Path(__file__).resolve().parent.parent / "static"
-IMPORT_JS = (STATIC / "import.js").read_text()
+IMPORT_JS = "\n".join(p.read_text() for p in [STATIC / "import.js", *sorted(STATIC.glob("import-*.js"))])
 EXPLORE_JS = (STATIC / "explore.js").read_text()
 
 
