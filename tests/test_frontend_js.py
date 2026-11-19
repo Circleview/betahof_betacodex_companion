@@ -30,17 +30,19 @@ def _question_js_source() -> str:
     return re.sub(r"^export ", "", combined, flags=re.M)
 
 
-def test_question_modules_only_import_names_that_are_exported():
+def test_static_modules_only_import_names_that_are_exported():
     # Ein vergessenes `export` wäre erst im Browser ein SyntaxError.
-    files = {n: (STATIC_DIR / n).read_text() for n in ("question.js", "question-sources.js")}
+    files = {p.name: p.read_text() for p in STATIC_DIR.glob("*.js")}
     for name, text in files.items():
-        for names, target in re.findall(r"import\s*\{([^}]*)\}\s*from\s*'/(question(?:-sources)?\.js)'", text):
+        for names, target in re.findall(r"import\s*\{([^}]*)\}\s*from\s*'/([^'/]+\.js)'", text):
+            assert target in files, f"{name} importiert aus unbekanntem {target}"
+            exported = set(
+                re.findall(r"^export\s+(?:async\s+)?(?:function\*?|const|let|var|class)\s+(\w+)", files[target], flags=re.M)
+            )
+            for group in re.findall(r"^export\s*\{([^}]*)\}", files[target], flags=re.M):
+                exported |= {x.split(" as ")[-1].strip() for x in group.split(",") if x.strip()}
             for imported in (n.split(" as ")[0].strip() for n in names.split(",") if n.strip()):
-                assert re.search(
-                    rf"^export\s+(?:async\s+)?(?:function|const|let)\s+{re.escape(imported)}\b",
-                    files[target],
-                    flags=re.M,
-                ), f"{name} importiert {imported} aus {target}, dort fehlt der Export"
+                assert imported in exported, f"{name} importiert {imported} aus {target}, dort fehlt der Export"
 
 
 def test_import_modules_only_import_names_that_are_exported():

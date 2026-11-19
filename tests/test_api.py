@@ -5636,7 +5636,8 @@ def test_embed_static_dependencies_exempt_from_early_access(anon_client, monkeyp
 
 def _embed_script_paths() -> set[str]:
     """Alle JS-Pfade, die /embed.html lädt - direkt per <script src> und
-    transitiv über statische `import ... from '/x.js'`-Zeilen."""
+    transitiv über statische `import ... from '/x.js'` und dynamisches
+    `import('/x.js')`."""
     static_dir = Path(main_module.STATIC_DIR)
     html = (static_dir / "embed.html").read_text(encoding="utf-8")
     found: set[str] = set()
@@ -5648,6 +5649,7 @@ def _embed_script_paths() -> set[str]:
         found.add(path)
         source = (static_dir / path.lstrip("/")).read_text(encoding="utf-8")
         todo += re.findall(r"""from\s+['"](/[^'"?]+\.js)['"]""", source)
+        todo += re.findall(r"""import\(\s*['"](/[^'"?]+\.js)['"]\s*\)""", source)
     return found
 
 
@@ -5659,7 +5661,7 @@ def test_embed_script_imports_exempt_from_early_access(anon_client, monkeypatch)
     monkeypatch.setenv("EARLY_ACCESS_PASSWORD", "geheim123")
 
     paths = _embed_script_paths()
-    assert {"/question.js", "/source-lang.js", "/answer-feedback.js"} <= paths
+    assert {"/question.js", "/source-lang.js", "/answer-feedback.js", "/source-edit.js"} <= paths
 
     for path in sorted(paths):
         response = anon_client.get(path)
