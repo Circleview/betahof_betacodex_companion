@@ -310,11 +310,25 @@ def _guard_response(status: int, key: str, request: Request, ip: str, headers=No
     return JSONResponse({"detail": detail or "Forbidden"}, status_code=status, headers=headers)
 
 
+class _HideSearchQuery(logging.Filter):
+    """Suchbegriffe nie ins Access-Log (uvicorn: args = IP, Methode, Pfad, ...)."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        args = record.args
+        if isinstance(args, tuple) and len(args) > 2 and isinstance(args[2], str) \
+                and args[2].startswith("/api/sources/search"):
+            record.args = (*args[:2], args[2].split("?", 1)[0], *args[3:])
+        return True
+
+
+logging.getLogger("uvicorn.access").addFilter(_HideSearchQuery())
+
+
 @app.middleware("http")
 async def guard_crawlers(request: Request, call_next):
     path = request.url.path
     ip = request.client.host if request.client else "unknown"
-    if path != "/robots.txt" and not path.startswith("/mcp"):
+    if path != "/robots.txt" and path != mcp_server.MCP_PATH and not path.startswith(mcp_server.MCP_PATH + "/"):
         ua = request.headers.get("user-agent", "").lower()
         if any(name in ua for name in BLOCKED_AGENTS):
             return _guard_response(403, "ua-block", request, ip)
@@ -2771,6 +2785,31 @@ def list_sources(
     ]
 
 
+_SEARCH_INDEX: dict = {"key": None, "rows": []}
+
+
+def _search_index() -> list:
+    """Kleinbuchstaben-Suchfelder je Quelle, neu gebaut nur wenn sich
+    sources.json (Pfad, mtime, Größe) ändert."""
+    st = SOURCES_FILE.stat() if SOURCES_FILE.exists() else None
+    key = (str(SOURCES_FILE), st and st.st_mtime_ns, st and st.st_size)
+    if _SEARCH_INDEX["key"] != key:
+        rows = []
+        for sid, e in _load_sources().items():
+            if e.get("deleted_at"):
+                continue
+            fields = {}
+            for lang in ("de", "en"):
+                f = [e.get("title"), e.get("summary_" + lang), " ".join(e.get("key_terms_" + lang) or []),
+                     " ".join(e.get("authors") or [])]
+                if lang == "en" and e.get("text_lang") not in (None, "", "en"):
+                    f.append(e.get("title_en"))
+                fields[lang] = [(x or "").lower() for x in f]
+            rows.append((sid, bool(e.get("restricted")), (e.get("text") or "").lower(), fields))
+        _SEARCH_INDEX.update(key=key, rows=rows)
+    return _SEARCH_INDEX["rows"]
+
+
 # Route steht VOR /api/sources/{source_id}. Antwort nur IDs - nie Text/Ausschnitt.
 @app.get("/api/sources/search")
 def search_sources(
@@ -2784,20 +2823,8 @@ def search_sources(
     lang = x_lang if x_lang in ("de", "en") else i18n.DEFAULT_LANG
     full = users.has_role(_session_user_email(request), users.QUELLEN_PFLEGER)
     ids = []
-    for sid, e in _load_sources().items():
-        if e.get("deleted_at"):
-            continue
-        fields = [
-            e.get("title"),
-            e.get("summary_" + lang),
-            " ".join(e.get("key_terms_" + lang) or []),
-            " ".join(e.get("authors") or []),
-        ]
-        if full or not e.get("restricted"):
-            fields.append(e.get("text"))
-        if lang == "en" and e.get("text_lang") not in (None, "", "en"):
-            fields.append(e.get("title_en"))
-        if any(q in (f or "").lower() for f in fields):
+    for sid, restricted, text, fields in _search_index():
+        if any(q in f for f in fields[lang]) or (text and (full or not restricted) and q in text):
             ids.append(sid)
     return {"ids": ids}
 
@@ -3886,8 +3913,10 @@ def get_source(
     entry = _load_sources().get(source_id)
     if not entry or entry.get("deleted_at"):
         raise HTTPException(404, i18n.get_message("source_not_found", x_lang))
-    can_view_full_text = users.has_role(_get_current_user_email(request), users.QUELLEN_PFLEGER)
-    return _to_source_out(entry, can_view_full_text, lang=x_lang)
+    email = _session_user_email(request)
+    can_view_full_text = users.has_role(email, users.QUELLEN_PFLEGER)
+    # Idee 669405f0: Gäste bekommen nie Volltext (Crawler-Schutz).
+    return _to_source_out(entry, can_view_full_text, lang=x_lang, include_text=email is not None)
 
 
 # Backlog: LLM/Internet-Fallback bei dünner Quellenlage - eine freigegebene
