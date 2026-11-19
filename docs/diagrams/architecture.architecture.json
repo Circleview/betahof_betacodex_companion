@@ -95,6 +95,20 @@
       ]
     },
     {
+      "id": "guard",
+      "type": "security",
+      "label": "Crawler-Schutz",
+      "sublabel": "UA-Sperre (robots.txt), IP-Bremsen für Gäste",
+      "pos": [
+        480,
+        130
+      ],
+      "size": [
+        170,
+        62
+      ]
+    },
+    {
       "id": "shared_data",
       "type": "database",
       "label": "shared/data + .env",
@@ -131,7 +145,8 @@
       "wraps": [
         "caddy",
         "app",
-        "shared_data"
+        "shared_data",
+        "guard"
       ],
       "pad": 20
     }
@@ -158,6 +173,12 @@
       "to": "app",
       "label": "aktive Farbe",
       "variant": "emphasis"
+    },
+    {
+      "from": "guard",
+      "to": "app",
+      "label": "403 / 429 oder weiter",
+      "variant": "security"
     },
     {
       "from": "app",
@@ -213,6 +234,14 @@
       "items": [
         "Ein Tag-Push (vX.Y.Z) deployt automatisch live",
         "Deshalb vor jedem Tag-Push explizit beim Team nachfragen"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Crawler-Schutz und Gäste-Suche",
+      "items": [
+        "Middleware guard_crawlers in der FastAPI-Instanz: Sperrliste = static/robots.txt, 429 mit Retry-After je Gast-IP",
+        "Gäste erhalten keinen Volltext; ihre Suche läuft über GET /api/sources/search und liefert nur IDs"
       ]
     }
   ]
