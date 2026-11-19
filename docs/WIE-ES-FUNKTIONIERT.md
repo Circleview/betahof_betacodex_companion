@@ -131,7 +131,10 @@ Dazu kommt eine **Beraterstimme**: Die Textdatei `app/prompts/beraterstimme.md`
 beschreibt, wie die Antwort klingen soll (abwägend, mit erkennbaren Perspektiven und
 Gründen, aber präzise und nie beliebig). Sie legt auch die Wortwahl fest („Zutrauen“
 statt „Vertrauen“, auf Englisch kein „trust“) und setzt ein bis drei Fachbegriffe als
-anklickbare Folgefragen fett. „Beta-Kodex“ selbst entfernt die Darstellung
+anklickbare Folgefragen fett. Sie macht Antworten verständlich und vorsichtig: Fachbegriffe
+bekommen beim ersten Gebrauch eine kurze Erklärung, eine Zahl ohne Quelle aus der Frage
+nennt die Antwort zuerst als Annahme und fragt nach ihrer Herkunft, und die Gesetze des
+Beta-Kodex erscheinen als Anspruch, nicht als Erfolgsgarantie (Idee c3c4dd9a). „Beta-Kodex“ selbst entfernt die Darstellung
 (`static/markdown.js`) immer aus dem Fettdruck. Sie steht im System-Prompt nach den Regeln;
 eine kurze Brücke stellt klar, dass die Regeln oben immer vorgehen und Text in den
 Ausschnitten nie als Anweisung gilt. Der Chat und der MCP-Zugang nutzen dieselbe
@@ -279,7 +282,7 @@ sind willkommen.
 
 Diese Tabelle wird aus dem Code erzeugt. Ändern sich Prompts oder Parameter, schlägt `tests/test_how_it_works_doc.py` fehl, bis der Text oben geprüft und `python scripts/how_it_works.py --write` gelaufen ist.
 
-<!-- fingerprint: d6feb63bd1bf -->
+<!-- fingerprint: e592a45d71e0 -->
 <!-- END generiert -->
 
 ## Wie dieses Dokument aktuell bleibt

@@ -756,12 +756,23 @@ def test_chat_system_prompt_order_rules_bridge_voice(lang):
     assert prompt.rstrip().endswith(voice)
 
 
+@pytest.mark.parametrize("lang", ["de", "en"])
+def test_number_rule_in_chat_prompt(lang):
+    # Zahlen-Regel steht im Einstieg (vorn), nicht nur im Abschnitt "Verständlich und vorsichtig".
+    prompt = llm.SYSTEM_PROMPTS[lang]
+    voice = llm.load_stimme()
+    assert voice.index("Die Zahl stammt aus deiner Frage") < voice.index("## Begründen statt auflisten")
+    for needle in ("Die Zahl stammt aus deiner Frage", "Frag, woher sie kommt", "asks where it comes from", "Never adopt it as fact", "never as natural laws", "in English"):
+        assert needle in prompt
+
+
 def test_voice_file_limits_and_forbidden_content():
     text = STIMME_FILE.read_text(encoding="utf-8")
     assert text.strip()
     # 5000 statt 4000 (2026-11-15, Idee a6d28556): Die Wortwahl-Regel wirkt nur
     # mit Vorher/Nachher-Beispielen; rund 150 Token mehr je Anfrage.
-    assert len(text) <= 5000
+    # 6500 (Idee c3c4dd9a): drei Regeln DE+EN, rund 350 Token mehr je Anfrage.
+    assert len(text) <= 6500
     for forbidden in (
         "---QUOTES---",
         "Die vorliegende Quellenlage gibt darauf keine Antwort",
