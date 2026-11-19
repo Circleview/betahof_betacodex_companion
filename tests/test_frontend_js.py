@@ -20,6 +20,29 @@ def _import_js_source() -> str:
     return re.sub(r"^export ", "", combined, flags=re.M)
 
 
+def _question_js_source() -> str:
+    # Idee 313ad93d: die Quellen-/Zitat-Darstellung liegt in
+    # static/question-sources.js (von question.js importiert) - die
+    # Regex-Extraktionen durchsuchen beide Dateien gemeinsam. "export " fällt
+    # weg, damit per node -e ausgeführte Ausschnitte laufen.
+    parts = [STATIC_DIR / "question.js", STATIC_DIR / "question-sources.js"]
+    combined = "\n".join(p.read_text() for p in parts if p.exists())
+    return re.sub(r"^export ", "", combined, flags=re.M)
+
+
+def test_question_modules_only_import_names_that_are_exported():
+    # Ein vergessenes `export` wäre erst im Browser ein SyntaxError.
+    files = {n: (STATIC_DIR / n).read_text() for n in ("question.js", "question-sources.js")}
+    for name, text in files.items():
+        for names, target in re.findall(r"import\s*\{([^}]*)\}\s*from\s*'/(question(?:-sources)?\.js)'", text):
+            for imported in (n.split(" as ")[0].strip() for n in names.split(",") if n.strip()):
+                assert re.search(
+                    rf"^export\s+(?:async\s+)?(?:function|const|let)\s+{re.escape(imported)}\b",
+                    files[target],
+                    flags=re.M,
+                ), f"{name} importiert {imported} aus {target}, dort fehlt der Export"
+
+
 def test_import_modules_only_import_names_that_are_exported():
     # Idee 313ad93d: import.js ist in import-*.js aufgeteilt - ein vergessenes
     # `export` wäre erst im Browser ein SyntaxError (Modul lädt nicht).
@@ -98,7 +121,7 @@ def _run_find_highlight_range(text, highlight):
     """Führt static/question.js#findHighlightRange per Node real aus - reine
     Funktion ohne DOM-Abhängigkeit, bisher OHNE jede Testabdeckung, obwohl
     sie allein entscheidet, ob überhaupt ein Highlight-<mark> erscheint."""
-    js_source = (STATIC_DIR / "question.js").read_text()
+    js_source = _question_js_source()
     match = re.search(r"function findHighlightRange.*?\n\}", js_source, re.S)
     assert match, "findHighlightRange wurde in question.js nicht gefunden."
     func_source = match.group(0)
@@ -151,7 +174,7 @@ def _run_append_title_text(source_obj):
     """Führt static/question.js#appendTitleText per Node real aus, mit
     minimalen DOM-Stubs (kein volles jsdom nötig - die Funktion nutzt nur
     createElement/createTextNode/appendChild/addEventListener)."""
-    js_source = (STATIC_DIR / "question.js").read_text()
+    js_source = _question_js_source()
     match = re.search(r"function appendTitleText.*?\n\}", js_source, re.S)
     assert match, "appendTitleText wurde in question.js nicht gefunden."
     func_source = _source_lang_js() + "\n" + match.group(0)
@@ -231,7 +254,7 @@ def _run_append_exclude_web_page_button(*, is_pfleger, source_obj, fetch_ok=True
     inkl. simuliertem Klick (ruft den registrierten click-Listener direkt
     auf) - mit minimalen Stubs für hasPflegerRole/fetch/t/getLang (kein
     volles jsdom nötig, siehe _run_append_title_text)."""
-    js_source = (STATIC_DIR / "question.js").read_text()
+    js_source = _question_js_source()
     match = re.search(r"function appendExcludeWebPageButton.*?\n\}", js_source, re.S)
     assert match, "appendExcludeWebPageButton wurde in question.js nicht gefunden."
     func_source = match.group(0)
@@ -287,7 +310,7 @@ def _run_citations_click_sequence(paragraph_text, sources, click_sequence):
     """Wie _run_make_citations_clickable, führt zusätzlich eine feste Klick-
     Sequenz (Liste von Button-Indizes, in Auftrittsreihenfolge im Text) aus
     und gibt die Kartenanzahl nach JEDEM Klick zurück."""
-    js_source = (STATIC_DIR / "question.js").read_text()
+    js_source = _question_js_source()
     match = re.search(r"function makeCitationsClickable.*?\n\}", js_source, re.S)
     assert match, "makeCitationsClickable wurde in question.js nicht gefunden."
     func_source = match.group(0)
@@ -399,7 +422,7 @@ def _run_citations_click_all_and_read_markers(paragraph_text, sources):
     dabei geöffneten Karte zurück - damit prüfbar ist, dass jedes Vorkommen
     wirklich SEIN EIGENES highlighted_texts[occurrence] bekommt, auch wenn
     zwischendurch andere Zitatnummern auftauchen (z.B. [1]...[2]...[1])."""
-    js_source = (STATIC_DIR / "question.js").read_text()
+    js_source = _question_js_source()
     match = re.search(r"function makeCitationsClickable.*?\n\}", js_source, re.S)
     assert match, "makeCitationsClickable wurde in question.js nicht gefunden."
     func_source = match.group(0)
@@ -513,7 +536,7 @@ console.log(JSON.stringify(markers));
 def _run_citations_and_read_button_labels(paragraph_text, sources):
     """Wie die anderen _run_citations_*-Helfer, liest aber den sichtbaren
     Button-Text jedes Zitat-Vorkommens statt Kartenanzahl/Marker."""
-    js_source = (STATIC_DIR / "question.js").read_text()
+    js_source = _question_js_source()
     match = re.search(r"function makeCitationsClickable.*?\n\}", js_source, re.S)
     assert match, "makeCitationsClickable wurde in question.js nicht gefunden."
     func_source = match.group(0)
@@ -825,7 +848,7 @@ def test_import_js_has_no_orphaned_dom_elements():
 
 
 def test_question_js_has_no_orphaned_dom_elements():
-    js_source = (STATIC_DIR / "question.js").read_text()
+    js_source = _question_js_source()
     all_orphaned = []
     for match in FUNCTION_START_RE.finditer(js_source):
         fn_name_match = re.search(r"function\s+(\w+)", js_source[max(0, match.start() - 30) : match.end()])
@@ -878,7 +901,7 @@ def test_regression_view_and_edit_source_links_are_mutually_exclusive():
     Quelle genau EINEN der beiden Links einhängen (Bearbeiten für Pfleger:innen,
     Ansehen für alle anderen) - nie direkt appendEditSourceLink(), sonst sähen
     anonyme Besucher:innen (und das Embed-Widget) gar keinen Quellenlink mehr."""
-    js_source = (STATIC_DIR / "question.js").read_text()
+    js_source = _question_js_source()
 
     assert "appendSourceLink(excerpt, s.source_id)" in js_source
     assert "appendSourceLink(p, s.source_id)" in js_source
@@ -3378,7 +3401,7 @@ def _run_make_terms_clickable(paragraphs):
     `paragraphs` ist eine Liste von Absätzen, jeder Absatz eine Liste von
     Kindknoten: {"type": "text", "value": "..."} / {"type": "br"} /
     {"type": "strong", "text": "...", "heading": bool}."""
-    js_source = (STATIC_DIR / "question.js").read_text()
+    js_source = _question_js_source()
     match = re.search(r"function makeTermsClickable.*?\n\}", js_source, re.S)
     assert match, "makeTermsClickable wurde in question.js nicht gefunden."
     func_source = match.group(0)
@@ -3738,7 +3761,7 @@ def test_detect_text_language_ignores_long_quoted_foreign_language_excerpt():
 
 
 def test_embed_expand_button_appends_current_lang_without_conversation_history():
-    js_source = (STATIC_DIR / "question.js").read_text()
+    js_source = _question_js_source()
     match = re.search(
         r"if \(embedExpandButton\) \{.*?\n\}", js_source, re.S
     )
@@ -3749,7 +3772,7 @@ def test_embed_expand_button_appends_current_lang_without_conversation_history()
 
 
 def test_embed_expand_button_appends_current_lang_alongside_handoff_token():
-    js_source = (STATIC_DIR / "question.js").read_text()
+    js_source = _question_js_source()
     match = re.search(
         r"if \(embedExpandButton\) \{.*?\n\}", js_source, re.S
     )
@@ -3762,7 +3785,7 @@ def test_embed_expand_button_appends_current_lang_alongside_handoff_token():
 
 
 def _run_consume_ask_param(*, search: str) -> dict:
-    js_source = (STATIC_DIR / "question.js").read_text()
+    js_source = _question_js_source()
     match = re.search(r"function consumeAskParam\(\).*?\n\}", js_source, re.S)
     assert match, "consumeAskParam wurde in question.js nicht gefunden."
     func_source = match.group(0)
@@ -3796,7 +3819,7 @@ def test_consume_ask_param_returns_null_when_absent():
 
 
 def test_ask_param_auto_submit_is_wired_up():
-    js_source = (STATIC_DIR / "question.js").read_text()
+    js_source = _question_js_source()
     match = re.search(
         r"const askParam = consumeAskParam\(\);.*?questionForm\.requestSubmit\(\);\n\}",
         js_source,
@@ -3819,7 +3842,7 @@ def test_ask_param_auto_submit_runs_after_submit_listener_is_registered():
     # gemeldete Bild-Flackern, die verschwindende Frage und die nie
     # ankommende Antwort. Der Auto-Submit-Aufruf muss deshalb TEXTUELL NACH
     # der addEventListener('submit', ...)-Registrierung stehen.
-    js_source = (STATIC_DIR / "question.js").read_text()
+    js_source = _question_js_source()
     listener_index = js_source.index("questionForm.addEventListener('submit'")
     auto_submit_index = js_source.index("const askParam = consumeAskParam();")
     assert auto_submit_index > listener_index, (
@@ -3834,7 +3857,7 @@ def test_ask_param_auto_submit_waits_for_turnstile_before_submitting():
     # Turnstile-Widget bereit war - der Server lehnte den dadurch leeren
     # Captcha-Token ab, die Nutzer:innen-Frage erschien zwar, aber es kam
     # nur eine Fehlermeldung statt einer echten Antwort.
-    js_source = (STATIC_DIR / "question.js").read_text()
+    js_source = _question_js_source()
     match = re.search(
         r"const askParam = consumeAskParam\(\);.*?questionForm\.requestSubmit\(\);\n\}",
         js_source,
@@ -3848,7 +3871,7 @@ def test_ask_param_auto_submit_waits_for_turnstile_before_submitting():
 
 
 def test_turnstile_ready_promise_is_capped_with_a_timeout():
-    js_source = (STATIC_DIR / "question.js").read_text()
+    js_source = _question_js_source()
     assert "Promise.race([turnstileReadyPromise" in js_source
 
 
@@ -3861,7 +3884,7 @@ def test_attach_answer_sources_deduplicates_sidebar_by_source_id_not_chunk_id():
     # Quelle zweimal (identisch aussehend, gleicher Titel/gleiche
     # KI-Zusammenfassung) in der Sidebar auftauchen, weil bisher nach
     # chunk_id statt nach source_id dedupliziert wurde.
-    js_source = (STATIC_DIR / "question.js").read_text()
+    js_source = _question_js_source()
     match = re.search(r"function attachAnswerSources\(bubble, sources\) \{.*?\n\}", js_source, re.S)
     assert match, "attachAnswerSources wurde in question.js nicht gefunden."
     func_source = match.group(0)
@@ -3870,7 +3893,7 @@ def test_attach_answer_sources_deduplicates_sidebar_by_source_id_not_chunk_id():
 
 
 def test_build_sources_list_keys_details_by_source_id():
-    js_source = (STATIC_DIR / "question.js").read_text()
+    js_source = _question_js_source()
     match = re.search(r"function buildSourcesList\(sources\) \{.*?\n\}", js_source, re.S)
     assert match, "buildSourcesList wurde in question.js nicht gefunden."
     func_source = match.group(0)
@@ -3878,7 +3901,7 @@ def test_build_sources_list_keys_details_by_source_id():
 
 
 def test_render_sidebar_sources_preserves_open_state_by_source_id():
-    js_source = (STATIC_DIR / "question.js").read_text()
+    js_source = _question_js_source()
     match = re.search(r"function renderSidebarSources\(\) \{.*?\n\}", js_source, re.S)
     assert match, "renderSidebarSources wurde in question.js nicht gefunden."
     func_source = match.group(0)
@@ -3938,7 +3961,7 @@ def test_attach_feedback_buttons_unlocks_both_buttons_after_failure():
 
 
 def test_attach_speak_button_wires_up_feedback_buttons():
-    js_source = (STATIC_DIR / "question.js").read_text()
+    js_source = _question_js_source()
     match = re.search(r"function attachSpeakButton\(bubble, question, answer\) \{.*?\n\}\n", js_source, re.S)
     assert match, "attachSpeakButton wurde in question.js nicht gefunden."
     assert "attachFeedbackButtons(bubble, question, answer)" in match.group(0)
@@ -4298,7 +4321,7 @@ def test_creative_mode_uses_shared_feedback_component_below_text_box_and_logs_cr
     js = (STATIC_DIR / "creative.js").read_text()
     assert "import { buildAnswerFeedback } from '/answer-feedback.js'" in js
     assert "mode: 'creative'" in js
-    assert "buildAnswerFeedback" in (STATIC_DIR / "question.js").read_text()
+    assert "buildAnswerFeedback" in _question_js_source()
 
 
 def test_question_log_links_creative_entries_to_creative_mode_with_badge():
@@ -4390,7 +4413,7 @@ def test_conversation_edit_dialog_loads_single_source_with_full_text():
     Bearbeiten-Formular (source-edit.js) direkt vor Ort. Es muss die Quelle
     einzeln MIT Volltext laden - sonst würde Speichern einen leeren Text über
     den echten schreiben (siehe fullTextReady-Test oben)."""
-    js_source = (STATIC_DIR / "question.js").read_text()
+    js_source = _question_js_source()
     link_match = re.search(r"function appendEditSourceLink.*?\n\}", js_source, re.S)
     assert link_match and "openSourceEditDialog(sourceId)" in link_match.group(0)
     dialog_match = re.search(r"async function openSourceEditDialog.*?\n\}", js_source, re.S)
@@ -4426,7 +4449,7 @@ def test_view_source_link_opens_reader_dialog_instead_of_new_tab():
     """Nutzerwunsch (2026-09-25): das Auge ("Quelle ansehen") öffnet eine
     Lese-Ansicht in der Konversation - ein neuer Tab auf die eigene Domain
     landete bei installierter App im App-Fenster."""
-    js_source = (STATIC_DIR / "question.js").read_text()
+    js_source = _question_js_source()
     link_match = re.search(r"function appendViewSourceLink.*?\n\}", js_source, re.S)
     assert link_match and "openSourceViewDialog(sourceId)" in link_match.group(0)
     assert "e.preventDefault()" in link_match.group(0)
@@ -4479,7 +4502,7 @@ def test_creative_format_buttons_keep_scroll_position():
 def test_reader_shows_ai_icons_and_sticky_close_button():
     """Nutzerwunsch (2026-09-26): KI-Icon an Zusammenfassung/Schlagworten,
     solange nicht von Hand überarbeitet; "x" bleibt beim Scrollen sichtbar."""
-    js_source = (STATIC_DIR / "question.js").read_text()
+    js_source = _question_js_source()
     reader = re.search(r"function buildSourceReader.*?\n\}", js_source, re.S).group(0)
     assert "if (s.summary_ai_generated !== false) p.prepend(aiIcon('import.aiSummaryTooltip'), ' ');" in reader
     assert "if (s.key_terms_ai_generated !== false) p.prepend(aiIcon('common.aiKeyTermsTooltip'), ' ');" in reader
@@ -4717,7 +4740,7 @@ def test_changelog_mobile_time_sits_on_top_like_question_log():
 
 def _run_rescroll_after_keyboard(*, with_viewport: bool, resize: bool, timeout: bool) -> dict:
     """Führt question.js#rescrollAfterKeyboard per Node mit Stubs aus."""
-    js_source = (STATIC_DIR / "question.js").read_text()
+    js_source = _question_js_source()
     match = re.search(r"function rescrollAfterKeyboard.*?\n\}", js_source, re.S)
     assert match, "rescrollAfterKeyboard wurde nicht gefunden."
     script = f"""
@@ -4751,7 +4774,7 @@ def test_rescroll_after_keyboard_scrolls_exactly_once():
 def test_touch_submit_blurs_input_before_scroll_and_desktop_keeps_focus():
     """Idee b5bd431b: Touch-Geräte (pointer: coarse, auch iPad/iPhone quer)
     verlassen das Feld vor dem Scroll; focus() nur ohne Touch."""
-    js_source = (STATIC_DIR / "question.js").read_text()
+    js_source = _question_js_source()
     handler = re.search(r"questionForm\.addEventListener\('submit'.*?questionInput\.focus\(\);\s*\}", js_source, re.S)
     assert handler, "Submit-Handler wurde nicht gefunden."
     body = handler.group(0)
@@ -4766,7 +4789,7 @@ def test_touch_submit_blurs_input_before_scroll_and_desktop_keeps_focus():
 # --- EPUB-Upload / Kapitelüberschrift im Auszug (Idee 8d1b69dd) --------------
 
 def _run_split_leading_heading(text):
-    js_source = (STATIC_DIR / "question.js").read_text()
+    js_source = _question_js_source()
     match = re.search(r"function splitLeadingHeading.*?\n\}", js_source, re.S)
     assert match, "splitLeadingHeading wurde in question.js nicht gefunden."
     script = f"""
@@ -4805,7 +4828,7 @@ def test_import_file_labels_mention_epub(lang):
 
 def test_prepare_excerpt_strips_heading_from_highlight_too():
     # Backend-split_sentences hängt die Überschrift an den ersten Satz.
-    js_source = (STATIC_DIR / "question.js").read_text()
+    js_source = _question_js_source()
     funcs = [re.search(rf"function {n}.*?\n\}}", js_source, re.S) for n in ("splitLeadingHeading", "findHighlightRange", "prepareExcerpt")]
     assert all(funcs), "prepareExcerpt/splitLeadingHeading/findHighlightRange fehlen in question.js"
     text = "## Kapitel\nErster Satz. Zweiter Satz."
@@ -4839,7 +4862,7 @@ def test_handoff_carries_conversation_id():
 
 
 def test_question_js_sends_conversation_id():
-    js = (STATIC_DIR / "question.js").read_text()
+    js = _question_js_source()
     assert "crypto.randomUUID()" in js
     assert "let conversationId" in js
     assert "conversation_id: conversationId" in js
@@ -4859,7 +4882,7 @@ def test_question_js_first_message_counts_sent_not_answered_questions():
     # noch streamt (conversationHistory erst nach "done" gefüllt), ging als
     # is_first_message=true raus - zwei "erste Fragen" im selben Chat-Block.
     # Maßgeblich ist, ob in dieser Konversation schon eine Frage gesendet wurde.
-    js = (STATIC_DIR / "question.js").read_text()
+    js = _question_js_source()
     assert "const isFirstMessage = conversationHistory.length === 0 && !questionSentInConversation" in js
     assert "is_first_message: isFirstMessage" in js
     assert "questionSentInConversation = true" in js
@@ -4972,7 +4995,7 @@ const EXTERNAL_LINK_ICON = '<svg></svg>';
 
 
 def _question_js_funcs(*names: str) -> str:
-    js_source = (STATIC_DIR / "question.js").read_text()
+    js_source = _question_js_source()
     parts = []
     for name in names:
         match = re.search(rf"function {name}\b.*?\n\}}", js_source, re.S)
@@ -4982,7 +5005,7 @@ def _question_js_funcs(*names: str) -> str:
 
 
 def _question_js_consts(*names: str) -> str:
-    js_source = (STATIC_DIR / "question.js").read_text()
+    js_source = _question_js_source()
     out = []
     for name in names:
         match = re.search(rf"^const {name} = .*;$", js_source, re.M)
@@ -5170,7 +5193,7 @@ def test_append_title_text_does_not_link_javascript_url():
 
 
 def test_question_js_uses_safe_http_url_for_every_citation_url():
-    js = (STATIC_DIR / "question.js").read_text()
+    js = _question_js_source()
     raw = re.findall(r"=\s*s\.url_reachable === false \? null : s\.listen_url \|\| s\.url;", js)
     assert raw == [], "Quellen-URLs müssen durch safeHttpUrl() laufen."
 
@@ -5261,7 +5284,7 @@ def _run_node_stdin(script: str):
 
 
 def _run_build_ask_history(turns):
-    js = (STATIC_DIR / "question.js").read_text()
+    js = _question_js_source()
     consts = "\n".join(re.findall(r"^const ASK_HISTORY_[A-Z_]+ = [^;]+;$", js, flags=re.M))
     func = re.search(r"^function buildAskHistory\(.*?^}\n", js, flags=re.M | re.S).group(0)
     script = f"{consts}\n{func}\nconsole.log(JSON.stringify(buildAskHistory({json.dumps(turns)})));"
@@ -5313,7 +5336,7 @@ def test_build_ask_history_block_jump_stops_at_last_turn():
 
 
 def test_question_js_uses_build_ask_history_in_request_body():
-    js = (STATIC_DIR / "question.js").read_text()
+    js = _question_js_source()
     assert "history: buildAskHistory(conversationHistory)," in js
     assert "top_k: 5," in js
 
@@ -5376,7 +5399,7 @@ def test_question_textarea_has_maxlength_8000(name):
 
 
 def test_question_js_truncates_question_and_handles_list_detail():
-    js = (STATIC_DIR / "question.js").read_text()
+    js = _question_js_source()
     # Sprachdiktat setzt value per Code (maxlength greift nicht)
     assert re.search(r"const question = questionInput\.value\.trim\(\)\.slice\(0, ASK_QUESTION_MAX_CHARS\);", js)
     assert re.search(r"const ASK_QUESTION_MAX_CHARS = 8000;", js)
@@ -5654,7 +5677,7 @@ def test_creative_js_imports_source_lang_module_instead_of_question_js():
 
 
 def test_question_js_filters_hidden_sources_and_rerenders_on_language_change():
-    js = (STATIC_DIR / "question.js").read_text()
+    js = _question_js_source()
     assert "from '/source-lang.js'" in js
     # Sprachwechsel baut Antworten neu auf (ausgeblendete erscheinen bei DE wieder).
     assert "rerenderConversation" in js.split("document.addEventListener('i18n:changed'")[1]
@@ -5734,7 +5757,7 @@ def test_edit_form_wires_language_fields_to_detect_endpoint_and_put():
 
 
 def test_on_saved_updates_language_fields_of_cited_source():
-    js = (STATIC_DIR / "question.js").read_text()
+    js = _question_js_source()
     block = js.split("onSaved: (updated) => {")[1].split("dialog.close();")[0]
     for key in ("text_lang", "title_en", "restricted", "text_lang_ai_generated", "title_en_ai_generated"):
         assert f"{key}: updated.{key}" in block, key
@@ -5828,7 +5851,7 @@ def test_hidden_marker_parenthesis_keeps_visible_marker():
 
 
 def test_language_change_rerender_keeps_bubble_controls_and_running_answer_sources():
-    js = (STATIC_DIR / "question.js").read_text()
+    js = _question_js_source()
     body = js.split("function rerenderConversation()")[1].split("\n}\n")[0]
     assert "replaceChildren" not in body.split("renderSidebarSources")[0].replace("conversationCitedSources", "")
     assert "renderAnswerBubble(" not in body  # Bubble nicht komplett neu bauen
@@ -6115,7 +6138,7 @@ def test_speech_strips_image_marker(text):
 
 
 def test_question_js_wires_inline_image_into_live_view_copy_and_done():
-    js = (STATIC_DIR / "question.js").read_text()
+    js = _question_js_source()
     assert "placeInlineImage(assistantBubble, null)" in js  # Skeleton im Live-Stream
     assert re.search(r"placeInlineImage\(bubble, sources\);\s*makeCitationsClickable\(bubble, sources\)", js)
     assert "\\[bild:\\d{1,2}\\.\\d{1,2}\\]" in js.split("function buildCopyAnswerButton")[1].split("startSpeaking")[0]
