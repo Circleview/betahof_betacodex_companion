@@ -1,6 +1,6 @@
 import { initI18n, t, getLang } from '/i18n.js';
 import { renderMarkdown } from '/markdown.js';
-import { initAuth, hasRole, onAuthChange } from '/auth.js';
+import { initAuth, hasRole, onAuthChange, currentUserEmail } from '/auth.js';
 import {
   CONVERSATION_STORAGE_KEY,
   CONVERSATION_ID_STORAGE_KEY,
@@ -1933,6 +1933,8 @@ async function applyAuthorFilter(name) {
     fetch('/api/authors', { headers: { 'X-Lang': getLang() } }),
     fetch('/api/terms'),
   ]);
+  if (authorsRes.status === 429 || termsRes.status === 429) return showTooManyRequests();
+  if (!authorsRes.ok || !termsRes.ok) return;
   const authorEntries = await authorsRes.json();
   const termEntries = await termsRes.json();
   const match = authorEntries.find((a) => normalizeAuthor(a.name) === normalizeAuthor(name));
@@ -1971,6 +1973,8 @@ async function filterByAuthor(name) {
 
 async function applyTermFilter(term) {
   const res = await fetch('/api/terms');
+  if (res.status === 429) return showTooManyRequests();
+  if (!res.ok) return;
   const termEntries = await res.json();
   const match = termEntries.find((t2) => normalizeTerm(t2.term) === normalizeTerm(term));
   const ids = match ? match.source_ids : [];
@@ -2014,11 +2018,52 @@ function sourceMatchesSearch(source, query) {
   return haystacks.some((h) => normalizeSearch(h).includes(q));
 }
 
+// Idee 669405f0: Gäste bekommen nie Volltext - ihre Suche läuft serverseitig
+// (GET /api/sources/search liefert nur IDs), 300 ms entprellt.
+let guestSearchTimer = null;
+let guestSearchSeq = 0;
+
+function showTooManyRequests() {
+  document.getElementById('source-filter-label').textContent = t('import.tooManyRequests');
+  document.getElementById('source-filter-name').textContent = '';
+}
+
+function showSearchFailed() {
+  document.getElementById('source-filter-label').textContent = t('import.searchFailed');
+  document.getElementById('source-filter-name').textContent = '';
+}
+
+function applyGuestSearch(query) {
+  clearTimeout(guestSearchTimer);
+  const seq = ++guestSearchSeq;
+  guestSearchTimer = setTimeout(async () => {
+    try {
+      const res = await fetch('/api/sources/search?q=' + encodeURIComponent(query), {
+        headers: { 'X-Lang': getLang() },
+      });
+      if (seq !== guestSearchSeq || activeFilter?.value !== query) return;
+      if (res.status === 429) return showTooManyRequests();
+      if (!res.ok) return showSearchFailed();
+      const ids = new Set((await res.json()).ids);
+      if (seq !== guestSearchSeq || activeFilter?.value !== query) return;
+      renderSourceList(allSources.filter((s) => ids.has(s.id)));
+    } catch {
+      if (seq === guestSearchSeq) showSearchFailed();
+    }
+  }, 300);
+}
+
 function applySearchFilter(query) {
   document.getElementById('source-filter-label').textContent = t('import.filteredBySearch');
   document.getElementById('source-filter-name').textContent = query;
   document.getElementById('source-filter-status').classList.remove('hidden');
-  renderSourceList(allSources.filter((s) => sourceMatchesSearch(s, query)));
+  if (currentUserEmail()) {
+    renderSourceList(allSources.filter((s) => sourceMatchesSearch(s, query)));
+  } else if (query.length < 2) {
+    renderSourceList(allSources);
+  } else {
+    applyGuestSearch(query);
+  }
 
   filteredAuthorEntry = null;
   authorPanelEditMode = false;
@@ -2938,6 +2983,12 @@ async function loadSources() {
   const res = await fetch('/api/sources?include_text=false', {
     headers: { 'X-Lang': getLang() },
   });
+  if (res.status === 429) {
+    showTooManyRequests();
+    document.getElementById('source-filter-status').classList.remove('hidden');
+    return;
+  }
+  if (!res.ok) return;
   allSources = await res.json();
   // Ein aktiver Autor:innen-/Begriffs-/Broken-Links-Filter soll ein
   // Neuladen (z.B. nach dem Aktualisieren oder Löschen einer Quelle)
@@ -2960,7 +3011,7 @@ async function loadSources() {
   updateBrokenLinksButton();
   loadTermOverview();
 
-  fullTextReady = loadFullSourceText();
+  if (currentUserEmail()) fullTextReady = loadFullSourceText();
 }
 
 async function loadFullSourceText() {
@@ -2980,6 +3031,8 @@ async function loadFullSourceText() {
 
 async function loadAuthors() {
   const res = await fetch('/api/authors', { headers: { 'X-Lang': getLang() } });
+  if (res.status === 429) return showTooManyRequests();
+  if (!res.ok) return;
   allAuthors = await res.json();
   setKnownAuthors(allAuthors);
   renderAuthorList();
@@ -3025,6 +3078,8 @@ function buildOverviewTerms(entries, sources, lang) {
 
 async function loadTermOverview() {
   const res = await fetch('/api/terms');
+  if (res.status === 429) return showTooManyRequests();
+  if (!res.ok) return;
   overviewTerms = buildOverviewTerms(await res.json(), allSources, getLang());
   renderTermJumpBar();
   renderTermOverview();

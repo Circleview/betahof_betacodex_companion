@@ -5013,7 +5013,7 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
         <rect width="100%" height="100%" fill="url(#grid)" />
 
         <!-- Boundaries (behind everything) -->
-        <rect data-graph-role="structural-frame" data-composition-frame-kind="region" data-composition-frame-id="0" data-composition-frame-label="Hetzner Cloud CX23 (Falkenstein)" x="240" y="236" width="410" height="276" rx="12" class="c-region" stroke-width="1"/>
+        <rect data-graph-role="structural-frame" data-composition-frame-kind="region" data-composition-frame-id="0" data-composition-frame-label="Hetzner Cloud CX23 (Falkenstein)" x="240" y="106" width="430" height="406" rx="12" class="c-region" stroke-width="1"/>
 
         <!-- Connection paths (before components for correct z-order) -->
         <g data-graph-role="automatic-crossover" style="--step:0">
@@ -5028,19 +5028,23 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
           <path data-graph-role="automatic-crossover-underlay" d="M 386 290 L 480 290" fill="none" stroke="var(--mask)" stroke-width="5.8" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
           <path data-edge-from="caddy" data-edge-to="app" data-edge-label="aktive Farbe" data-edge-key="2" data-composition-points="386,290;480,290" data-composition-crossover="halo" data-composition-independent="true" d="M 386 290 L 480 290" class="a-emphasis" data-animate="edge" style="--step:2" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
         </g>
-        <path data-edge-from="app" data-edge-to="shared_data" data-edge-label="liest/schreibt" data-edge-key="3" data-composition-points="555,324;555,430" d="M 555 324 L 555 430" class="a-default" data-animate="edge" style="--step:3" stroke-width="1.5" marker-end="url(#arrowhead)"/>
-        <g data-graph-role="automatic-crossover" style="--step:4">
-          <path data-graph-role="automatic-crossover-underlay" d="M 630 292 L 720 292" fill="none" stroke="var(--mask)" stroke-width="5.8" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
-          <path data-edge-from="app" data-edge-to="claude_api" data-edge-label="Antwort-Generierung" data-edge-key="4" data-composition-points="630,292;720,292" data-composition-crossover="halo" data-composition-independent="true" d="M 630 292 L 720 292" class="a-emphasis" data-animate="edge" style="--step:4" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
+        <g data-graph-role="automatic-crossover" style="--step:3">
+          <path data-graph-role="automatic-crossover-underlay" d="M 565 192 L 565 260" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
+          <path data-edge-from="guard" data-edge-to="app" data-edge-label="403 / 429 oder weiter" data-edge-key="3" data-composition-points="565,192;565,260" data-composition-crossover="halo" data-composition-independent="true" d="M 565 192 L 565 260" class="a-security" data-animate="edge" style="--step:3" stroke-width="1.5" marker-end="url(#arrowhead-security)"/>
         </g>
+        <path data-edge-from="app" data-edge-to="shared_data" data-edge-label="liest/schreibt" data-edge-key="4" data-composition-points="555,324;555,430" d="M 555 324 L 555 430" class="a-default" data-animate="edge" style="--step:4" stroke-width="1.5" marker-end="url(#arrowhead)"/>
         <g data-graph-role="automatic-crossover" style="--step:5">
-          <path data-graph-role="automatic-crossover-underlay" d="M 180 461 L 250 461" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
-          <path data-edge-from="github" data-edge-to="actions" data-edge-label="git tag Push" data-edge-key="5" data-composition-points="180,461;250,461" data-composition-crossover="halo" data-composition-independent="true" d="M 180 461 L 250 461" class="a-dashed" data-animate="edge" style="--step:5" stroke-width="1.5" marker-end="url(#arrowhead-dashed)"/>
+          <path data-graph-role="automatic-crossover-underlay" d="M 630 292 L 720 292" fill="none" stroke="var(--mask)" stroke-width="5.8" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
+          <path data-edge-from="app" data-edge-to="claude_api" data-edge-label="Antwort-Generierung" data-edge-key="5" data-composition-points="630,292;720,292" data-composition-crossover="halo" data-composition-independent="true" d="M 630 292 L 720 292" class="a-emphasis" data-animate="edge" style="--step:5" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
         </g>
-        <path data-edge-from="actions" data-edge-to="app" data-edge-label="SSH-Deploy (Farbwechsel)" data-edge-key="6" data-composition-points="390,461;390,376.5;480,376.5;480,292" d="M 390 461 L 390 384.5 Q 390 376.5 398 376.5 L 472 376.5 Q 480 376.5 480 368.5 L 480 292" class="a-security" data-animate="edge" style="--step:6" stroke-width="1.5" marker-end="url(#arrowhead-security)"/>
-        <g data-graph-role="automatic-crossover" style="--step:7">
+        <g data-graph-role="automatic-crossover" style="--step:6">
+          <path data-graph-role="automatic-crossover-underlay" d="M 180 461 L 250 461" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
+          <path data-edge-from="github" data-edge-to="actions" data-edge-label="git tag Push" data-edge-key="6" data-composition-points="180,461;250,461" data-composition-crossover="halo" data-composition-independent="true" d="M 180 461 L 250 461" class="a-dashed" data-animate="edge" style="--step:6" stroke-width="1.5" marker-end="url(#arrowhead-dashed)"/>
+        </g>
+        <path data-edge-from="actions" data-edge-to="app" data-edge-label="SSH-Deploy (Farbwechsel)" data-edge-key="7" data-composition-points="390,461;390,376.5;480,376.5;480,292" d="M 390 461 L 390 384.5 Q 390 376.5 398 376.5 L 472 376.5 Q 480 376.5 480 368.5 L 480 292" class="a-security" data-animate="edge" style="--step:7" stroke-width="1.5" marker-end="url(#arrowhead-security)"/>
+        <g data-graph-role="automatic-crossover" style="--step:8">
           <path data-graph-role="automatic-crossover-underlay" d="M 250 461 L 180 461" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
-          <path data-edge-from="actions" data-edge-to="github" data-edge-label="wöchentl. Quellenliste" data-edge-key="7" data-composition-points="250,461;180,461" data-composition-crossover="halo" d="M 250 461 L 180 461" class="a-dashed" data-animate="edge" style="--step:7" stroke-width="1.5" marker-end="url(#arrowhead-dashed)"/>
+          <path data-edge-from="actions" data-edge-to="github" data-edge-label="wöchentl. Quellenliste" data-edge-key="8" data-composition-points="250,461;180,461" data-composition-crossover="halo" d="M 250 461 L 180 461" class="a-dashed" data-animate="edge" style="--step:8" stroke-width="1.5" marker-end="url(#arrowhead-dashed)"/>
         </g>
 
         <!-- Components -->
@@ -5071,7 +5075,7 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
         <g id="node-github" data-node-id="github" data-node-label="GitHub Repo" tabindex="0" role="button" aria-label="Focus GitHub Repo, Quell-Code, Architecture component" aria-pressed="false" data-node-kind="external" data-node-sublabel="Quell-Code" data-node-context="Architecture component">
           <title>GitHub Repo · Quell-Code · Architecture component</title>
           <rect x="40" y="430" width="140" height="62" rx="6" class="c-mask"/>
-          <rect x="40" y="430" width="140" height="62" rx="6" class="c-external" data-animate="node" style="--step:5" stroke-width="1.5"/>
+          <rect x="40" y="430" width="140" height="62" rx="6" class="c-external" data-animate="node" style="--step:6" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="external" class="semantic-sigil s-external" transform="translate(46 436) scale(0.6875)">
             <rect x="2.5" y="5" width="8.5" height="8" rx="1.5"/>
             <path d="M8 2.5h5.5V8M13.5 2.5 7.5 8.5"/>
@@ -5083,7 +5087,7 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
         <g id="node-actions" data-node-id="actions" data-node-label="GitHub Actions" tabindex="0" role="button" aria-label="Focus GitHub Actions, Tests, Deploy, Quellen-Export, Architecture component" aria-pressed="false" data-node-kind="cloud" data-node-sublabel="Tests, Deploy, Quellen-Export" data-node-context="Architecture component">
           <title>GitHub Actions · Tests, Deploy, Quellen-Export · Architecture component</title>
           <rect x="250" y="430" width="140" height="62" rx="6" class="c-mask"/>
-          <rect x="250" y="430" width="140" height="62" rx="6" class="c-cloud" data-animate="node" style="--step:6" stroke-width="1.5"/>
+          <rect x="250" y="430" width="140" height="62" rx="6" class="c-cloud" data-animate="node" style="--step:7" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="cloud" class="semantic-sigil s-cloud" transform="translate(256 436) scale(0.6875)">
             <path d="M4.3 12.5h7.3a2.4 2.4 0 0 0 .2-4.8 4 4 0 0 0-7.5-1.3A3.1 3.1 0 0 0 4.3 12.5Z"/>
           </g>
@@ -5115,10 +5119,22 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
         <text data-detail="fine" x="555" y="316" class="t-backend" font-size="7" text-anchor="middle">Zero-Downtime-Deploy</text>
         </g>
 
+        <g id="node-guard" data-node-id="guard" data-node-label="Crawler-Schutz" tabindex="0" role="button" aria-label="Focus Crawler-Schutz, UA-Sperre (robots.txt), IP-Bremsen für Gäste, Hetzner Cloud CX23 (Falkenstein)" aria-pressed="false" data-node-kind="security" data-node-sublabel="UA-Sperre (robots.txt), IP-Bremsen für Gäste" data-node-context="Hetzner Cloud CX23 (Falkenstein)">
+          <title>Crawler-Schutz · UA-Sperre (robots.txt), IP-Bremsen für Gäste · Hetzner Cloud CX23 (Falkenstein)</title>
+          <rect x="480" y="130" width="170" height="62" rx="6" class="c-mask"/>
+          <rect x="480" y="130" width="170" height="62" rx="6" class="c-security" data-animate="node" style="--step:3" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="security" class="semantic-sigil s-security" transform="translate(486 136) scale(0.6875)">
+            <path d="M8 2.2 13 4v3.5c0 3.1-1.8 5.4-5 6.5-3.2-1.1-5-3.4-5-6.5V4Z"/>
+            <path d="m5.8 8 1.5 1.5 3-3"/>
+          </g>
+          <text data-node-label="" data-detail-anchor="" x="565" y="159" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Crawler-Schutz</text>
+        <text data-detail="context" x="565" y="175" class="t-muted" font-size="6.1" text-anchor="middle">UA-Sperre (robots.txt), IP-Bremsen für Gäste</text>
+        </g>
+
         <g id="node-shared_data" data-node-id="shared_data" data-node-label="shared/data + .env" tabindex="0" role="button" aria-label="Focus shared/data + .env, JSON, ChromaDB, Bilder, Verbrauch, Hetzner Cloud CX23 (Falkenstein)" aria-pressed="false" data-node-kind="database" data-node-sublabel="JSON, ChromaDB, Bilder, Verbrauch" data-node-tag="Symlink" data-node-context="Hetzner Cloud CX23 (Falkenstein)">
           <title>shared/data + .env · JSON, ChromaDB, Bilder, Verbrauch · Hetzner Cloud CX23 (Falkenstein) · Symlink</title>
           <rect x="480" y="430" width="150" height="62" rx="6" class="c-mask"/>
-          <rect x="480" y="430" width="150" height="62" rx="6" class="c-database" data-animate="node" style="--step:4" stroke-width="1.5"/>
+          <rect x="480" y="430" width="150" height="62" rx="6" class="c-database" data-animate="node" style="--step:5" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="database" class="semantic-sigil s-database" transform="translate(486 436) scale(0.6875)">
             <ellipse cx="8" cy="4" rx="5" ry="2"/>
             <path d="M3 4v8c0 1.1 2.2 2 5 2s5-.9 5-2V4M3 8c0 1.1 2.2 2 5 2s5-.9 5-2"/>
@@ -5131,7 +5147,7 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
         <g id="node-claude_api" data-node-id="claude_api" data-node-label="Claude API" tabindex="0" role="button" aria-label="Focus Claude API, Haiku 4.5 + Sonnet 5, Architecture component" aria-pressed="false" data-node-kind="cloud" data-node-sublabel="Haiku 4.5 + Sonnet 5" data-node-context="Architecture component">
           <title>Claude API · Haiku 4.5 + Sonnet 5 · Architecture component</title>
           <rect x="720" y="260" width="140" height="60" rx="6" class="c-mask"/>
-          <rect x="720" y="260" width="140" height="60" rx="6" class="c-cloud" data-animate="node" style="--step:5" stroke-width="1.5"/>
+          <rect x="720" y="260" width="140" height="60" rx="6" class="c-cloud" data-animate="node" style="--step:6" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="cloud" class="semantic-sigil s-cloud" transform="translate(726 266) scale(0.6875)">
             <path d="M4.3 12.5h7.3a2.4 2.4 0 0 0 .2-4.8 4 4 0 0 0-7.5-1.3A3.1 3.1 0 0 0 4.3 12.5Z"/>
           </g>
@@ -5152,31 +5168,35 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
           <rect x="399.2" y="270" width="67.6" height="14" rx="3" class="c-mask"/>
           <text x="433" y="280" class="t-edge-emphasis" font-size="8" text-anchor="middle">aktive Farbe</text>
         </g>
-        <g data-detail="context" data-edge-from="app" data-edge-to="shared_data" data-edge-label="liest/schreibt" data-edge-key="3">
+        <g data-detail="context" data-edge-from="guard" data-edge-to="app" data-edge-label="403 / 429 oder weiter" data-edge-key="3">
+          <rect x="448.20000000000005" y="219" width="110.8" height="14" rx="3" class="c-mask"/>
+          <text x="503.6" y="229" class="t-edge-security" font-size="8" text-anchor="middle">403 / 429 oder weiter</text>
+        </g>
+        <g data-detail="context" data-edge-from="app" data-edge-to="shared_data" data-edge-label="liest/schreibt" data-edge-key="4">
           <rect x="516.4" y="328" width="77.2" height="14" rx="3" class="c-mask"/>
           <text x="555" y="338" class="t-edge-default" font-size="8" text-anchor="middle">liest/schreibt</text>
         </g>
-        <g data-detail="context" data-edge-from="app" data-edge-to="claude_api" data-edge-label="Antwort-Generierung" data-edge-key="4">
+        <g data-detail="context" data-edge-from="app" data-edge-to="claude_api" data-edge-label="Antwort-Generierung" data-edge-key="5">
           <rect x="624.4" y="246" width="101.2" height="14" rx="3" class="c-mask"/>
           <text x="675" y="256" class="t-edge-emphasis" font-size="8" text-anchor="middle">Antwort-Generierung</text>
         </g>
-        <g data-detail="context" data-edge-from="github" data-edge-to="actions" data-edge-label="git tag Push" data-edge-key="5">
+        <g data-detail="context" data-edge-from="github" data-edge-to="actions" data-edge-label="git tag Push" data-edge-key="6">
           <rect x="181.2" y="441" width="67.6" height="14" rx="3" class="c-mask"/>
           <text x="215" y="451" class="t-edge-dashed" font-size="8" text-anchor="middle">git tag Push</text>
         </g>
-        <g data-detail="context" data-edge-from="actions" data-edge-to="app" data-edge-label="SSH-Deploy (Farbwechsel)" data-edge-key="6">
+        <g data-detail="context" data-edge-from="actions" data-edge-to="app" data-edge-label="SSH-Deploy (Farbwechsel)" data-edge-key="7">
           <rect x="372.4" y="356.5" width="125.19999999999999" height="14" rx="3" class="c-mask"/>
           <text x="435" y="366.5" class="t-edge-security" font-size="8" text-anchor="middle">SSH-Deploy (Farbwechsel)</text>
         </g>
-        <g data-detail="context" data-edge-from="actions" data-edge-to="github" data-edge-label="wöchentl. Quellenliste" data-edge-key="7">
+        <g data-detail="context" data-edge-from="actions" data-edge-to="github" data-edge-label="wöchentl. Quellenliste" data-edge-key="8">
           <rect x="157.2" y="500" width="115.6" height="14" rx="3" class="c-mask"/>
           <text x="215" y="510" class="t-edge-dashed" font-size="8" text-anchor="middle">wöchentl. Quellenliste</text>
         </g>
 
         <!-- Boundary labels (foreground masks keep routes out of titles) -->
         <g data-graph-role="structural-frame-label" data-composition-frame-id="0" data-composition-frame-kind="region" data-composition-frame-label="Hetzner Cloud CX23 (Falkenstein)">
-          <rect data-graph-role="structural-frame-label-mask" x="244" y="240" width="182.79999999999998" height="16" rx="3" class="c-mask"/>
-          <text data-boundary-label="" x="248" y="253" class="t-cloud" font-size="9" font-weight="600">Hetzner Cloud CX23 (Falkenstein)</text>
+          <rect data-graph-role="structural-frame-label-mask" x="244" y="110" width="182.79999999999998" height="16" rx="3" class="c-mask"/>
+          <text data-boundary-label="" x="248" y="123" class="t-cloud" font-size="9" font-weight="600">Hetzner Cloud CX23 (Falkenstein)</text>
         </g>
 
         <!-- Legend -->
@@ -5399,6 +5419,17 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
         <ul>
           <li>Ein Tag-Push (vX.Y.Z) deployt automatisch live</li>
           <li>Deshalb vor jedem Tag-Push explizit beim Team nachfragen</li>
+        </ul>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <div class="card-dot amber"></div>
+          <h3>Crawler-Schutz und Gäste-Suche</h3>
+        </div>
+        <ul>
+          <li>Middleware guard_crawlers in der FastAPI-Instanz: Sperrliste = static/robots.txt, 429 mit Retry-After je Gast-IP</li>
+          <li>Gäste erhalten keinen Volltext; ihre Suche läuft über GET /api/sources/search und liefert nur IDs</li>
         </ul>
       </div>
     </div>

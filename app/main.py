@@ -20,7 +20,7 @@ from urllib.parse import parse_qs, quote, urlsplit
 
 import networkx as nx
 from dotenv import load_dotenv
-from fastapi import BackgroundTasks, Depends, FastAPI, File, Header, HTTPException, Request, UploadFile
+from fastapi import BackgroundTasks, Depends, FastAPI, File, Header, HTTPException, Query, Request, UploadFile
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.routing import Route
@@ -246,6 +246,106 @@ EMBED_CONTENT_SECURITY_POLICY = CONTENT_SECURITY_POLICY.replace(
     "frame-ancestors 'none'", "frame-ancestors *"
 )
 _EMBED_FRAMEABLE_PATHS = {"/embed.html"}
+
+
+# Idee 669405f0: Crawler-Schutz. Die Sperrliste ist robots.txt (eine Liste,
+# keine Ausnahmen im Code). Nur Trainings-/Index-Crawler; Assistenten wie
+# ChatGPT-User stehen dort nicht.
+def load_blocked_agents(path: Path) -> tuple[str, ...]:
+    try:
+        lines = Path(path).read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return ()
+    names = []
+    for line in lines:
+        key, sep, value = line.partition(":")
+        if sep and key.strip().lower() == "user-agent":
+            name = value.split("#", 1)[0].strip().lower()
+            if name != "*" and len(name) >= 4:
+                names.append(name)
+    return tuple(names)
+
+
+BLOCKED_AGENTS = load_blocked_agents(STATIC_DIR / "robots.txt")
+
+# (Anzahl, Sekunden) je IP, nur für Gäste. Lastfall: 30 Personen hinter einer
+# NAT-IP (Entscheidung E2).
+CRAWLER_LIMITS = {"content-ip": (400, 300), "source-ip": (150, 600), "search-ip": (150, 60)}
+_GUARD_FREE_PATH_RE = re.compile(r"^/api/sources/[^/]+/images/|^/api/authors/[^/]+/photo/")
+_GUARD_CONTENT_PREFIXES = ("/api/sources", "/api/authors", "/api/knowledge-graph", "/api/terms")
+
+
+def _session_user_email(request: Request) -> str | None:
+    """Wie _get_current_user_email, aber nur für noch existierende Nutzer:innen
+    (eine gültige Sitzung eines gelöschten Nutzers gilt als Gast)."""
+    email = _get_current_user_email(request)
+    return email if email and users.get_user(email) else None
+
+
+def _short_ip(ip: str) -> str:
+    key = ratelimit.ip_key(ip)
+    parts = key.split(".")
+    return ".".join(parts[:3] + ["0"]) if len(parts) == 4 else key
+
+
+def _guard_keys(path: str) -> list[str]:
+    if _GUARD_FREE_PATH_RE.match(path):
+        return []
+    if path == "/api/sources/search":
+        return ["search-ip"]
+    if not path.startswith(_GUARD_CONTENT_PREFIXES):
+        return []
+    keys = ["content-ip"]
+    if (
+        path.startswith("/api/sources/")
+        and path.count("/") == 3
+        and path != "/api/sources/broken-links-count"
+    ):
+        keys.append("source-ip")
+    return keys
+
+
+def _guard_response(status: int, key: str, request: Request, ip: str, headers=None, detail=None):
+    logging.getLogger(__name__).warning("crawler_guard %s key=%s path=%s ip=%s", status, key, request.url.path, _short_ip(ip))
+    return JSONResponse({"detail": detail or "Forbidden"}, status_code=status, headers=headers)
+
+
+class _HideSearchQuery(logging.Filter):
+    """Suchbegriffe nie ins Access-Log (uvicorn: args = IP, Methode, Pfad, ...)."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        args = record.args
+        if isinstance(args, tuple) and len(args) > 2 and isinstance(args[2], str) \
+                and args[2].startswith("/api/sources/search"):
+            record.args = (*args[:2], args[2].split("?", 1)[0], *args[3:])
+        return True
+
+
+logging.getLogger("uvicorn.access").addFilter(_HideSearchQuery())
+
+
+@app.middleware("http")
+async def guard_crawlers(request: Request, call_next):
+    path = request.url.path
+    ip = request.client.host if request.client else "unknown"
+    if path != "/robots.txt" and path != mcp_server.MCP_PATH and not path.startswith(mcp_server.MCP_PATH + "/"):
+        ua = request.headers.get("user-agent", "").lower()
+        if any(name in ua for name in BLOCKED_AGENTS):
+            return _guard_response(403, "ua-block", request, ip)
+    # ponytail: nur je IP; Turnstile-Gate, falls rotierende IPs abgreifen
+    keys = _guard_keys(path) if request.method == "GET" else []
+    if keys and not _session_user_email(request):
+        for name in keys:
+            limit, window = CRAWLER_LIMITS[name]
+            key = f"{name}:{ratelimit.ip_key(ip)}"
+            if ratelimit.is_rate_limited(key, max_requests=limit, window_seconds=window):
+                lang = request.headers.get("x-lang", i18n.DEFAULT_LANG)
+                return _guard_response(
+                    429, name, request, ip,
+                    headers={"Retry-After": str(ratelimit.retry_after_seconds(key, window))},
+                    detail=i18n.get_message("rate_limited", lang),
+                )
+    return await call_next(request)
 
 
 @app.middleware("http")
@@ -2672,14 +2772,61 @@ def list_sources(
     # static/import.js: loadSources/loadFullSourceText). Default bleibt True,
     # damit kein anderer/künftiger Aufrufer sich implizit auf schlankere
     # Antworten verlassen muss.
-    email = _get_current_user_email(request)
+    email = _session_user_email(request)
     can_view_full_text = users.has_role(email, users.QUELLEN_PFLEGER)
+    # Idee 669405f0: Gäste bekommen nie Volltexte (Crawler-Schutz); ihre
+    # Suche läuft über GET /api/sources/search.
+    include_text = include_text and email is not None
     sources = _load_sources()
     return [
         _to_source_out(entry, can_view_full_text, x_lang, include_text=include_text)
         for entry in sources.values()
         if not entry.get("deleted_at")
     ]
+
+
+_SEARCH_INDEX: dict = {"key": None, "rows": []}
+
+
+def _search_index() -> list:
+    """Kleinbuchstaben-Suchfelder je Quelle, neu gebaut nur wenn sich
+    sources.json (Pfad, mtime, Größe) ändert."""
+    st = SOURCES_FILE.stat() if SOURCES_FILE.exists() else None
+    key = (str(SOURCES_FILE), st and st.st_mtime_ns, st and st.st_size)
+    if _SEARCH_INDEX["key"] != key:
+        rows = []
+        for sid, e in _load_sources().items():
+            if e.get("deleted_at"):
+                continue
+            fields = {}
+            for lang in ("de", "en"):
+                f = [e.get("title"), e.get("summary_" + lang), " ".join(e.get("key_terms_" + lang) or []),
+                     " ".join(e.get("authors") or [])]
+                if lang == "en" and e.get("text_lang") not in (None, "", "en"):
+                    f.append(e.get("title_en"))
+                fields[lang] = [(x or "").lower() for x in f]
+            rows.append((sid, bool(e.get("restricted")), (e.get("text") or "").lower(), fields))
+        _SEARCH_INDEX.update(key=key, rows=rows)
+    return _SEARCH_INDEX["rows"]
+
+
+# Route steht VOR /api/sources/{source_id}. Antwort nur IDs - nie Text/Ausschnitt.
+@app.get("/api/sources/search")
+def search_sources(
+    request: Request,
+    q: str = Query(default="", max_length=200),
+    x_lang: str = Header(default=i18n.DEFAULT_LANG),
+):
+    q = q.strip().lower()
+    if len(q) < 2:
+        return {"ids": []}
+    lang = x_lang if x_lang in ("de", "en") else i18n.DEFAULT_LANG
+    full = users.has_role(_session_user_email(request), users.QUELLEN_PFLEGER)
+    ids = []
+    for sid, restricted, text, fields in _search_index():
+        if any(q in f for f in fields[lang]) or (text and (full or not restricted) and q in text):
+            ids.append(sid)
+    return {"ids": ids}
 
 
 def _author_photo_urls(name: str) -> dict:
@@ -3766,8 +3913,10 @@ def get_source(
     entry = _load_sources().get(source_id)
     if not entry or entry.get("deleted_at"):
         raise HTTPException(404, i18n.get_message("source_not_found", x_lang))
-    can_view_full_text = users.has_role(_get_current_user_email(request), users.QUELLEN_PFLEGER)
-    return _to_source_out(entry, can_view_full_text, lang=x_lang)
+    email = _session_user_email(request)
+    can_view_full_text = users.has_role(email, users.QUELLEN_PFLEGER)
+    # Idee 669405f0: Gäste bekommen nie Volltext (Crawler-Schutz).
+    return _to_source_out(entry, can_view_full_text, lang=x_lang, include_text=email is not None)
 
 
 # Backlog: LLM/Internet-Fallback bei dünner Quellenlage - eine freigegebene

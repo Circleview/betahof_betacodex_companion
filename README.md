@@ -645,6 +645,29 @@ sudo apt-get update && sudo apt-get install -y ffmpeg
 Fehlt `ffmpeg`/`ffprobe` beim Start, schreibt die App eine deutliche
 Warnung in die Logs (`journalctl -u betacodex-blue`/`-green`).
 
+### Crawler-Schutz
+
+- **Sperrliste = `static/robots.txt`.** `guard_crawlers` in `app/main.py`
+  liest beim Start die `User-agent:`-Namen und antwortet diesen Agenten mit
+  403 (außer auf `/robots.txt` und `/mcp`). Nur Trainings-/Index-Crawler;
+  Assistenten wie ChatGPT-User, Claude-User, Perplexity-User bleiben frei.
+  Neuer Crawler = neue Zeile in `robots.txt`, keine Codeänderung.
+- **Bremsen nur für Gäste, je IP** (IPv6 je /64, nur im Speicher):
+  Inhalte (`/api/sources`, `/api/authors`, `/api/knowledge-graph`,
+  `/api/terms`) 400 je 5 Min., einzelne Quelle 150 je 10 Min., Suche 150 je
+  Min. Bilder/Fotos und angemeldete Nutzer:innen zählen nicht. Antwort 429
+  mit `Retry-After`. Konstanten: `CRAWLER_LIMITS`.
+- **Gäste bekommen keinen Volltext** in `GET /api/sources`; ihre
+  Volltextsuche läuft serverseitig über `GET /api/sources/search?q=` (liefert
+  nur IDs, Suchbegriffe werden nicht geloggt, auch nicht im uvicorn-Access-Log).
+  Das gilt ebenso für `GET /api/sources/{id}`: Gäste sehen nie den Text (das
+  Leser-Fenster zeigt „kein Text“). Angemeldete Nutzer:innen wie bisher,
+  geschützte Texte nur Quellen-Pfleger:innen.
+- **Logs:** `journalctl -u betacodex-blue | grep crawler_guard` (Schlüssel,
+  Pfad, gekürzte IP).
+- **Stufe 2, falls rotierende IPs abgreifen:** Turnstile-Gate vor den
+  Inhalts-Endpunkten.
+
 ### Schutz vor versehentlichem Secret-Commit
 
 `.env` ist in `.gitignore` und wird dadurch nicht getrackt. Zusätzlich
@@ -684,6 +707,7 @@ Commit-/Tag-Nachrichten in Git.
 
 | Version | Wesentliche Änderungen |
 |---|---|
+| v0.99.0 | **Crawler-Schutz** (Idee 669405f0): Bekannte KI-Trainings- und Index-Crawler (Liste aus `static/robots.txt`) bekommen 403; Assistenten im Auftrag eines Menschen (ChatGPT-User u. a.) bleiben frei. Gäste bekommen nie Volltext, weder in der Quellenliste noch beim Auge; die Volltextsuche läuft für sie auf dem Server (`GET /api/sources/search`, nur IDs). Bremsen je Anschluss für Gäste: 400 Inhaltsabrufe/5 Min., 150 Einzelquellen/10 Min., 150 Suchen/Min., mit Hinweis „zu viele Anfragen“. Suchbegriffe landen nicht im Server-Log. **Warum:** robots.txt war nur eine Bitte; ein Abruf lieferte Gästen bisher alle Volltexte auf einmal. |
 | v0.98.0 | **KI-Prüfung der Quellenbilder:** Haiku sieht jedes Quellenbild einmal an (`app/image_review.py`) und stuft es als inhaltlich (Diagramm, Modell, Grafik, Tabelle) oder Deko ein (Buchcover, Icon, Logo, Stimmungsfoto, leere Fläche). Deko erscheint weder in der Bildleiste noch im Modellkontext und belegt keinen Platz am Ausschnitt. Dazu kommt je Bild eine Beschreibung DE/EN als Alt-Text, an der das Modell die Passung erkennt. Neue Quellen werden beim Import geprüft, der Bestand beim nächsten Start (idempotent, Kanal `image_review` auf der Kostenseite). Probelauf mit 25 Bildern der Quelle „Organisationen neu organisieren“: 24 als Deko erkannt, rund 0,002 $ je Bild. **Warum:** Die Bildleiste zeigte Cover, Scheren-Icons und Grauverläufe, weil 477 PDF-Bilder ohne jede Beschreibung waren. |
 | v0.97.0 | **Verständlichere und vorsichtigere Antworten** (Idee c3c4dd9a): Die Beraterstimme erklärt Fachbegriffe beim ersten Gebrauch in einem Halbsatz und nennt eine Zahl ohne Quelle aus der Frage zuerst als Annahme mit Rückfrage nach der Herkunft (DE und EN). Die Gesetze des Beta-Kodex erscheinen als Anspruch, nie als Erfolgsgarantie. Antworten dürfen bei Bedarf bis rund 400 Wörter lang sein. Messung mit 4 Fragen: Rückfrage bei Zahl ohne Quelle vorher 0 von 4, nachher 4 von 4. |
 | v0.96.2 | **Sicherheit:** Login- und Einladungslinks in Mails nutzen immer `https://companion.betahof.com` (nur `localhost`/`127.0.0.1` behalten den eigenen Host für Dev), nie den Host-Header der Anfrage. **Warum:** Schutz vor Link-Vergiftung hing bisher allein an Caddy (Nachbefund Audit 8b157c5c). |
