@@ -554,5 +554,22 @@
   "import.detectLanguageTitle": "Detect language and English title with AI",
   "import.detectingLanguage": "Detecting language …",
   "import.detectLanguageFailed": "Language detection failed.",
-  "common.translatedTitleTooltip": "Title translated"
+  "common.translatedTitleTooltip": "Title translated",
+  "import.imageCountTitle": "Source with {count} images (including hidden ones)",
+  "import.imageCountTitleOne": "Source with 1 image (even if hidden)",
+  "import.imagesTitle": "Images of this source",
+  "import.imagesCount": "{shown} shown · {hidden} hidden",
+  "import.imagesHintOpen": "Review and change",
+  "import.imagesHintClose": "Collapse",
+  "import.imagesFilter_all": "All",
+  "import.imagesFilter_shown": "Shown",
+  "import.imagesFilter_hidden": "Hidden",
+  "import.imageShown": "shown",
+  "import.imageHidden": "hidden",
+  "import.imagePage": "p. {page}",
+  "import.imageShow": "Show",
+  "import.imageHide": "Hide",
+  "import.imageManualTitle": "Set by hand, the AI review won't change it",
+  "changelog.actionSourceImageShown": "showed an image of the source",
+  "changelog.actionSourceImageHidden": "hid an image of the source"
 }

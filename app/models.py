@@ -40,6 +40,9 @@ class SourceOut(BaseModel):
     key_terms_ai_generated: bool = True
     has_pdf: bool = False
     has_audio: bool = False
+    # Nutzerwunsch 2026-11-19: Anzahl Bilder der Quelle (auch ausgeblendete),
+    # nur für Quellen-Pfleger:innen, sonst 0.
+    image_count: int = 0
     relevance_score: Optional[int] = None
     processing_status: Optional[str] = None
     processing_step: Optional[str] = None
@@ -205,6 +208,23 @@ class ImageRef(BaseModel):
     # Bild stammt nicht aus diesem Chunk, sondern aus der Quelle (nur fürs Modell,
     # daher nie in der Antwort an den Client).
     from_source: bool = Field(False, exclude=True)
+
+
+class SourceImageOut(BaseModel):
+    """Bild einer Quelle in der Pflege-Ansicht (Nutzerwunsch 2026-11-19).
+    relevant: None = noch nicht geprüft (wird gezeigt)."""
+
+    key: str
+    src: str
+    alt: str = ""
+    page: Optional[int] = None
+    relevant: Optional[bool] = None
+    manual: bool = False
+
+
+class SourceImageVisibilityIn(BaseModel):
+    key: str = Field(..., min_length=1, max_length=2048)
+    relevant: bool
 
 
 class ChunkRef(BaseModel):

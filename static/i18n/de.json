@@ -554,5 +554,22 @@
   "import.detectLanguageTitle": "Sprache und englischen Titel mit KI erkennen",
   "import.detectingLanguage": "Sprache wird erkannt …",
   "import.detectLanguageFailed": "Spracherkennung fehlgeschlagen.",
-  "common.translatedTitleTooltip": "Titel übersetzt"
+  "common.translatedTitleTooltip": "Titel übersetzt",
+  "import.imageCountTitle": "Quelle mit {count} Bildern (auch ausgeblendete)",
+  "import.imageCountTitleOne": "Quelle mit 1 Bild (auch wenn ausgeblendet)",
+  "import.imagesTitle": "Bilder dieser Quelle",
+  "import.imagesCount": "{shown} gezeigt · {hidden} ausgeblendet",
+  "import.imagesHintOpen": "Prüfen und ändern",
+  "import.imagesHintClose": "Zuklappen",
+  "import.imagesFilter_all": "Alle",
+  "import.imagesFilter_shown": "Gezeigt",
+  "import.imagesFilter_hidden": "Ausgeblendet",
+  "import.imageShown": "gezeigt",
+  "import.imageHidden": "ausgeblendet",
+  "import.imagePage": "S. {page}",
+  "import.imageShow": "Zeigen",
+  "import.imageHide": "Ausblenden",
+  "import.imageManualTitle": "Von Hand gesetzt, die KI-Prüfung ändert das nicht",
+  "changelog.actionSourceImageShown": "hat ein Bild der Quelle eingeblendet",
+  "changelog.actionSourceImageHidden": "hat ein Bild der Quelle ausgeblendet"
 }

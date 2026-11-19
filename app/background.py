@@ -737,11 +737,7 @@ def _backfill_images(source_id: str) -> bool:
             return False
         current["images"] = images
         current["images_checked_at"] = datetime.now(timezone.utc).isoformat()
-        with _vectorstore_write_lock:
-            ids, docs, metas = vectorstore.get_source_chunks(source_id)
-            for meta, chunk_images in zip(metas, chunking.assign_images(docs, images)):
-                meta["images_json"] = json.dumps(chunk_images, ensure_ascii=False)
-            vectorstore.update_chunk_metadatas(ids, metas)
+        _reassign_chunk_images(source_id, images)
         _save_sources(sources)
     return True
 
@@ -749,8 +745,16 @@ def _backfill_images(source_id: str) -> bool:
 IMAGE_REVIEW_WORKERS = 4
 
 
-def _image_key(image: dict):
-    return image.get("file") or image.get("url")
+_image_key = source_images.image_key
+
+
+def _reassign_chunk_images(source_id: str, images: list[dict]) -> None:
+    """Bild-Metadaten der vorhandenen Chunks neu setzen (Text bleibt). Aufrufer hält _sources_write_lock."""
+    with _vectorstore_write_lock:
+        ids, docs, metas = vectorstore.get_source_chunks(source_id)
+        for meta, chunk_images in zip(metas, chunking.assign_images(docs, images)):
+            meta["images_json"] = json.dumps(chunk_images, ensure_ascii=False)
+        vectorstore.update_chunk_metadatas(ids, metas)
 
 
 def _review_input(source_id: str, image: dict) -> dict | None:
@@ -797,11 +801,7 @@ def _review_source_images(source_id: str) -> int:
         for image in images:
             if "relevant" not in image and _image_key(image) in results:
                 image.update(results[_image_key(image)])
-        with _vectorstore_write_lock:
-            ids, docs, metas = vectorstore.get_source_chunks(source_id)
-            for meta, chunk_images in zip(metas, chunking.assign_images(docs, images)):
-                meta["images_json"] = json.dumps(chunk_images, ensure_ascii=False)
-            vectorstore.update_chunk_metadatas(ids, metas)
+        _reassign_chunk_images(source_id, images)
         _save_sources(sources)
     return len(results)
 

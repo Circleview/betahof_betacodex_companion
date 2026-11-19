@@ -563,6 +563,22 @@ export function buildSourceEntries(s, rowIndex, options = {}) {
   const actions = document.createElement('span');
   actions.className = 'source-row-actions';
 
+  // Nutzerwunsch (2026-11-19): Bild-Icon ganz links in der Aktionsleiste
+  // (Stift/Öffnen schieben es nach links), sobald die Quelle
+  // Bilder hat (auch ausgeblendete); image_count kommt nur für Pfleger:innen.
+  if (s.image_count > 0) {
+    const icon = document.createElement('span');
+    icon.className = 'source-image-count-icon';
+    icon.setAttribute('role', 'img');
+    icon.title = t(s.image_count === 1 ? 'import.imageCountTitleOne' : 'import.imageCountTitle', { count: s.image_count });
+    icon.setAttribute('aria-label', icon.title);
+    icon.innerHTML =
+      '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" ' +
+      'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"></rect>' +
+      '<circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>';
+    actions.appendChild(icon);
+  }
+
   if (s.url_reachable === false) {
     const warning = document.createElement(hasPflegerRole() ? 'button' : 'span');
     if (hasPflegerRole()) warning.type = 'button';
