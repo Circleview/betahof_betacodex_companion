@@ -1,7 +1,6 @@
-# Vor dem öffentlichen Livegang (Backlog #115): diese Instanz soll weder in
-# Suchmaschinen noch in KI-Trainings-/Retrieval-Crawlern auftauchen. Dies ist
-# nur eine Bitte an kooperative Crawler - der eigentliche, technisch wirksame
-# Schutz ist das separat geplante Early-Access-Passwort (Backlog #114).
+# Bitte an Crawler: diese Instanz soll weder in Suchmaschinen noch in
+# KI-Trainings-/Index-Crawlern auftauchen. Die technische Sperre in
+# app/main.py (guard_crawlers) liest die Namen aus dieser Datei.
 
 User-agent: *
 Disallow: /
@@ -9,9 +8,6 @@ Disallow: /
 # Bekannte KI-/LLM-Crawler explizit benannt, falls sie den generellen
 # User-agent:*-Block ignorieren oder nur ihre eigene Regel respektieren.
 User-agent: GPTBot
-Disallow: /
-
-User-agent: ChatGPT-User
 Disallow: /
 
 User-agent: CCBot
@@ -36,4 +32,16 @@ User-agent: PerplexityBot
 Disallow: /
 
 User-agent: Amazonbot
+Disallow: /
+
+User-agent: meta-externalagent
+Disallow: /
+
+User-agent: OAI-SearchBot
+Disallow: /
+
+User-agent: Claude-SearchBot
+Disallow: /
+
+User-agent: Applebot-Extended
 Disallow: /
