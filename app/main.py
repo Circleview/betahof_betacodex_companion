@@ -13,6 +13,7 @@ import tempfile
 import threading
 import time
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import parse_qs, quote, urlsplit
@@ -38,6 +39,7 @@ from app import (
     embeddings,
     extraction,
     i18n,
+    image_review,
     jsonstore,
     llm,
     mail,
@@ -1971,6 +1973,80 @@ def _backfill_images(source_id: str) -> bool:
     return True
 
 
+IMAGE_REVIEW_WORKERS = 4
+
+
+def _image_key(image: dict):
+    return image.get("file") or image.get("url")
+
+
+def _review_input(source_id: str, image: dict) -> dict | None:
+    if image.get("kind") == "file":
+        path = source_images.image_path(SOURCE_IMAGES_DIR, source_id, image.get("file") or "")
+        return image_review.file_source(path.read_bytes()) if path else None
+    if image.get("kind") == "url" and source_images.is_safe_https(image.get("url")):
+        return image_review.url_source(image["url"])
+    return None
+
+
+def _review_source_images(source_id: str) -> int:
+    """KI-Prüfung (Nutzerwunsch 2026-11-19) aller Bilder einer Quelle ohne
+    `relevant`. API-Aufrufe ohne Sperre; danach unter Sperre nur `relevant`/
+    `alt_de`/`alt_en` der noch vorhandenen Bilder setzen und die Chunk-Bilder
+    neu zuordnen (Deko belegt keinen Platz mehr). Idempotent: Geprüftes wird
+    nie erneut geschickt. Liefert die Zahl neu geprüfter Bilder."""
+    entry = _load_sources().get(source_id)
+    if not entry or entry.get("deleted_at"):
+        return 0
+    pending = [image for image in entry.get("images") or [] if "relevant" not in image]
+    if not pending:
+        return 0
+    title = entry.get("title") or ""
+
+    def run(image):
+        source = _review_input(source_id, image)
+        if source is None:  # Datei fehlt/unsichere URL: würde ohnehin nie angezeigt
+            return _image_key(image), {"relevant": False, "alt_de": "", "alt_en": ""}
+        return _image_key(image), image_review.review_image(
+            source, title, image.get("anchor") or "", image.get("alt") or ""
+        )
+
+    with ThreadPoolExecutor(IMAGE_REVIEW_WORKERS) as pool:
+        results = {key: result for key, result in pool.map(run, pending) if result}
+    if not results:
+        return 0
+    with _sources_write_lock:
+        sources = _load_sources()
+        current = sources.get(source_id)
+        if current is None or current.get("deleted_at"):
+            return 0
+        images = current.get("images") or []
+        for image in images:
+            if "relevant" not in image and _image_key(image) in results:
+                image.update(results[_image_key(image)])
+        with _vectorstore_write_lock:
+            ids, docs, metas = vectorstore.get_source_chunks(source_id)
+            for meta, chunk_images in zip(metas, chunking.assign_images(docs, images)):
+                meta["images_json"] = json.dumps(chunk_images, ensure_ascii=False)
+            vectorstore.update_chunk_metadatas(ids, metas)
+        _save_sources(sources)
+    return len(results)
+
+
+def _review_all_images() -> None:
+    """Holt die KI-Bildprüfung für alle Quellen nach (Start, Admin-Reindex)."""
+    log = logging.getLogger(__name__)
+    total = 0
+    for source_id, data in _load_sources().items():
+        if data.get("deleted_at") or all("relevant" in image for image in data.get("images") or []):
+            continue
+        try:
+            total += _review_source_images(source_id)
+        except Exception:
+            log.exception("Bildprüfung von Quelle %s fehlgeschlagen", source_id)
+    log.info("Bildprüfung: %d Bilder neu geprüft", total)
+
+
 def _reindex_all_sources(only_changed: bool = False, fetch_missing_images: bool = False) -> int:
     """Chunked/embedded Quellen neu (z.B. nach einer Änderung an
     `chunking.chunk_text()`) - `sources.json` bleibt bis auf `chunk_count`
@@ -2035,6 +2111,7 @@ def _startup_reindex(delay: float = STARTUP_REINDEX_DELAY_SECONDS) -> None:
             log.info("Start-Reindex läuft")
             count = _reindex_all_sources(only_changed=True)
             log.info("Start-Reindex: %d Quellen neu indiziert", count)
+            _review_all_images()
     except Exception:
         log.exception("Start-Reindex fehlgeschlagen")
 
@@ -2042,6 +2119,7 @@ def _startup_reindex(delay: float = STARTUP_REINDEX_DELAY_SECONDS) -> None:
 def _reindex_holding_lock(lock_file, only_changed: bool = False, fetch_missing_images: bool = False) -> None:
     with lock_file:
         _reindex_all_sources(only_changed=only_changed, fetch_missing_images=fetch_missing_images)
+        _review_all_images()
 
 
 def _backfill_images_holding_lock(lock_file) -> None:
@@ -2058,6 +2136,7 @@ def _backfill_images_holding_lock(lock_file) -> None:
             except Exception:
                 log.exception("Bild-Nachladen von Quelle %s fehlgeschlagen", source_id)
         log.info("Bild-Nachladen (nur Bilder): %d Quellen geprüft", done)
+        _review_all_images()
 
 
 @app.post("/api/admin/reindex-sources", response_model=MessageOut)
@@ -2183,6 +2262,11 @@ def _finish_synchronous_import(
         # weiter (aber weiterhin unter _track_background_job, siehe oben).
         done_event.set()
         _generate_summary_background(source_id, text)
+        if images:
+            try:
+                _review_source_images(source_id)
+            except Exception:
+                logging.getLogger(__name__).exception("Bildprüfung von Quelle %s fehlgeschlagen", source_id)
 
 
 def _store_pdf_images(source_id: str, data: bytes) -> list[dict]:
@@ -4905,10 +4989,12 @@ RESTRICTED_EXCERPT_MAX_PASSAGES = 2
 RESTRICTED_EXCERPT_MAX_CHARS = 300
 
 
-def _chunk_images(meta: dict, is_web_fallback: bool = False) -> list[ImageRef]:
+def _chunk_images(meta: dict, is_web_fallback: bool = False, lang: str = i18n.DEFAULT_LANG) -> list[ImageRef]:
     """Bilder eines Chunks aus seinen Metadaten (Idee ff895248). Nur https-
     `url` oder gültiger `file`-Name; alles Kaputte ergibt []. Web-Fallback-
-    Chunks bekommen nie Bilder."""
+    Chunks bekommen nie Bilder, von der KI-Prüfung als Deko erkannte
+    (relevant=False) auch nicht. Alt-Text: KI-Beschreibung in `lang`, sonst
+    der ursprüngliche."""
     if is_web_fallback:
         return []
     try:
@@ -4917,7 +5003,7 @@ def _chunk_images(meta: dict, is_web_fallback: bool = False) -> list[ImageRef]:
         return []
     result = []
     for item in items if isinstance(items, list) else []:
-        if not isinstance(item, dict):
+        if not isinstance(item, dict) or item.get("relevant") is False:
             continue
         if item.get("kind") == "url" and source_images.is_safe_https(item.get("url")):
             src = source_images.upgrade_image_url(item["url"])
@@ -4934,7 +5020,7 @@ def _chunk_images(meta: dict, is_web_fallback: bool = False) -> list[ImageRef]:
         result.append(
             ImageRef(
                 src=src,
-                alt=str(item.get("alt") or "")[: source_images.ALT_MAX],
+                alt=str(item.get(f"alt_{lang}") or item.get("alt") or "")[: source_images.ALT_MAX],
                 page=page if isinstance(page, int) and not isinstance(page, bool) else None,
             )
         )
@@ -4944,14 +5030,16 @@ def _chunk_images(meta: dict, is_web_fallback: bool = False) -> list[ImageRef]:
 FALLBACK_IMAGES_PER_SOURCE = 2
 
 
-def _apply_chunk_images(refs: list, metas: list[dict], sources: dict | None = None) -> None:
+def _apply_chunk_images(
+    refs: list, metas: list[dict], sources: dict | None = None, lang: str = i18n.DEFAULT_LANG
+) -> None:
     """Setzt `images` je ChunkRef aus den Chunk-Metadaten (nie aus Client-
     Angaben). Die restricted-Grenze folgt separat in _limit_restricted_images.
     Quellen-Fallback (Idee fe44f080): hat der erste Ref einer Quelle kein
     eigenes Bild, bekommt er höchstens 2 Bilder aus der Quelle selbst -
     zuerst solche, die an keinem Chunk hängen; keine src doppelt."""
     for ref, meta in zip(refs, metas):
-        ref.images = _chunk_images(meta, ref.is_web_fallback)
+        ref.images = _chunk_images(meta, ref.is_web_fallback, lang)
     used = {image.src for ref in refs for image in ref.images}
     handled: set[str] = set()
     for ref in refs:
@@ -4961,7 +5049,7 @@ def _apply_chunk_images(refs: list, metas: list[dict], sources: dict | None = No
         entry_images = (sources or {}).get(ref.source_id, {}).get("images")
         if ref.images or not isinstance(entry_images, list):
             continue
-        candidates = _chunk_images({"images_json": json.dumps(entry_images), "source_id": ref.source_id})
+        candidates = _chunk_images({"images_json": json.dumps(entry_images), "source_id": ref.source_id}, lang=lang)
         on_chunks = {
             image.src
             for chunk_meta in vectorstore.get_source_chunks(ref.source_id)[2]
@@ -5440,7 +5528,7 @@ def _ask_context(
             }
         )
 
-    _apply_chunk_images(chunk_refs, metadatas, sources)
+    _apply_chunk_images(chunk_refs, metadatas, sources, summary_lang)
 
     # Backlog (2026-07-29): rein chunk-basierte Suche findet für biografische
     # Fragen ("Wer ist X?") keine passenden Textausschnitte, da Autor:innen-
@@ -5785,7 +5873,7 @@ def create_conversation_handoff(
             meta if (meta := metas_by_id.get(ref.chunk_id, {})).get("source_id") == ref.source_id else {}
             for ref in turn.sources
         ]
-        _apply_chunk_images(turn.sources, metas, all_sources)
+        _apply_chunk_images(turn.sources, metas, all_sources, x_lang if x_lang in ("de", "en") else i18n.DEFAULT_LANG)
         for ref in turn.sources:
             ref.url = ref.url if ref.url and ref.url.lower().startswith(("http://", "https://")) else None
             ref.listen_url = (

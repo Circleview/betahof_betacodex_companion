@@ -146,12 +146,14 @@ def norm_anchor(text: str) -> str:
 def assign_images(chunks: list[str], images: list[dict]) -> list[list[dict]]:
     """Ordnet jedem Chunk seine Bilder zu: ein Bild kommt in den ersten Chunk,
     der seinen Anker enthält (höchstens 3 je Chunk). Unbekannter Anker oder
-    voller Chunk -> das Bild entfällt. Ergebnis ohne Anker: {kind, url|file, alt, page}."""
+    voller Chunk -> das Bild entfällt. Von der KI als Deko erkannte Bilder
+    (relevant=False) belegen keinen Platz. Ergebnis ohne Anker:
+    {kind, url|file, alt, page} plus alt_de/alt_en der KI-Prüfung."""
     normalized = [norm_anchor(c) for c in chunks]
     result: list[list[dict]] = [[] for _ in chunks]
     for image in images:
         anchor = norm_anchor(image.get("anchor") or "")
-        if not anchor:
+        if not anchor or image.get("relevant") is False:
             continue
         for i, chunk in enumerate(normalized):
             if anchor in chunk:
@@ -159,6 +161,7 @@ def assign_images(chunks: list[str], images: list[dict]) -> list[list[dict]]:
                     break  # voller Chunk: Bild entfällt, wandert nicht weiter
                 ref = {"kind": image["kind"], "alt": image.get("alt") or "", "page": image.get("page")}
                 ref["url" if image["kind"] == "url" else "file"] = image.get("url" if image["kind"] == "url" else "file")
+                ref.update({k: image[k] for k in ("alt_de", "alt_en") if image.get(k)})
                 result[i].append(ref)
                 break
     return result

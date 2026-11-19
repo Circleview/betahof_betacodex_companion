@@ -115,6 +115,10 @@ key rules:
   of its own, it gets at most two images from the same source (first those attached to no
   excerpt); they are labelled for the model and used only if their description or file
   name clearly matches the statement.
+- Every source image is checked once by Haiku (`app/image_review.py`): only images that
+  carry content (diagram, model, chart, table) are shown; book covers, icons, logos and
+  mood photos are hidden. Haiku also writes a short description (DE/EN), which the model
+  uses to judge the fit.
 - If the excerpts cover only part of the question, the model answers with that part
   and names the gap at the end. Only if nothing fits does it use a fixed refusal
   sentence.

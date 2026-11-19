@@ -1,6 +1,6 @@
 import pytest
 
-from app import usage, vectorstore
+from app import image_review, usage, vectorstore
 
 
 # 2026-09-26: Kostenmessung läuft an allen Claude-/TTS-/Transkriptions-
@@ -25,3 +25,10 @@ def _shared_vectorstore_client(tmp_path_factory):
     Test, sondern über einen eigenen Collection-Namen (siehe client-Fixture
     unten)."""
     vectorstore.DB_PATH = tmp_path_factory.mktemp("shared_chroma")
+
+
+# 2026-11-19: die KI-Bildprüfung läuft nach jedem Import mit Bildern - in
+# Tests nie Anthropic aufrufen (None = "später erneut versuchen").
+@pytest.fixture(autouse=True)
+def _no_image_review_api(monkeypatch):
+    monkeypatch.setattr(image_review, "review_image", lambda *args, **kwargs: None)

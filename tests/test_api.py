@@ -10912,3 +10912,49 @@ def test_invite_link_ignores_foreign_host_header(monkeypatch):
     main_module._send_invite(request, "neu@test.local", [users.MCP_NUTZER], "de")
 
     assert links[0].startswith("https://companion.betahof.com/api/auth/verify?token=")
+
+
+# --- KI-Bildprüfung (Nutzerwunsch 2026-11-19) --------------------------------
+_IMG_DECO = {"kind": "url", "url": "https://img.example.org/cover.jpg", "alt": "", "anchor": _IMG_ANCHOR}
+
+
+def test_review_hides_decoration_and_sets_descriptions(client, monkeypatch):
+    from app import image_review
+
+    source_id = client.post("/api/sources", json={"title": "Alt", "text": _IMG_TEXT}).json()["id"]
+    sources = main_module._load_sources()
+    sources[source_id]["images"] = [dict(_IMG_DECO), dict(_IMG_WEB)]
+    main_module._save_sources(sources)
+    calls = []
+
+    def fake_review(source, title, context, alt):
+        calls.append(source["url"])
+        if source["url"].endswith("cover.jpg"):
+            return {"relevant": False, "alt_de": "Buchcover", "alt_en": "Book cover"}
+        return {"relevant": True, "alt_de": "Ein Teammodell", "alt_en": "A team model"}
+
+    monkeypatch.setattr(image_review, "review_image", fake_review)
+
+    assert main_module._review_source_images(source_id) == 2
+    # Deko belegt keinen Chunk-Platz, das relevante Bild trägt beide Beschreibungen.
+    chunk_images = [i for lst in _chunk_image_lists(source_id) for i in lst]
+    assert [i["url"] for i in chunk_images] == ["https://img.example.org/a.jpg"]
+    meta = {"source_id": source_id, "images_json": json.dumps(chunk_images)}
+    assert main_module._chunk_images(meta, lang="en")[0].alt == "A team model"
+    assert main_module._chunk_images(meta, lang="de")[0].alt == "Ein Teammodell"
+    # Quellen-Fallback zeigt die Deko auch nicht.
+    entry_meta = {"source_id": source_id, "images_json": json.dumps(main_module._load_sources()[source_id]["images"])}
+    assert [i.src for i in main_module._chunk_images(entry_meta)] == ["https://img.example.org/a.jpg"]
+    # Idempotent: zweiter Lauf schickt nichts mehr.
+    assert main_module._review_source_images(source_id) == 0
+    assert len(calls) == 2
+
+
+def test_review_failure_leaves_image_unreviewed_and_visible(client, monkeypatch):
+    source_id = client.post("/api/sources", json={"title": "Alt", "text": _IMG_TEXT}).json()["id"]
+    sources = main_module._load_sources()
+    sources[source_id]["images"] = [dict(_IMG_WEB)]
+    main_module._save_sources(sources)
+
+    assert main_module._review_source_images(source_id) == 0  # conftest: review_image -> None
+    assert "relevant" not in main_module._load_sources()[source_id]["images"][0]
