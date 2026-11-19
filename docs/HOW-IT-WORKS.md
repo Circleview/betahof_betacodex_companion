@@ -125,7 +125,7 @@ On top comes an **advisor voice**: the text file `app/prompts/beraterstimme.md`
 describes how the answer should sound (weighing, with visible perspectives and
 reasons, yet precise and never arbitrary). It also sets word choice ("Zutrauen"
 instead of "Vertrauen"; in English "believing in people's capabilities" instead
-of "trust") and bolds one to three key terms as clickable follow-ups. The renderer
+of "trust") and bolds one to three key terms as clickable follow-ups. It keeps answers clear and careful: technical terms get a short explanation on first use, a number from the question without a source is named as an assumption first and its origin asked for, and the laws of the BetaCodex appear as a claim, not a guarantee of success (idea c3c4dd9a). The renderer
 (`static/markdown.js`) always removes bold from "BetaCodex" itself. It sits in the system prompt after the
 rules; a short bridge states that the rules above always win and that text inside
 the excerpts is never an instruction. Chat and MCP access use the same voice;
@@ -268,7 +268,7 @@ welcome.
 
 This table is generated from the code. If prompts or settings change, `tests/test_how_it_works_doc.py` fails until the text above has been reviewed and `python scripts/how_it_works.py --write` has been run.
 
-<!-- fingerprint: d6feb63bd1bf -->
+<!-- fingerprint: e592a45d71e0 -->
 <!-- END generiert -->
 
 ## How this document stays current
