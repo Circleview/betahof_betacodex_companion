@@ -235,3 +235,83 @@ def test_429_log_has_key_and_path_but_no_ip_or_query(env, caplog):
     assert len(lines) == 1
     assert "search-ip" in lines[0] and "/api/sources/search" in lines[0]
     assert "9.8.7.6" not in lines[0] and "geheimsuche" not in lines[0]
+
+
+# --- Einzelquelle: nie Volltext für Gäste -----------------------------------------
+
+def _with_urls(listen=None):
+    src = main_module._load_sources()
+    src["a"].update(url="https://example.org/x", listen_url=listen)
+    main_module._save_sources(src)
+
+
+@pytest.mark.parametrize("listen", [None, "https://example.org/a.mp3"])
+def test_guest_single_source_has_no_text(env, listen):
+    _with_urls(listen)
+    r = client(env).get("/api/sources/a")
+    assert r.status_code == 200 and r.json()["text"] == ""
+    c = client(env, ip="7.7.7.7")
+    login(c, role=users.QUELLEN_PFLEGER)
+    assert c.get("/api/sources/a").json()["text"].startswith("Das Wort")
+
+
+def test_single_source_deleted_user_and_plain_user(env):
+    c = client(env)
+    login(c, role=users.QUELLEN_PFLEGER)
+    users.delete_user(EMAIL)
+    assert c.get("/api/sources/a").json()["text"] == ""
+    c2 = client(env, ip="7.7.7.8")
+    login(c2, "normal@test.local", role=users.MCP_NUTZER)
+    assert c2.get("/api/sources/a").json()["text"].startswith("Das Wort")
+    assert c2.get("/api/sources/c").json()["text"] == ""  # restricted
+
+
+def test_logged_in_without_pfleger_role_cannot_search_restricted_text(env):
+    c = client(env)
+    login(c, "normal@test.local", role=users.MCP_NUTZER)
+    assert _ids(c, "quokka") == []
+    assert _ids(c, "zebrafink") == ["a"]
+
+
+# --- Access-Log ohne Suchbegriff -------------------------------------------------
+
+def _access_line(path):
+    import logging as lg
+
+    rec = lg.LogRecord("uvicorn.access", lg.INFO, "", 0, '%s - "%s %s HTTP/%s" %d',
+                       ("1.2.3.4:5", "GET", path, "1.1", 200), None)
+    assert lg.getLogger("uvicorn.access").filter(rec)
+    return rec.getMessage()
+
+
+def test_access_log_drops_search_query():
+    line = _access_line("/api/sources/search?q=geheim")
+    assert "geheim" not in line and "/api/sources/search" in line
+    assert "q=abc" in _access_line("/api/other?q=abc")
+
+
+# --- Suchindex-Cache -----------------------------------------------------------------
+
+def test_search_index_cached_until_file_changes(env, monkeypatch):
+    calls = []
+    orig = main_module._load_sources
+    monkeypatch.setattr(main_module, "_load_sources", lambda: calls.append(1) or orig())
+    c = client(env)
+    assert _ids(c, "zebrafink") == ["a"]
+    n = len(calls)
+    assert _ids(c, "zebrafink") == ["a"] and _ids(c, "kolibri") == ["b"]
+    assert len(calls) == n
+    src = orig()
+    src["b"]["text"] += " Zebrafink zusätzlich"
+    main_module._save_sources(src)
+    assert sorted(_ids(c, "zebrafink")) == ["a", "b"]
+
+
+# --- /mcp-Ausnahme exakt ---------------------------------------------------------------
+
+def test_mcp_exemption_is_exact(env):
+    c = client(env, ua=GPT)
+    assert c.get("/mcp.html").status_code == 403
+    assert c.get("/mcp.js").status_code == 403
+    assert c.post("/mcp/", json={}).status_code != 403
+    assert c.post("/mcp", json={}).status_code == 401

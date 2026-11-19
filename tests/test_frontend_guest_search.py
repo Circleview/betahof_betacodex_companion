@@ -44,3 +44,28 @@ def test_i18n_keys_in_both_languages():
     for lang in ("de", "en"):
         d = json.loads((STATIC / "i18n" / f"{lang}.json").read_text())
         assert d["import.tooManyRequests"] and d["explore.tooManyRequests"]
+
+
+def test_guest_search_discards_stale_answers_and_shows_error():
+    body = _fn(IMPORT_JS, "applyGuestSearch")
+    assert "++guestSearchSeq" in body
+    assert body.count("seq !== guestSearchSeq") >= 2
+    assert "showSearchFailed()" in body
+    assert "import.searchFailed" in _fn(IMPORT_JS, "showSearchFailed")
+
+
+def test_search_field_has_maxlength():
+    html = (STATIC / "import.html").read_text()
+    assert re.search(r'id="search-input"[^>]*maxlength="200"', html)
+
+
+def test_other_public_fetches_check_res_ok_and_429():
+    for name in ("loadAuthors", "loadTermOverview", "applyAuthorFilter", "applyTermFilter"):
+        body = _fn(IMPORT_JS, name)
+        assert "res.ok" in body or "Res.ok" in body, name
+        assert "showTooManyRequests()" in body, name
+
+
+def test_search_failed_key_in_both_languages():
+    for lang in ("de", "en"):
+        assert json.loads((STATIC / "i18n" / f"{lang}.json").read_text())["import.searchFailed"]
