@@ -28,6 +28,8 @@ from app.models import (
     ImportJobOut,
     LanguageDetectionOut,
     MessageOut,
+    SourceImageOut,
+    SourceImageVisibilityIn,
     SourceOut,
     SourceSuggestionOut,
     SummaryOut,
@@ -40,7 +42,7 @@ from app.models import (
 )
 
 from app import main
-from app.background import _audio_transcription_queue, _index_new_web_allowlist_entry
+from app.background import _audio_transcription_queue, _index_new_web_allowlist_entry, _reassign_chunk_images
 from app.source_processing import (
     _AUDIO_MEDIA_TYPES,
     _apply_language_result,
@@ -679,3 +681,66 @@ def extract_url(payload: UrlIn, _user: str = Depends(main.require_role(users.QUE
         else None
     )
     return ExtractedSource(**result, is_audio=is_audio, is_pdf=is_pdf, image_token=token)
+
+
+# Nutzerwunsch 2026-11-19: Bilder einer Quelle von Hand zeigen/ausblenden.
+def _source_image_list(sources: dict, source_id: str, lang: str) -> list[SourceImageOut]:
+    lang = lang if lang in ("de", "en") else i18n.DEFAULT_LANG
+    out = []
+    for item in sources[source_id].get("images") or []:
+        src = source_images.image_src(source_id, item)
+        if src is None:
+            continue
+        page = item.get("page")
+        out.append(
+            SourceImageOut(
+                key=source_images.image_key(item),
+                src=src,
+                alt=str(item.get(f"alt_{lang}") or item.get("alt") or "")[: source_images.ALT_MAX],
+                page=page if isinstance(page, int) and not isinstance(page, bool) else None,
+                relevant=item.get("relevant"),
+                manual=bool(item.get("relevant_manual")),
+            )
+        )
+    return out
+
+
+@router.get("/api/sources/{source_id}/images", response_model=list[SourceImageOut])
+def list_source_images(
+    source_id: str,
+    x_lang: str = Header(default=i18n.DEFAULT_LANG),
+    _user: str = Depends(main.require_role(users.QUELLEN_PFLEGER)),
+):
+    """Alle Bilder einer Quelle samt KI-Urteil für die Pflege."""
+    sources = main._load_sources()
+    if _source_is_missing(sources, source_id):
+        raise HTTPException(404, i18n.get_message("source_not_found", x_lang))
+    return _source_image_list(sources, source_id, x_lang)
+
+
+@router.patch("/api/sources/{source_id}/images", response_model=SourceImageOut)
+def set_source_image_visibility(
+    source_id: str,
+    payload: SourceImageVisibilityIn,
+    x_lang: str = Header(default=i18n.DEFAULT_LANG),
+    _user: str = Depends(main.require_role(users.QUELLEN_PFLEGER)),
+):
+    """Bild von Hand zeigen/ausblenden; die KI-Prüfung überschreibt das nie
+    (sie prüft nur Bilder ohne `relevant`)."""
+    with _sources_write_lock:
+        sources = main._load_sources()
+        if _source_is_missing(sources, source_id):
+            raise HTTPException(404, i18n.get_message("source_not_found", x_lang))
+        images = sources[source_id].get("images") or []
+        item = next((image for image in images if source_images.image_key(image) == payload.key), None)
+        if item is None or source_images.image_src(source_id, item) is None:
+            raise HTTPException(404, i18n.get_message("source_not_found", x_lang))
+        item["relevant"] = payload.relevant
+        item["relevant_manual"] = True
+        _reassign_chunk_images(source_id, images)
+        _save_sources(sources)
+        title = sources[source_id].get("title", source_id)
+    audit.log_action(
+        _user, "source_image_shown" if payload.relevant else "source_image_hidden", "source", source_id, title
+    )
+    return next(image for image in _source_image_list(sources, source_id, x_lang) if image.key == payload.key)

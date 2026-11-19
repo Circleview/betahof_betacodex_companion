@@ -567,16 +567,8 @@ def _chunk_images(meta: dict, is_web_fallback: bool = False, lang: str = i18n.DE
     for item in items if isinstance(items, list) else []:
         if not isinstance(item, dict) or item.get("relevant") is False:
             continue
-        if item.get("kind") == "url" and source_images.is_safe_https(item.get("url")):
-            src = source_images.upgrade_image_url(item["url"])
-        elif (
-            item.get("kind") == "file"
-            and isinstance(item.get("file"), str)
-            and source_images.IMAGE_NAME_RE.match(item["file"])
-            and meta.get("source_id")
-        ):
-            src = f"/api/sources/{meta['source_id']}/images/{item['file']}"
-        else:
+        src = source_images.image_src(meta.get("source_id"), item)
+        if src is None:
             continue
         page = item.get("page")
         result.append(

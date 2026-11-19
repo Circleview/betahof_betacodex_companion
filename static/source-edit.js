@@ -5,6 +5,7 @@
 // Quellenliste hängt (Löschen mit Rückgängig, Neuladen), kommt über Callbacks
 // in buildEditPanel(s, options) herein.
 import { t, getLang } from '/i18n.js';
+import { buildImagePanel } from '/source-images-panel.js';
 
 // Bekannte Autor:innen (GET /api/authors) - steuert, ob unter einem Namen
 // "Autorenprofil pflegen" erscheint. Aufrufer setzen die Liste nach dem Laden.
@@ -681,6 +682,7 @@ export function buildEditPanel(s, options = {}) {
   restrictedLabel.appendChild(restrictedInput);
   restrictedLabel.appendChild(restrictedText);
   form.appendChild(restrictedLabel);
+  if (!pendingDeletion) form.appendChild(buildImagePanel(s.id));
 
   const summaryInput = field('import.fieldSummary', 'summary', s.summary, 'textarea');
   summaryInput.rows = 4;

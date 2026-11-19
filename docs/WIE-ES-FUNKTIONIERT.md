@@ -124,7 +124,8 @@ Die wichtigsten Regeln:
 - Jedes Quellenbild prüft Haiku einmal (`app/image_review.py`): Gezeigt werden nur Bilder mit
   Inhalt (Diagramm, Modell, Grafik, Tabelle); Buchcover, Icons, Logos und Stimmungsfotos
   bleiben verborgen. Haiku schreibt dazu eine kurze Beschreibung (DE/EN), an der das Modell
-  die Passung erkennt.
+  die Passung erkennt. Im Bearbeiten-Formular lässt sich jedes Bild von Hand zeigen oder
+  ausblenden; diese Entscheidung überschreibt die KI nie.
 - Geben die Ausschnitte nur einen Teil her, antwortet das Modell mit diesem Teil und
   nennt die Lücke am Ende. Nur wenn gar nichts passt, kommt ein fest vorgegebener
   Absage-Satz.

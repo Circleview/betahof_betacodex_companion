@@ -6276,3 +6276,134 @@ details a {
     animation: none;
   }
 }
+
+/* Nutzerwunsch (2026-11-19): Bilder einer Quelle von Hand zeigen/ausblenden. */
+.source-images-panel {
+  margin: 1rem 0;
+  padding: 0.8rem 1rem;
+  font-size: 0.9rem;
+  border: 2px solid var(--color-text);
+  border-radius: var(--radius);
+  background: var(--color-cover-sand);
+}
+
+.source-images-panel > summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem 0.8rem;
+  cursor: pointer;
+  list-style: none;
+}
+
+.source-images-panel > summary::-webkit-details-marker {
+  display: none;
+}
+
+.source-images-title {
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.source-images-count {
+  color: var(--color-text-muted);
+}
+
+.source-images-thumbs {
+  display: flex;
+  gap: 0.3rem;
+}
+
+.source-images-thumbs img {
+  width: 40px;
+  height: 40px;
+  object-fit: cover;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  background: var(--color-bg);
+}
+
+.source-images-thumbs img.source-images-thumb--hidden {
+  opacity: 0.35;
+}
+
+.source-images-hint {
+  margin-left: auto;
+  font-weight: 700;
+  text-decoration: underline;
+}
+
+.source-images-hint::after {
+  content: " ▾";
+}
+
+.source-images-panel[open] .source-images-hint::after {
+  content: " ▴";
+}
+
+.source-images-filter {
+  display: flex;
+  gap: 0.4rem;
+  margin: 0.6rem 0;
+}
+
+.source-images-filter-button {
+  padding: 0.2rem 0.7rem;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  background: var(--color-bg);
+  color: var(--color-text-muted);
+  font: inherit;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.source-images-filter-button:hover,
+.source-images-filter-button[aria-pressed="true"] {
+  background: var(--color-text);
+  border-color: var(--color-text);
+  color: var(--color-bg);
+}
+
+.source-images-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 0.8rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.source-image-tile img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  object-fit: contain;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-bg);
+}
+
+.source-image-tile--hidden img {
+  opacity: 0.35;
+}
+
+.source-image-tile-meta,
+.source-image-tile-alt {
+  margin: 0.3rem 0 0;
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+}
+
+.source-image-tile-alt {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.source-image-count-icon {
+  display: inline-flex;
+  vertical-align: -2px;
+  color: var(--color-text-muted);
+}

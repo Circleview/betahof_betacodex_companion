@@ -76,6 +76,8 @@ const ACTION_ICON = {
   author_bio_generated: { icon: EDIT_ICON, cls: 'updated' },
   web_page_excluded: { icon: TRASH_ICON, cls: 'deleted' },
   web_page_included: { icon: PLUS_ICON, cls: 'created' },
+  source_image_shown: { icon: EDIT_ICON, cls: 'updated' },
+  source_image_hidden: { icon: EDIT_ICON, cls: 'updated' },
 };
 
 const ACTION_LABEL_KEYS = {
@@ -90,6 +92,8 @@ const ACTION_LABEL_KEYS = {
   web_page_excluded: 'changelog.actionWebPageExcluded',
   web_page_included: 'changelog.actionWebPageIncluded',
   source_link_manually_verified: 'changelog.actionSourceLinkManuallyVerified',
+  source_image_shown: 'changelog.actionSourceImageShown',
+  source_image_hidden: 'changelog.actionSourceImageHidden',
 };
 
 const FIELD_LABEL_KEYS = {

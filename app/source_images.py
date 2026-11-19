@@ -137,3 +137,17 @@ def take_staged_web_images(staging_dir: Path, token: str, url: str) -> list[dict
         return None
     path.unlink(missing_ok=True)
     return sanitize_web_images(data.get("images"))
+
+
+def image_key(image: dict):
+    """Eindeutiger Schlüssel eines Bild-Eintrags: Dateiname bzw. URL."""
+    return image.get("file") or image.get("url")
+
+
+def image_src(source_id, item: dict) -> str | None:
+    """Anzeige-Adresse eines Bild-Eintrags oder None (nur https-`url` bzw. gültiger `file`-Name)."""
+    if item.get("kind") == "url" and is_safe_https(item.get("url")):
+        return upgrade_image_url(item["url"])
+    if item.get("kind") == "file" and isinstance(item.get("file"), str) and IMAGE_NAME_RE.match(item["file"]) and source_id:
+        return f"/api/sources/{source_id}/images/{item['file']}"
+    return None

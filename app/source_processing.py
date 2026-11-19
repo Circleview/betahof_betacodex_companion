@@ -268,6 +268,12 @@ def _to_source_out(
     data["key_terms"] = data.get(f"key_terms_{lang}") or []
     data["summary_ai_generated"] = data.get(f"summary_ai_generated_{lang}", True)
     data["key_terms_ai_generated"] = data.get(f"key_terms_ai_generated_{lang}", True)
+    # Nutzerwunsch 2026-11-19: Bildanzahl (auch ausgeblendete) nur für die Pflege.
+    data["image_count"] = (
+        sum(source_images.image_src(data["id"], image) is not None for image in data.get("images") or [])
+        if can_view_full_text
+        else 0
+    )
     data["has_pdf"] = (main.PDF_DIR / f"{data['id']}.pdf").exists()
     data["has_audio"] = _existing_audio_file(data["id"]) is not None
     return SourceOut(**data)

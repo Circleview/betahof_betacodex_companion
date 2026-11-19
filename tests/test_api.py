@@ -10996,3 +10996,57 @@ def test_review_failure_leaves_image_unreviewed_and_visible(client, monkeypatch)
 
     assert main_module._review_source_images(source_id) == 0  # conftest: review_image -> None
     assert "relevant" not in main_module._load_sources()[source_id]["images"][0]
+
+
+# --- Bilder von Hand zeigen/ausblenden (Nutzerwunsch 2026-11-19) ------------
+def _source_with_reviewed_images(client):
+    source_id = client.post("/api/sources", json={"title": "Alt", "text": _IMG_TEXT}).json()["id"]
+    sources = main_module._load_sources()
+    sources[source_id]["images"] = [
+        {**_IMG_DECO, "relevant": False, "alt_de": "Buchcover", "alt_en": "Book cover"},
+        {**_IMG_WEB, "relevant": True, "alt_de": "Teammodell", "alt_en": "Team model"},
+    ]
+    main_module._save_sources(sources)
+    main_module._reassign_chunk_images(source_id, sources[source_id]["images"])
+    return source_id
+
+
+def test_list_source_images_shows_ai_verdict_in_requested_language(client):
+    source_id = _source_with_reviewed_images(client)
+    data = client.get(f"/api/sources/{source_id}/images", headers={"X-Lang": "en"}).json()
+    assert [(i["alt"], i["relevant"], i["manual"]) for i in data] == [("Book cover", False, False), ("Team model", True, False)]
+
+
+def test_manual_show_puts_image_into_chunks_and_survives_review(client, monkeypatch):
+    from app import image_review
+
+    source_id = _source_with_reviewed_images(client)
+    res = client.patch(f"/api/sources/{source_id}/images", json={"key": _IMG_DECO["url"], "relevant": True})
+    assert res.status_code == 200 and res.json()["manual"] is True and res.json()["relevant"] is True
+    urls = [i["url"] for lst in _chunk_image_lists(source_id) for i in lst]
+    assert _IMG_DECO["url"] in urls
+
+    monkeypatch.setattr(image_review, "review_image", lambda *a, **k: {"relevant": False, "alt_de": "", "alt_en": ""})
+    assert main_module._review_source_images(source_id) == 0
+    assert main_module._load_sources()[source_id]["images"][0]["relevant"] is True
+
+
+def test_manual_hide_removes_image_and_unknown_key_is_404(client):
+    source_id = _source_with_reviewed_images(client)
+    assert client.patch(f"/api/sources/{source_id}/images", json={"key": _IMG_WEB["url"], "relevant": False}).status_code == 200
+    assert _chunk_image_lists(source_id) == [[] for _ in _chunk_image_lists(source_id)]
+    assert client.patch(f"/api/sources/{source_id}/images", json={"key": "https://nope", "relevant": True}).status_code == 404
+
+
+def test_source_images_endpoints_need_curator_role(client, anon_client):
+    source_id = _source_with_reviewed_images(client)
+    assert anon_client.get(f"/api/sources/{source_id}/images").status_code in (401, 403)
+    assert anon_client.patch(f"/api/sources/{source_id}/images", json={"key": "x", "relevant": True}).status_code in (401, 403)
+
+
+def test_source_list_shows_image_count_only_to_curators(client, anon_client):
+    source_id = _source_with_reviewed_images(client)  # 2 Bilder, eins davon ausgeblendet
+    mine = {s["id"]: s for s in client.get("/api/sources?include_text=false").json()}
+    assert mine[source_id]["image_count"] == 2
+    theirs = {s["id"]: s for s in anon_client.get("/api/sources?include_text=false").json()}
+    assert theirs.get(source_id, {"image_count": 0})["image_count"] == 0
