@@ -762,7 +762,7 @@ def test_number_rule_in_chat_prompt(lang):
     prompt = llm.SYSTEM_PROMPTS[lang]
     voice = llm.load_stimme()
     assert voice.index("Die Zahl stammt aus deiner Frage") < voice.index("## Begründen statt auflisten")
-    for needle in ("Die Zahl stammt aus deiner Frage", "Frag, woher sie kommt", "asks where it comes from", "never adopt it as fact", "never as natural laws", "in English"):
+    for needle in ("Die Zahl stammt aus deiner Frage", "Frag, woher sie kommt", "asks where it comes from", "Never adopt it as fact", "never as natural laws", "in English"):
         assert needle in prompt
 
 
