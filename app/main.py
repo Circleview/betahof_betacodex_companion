@@ -413,6 +413,8 @@ _EARLY_ACCESS_EXEMPT_PATHS = {
     "/speech.js",
     "/ndjson-stream.js",
     "/conversation-handoff.js",
+    "/source-lang.js",
+    "/answer-feedback.js",
     "/api/ask",
     "/api/turnstile-config",
     "/api/auth/whoami",
