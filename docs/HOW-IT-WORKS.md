@@ -62,7 +62,7 @@ details that made the difference in practice.
 
 ### Search
 
-Steps per question (`app/main.py`, function `ask`):
+Steps per question (`app/routes_ask.py`, function `ask`):
 
 1. **Rewrite follow-up questions.** "Tell me more" or "what about Scrum?" are
    useless as search queries. A quick model call turns them, using the conversation
@@ -236,7 +236,7 @@ welcome.
 | Creative mode style guide | `app/prompts/humanizer.md` |
 | Advisor voice (chat, MCP) | `app/prompts/beraterstimme.md` |
 | Dev comparison page (dev only) | `app/dev_vergleich/` |
-| Search, ranking, hybrid search, safety nets | `app/main.py` |
+| Search, ranking, hybrid search, safety nets | `app/retrieval.py` |
 | Vector database | `app/vectorstore.py` |
 | Chunking | `app/chunking.py` |
 | Summaries, key terms | `app/summarization.py` |

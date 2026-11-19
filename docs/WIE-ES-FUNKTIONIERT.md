@@ -67,7 +67,7 @@ Details, die in der Praxis den Unterschied gemacht haben.
 
 ### Die Suche
 
-Ablauf pro Frage (`app/main.py`, Funktion `ask`):
+Ablauf pro Frage (`app/routes_ask.py`, Funktion `ask`):
 
 1. **Folgefragen umformulieren.** „Erzähl mehr“ oder „und bei Scrum?“ sind für eine
    Suche wertlos. Ein schneller Modell-Aufruf formuliert daraus mit dem
@@ -250,7 +250,7 @@ sind willkommen.
 | Stilrichtlinie Kreativ-Modus | `app/prompts/humanizer.md` |
 | Beraterstimme (Chat, MCP) | `app/prompts/beraterstimme.md` |
 | Dev-Vergleichsseite (nur Dev) | `app/dev_vergleich/` |
-| Suche, Sortierung, Hybrid-Suche, Sicherheitsnetze | `app/main.py` |
+| Suche, Sortierung, Hybrid-Suche, Sicherheitsnetze | `app/retrieval.py` |
 | Vektordatenbank | `app/vectorstore.py` |
 | Zerlegen in Abschnitte | `app/chunking.py` |
 | Zusammenfassungen, Schlagworte | `app/summarization.py` |
