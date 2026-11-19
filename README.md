@@ -645,6 +645,26 @@ sudo apt-get update && sudo apt-get install -y ffmpeg
 Fehlt `ffmpeg`/`ffprobe` beim Start, schreibt die App eine deutliche
 Warnung in die Logs (`journalctl -u betacodex-blue`/`-green`).
 
+### Crawler-Schutz
+
+- **Sperrliste = `static/robots.txt`.** `guard_crawlers` in `app/main.py`
+  liest beim Start die `User-agent:`-Namen und antwortet diesen Agenten mit
+  403 (außer auf `/robots.txt` und `/mcp`). Nur Trainings-/Index-Crawler;
+  Assistenten wie ChatGPT-User, Claude-User, Perplexity-User bleiben frei.
+  Neuer Crawler = neue Zeile in `robots.txt`, keine Codeänderung.
+- **Bremsen nur für Gäste, je IP** (IPv6 je /64, nur im Speicher):
+  Inhalte (`/api/sources`, `/api/authors`, `/api/knowledge-graph`,
+  `/api/terms`) 400 je 5 Min., einzelne Quelle 150 je 10 Min., Suche 150 je
+  Min. Bilder/Fotos und angemeldete Nutzer:innen zählen nicht. Antwort 429
+  mit `Retry-After`. Konstanten: `CRAWLER_LIMITS`.
+- **Gäste bekommen keinen Volltext** in `GET /api/sources`; ihre
+  Volltextsuche läuft serverseitig über `GET /api/sources/search?q=` (liefert
+  nur IDs, Suchbegriffe werden nicht geloggt).
+- **Logs:** `journalctl -u betacodex-blue | grep crawler_guard` (Schlüssel,
+  Pfad, gekürzte IP).
+- **Stufe 2, falls rotierende IPs abgreifen:** Turnstile-Gate vor den
+  Inhalts-Endpunkten.
+
 ### Schutz vor versehentlichem Secret-Commit
 
 `.env` ist in `.gitignore` und wird dadurch nicht getrackt. Zusätzlich
