@@ -98,7 +98,7 @@ sample. We measure this without model costs using `tools/retrieval_eval.py`.
 
 ### Instructions
 
-The system prompts are in `app/llm.py` (`SYSTEM_PROMPTS`, German and English). The
+The system prompts are in `app/llm_prompts.py` (`_BASE_PROMPTS`, German and English). The
 key rules:
 
 - Only information from the supplied excerpts. No training knowledge, no
@@ -158,7 +158,7 @@ voice, with the voice, and optionally with Sonnet.
 Creative mode writes blog posts, articles, workshop concepts. It is **deliberately
 looser** than conversation mode, because a workshop concept also needs facilitation
 know-how that no Beta source contains. The boundary is drawn like this
-(`CREATIVE_SYSTEM_PROMPTS` in `app/llm.py`):
+(`CREATIVE_SYSTEM_PROMPTS` in `app/llm_prompts.py`):
 
 - Matching excerpts from the curated sources are retrieved for the instruction,
   with the same hybrid search as above, and passed along as "BetaCodex context".

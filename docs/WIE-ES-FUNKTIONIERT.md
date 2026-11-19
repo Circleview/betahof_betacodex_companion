@@ -104,7 +104,7 @@ Stichprobe. Gemessen wird ohne Modellkosten mit `tools/retrieval_eval.py`.
 
 ### Die Anweisungen
 
-Die System-Prompts stehen in `app/llm.py` (`SYSTEM_PROMPTS`, Deutsch und Englisch).
+Die System-Prompts stehen in `app/llm_prompts.py` (`_BASE_PROMPTS`, Deutsch und Englisch).
 Die wichtigsten Regeln:
 
 - Ausschließlich Informationen aus den mitgelieferten Ausschnitten. Kein
@@ -168,7 +168,7 @@ nebeneinander: ohne Stimme, mit Stimme und optional mit Sonnet.
 Der Kreativ-Modus schreibt Blogposts, Artikel, Workshop-Konzepte. Er ist
 **absichtlich lockerer** als der Konversationsmodus, denn ein Workshop-Konzept
 braucht auch Moderationswissen, das in keiner Beta-Quelle steht. Die Grenze
-verläuft so (`CREATIVE_SYSTEM_PROMPTS` in `app/llm.py`):
+verläuft so (`CREATIVE_SYSTEM_PROMPTS` in `app/llm_prompts.py`):
 
 - Zur Anweisung werden passende Ausschnitte aus den kuratierten Quellen gesucht,
   mit derselben Hybrid-Suche wie oben, und als „BetaCodex-Kontext“ mitgegeben.
