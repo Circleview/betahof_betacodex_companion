@@ -872,6 +872,10 @@ async function loadGraph() {
   searchInput.value = '';
   try {
     const res = await fetch('/api/knowledge-graph', { headers: { 'X-Lang': getLang() } });
+    if (res.status === 429) {
+      statusEl.textContent = t('explore.tooManyRequests');
+      return;
+    }
     if (!res.ok) throw new Error('request failed');
     const data = await res.json();
     if (!data.nodes.length) {

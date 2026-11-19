@@ -1,6 +1,6 @@
 import { initI18n, t, getLang } from '/i18n.js';
 import { renderMarkdown } from '/markdown.js';
-import { initAuth, hasRole, onAuthChange } from '/auth.js';
+import { initAuth, hasRole, onAuthChange, currentUserEmail } from '/auth.js';
 import {
   CONVERSATION_STORAGE_KEY,
   CONVERSATION_ID_STORAGE_KEY,
@@ -2014,11 +2014,47 @@ function sourceMatchesSearch(source, query) {
   return haystacks.some((h) => normalizeSearch(h).includes(q));
 }
 
+// Idee 669405f0: Gäste bekommen nie Volltext - ihre Suche läuft serverseitig
+// (GET /api/sources/search liefert nur IDs), 300 ms entprellt.
+let guestSearchTimer = null;
+let guestSearchSeq = 0;
+
+function showTooManyRequests() {
+  document.getElementById('source-filter-label').textContent = t('import.tooManyRequests');
+  document.getElementById('source-filter-name').textContent = '';
+}
+
+function applyGuestSearch(query) {
+  clearTimeout(guestSearchTimer);
+  const seq = ++guestSearchSeq;
+  guestSearchTimer = setTimeout(async () => {
+    try {
+      const res = await fetch('/api/sources/search?q=' + encodeURIComponent(query), {
+        headers: { 'X-Lang': getLang() },
+      });
+      if (seq !== guestSearchSeq || activeFilter?.value !== query) return;
+      if (res.status === 429) return showTooManyRequests();
+      if (!res.ok) return;
+      const ids = new Set((await res.json()).ids);
+      if (seq !== guestSearchSeq || activeFilter?.value !== query) return;
+      renderSourceList(allSources.filter((s) => ids.has(s.id)));
+    } catch {
+      // Netzfehler: Liste bleibt wie sie ist
+    }
+  }, 300);
+}
+
 function applySearchFilter(query) {
   document.getElementById('source-filter-label').textContent = t('import.filteredBySearch');
   document.getElementById('source-filter-name').textContent = query;
   document.getElementById('source-filter-status').classList.remove('hidden');
-  renderSourceList(allSources.filter((s) => sourceMatchesSearch(s, query)));
+  if (currentUserEmail()) {
+    renderSourceList(allSources.filter((s) => sourceMatchesSearch(s, query)));
+  } else if (query.length < 2) {
+    renderSourceList(allSources);
+  } else {
+    applyGuestSearch(query);
+  }
 
   filteredAuthorEntry = null;
   authorPanelEditMode = false;
@@ -2938,6 +2974,12 @@ async function loadSources() {
   const res = await fetch('/api/sources?include_text=false', {
     headers: { 'X-Lang': getLang() },
   });
+  if (res.status === 429) {
+    showTooManyRequests();
+    document.getElementById('source-filter-status').classList.remove('hidden');
+    return;
+  }
+  if (!res.ok) return;
   allSources = await res.json();
   // Ein aktiver Autor:innen-/Begriffs-/Broken-Links-Filter soll ein
   // Neuladen (z.B. nach dem Aktualisieren oder Löschen einer Quelle)
@@ -2960,7 +3002,7 @@ async function loadSources() {
   updateBrokenLinksButton();
   loadTermOverview();
 
-  fullTextReady = loadFullSourceText();
+  if (currentUserEmail()) fullTextReady = loadFullSourceText();
 }
 
 async function loadFullSourceText() {

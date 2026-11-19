@@ -23,7 +23,8 @@ def test_full_text_only_for_logged_in_users():
 
 def test_load_sources_checks_res_ok_and_429():
     body = _fn(IMPORT_JS, "loadSources")
-    assert "res.ok" in body and "429" in body and "import.tooManyRequests" in body
+    assert "res.ok" in body and "429" in body and "showTooManyRequests()" in body
+    assert "import.tooManyRequests" in _fn(IMPORT_JS, "showTooManyRequests")
 
 
 def test_guest_search_uses_server_endpoint():
