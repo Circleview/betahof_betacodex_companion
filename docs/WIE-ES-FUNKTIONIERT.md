@@ -67,7 +67,7 @@ Details, die in der Praxis den Unterschied gemacht haben.
 
 ### Die Suche
 
-Ablauf pro Frage (`app/main.py`, Funktion `ask`):
+Ablauf pro Frage (`app/routes_ask.py`, Funktion `ask`):
 
 1. **Folgefragen umformulieren.** „Erzähl mehr“ oder „und bei Scrum?“ sind für eine
    Suche wertlos. Ein schneller Modell-Aufruf formuliert daraus mit dem
@@ -104,7 +104,7 @@ Stichprobe. Gemessen wird ohne Modellkosten mit `tools/retrieval_eval.py`.
 
 ### Die Anweisungen
 
-Die System-Prompts stehen in `app/llm.py` (`SYSTEM_PROMPTS`, Deutsch und Englisch).
+Die System-Prompts stehen in `app/llm_prompts.py` (`_BASE_PROMPTS`, Deutsch und Englisch).
 Die wichtigsten Regeln:
 
 - Ausschließlich Informationen aus den mitgelieferten Ausschnitten. Kein
@@ -168,7 +168,7 @@ nebeneinander: ohne Stimme, mit Stimme und optional mit Sonnet.
 Der Kreativ-Modus schreibt Blogposts, Artikel, Workshop-Konzepte. Er ist
 **absichtlich lockerer** als der Konversationsmodus, denn ein Workshop-Konzept
 braucht auch Moderationswissen, das in keiner Beta-Quelle steht. Die Grenze
-verläuft so (`CREATIVE_SYSTEM_PROMPTS` in `app/llm.py`):
+verläuft so (`CREATIVE_SYSTEM_PROMPTS` in `app/llm_prompts.py`):
 
 - Zur Anweisung werden passende Ausschnitte aus den kuratierten Quellen gesucht,
   mit derselben Hybrid-Suche wie oben, und als „BetaCodex-Kontext“ mitgegeben.
@@ -250,7 +250,7 @@ sind willkommen.
 | Stilrichtlinie Kreativ-Modus | `app/prompts/humanizer.md` |
 | Beraterstimme (Chat, MCP) | `app/prompts/beraterstimme.md` |
 | Dev-Vergleichsseite (nur Dev) | `app/dev_vergleich/` |
-| Suche, Sortierung, Hybrid-Suche, Sicherheitsnetze | `app/main.py` |
+| Suche, Sortierung, Hybrid-Suche, Sicherheitsnetze | `app/retrieval.py` |
 | Vektordatenbank | `app/vectorstore.py` |
 | Zerlegen in Abschnitte | `app/chunking.py` |
 | Zusammenfassungen, Schlagworte | `app/summarization.py` |

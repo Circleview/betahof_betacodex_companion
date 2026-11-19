@@ -62,7 +62,7 @@ details that made the difference in practice.
 
 ### Search
 
-Steps per question (`app/main.py`, function `ask`):
+Steps per question (`app/routes_ask.py`, function `ask`):
 
 1. **Rewrite follow-up questions.** "Tell me more" or "what about Scrum?" are
    useless as search queries. A quick model call turns them, using the conversation
@@ -98,7 +98,7 @@ sample. We measure this without model costs using `tools/retrieval_eval.py`.
 
 ### Instructions
 
-The system prompts are in `app/llm.py` (`SYSTEM_PROMPTS`, German and English). The
+The system prompts are in `app/llm_prompts.py` (`_BASE_PROMPTS`, German and English). The
 key rules:
 
 - Only information from the supplied excerpts. No training knowledge, no
@@ -158,7 +158,7 @@ voice, with the voice, and optionally with Sonnet.
 Creative mode writes blog posts, articles, workshop concepts. It is **deliberately
 looser** than conversation mode, because a workshop concept also needs facilitation
 know-how that no Beta source contains. The boundary is drawn like this
-(`CREATIVE_SYSTEM_PROMPTS` in `app/llm.py`):
+(`CREATIVE_SYSTEM_PROMPTS` in `app/llm_prompts.py`):
 
 - Matching excerpts from the curated sources are retrieved for the instruction,
   with the same hybrid search as above, and passed along as "BetaCodex context".
@@ -236,7 +236,7 @@ welcome.
 | Creative mode style guide | `app/prompts/humanizer.md` |
 | Advisor voice (chat, MCP) | `app/prompts/beraterstimme.md` |
 | Dev comparison page (dev only) | `app/dev_vergleich/` |
-| Search, ranking, hybrid search, safety nets | `app/main.py` |
+| Search, ranking, hybrid search, safety nets | `app/retrieval.py` |
 | Vector database | `app/vectorstore.py` |
 | Chunking | `app/chunking.py` |
 | Summaries, key terms | `app/summarization.py` |

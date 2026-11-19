@@ -1,8 +1,10 @@
 import concurrent.futures
 import json
+import re
 import threading
 import time
 import uuid
+from pathlib import Path
 
 import anthropic
 import pytest
@@ -5630,6 +5632,41 @@ def test_embed_static_dependencies_exempt_from_early_access(anon_client, monkeyp
     favicon_response = anon_client.get("/icons/favicon.png")
     assert favicon_response.status_code == 200
     assert favicon_response.headers["content-type"].startswith("image/")
+
+
+def _embed_script_paths() -> set[str]:
+    """Alle JS-Pfade, die /embed.html lädt - direkt per <script src> und
+    transitiv über statische `import ... from '/x.js'` und dynamisches
+    `import('/x.js')`."""
+    static_dir = Path(main_module.STATIC_DIR)
+    html = (static_dir / "embed.html").read_text(encoding="utf-8")
+    found: set[str] = set()
+    todo = re.findall(r'<script[^>]*\ssrc="(/[^"?]+\.js)"', html)
+    while todo:
+        path = todo.pop()
+        if path in found:
+            continue
+        found.add(path)
+        source = (static_dir / path.lstrip("/")).read_text(encoding="utf-8")
+        todo += re.findall(r"""from\s+['"](/[^'"?]+\.js)['"]""", source)
+        todo += re.findall(r"""import\(\s*['"](/[^'"?]+\.js)['"]\s*\)""", source)
+    return found
+
+
+def test_embed_script_imports_exempt_from_early_access(anon_client, monkeypatch):
+    # Regression (Idee 313ad93d): /source-lang.js und /answer-feedback.js
+    # fehlten in der Ausnahmeliste, obwohl question.js sie importiert - die
+    # Pfade werden darum aus den Imports abgeleitet, nicht von Hand gepflegt.
+    monkeypatch.setenv("EMBED_ENABLED", "true")
+    monkeypatch.setenv("EARLY_ACCESS_PASSWORD", "geheim123")
+
+    paths = _embed_script_paths()
+    assert {"/question.js", "/source-lang.js", "/answer-feedback.js", "/source-edit.js"} <= paths
+
+    for path in sorted(paths):
+        response = anon_client.get(path)
+        assert response.status_code == 200, path
+        assert "early-access-form" not in response.text, path
 
 
 def test_embed_api_dependencies_exempt_from_early_access(anon_client, monkeypatch):
