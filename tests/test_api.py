@@ -6628,14 +6628,15 @@ def test_get_single_source_404_for_unknown_or_deleted(client):
 
 
 def test_get_single_source_is_public_but_hides_restricted_text(client, anon_client):
-    """Lese-Dialog (2026-09-25): wie GET /api/sources öffentlich, geschützte
-    Volltexte nur für Quellen-Pfleger:innen."""
+    """Lese-Dialog (2026-09-25): öffentlich, aber Gäste bekommen nie Volltext
+    (Idee 669405f0); geschützte Volltexte nur für Quellen-Pfleger:innen."""
     open_id = client.post("/api/sources", json={"title": "Offen", "text": "Offener Text."}).json()["id"]
     restricted_id = client.post(
         "/api/sources", json={"title": "Geschützt", "text": "Geheimer Text.", "restricted": True}
     ).json()["id"]
 
-    assert anon_client.get(f"/api/sources/{open_id}").json()["text"] == "Offener Text."
+    assert anon_client.get(f"/api/sources/{open_id}").json()["text"] == ""
+    assert client.get(f"/api/sources/{open_id}").json()["text"] == "Offener Text."
     anon_restricted = anon_client.get(f"/api/sources/{restricted_id}").json()
     assert anon_restricted["title"] == "Geschützt"
     assert anon_restricted["text"] == ""
