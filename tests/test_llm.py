@@ -758,8 +758,11 @@ def test_chat_system_prompt_order_rules_bridge_voice(lang):
 
 @pytest.mark.parametrize("lang", ["de", "en"])
 def test_number_rule_in_chat_prompt(lang):
+    # Zahlen-Regel steht im Einstieg (vorn), nicht nur im Abschnitt "Verständlich und vorsichtig".
     prompt = llm.SYSTEM_PROMPTS[lang]
-    for needle in ("frag, woher die Zahl kommt", "ask where it comes from", "never as natural laws"):
+    voice = llm.load_stimme()
+    assert voice.index("Die Zahl stammt aus deiner Frage") < voice.index("## Begründen statt auflisten")
+    for needle in ("Die Zahl stammt aus deiner Frage", "Frag, woher sie kommt", "asks where it comes from", "never adopt it as fact", "never as natural laws", "in English"):
         assert needle in prompt
 
 
