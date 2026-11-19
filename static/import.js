@@ -1933,6 +1933,8 @@ async function applyAuthorFilter(name) {
     fetch('/api/authors', { headers: { 'X-Lang': getLang() } }),
     fetch('/api/terms'),
   ]);
+  if (authorsRes.status === 429 || termsRes.status === 429) return showTooManyRequests();
+  if (!authorsRes.ok || !termsRes.ok) return;
   const authorEntries = await authorsRes.json();
   const termEntries = await termsRes.json();
   const match = authorEntries.find((a) => normalizeAuthor(a.name) === normalizeAuthor(name));
@@ -1971,6 +1973,8 @@ async function filterByAuthor(name) {
 
 async function applyTermFilter(term) {
   const res = await fetch('/api/terms');
+  if (res.status === 429) return showTooManyRequests();
+  if (!res.ok) return;
   const termEntries = await res.json();
   const match = termEntries.find((t2) => normalizeTerm(t2.term) === normalizeTerm(term));
   const ids = match ? match.source_ids : [];
@@ -2024,6 +2028,11 @@ function showTooManyRequests() {
   document.getElementById('source-filter-name').textContent = '';
 }
 
+function showSearchFailed() {
+  document.getElementById('source-filter-label').textContent = t('import.searchFailed');
+  document.getElementById('source-filter-name').textContent = '';
+}
+
 function applyGuestSearch(query) {
   clearTimeout(guestSearchTimer);
   const seq = ++guestSearchSeq;
@@ -2034,12 +2043,12 @@ function applyGuestSearch(query) {
       });
       if (seq !== guestSearchSeq || activeFilter?.value !== query) return;
       if (res.status === 429) return showTooManyRequests();
-      if (!res.ok) return;
+      if (!res.ok) return showSearchFailed();
       const ids = new Set((await res.json()).ids);
       if (seq !== guestSearchSeq || activeFilter?.value !== query) return;
       renderSourceList(allSources.filter((s) => ids.has(s.id)));
     } catch {
-      // Netzfehler: Liste bleibt wie sie ist
+      if (seq === guestSearchSeq) showSearchFailed();
     }
   }, 300);
 }
@@ -3022,6 +3031,8 @@ async function loadFullSourceText() {
 
 async function loadAuthors() {
   const res = await fetch('/api/authors', { headers: { 'X-Lang': getLang() } });
+  if (res.status === 429) return showTooManyRequests();
+  if (!res.ok) return;
   allAuthors = await res.json();
   setKnownAuthors(allAuthors);
   renderAuthorList();
@@ -3067,6 +3078,8 @@ function buildOverviewTerms(entries, sources, lang) {
 
 async function loadTermOverview() {
   const res = await fetch('/api/terms');
+  if (res.status === 429) return showTooManyRequests();
+  if (!res.ok) return;
   overviewTerms = buildOverviewTerms(await res.json(), allSources, getLang());
   renderTermJumpBar();
   renderTermOverview();

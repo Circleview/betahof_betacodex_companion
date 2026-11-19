@@ -659,7 +659,10 @@ Warnung in die Logs (`journalctl -u betacodex-blue`/`-green`).
   mit `Retry-After`. Konstanten: `CRAWLER_LIMITS`.
 - **Gäste bekommen keinen Volltext** in `GET /api/sources`; ihre
   Volltextsuche läuft serverseitig über `GET /api/sources/search?q=` (liefert
-  nur IDs, Suchbegriffe werden nicht geloggt).
+  nur IDs, Suchbegriffe werden nicht geloggt, auch nicht im uvicorn-Access-Log).
+  Das gilt ebenso für `GET /api/sources/{id}`: Gäste sehen nie den Text (das
+  Leser-Fenster zeigt „kein Text“). Angemeldete Nutzer:innen wie bisher,
+  geschützte Texte nur Quellen-Pfleger:innen.
 - **Logs:** `journalctl -u betacodex-blue | grep crawler_guard` (Schlüssel,
   Pfad, gekürzte IP).
 - **Stufe 2, falls rotierende IPs abgreifen:** Turnstile-Gate vor den

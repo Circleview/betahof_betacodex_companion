@@ -153,6 +153,7 @@
   "import.filteredByTerm": "Gefiltert nach Begriff:",
   "import.filteredBySearch": "Suchergebnisse für:",
   "import.tooManyRequests": "Zu viele Anfragen - bitte kurz warten und es erneut versuchen.",
+  "import.searchFailed": "Die Suche hat gerade nicht funktioniert - bitte erneut versuchen.",
   "import.filteredByBrokenLinks": "Gefiltert: Quellen mit defektem Link",
   "import.brokenLinksFilterTitle": "Quellen mit defektem Link anzeigen",
   "import.sourceSuggestionsTitle": "Quellen-Vorschläge ansehen",

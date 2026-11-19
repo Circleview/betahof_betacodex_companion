@@ -153,6 +153,7 @@
   "import.filteredByTerm": "Filtered by term:",
   "import.filteredBySearch": "Search results for:",
   "import.tooManyRequests": "Too many requests - please wait a moment and try again.",
+  "import.searchFailed": "The search failed - please try again.",
   "import.filteredByBrokenLinks": "Filtered: sources with a broken link",
   "import.brokenLinksFilterTitle": "Show sources with a broken link",
   "import.sourceSuggestionsTitle": "View source suggestions",
