@@ -415,6 +415,7 @@ _EARLY_ACCESS_EXEMPT_PATHS = {
     "/conversation-handoff.js",
     "/source-lang.js",
     "/answer-feedback.js",
+    "/question-sources.js",
     "/api/ask",
     "/api/turnstile-config",
     "/api/auth/whoami",
